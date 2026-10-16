@@ -30,7 +30,7 @@
       "format": "date-time"
     },
     "stages": {
-      "description": "The project's flow, in order. A stage with no step has not started.",
+      "description": "The project's flow, in order. Stage status is derived by the reader from its steps.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -52,14 +52,13 @@
             "minLength": 1
           },
           "steps": {
-            "description": "Work items of this stage (one per step note). Order is not significant.",
+            "description": "Work items of this stage (one per step note), including ones not started so the reader can compute completion. Order is not significant.",
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
               "required": [
                 "path",
-                "date",
                 "status"
               ],
               "properties": {
@@ -69,22 +68,58 @@
                   "minLength": 1
                 },
                 "date": {
-                  "description": "Start date, or the day of a one-day item.",
+                  "description": "Start date (planned start while pending), or the day of a one-day item. Required unless scheduling.",
                   "type": "string",
                   "format": "date"
                 },
                 "endDate": {
-                  "description": "End date of a period item; while active, the latest day worked. Omitted for one-day items.",
+                  "description": "End date of a period item (planned end while pending; latest day worked while active). Omitted for one-day items.",
                   "type": "string",
                   "format": "date"
                 },
                 "status": {
+                  "description": "scheduling = defined, dates not set yet; pending = scheduled, not started; active = in progress; done = finished; failed = stopped without finishing.",
                   "enum": [
+                    "scheduling",
+                    "pending",
                     "active",
-                    "done"
+                    "done",
+                    "failed"
                   ]
                 }
-              }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "status": {
+                        "const": "scheduling"
+                      }
+                    }
+                  },
+                  "then": {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "date"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "endDate"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "else": {
+                    "required": [
+                      "date"
+                    ]
+                  }
+                }
+              ]
             }
           }
         }

@@ -101,7 +101,7 @@ aplan skip N [메모] / aplan fail N [메모]
 - `server.py` 실행 옵션과 `launchd/install.sh` 환경 변수
 - 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`
 
-- 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
+- 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
 
 ## 로컬 상태 파일 (git 무시)
 
