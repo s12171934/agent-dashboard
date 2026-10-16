@@ -2,14 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/s12171934/agent-dashboard/exports/project-progress.schema.json",
   "title": "Project progress",
-  "description": "One file per project (e.g. <project folder>/progress.json), written by the project owner's tooling and read by agent-dashboard. Only source facts are stored: the ordered stages, each grouping its ordered steps, and the schedule entries. Everything derivable — step and stage status, start/end, round counts, current step, completion ratio — is computed by the reader and must not be written here.",
+  "description": "One file per project (e.g. <project folder>/progress.json), written by the project owner's tooling and read by agent-dashboard. Only source facts are stored: the ordered stages (the project's flow) and, inside each stage, its steps (the work items of that flow), each with its own dates and status. Everything derivable — stage status, stage start/end, step counts, current stage, completion ratio — is computed by the reader and must not be written here.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaVersion",
     "project",
-    "stages",
-    "schedules"
+    "stages"
   ],
   "properties": {
     "schemaVersion": {
@@ -31,87 +30,62 @@
       "format": "date-time"
     },
     "stages": {
-      "description": "Workflow stages in order; each groups one or more steps. Stage order is array order.",
+      "description": "The project's flow, in order. A stage with no step has not started.",
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "no",
           "name",
           "steps"
         ],
         "properties": {
+          "no": {
+            "description": "1-based position in the flow (matches the stage folder number); unique.",
+            "type": "integer",
+            "minimum": 1
+          },
           "name": {
-            "description": "Stage name; unique.",
             "type": "string",
             "minLength": 1
           },
           "steps": {
-            "description": "Steps of this stage in order. A step with no schedule entry has not started.",
+            "description": "Work items of this stage (one per step note). Order is not significant.",
             "type": "array",
-            "minItems": 1,
             "items": {
               "type": "object",
               "additionalProperties": false,
               "required": [
-                "no",
-                "name"
+                "path",
+                "date",
+                "status"
               ],
               "properties": {
-                "no": {
-                  "description": "1-based position across the whole workflow (matches the step folder number); unique.",
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "name": {
+                "path": {
+                  "description": "Step note path relative to the project folder; unique. Its title is the step name.",
                   "type": "string",
                   "minLength": 1
+                },
+                "date": {
+                  "description": "Start date, or the day of a one-day item.",
+                  "type": "string",
+                  "format": "date"
+                },
+                "endDate": {
+                  "description": "End date of a period item; while active, the latest day worked. Omitted for one-day items.",
+                  "type": "string",
+                  "format": "date"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "done"
+                  ]
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "schedules": {
-      "description": "Schedule entries (one per schedule note). Repeated entries for one step are its rounds; order is not significant.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "path",
-          "step",
-          "date",
-          "status"
-        ],
-        "properties": {
-          "path": {
-            "description": "Schedule note path relative to the project folder; unique.",
-            "type": "string",
-            "minLength": 1
-          },
-          "step": {
-            "description": "The `no` of the step this entry belongs to.",
-            "type": "integer",
-            "minimum": 1
-          },
-          "date": {
-            "description": "Start date, or the day of a one-day event.",
-            "type": "string",
-            "format": "date"
-          },
-          "endDate": {
-            "description": "End date of a period entry; while active, the latest day worked. Omitted for one-day events.",
-            "type": "string",
-            "format": "date"
-          },
-          "status": {
-            "enum": [
-              "active",
-              "done"
-            ]
           }
         }
       }
