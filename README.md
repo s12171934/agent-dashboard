@@ -1,3 +1,11 @@
+---
+title: agent-dashboard
+created: 2026-10-16
+updated: 2026-10-16
+tags: [domain/인공지능, area/ai에이전트]
+source: ai
+---
+
 # agent-dashboard
 
 Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 화면에서 실시간으로 보여 주는 로컬 웹 대시보드다.
