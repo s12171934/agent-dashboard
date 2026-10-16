@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""aplan — record an agent's task plan so the agent dashboard can draw it.
+
+Each event is appended to ~/.agent-plans/<session>.jsonl, keyed by the calling
+session (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID, else the Orca terminal handle),
+and also echoed as one APLAN:<base64> line into the tool result. The echo is the
+fallback for sandboxes that cannot write the store; the dashboard dedupes by id,
+so discarding the output (>/dev/null) no longer loses the record.
+
+  aplan set "단계 1" "단계 2" ...   plan the steps for the instruction just received (step 1 starts)
+  aplan add "단계" [...]            append steps discovered along the way
+  aplan done [N] [메모]             finish step N (default: the running one); the next step starts
+  aplan start N                     start step N explicitly
+  aplan skip N [메모] / fail N [메모]
+"""
+import base64
+import datetime
+import json
+import os
+import sys
+import uuid
+
+STORES = [os.path.expanduser("~/.agent-plans"), "/tmp/agent-plans"]  # the second is for write-restricted sandboxes
+
+OPS = {"set", "add", "done", "start", "skip", "fail"}
+
+
+def die(msg):
+    print(f"aplan: {msg}\n" + __doc__.split("\n\n", 2)[2], file=sys.stderr)
+    sys.exit(2)
+
+
+def main(argv):
+    if not argv or argv[0] not in OPS:
+        die("unknown command")
+    op, rest = argv[0], argv[1:]
+    ev = {"op": op}
+    if op in ("set", "add"):
+        steps = [s.strip() for s in rest if s.strip()]
+        if not steps:
+            die(f"{op} needs at least one step")
+        ev["steps"] = steps
+    else:
+        if rest and rest[0].isdigit():
+            ev["n"] = int(rest[0])
+            rest = rest[1:]
+        elif op != "done":
+            die(f"{op} needs a step number")
+        if rest:
+            ev["note"] = " ".join(rest)
+    ev["id"] = uuid.uuid4().hex[:12]
+    ev["ts"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID")
+    term = os.environ.get("ORCA_TERMINAL_HANDLE")
+    if sid or term:
+        line = json.dumps({"session": sid, "terminal": term, "event": ev}, ensure_ascii=False) + "\n"
+        for d in STORES:
+            try:
+                os.makedirs(d, exist_ok=True)
+                with open(os.path.join(d, (sid or term) + ".jsonl"), "a") as f:
+                    f.write(line)
+                break
+            except OSError:
+                continue
+    token = base64.urlsafe_b64encode(json.dumps(ev, ensure_ascii=False).encode()).decode()
+    what = {"set": f"plan of {len(ev.get('steps', []))} steps", "add": f"+{len(ev.get('steps', []))} steps"}.get(
+        op, f"{op} #{ev.get('n', 'current')}")
+    print(f"aplan: {what} recorded\nAPLAN:{token}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

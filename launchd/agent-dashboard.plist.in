@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps the dashboard server up across crashes and reboots. Template: launchd/install.sh fills in the label, python, bind addresses and directory, then installs the result.
+  Binding the Tailscale address fails until tailscaled is up; KeepAlive retries every ThrottleInterval.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@PYTHON@</string>
+    <string>server.py</string>
+@HOSTS@
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@DIR@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- orca (Orca.app) and git are called as subprocesses -->
+    <key>PATH</key>
+    <string>/Applications/Orca.app/Contents/Resources/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <!-- Not Background: that QoS is inherited by every `orca` call, and with dozens of agents running a
+       0.3s `orca orchestration run-list` took 9-23s at background QoS, past the 15s timeout (2026-10-14). -->
+  <key>ProcessType</key>
+  <string>Standard</string>
+  <key>StandardOutPath</key>
+  <string>@DIR@/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>@DIR@/server.log</string>
+</dict>
+</plist>

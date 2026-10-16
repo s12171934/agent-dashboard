@@ -1,0 +1,13 @@
+# secrets and per-machine state
+.token
+prefs.json
+settled.json
+plan-history.json
+test-history.json
+server.log
+pricing.json
+__pycache__/
+# legacy manual backups (history now lives in git)
+*.bak-*
+history-cache.json
+bak-archive-*.tar.gz
