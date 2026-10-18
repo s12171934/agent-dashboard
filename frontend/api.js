@@ -124,6 +124,9 @@ const api = (() => {
   const lastVer = {};
   const relay = m => { if (leader && bc) bc.postMessage(m); };
   const onVersion = (id, v) => { lastVer[id] = v; handlers.version(`${id}:${v}`); };
+  // Project progress changes come as a named event of their own (`event: projects`), apart from the state version.
+  const lastProj = {};
+  const onProjects = (id, v) => { lastProj[id] = v; handlers.projects?.(`${id}:${v}`); };
   const setLive = (id, live) => { setStatus(id, live ? { live, error: null } : { live }); handlers.change(); };
   function openSources() {
     sources.forEach(es => es.close());
@@ -131,6 +134,7 @@ const api = (() => {
       const es = new EventSource(srv.url + '/events');
       es.onopen = () => { setLive(srv.id, true); relay({ t: 'live', id: srv.id, live: true }); };
       es.onmessage = e => { onVersion(srv.id, e.data); relay({ t: 'v', id: srv.id, v: e.data }); };
+      es.addEventListener('projects', e => { onProjects(srv.id, e.data); relay({ t: 'p', id: srv.id, v: e.data }); });
       es.onerror = () => { if (status[srv.id]?.live !== false) { setLive(srv.id, false); relay({ t: 'live', id: srv.id, live: false }); } };
       return es;
     });
@@ -151,10 +155,12 @@ const api = (() => {
         if (m.t === 'hello') {
           for (const srv of enabled()) bc.postMessage({ t: 'live', id: srv.id, live: !!status[srv.id]?.live });
           for (const [id, v] of Object.entries(lastVer)) bc.postMessage({ t: 'v', id, v });
+          for (const [id, v] of Object.entries(lastProj)) bc.postMessage({ t: 'p', id, v });
         }
         return;
       }
       if (m.t === 'v') onVersion(m.id, m.v);
+      if (m.t === 'p') onProjects(m.id, m.v);
       if (m.t === 'live') setLive(m.id, m.live);
     };
     bc.postMessage({ t: 'hello' });
@@ -269,8 +275,28 @@ const api = (() => {
     },
     // Progress of a close: {id, handle, total, done, closed[handle], failed[{handle, error}], state running|done}.
     closeJob: id => { const srv = byId(jobOwner[id]) || enabled()[0]; return srv ? getJson(srv, '/api/orca/job?id=' + encodeURIComponent(id)) : null; },
+    // Project progress from the servers started with --projects-dir (a server without it, or an older one, is left out):
+    // {enabled, dirs[{dir, error, server}], projects[...]}; each project carries `server` and, per stage, status, counts,
+    // ratio, start, end (no steps). The server derives everything from the progress.json files.
+    projects: async () => {
+      const parts = (await fromAll('/api/projects')).filter(([, d]) => d.enabled);
+      return { enabled: parts.length > 0, dirs: parts.flatMap(([s, d]) => tag(d.dirs, s.id)),
+        projects: parts.flatMap(([s, d]) => tag(d.projects, s.id)) };
+    },
+    // One project with its stages' steps ({path, title, date, endDate, status}). null when unknown.
+    project: async (server, name) => {
+      const srv = byId(server), d = srv && await getJson(srv, '/api/project?name=' + encodeURIComponent(name));
+      return d && { ...d, server };
+    },
+    // A note inside a project's folder (a step's path, or a note it links to): {path, abs, mtime, content,
+    // links[{target, path|null}]}. null when not found.
+    note: async (server, name, path) => {
+      const srv = byId(server);
+      return srv && getJson(srv, `/api/project/note?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`);
+    },
     // Version streams: each server sends its state version whenever it changes (version gets "<server>:<version>"),
-    // and the page refetches state(). change fires when a server's connection opens or drops.
-    events: ({ version, change }) => { handlers = { version, change }; startEvents(); },
+    // and the page refetches state(). change fires when a server's connection opens or drops; projects when a server's
+    // project progress changes ("<server>:<version>").
+    events: ({ version, change, projects }) => { handlers = { version, change, projects }; startEvents(); },
   };
 })();
