@@ -61,8 +61,26 @@ $('#only-live').checked = onlyLive;
 $('#only-live').onchange = e => { onlyLive = e.target.checked; try { localStorage.setItem('adash.live', onlyLive ? '1' : '0'); } catch {} gKey = ''; render(); };
 // Colour theme (applyTheme lives in index.html so it runs before the first paint). SVG charts read the CSS
 // variables, so switching needs no re-render.
-try { $('#theme').value = localStorage.getItem('adash.theme') || 'system'; } catch {}
-$('#theme').onchange = e => { try { localStorage.setItem('adash.theme', e.target.value); } catch {} applyTheme(e.target.value); if (!$('#theme-panel').hidden) themePanel(); };
+// 테마 button: cycles 시스템 → 라이트 → 다크; data-choice picks which of its three icons shows.
+const THEMES = [['system', '시스템'], ['light', '라이트'], ['dark', '다크']];
+const markTheme = c => { const b = $('#theme'); b.dataset.choice = c; const n = THEMES.find(t => t[0] === c)[1]; b.dataset.tip = `테마 · ${n}`; b.setAttribute('aria-label', `테마: ${n} (누르면 바뀜, 이 기기에만 저장)`); };
+try { markTheme(localStorage.getItem('adash.theme') || 'system'); } catch { markTheme('system'); }
+$('#theme').onclick = () => {
+  const c = THEMES[(THEMES.findIndex(t => t[0] === $('#theme').dataset.choice) + 1) % THEMES.length][0];
+  try { localStorage.setItem('adash.theme', c); } catch {} markTheme(c); applyTheme(c); if (!$('#theme-panel').hidden) themePanel();
+};
+// Tab bar settings (⋯): where the floating bar sits and how big its buttons are. A top bar sits under the header, whose height --hdr-h tracks.
+const dockMenu = $('#dock-menu'), markDock = () => dockMenu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
+$('#dock-set').onclick = e => { e.stopPropagation(); markDock(); dockMenu.hidden = !dockMenu.hidden; };
+dockMenu.onclick = e => {
+  const b = e.target.closest('[data-dock]'); if (!b) return;
+  try { localStorage.setItem('adash.dock', b.dataset.dock); } catch {}
+  applyDock(b.dataset.dock); markDock();
+};
+document.addEventListener('click', e => { if (!dockMenu.hidden && !e.target.closest('#dock, #dock-menu')) dockMenu.hidden = true; });
+$('#dock-size').value = dockSize();
+$('#dock-size').oninput = e => { try { localStorage.setItem('adash.dock.size', e.target.value); } catch {} applyDock(dockPos(), +e.target.value); };
+new ResizeObserver(([e]) => document.documentElement.style.setProperty('--hdr-h', e.target.offsetHeight + 'px')).observe($('header'));
 // 「색 편집」: per-base overrides of the palette's main variables (light and dark are kept apart, so a custom dark theme
 // survives switching to light and back). Each change applies at once; 「기본값」 drops one colour, 「모두 기본값」 the base.
 const THEME_VARS = [['--bg', '배경'], ['--panel', '카드·상자'], ['--panel2', '카드 안쪽'], ['--line', '테두리'], ['--text', '글자'],
@@ -116,7 +134,7 @@ function themePanel() {
   });
   el.hidden = false;
 }
-$('#theme-edit').onclick = () => { if ($('#theme-panel').hidden) themePanel(); else $('#theme-panel').hidden = true; };
+$('#theme-edit').onclick = () => { if ($('#theme-panel').hidden) { $('#server-panel').hidden = true; themePanel(); } else $('#theme-panel').hidden = true; };
 // 「Orca 에 열린 것만」: only agents whose connected Orca terminal the server found (session.orca_focus), the same set
 // that gets the 「Orca 에서 열기」 button. Combines with 「실행 중만」 (both must hold).
 let onlyOrca = false;
@@ -341,7 +359,7 @@ async function render(navigated) {
 async function renderView(navigated) {
   const r = route();
   const tab = r.v === 'session' || r.v === 'run' ? 'agents' : r.v;
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.v === tab));
+  document.querySelectorAll('#dock a').forEach(a => a.classList.toggle('on', a.dataset.v === tab));
   if (r.v !== 'talk') talkMounted = false;
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
@@ -369,7 +387,7 @@ function renderHeader() {
   $('#k-cost').textContent = usd(priced.reduce((a, s) => a + s.cost, 0)) + (priced.length < ss.length ? '+' : '');
   $('#k-tokens').textContent = fmt(ss.reduce((a, s) => a + total(s), 0));
   $('#k-turns').textContent = fmt(ss.reduce((a, s) => a + s.turns, 0));
-  $('#k-hidden').textContent = state.all.filter(s => s.hidden).length;
+  { const n = state.all.filter(s => s.hidden).length; $('#k-hidden').textContent = n; $('#k-hidden').hidden = !n; }
   { const n = testItems().filter(testLive).length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n; }
   $('#k-runs').textContent = state.orca.error ? '오류' : visibleRuns().filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
@@ -2433,13 +2451,16 @@ function renderConn() {
   $('#conn').className = live ? 'conn on' + (live < on.length ? ' part' : '') : 'conn';
   $('#conn span').textContent = !on.length ? '서버 없음' : live === on.length ? '실시간' + (on.length > 1 ? ` ${live}` : '') : live ? `실시간 ${live}/${on.length}` : '재연결 중';
   $('#conn').title = on.map(x => `${x.name} (${x.url}): ${srvState(x)[1]}`).join('\n') + '\n눌러서 메트릭 서버 설정';
+  $('#srv-btn').className = 'dock-btn ' + $('#conn').className.replace('conn', '').trim();
+  $('#srv-btn').dataset.tip = '메트릭 서버 · ' + $('#conn span').textContent;
   const el = $('#server-panel');
   if (!el.hidden) for (const x of api.servers()) {
     const st = el.querySelector(`.sp-srv[data-id="${x.id}"] [data-st]`), [cls, text] = srvState(x);
     if (st && st.textContent !== '시험 중…') { st.className = 'sp-msg ' + cls; st.textContent = text; }
   }
 }
-$('#conn').onclick = () => { if ($('#server-panel').hidden) serverPanel(); else $('#server-panel').hidden = true; };
+// The badge and the bar's server button both toggle the panel; it opens off the bar, like 「색 편집」, and one closes the other.
+$('#conn').onclick = $('#srv-btn').onclick = () => { if ($('#server-panel').hidden) { $('#theme-panel').hidden = true; serverPanel(); } else $('#server-panel').hidden = true; };
 setTimeout(() => { if (!srvOn().some(x => x.live) && $('#server-panel').hidden) serverPanel(); }, 4000);
 function connect() {
   const last = {};
