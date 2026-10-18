@@ -291,10 +291,10 @@ function injectPlanTasks() {
 }
 
 async function refresh() {
-  state = await api.state();
-  // A tab opened before the page code changed keeps old logic (e.g. no hidden filter): reload once it changes.
-  if (window.BUILD && state.build && state.build !== window.BUILD) { location.reload(); return; }
-  window.BUILD ||= state.build;
+  const next = await api.state();
+  // The server and the page deploy separately: a shape this page was not written for is reported, not drawn.
+  if (next.api !== api.API_VERSION) throw new Error(`서버 API v${next.api ?? '?'} 와 페이지 v${api.API_VERSION} 가 맞지 않습니다`);
+  state = next;
   state.all = state.sessions;
   state.hid = hiddenSet(state.all);
   state.sessions = state.all.filter(s => !state.hid.has(s.path));
@@ -2334,12 +2334,65 @@ async function pump() {
   if (again) pump();
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && stale) { stale = false; pump(); } });
+// A tab opened before a new deployment keeps old logic (e.g. no hidden filter): reload once build.json changes.
+let pageBuild;
+async function checkBuild() {
+  const b = await api.build();
+  if (pageBuild === undefined) pageBuild = b;
+  else if (b && b !== pageBuild) location.reload();
+}
+checkBuild();
+setInterval(() => { if (!document.hidden) checkBuild(); }, 5 * 60000);
+// 「메트릭 서버」 panel, opened from the connection badge: which server this device reads, tried before it is kept.
+// It also opens by itself when the first connection has not come up after a few seconds (a new device, the server
+// down), since an empty dashboard alone does not say why.
+let connected = false;
+function serverPanel() {
+  const el = $('#server-panel');
+  el.innerHTML = `<div class="tp-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장</span><button class="act" data-sp="close">닫기</button></div>
+    <div class="sp-row">지금: <code>${esc(api.base)}</code> ${connected ? '<span class="sp-msg ok">연결됨</span>' : '<span class="sp-msg bad">연결 안 됨</span>'}</div>
+    <div class="sp-row"><input id="sp-url" type="url" spellcheck="false" autocomplete="url" value="${esc(api.base)}" placeholder="${esc(api.DEFAULT)}"></div>
+    <div class="sp-row"><button class="act big" data-sp="test">연결 시험</button><button class="act big" data-sp="save">저장하고 연결</button>
+      <button class="act big" data-sp="default">기본값</button></div>
+    <div class="sp-msg" id="sp-msg"></div>
+    <ul class="sp-help">
+      <li>이 Mac 에서: <code>${esc(api.DEFAULT)}</code></li>
+      <li>다른 기기(tailnet)에서: Mac 에서 <code>tailscale serve --bg 8787</code> 후 <code>https://&lt;mac&gt;.&lt;tailnet&gt;.ts.net</code></li>
+      <li>서버는 이 페이지 주소를 허용해야 합니다: <code>--origin ${esc(location.origin)}</code></li>
+      <li>Chrome 이 「로컬 네트워크의 기기에 접근」 권한을 물으면 허용해야 합니다 (주소창 왼쪽 사이트 설정에서 바꿀 수 있음)</li>
+    </ul>`;
+  const input = $('#sp-url'), msg = $('#sp-msg');
+  const say = (text, cls = '') => { msg.className = 'sp-msg ' + cls; msg.textContent = text; };
+  const test = async () => {
+    say('시험 중…');
+    const r = await api.probe(input.value);
+    if (!r.ok) say(r.error, 'bad');
+    else if (r.api !== api.API_VERSION) say(`연결은 되지만 서버 API v${r.api} 가 페이지 v${api.API_VERSION} 와 다릅니다`, 'bad');
+    else say('연결됩니다', 'ok');
+    return r.ok;
+  };
+  input.onkeydown = e => { if (e.key === 'Enter') el.querySelector('[data-sp=save]').click(); };
+  el.querySelectorAll('[data-sp]').forEach(b => b.onclick = async () => {
+    const act = b.dataset.sp;
+    if (act === 'close') { el.hidden = true; return; }
+    if (act === 'default') { input.value = api.DEFAULT; return test(); }
+    if (act === 'test') return test();
+    if (await test() || confirm('연결 시험에 실패했습니다. 그래도 이 주소로 바꿀까요?')) { api.setBase(input.value); location.reload(); }
+  });
+  el.hidden = false;
+}
+$('#conn').title = `메트릭 서버: ${api.base}\n눌러서 바꾸기`;
+$('#conn').onclick = () => { if ($('#server-panel').hidden) serverPanel(); else $('#server-panel').hidden = true; };
+setTimeout(() => { if (!connected && $('#server-panel').hidden) serverPanel(); }, 4000);
 function connect() {
   let last = null;
   api.events({
-    open: () => { $('#conn').className = 'conn on'; $('#conn span').textContent = '실시간'; },
+    open: () => {
+      $('#conn').className = 'conn on'; $('#conn span').textContent = '실시간'; checkBuild();
+      if (!connected) { connected = true; if (!$('#server-panel').hidden) serverPanel(); }
+    },
     version: v => { if (v !== last) { last = v; pump(); } },
-    error: () => { $('#conn').className = 'conn'; $('#conn span').textContent = '재연결 중'; },
+    error: () => { connected = false; $('#conn').className = 'conn'; $('#conn span').textContent = '재연결 중'; },
   });
 }
 connect();

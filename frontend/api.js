@@ -3,8 +3,20 @@
 // 30_Areas/자동화/에이전트 대시보드 데이터 명세.md and its session / Orca / plan notes.
 // Views (app.js) never call fetch or EventSource directly, so the server can move (another host,
 // /api/v1, a bearer token) by changing this file alone.
+// The page is served from Cloudflare Pages and the metrics server runs on the user's Mac, so the server address is
+// per device: ?server=<url> sets it (kept in localStorage as adash.server), else http://127.0.0.1:8787. Other
+// devices on the tailnet need the HTTPS address `tailscale serve` gives the Mac: an https page may not call http.
 const api = (() => {
-  const BASE = '';  // same origin today; a split-off UI would point this at the metrics server
+  const KEY = 'adash.server', DEFAULT = 'http://127.0.0.1:8787';
+  const clean = u => (u || '').trim().replace(/\/+$/, '');
+  const fromUrl = clean(new URLSearchParams(location.search).get('server'));
+  if (fromUrl) {
+    try { localStorage.setItem(KEY, fromUrl); } catch {}
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+  let stored = '';
+  try { stored = clean(localStorage.getItem(KEY)); } catch {}
+  const BASE = fromUrl || stored || DEFAULT;
   const getJson = async path => {
     const res = await fetch(BASE + path);
     if (res.status === 404) return null;
@@ -12,7 +24,34 @@ const api = (() => {
     return res.json();
   };
   return {
-    // Full snapshot: {version, build, sessions[], orca{runs, tasks, workers, terminals, error, updated}, ext_plans[],
+    // The metrics server this page talks to, and the API shape it was written for (the server's API_VERSION).
+    base: BASE,
+    API_VERSION: 1,
+    DEFAULT,
+    // Point this device at another server (an empty url goes back to the default); the caller reloads.
+    setBase: url => { try { url = clean(url); url ? localStorage.setItem(KEY, url) : localStorage.removeItem(KEY); } catch {} },
+    // Try a server before switching to it: {ok, api} from its root, or {ok: false, error} saying why not.
+    probe: async url => {
+      url = clean(url);
+      if (!/^https?:\/\/[^/]+$/.test(url)) return { ok: false, error: 'http(s)://호스트[:포트] 형식이어야 합니다 (경로 없이)' };
+      if (location.protocol === 'https:' && url.startsWith('http:') && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(url))
+        return { ok: false, error: 'https 페이지는 http 주소를 부를 수 없습니다 (혼합 콘텐츠). tailscale serve 의 https 주소를 쓰세요' };
+      try {
+        const res = await fetch(url + '/', { signal: AbortSignal.timeout(5000) });
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 403) return { ok: false, error: `서버가 거부했습니다: ${body.error || 403}. 서버를 --origin ${location.origin} 으로 띄웠는지 확인하세요` };
+        if (!res.ok || body.name !== 'agent-dashboard') return { ok: false, error: `에이전트 대시보드 서버가 아닙니다 (${res.status})` };
+        return { ok: true, api: body.api };
+      } catch (e) {
+        return { ok: false, error: e.name === 'TimeoutError' ? '5초 안에 응답이 없습니다'
+          : '연결할 수 없습니다. 서버가 꺼져 있거나, 이 페이지 주소가 서버 --origin 에 없거나, 브라우저가 로컬 네트워크 접근을 막았습니다' };
+      }
+    },
+    // This deployment's id from build.json (written by deploy.sh); null when served without one (a local copy).
+    build: async () => {
+      try { const r = await fetch('build.json', { cache: 'no-store' }); return r.ok ? (await r.json()).build : null; } catch { return null; }
+    },
+    // Full snapshot: {version, api, sessions[], orca{runs, tasks, workers, terminals, error, updated}, ext_plans[],
     // health{now, loops}, decisions{available, pending[]}}; each session carries `decision` (its pending question or null)
     state: () => getJson('/api/state'),
     // One session: the summary fields plus turn_list, compaction_turns, by_tool, log, cats, plans. null when unknown.

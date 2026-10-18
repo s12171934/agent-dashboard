@@ -1,0 +1,5 @@
+# Cloudflare Pages response headers. The page is tiny and changes with each deploy: always revalidate.
+/*
+  Cache-Control: no-cache
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

@@ -1,4 +1,4 @@
-# secrets and per-machine state
+# secrets and per-machine state (server/ writes these next to server.py)
 .token
 prefs.json
 settled.json
@@ -11,3 +11,4 @@ __pycache__/
 *.bak-*
 history-cache.json
 bak-archive-*.tar.gz
+.wrangler/

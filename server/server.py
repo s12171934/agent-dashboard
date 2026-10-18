@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Local agent dashboard — real-time view of Claude/Codex sessions and Orca runs.
+"""Local agent dashboard metrics server — REST + SSE for Claude/Codex sessions and Orca runs.
 
-Stdlib only. Tails session logs incrementally and pushes change notices over SSE.
+Stdlib only. Tails session logs incrementally and pushes change notices over SSE. The page itself lives in
+../frontend and is served elsewhere (Cloudflare Pages); this process only answers /api/* and /events.
 
-    python3 server.py [--port 8787] [--hours 24] [--host 127.0.0.1 --host <tailscale ip>]
+    python3 server.py [--port 8787] [--hours 24] [--host 127.0.0.1] [--origin https://<project>.pages.dev]
 
 There is no authentication: any client that reaches a bound address (loopback, the tailnet) is trusted.
-Requests whose Host header is not one of those addresses are refused, which stops DNS rebinding.
+Requests whose Host header is not one of those addresses are refused, which stops DNS rebinding, and a
+browser request from an Origin outside --origin is refused, so other web pages cannot read or act through it.
 """
 import argparse
 import collections
@@ -162,6 +164,26 @@ def host_allowed(header):
     elif host.count(":") == 1:  # name:8787
         host = host.split(":")[0]
     return bool(host) and (host in ALLOWED_HOSTS or "." not in host or host.endswith(".ts.net"))
+
+
+# The page is served from another origin (Cloudflare Pages), so browsers need CORS. Only these origins get it, and a
+# browser request from any other Origin is refused outright: without this, any page the user opens could read the
+# session logs or close terminals through their browser. main() adds every --origin; an origin also covers its
+# subdomains, i.e. Pages preview deployments (<hash>.<project>.pages.dev).
+ALLOWED_ORIGINS = set()
+LOCAL_ORIGIN = re.compile(r"http://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?")  # a local copy of ../frontend
+
+
+def origin_allowed(origin):
+    origin = origin.rstrip("/").lower()
+    if LOCAL_ORIGIN.fullmatch(origin):
+        return True
+    for o in ALLOWED_ORIGINS:
+        scheme, _, host = o.partition("://")
+        if origin == o or (origin.startswith(scheme + "://") and origin.endswith("." + host)):
+            return True
+    return False
+
 
 def log(msg):
     """server.log line with the local time, so a stall can be matched against Orca's daemon.log."""
@@ -1892,19 +1914,11 @@ def relay_answer(rid, answers):
 
 
 # ---- HTTP ----
-WEB = os.path.join(HERE, "web")
-STATIC = {"/": ("index.html", "text/html; charset=utf-8"),
-          "/app.css": ("app.css", "text/css; charset=utf-8"),
-          "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-          "/api.js": ("api.js", "text/javascript; charset=utf-8"),
-          "/decision.js": ("decision.js", "text/javascript; charset=utf-8")}
+# Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
+# with the one it was built for and says so instead of rendering garbage.
+API_VERSION = 1
 TICKET_RE = re.compile(r"\b([A-Z]{2,}-\d+)\b", re.ASCII)
 PLACE_RE = re.compile(r"(?:^|\n)\s*(?:배치|워크트리|worktree|placement)\s*[:：]\s*([^\n]+)", re.I)
-
-
-def ui_build():
-    """Newest mtime of the page files: an open tab reloads when it differs."""
-    return max(int(os.path.getmtime(os.path.join(WEB, f))) for f, _ in STATIC.values())
 
 
 def lite_task(t):
@@ -2034,7 +2048,7 @@ class Handler(BaseHTTPRequestHandler):
             focus_handles = {h: sid for sid, h in focus.items()}
             close_trees = trees
             body = self.encode({
-                "version": version, "build": ui_build(),
+                "version": version, "api": API_VERSION,
                 "sessions": sorted(summaries, key=lambda s: s["last_ts"] or "", reverse=True),
                 "orca": lite_orca(orca_state),
                 "ext_plans": [ext_plans[p] for p in EXTERNAL_PLANS if p in ext_plans],
@@ -2056,24 +2070,45 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def authorized(self, url):
-        if host_allowed(self.headers.get("Host")):
+        self.cors = None
+        if not host_allowed(self.headers.get("Host")):
+            self.send_json({"error": "unknown host"}, 403)
+            return False
+        origin = self.headers.get("Origin")
+        if origin is None:  # not a cross-origin browser request (curl, a page opened on this address)
             return True
-        self.send_json({"error": "unknown host"}, 403)
-        return False
+        if not origin_allowed(origin):
+            self.send_json({"error": "origin not allowed"}, 403)
+            return False
+        self.cors = origin
+        return True
+
+    def end_headers(self):
+        if getattr(self, "cors", None):
+            self.send_header("Access-Control-Allow-Origin", self.cors)
+            self.send_header("Vary", "Origin")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        """CORS preflight for the JSON POSTs; Chrome's local network access check rides on the same request."""
+        if not self.authorized(urlparse(self.path)):
+            return
+        self.send_response(204)
+        if self.cors:
+            self.send_header("Access-Control-Allow-Methods", "GET, POST")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Max-Age", "600")
+            if self.headers.get("Access-Control-Request-Private-Network") == "true":
+                self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self):
         url = urlparse(self.path)
         if not self.authorized(url):
             return
-        if url.path in STATIC:
-            name, ctype = STATIC[url.path]
-            with open(os.path.join(WEB, name), "rb") as f:
-                body = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+        if url.path == "/":
+            self.send_json({"name": "agent-dashboard", "api": API_VERSION})
         elif url.path == "/api/state":
             # Every open page refetches on each version tick: build the snapshot once per version and hand the
             # same bytes to the rest (three tabs used to rebuild it three times, each under the lock).
@@ -2152,7 +2187,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if not self.authorized(url):
             return
-        # JSON only: a cross-site form cannot send this content type without a CORS preflight.
+        # JSON only: a cross-site form cannot send this content type without a CORS preflight, which authorized()
+        # already limits to --origin.
         if url.path not in ("/api/pref", "/api/decision/answer", "/api/orca/focus", "/api/orca/close") or not self.headers.get("Content-Type", "").startswith("application/json"):
             return self.send_json({"error": "bad request"}, 400)
         if url.path == "/api/decision/answer":
@@ -2226,8 +2262,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"ok": True})
 
     def decision_answer(self):
-        """Relay {"id", "answers"} to 8799 and hand back its status and body (same origin, so phones on the
-        Tailscale address work without CORS)."""
+        """Relay {"id", "answers"} to 8799 and hand back its status and body (8799 itself has no CORS, so the
+        page goes through here)."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             rid, answers = body["id"], body["answers"]
@@ -2259,6 +2295,8 @@ def main():
     ap.add_argument("--runs", type=int, default=8, help="minimum number of recent Orca runs to track (all runs inside --hours are tracked)")
     ap.add_argument("--host", action="append",
                     help="address to bind; repeatable (default 127.0.0.1). e.g. --host 127.0.0.1 --host <tailscale ip>")
+    ap.add_argument("--origin", action="append", default=[],
+                    help="page origin allowed over CORS, subdomains included; repeatable. e.g. --origin https://<project>.pages.dev")
     args = ap.parse_args()
     hosts = args.host or ["127.0.0.1"]
     threading.Thread(target=scan_loop, args=(args.hours,), daemon=True).start()
@@ -2268,10 +2306,12 @@ def main():
     threading.Thread(target=decision_loop, daemon=True).start()
     servers = []
     ALLOWED_HOSTS.update(h.lower() for h in hosts)
+    ALLOWED_ORIGINS.update(o.rstrip("/").lower() for o in args.origin)
     for host in hosts:
         server = Server((host, args.port), Handler)
         servers.append(server)
-        print(f"agent-dashboard → http://{host}:{args.port}/", flush=True)
+        print(f"agent-dashboard API → http://{host}:{args.port}/", flush=True)
+    print(f"allowed origins: {', '.join(sorted(ALLOWED_ORIGINS)) or '(local only)'}", flush=True)
     for server in servers[1:]:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     servers[0].serve_forever()

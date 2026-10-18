@@ -5,11 +5,14 @@
 # Settings (environment variables):
 #   DASH_LABEL   launchd label            (default: local.agent-dashboard)
 #   DASH_HOSTS   addresses to bind, space-separated (default: 127.0.0.1), e.g. "127.0.0.1 <tailscale ip>"
+#   DASH_ORIGINS page origins allowed over CORS, space-separated (default: none, local pages only),
+#                e.g. "https://agent-dashboard.pages.dev"
 #   DASH_PYTHON  python3 to run server.py (default: python3 on PATH)
 # A server started by hand on the same port must be stopped first, or the agent cannot bind.
 set -eu
 LABEL="${DASH_LABEL:-local.agent-dashboard}"
 HOSTS="${DASH_HOSTS:-127.0.0.1}"
+ORIGINS="${DASH_ORIGINS:-}"
 PYTHON="${DASH_PYTHON:-$(command -v python3)}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIR="$(dirname "$HERE")"
@@ -25,6 +28,9 @@ fi
 host_args=""
 for h in $HOSTS; do
   host_args="$host_args    <string>--host</string>\n    <string>$h</string>\n"
+done
+for o in $ORIGINS; do
+  host_args="$host_args    <string>--origin</string>\n    <string>$o</string>\n"
 done
 # a generated copy, not a link: launchd does not follow edits to a linked plist reliably
 sed -e "s|@LABEL@|$LABEL|" -e "s|@PYTHON@|$PYTHON|" -e "s|@DIR@|$DIR|g" "$HERE/agent-dashboard.plist.in" \

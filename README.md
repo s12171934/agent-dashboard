@@ -1,18 +1,37 @@
 ---
 title: agent-dashboard
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-18
 tags: [domain/인공지능, area/ai에이전트, agent/claude-1b219bef-b3db-4ef6-8088-81f7f0d19120]
 source: ai
 ---
 
 # agent-dashboard
 
-Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 화면에서 실시간으로 보여 주는 로컬 웹 대시보드다.
+Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 화면에서 실시간으로 보여 주는 웹 대시보드다.
 
 - 세션 로그를 증분으로 읽어 상태 변화를 SSE 로 브라우저에 밀어 준다.
 - 세션별 토큰·비용, 진행 중인 단계, 에이전트 사이 상호작용, 테스트 실행, 결정 대기 질문을 보여 준다.
 - 서버는 Python 표준 라이브러리만 쓴다. 설치할 의존성이 없다.
+
+## 구성
+
+| 폴더 | 무엇 | 어디서 도는가 |
+| --- | --- | --- |
+| `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://agent-dashboard-2at.pages.dev` |
+| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `aplan`, `launchd/` | 로컬 Mac |
+| `scripts/` | `deploy-frontend.sh` — `frontend/` 를 Pages 에 배포 | |
+| `exports/` | 공개 스키마 | |
+
+```
+브라우저 ── https://agent-dashboard-2at.pages.dev (페이지)
+   └─ fetch / EventSource ──► http://127.0.0.1:8787          (이 Mac)
+                          └─► https://<mac>.<tailnet>.ts.net  (tailnet 기기, tailscale serve 경유)
+```
+
+- 페이지는 서버 주소를 기기마다 따로 기억한다. 연결 표시(오른쪽 위 「실시간」)를 누르면 「메트릭 서버」 패널이 열리고, 첫 연결이 안 되면 저절로 열린다. `?server=<url>` 로 열어도 같다. 기본값은 `http://127.0.0.1:8787`.
+- https 페이지는 http 주소를 부를 수 없다(혼합 콘텐츠). 예외는 루프백뿐이라, 다른 기기에서는 `tailscale serve --bg 8787` 이 주는 https 주소를 쓴다.
+- Chrome 은 공개 사이트가 로컬 주소를 부를 때 「로컬 네트워크 접근」 권한을 한 번 묻는다. 허용해야 붙는다.
 
 ## 요구 사항
 
@@ -34,9 +53,11 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 ## 실행
 
 ```sh
-python3 server.py                       # http://127.0.0.1:8787
-python3 server.py --port 8787 --hours 24 --host 127.0.0.1 --host <tailscale ip>
+python3 server/server.py --origin https://agent-dashboard-2at.pages.dev    # http://127.0.0.1:8787
+tailscale serve --bg 8787                                                  # 다른 기기용 https 주소 (선택)
 ```
+
+로컬에서 페이지를 고칠 때는 `python3 -m http.server 5500 -d frontend` 로 띄운다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다.
 
 | 옵션 | 기본값 | 뜻 |
 | --- | --- | --- |
@@ -44,24 +65,37 @@ python3 server.py --port 8787 --hours 24 --host 127.0.0.1 --host <tailscale ip>
 | `--hours` | `24` | 이 시간 안에 갱신된 세션만 추적 |
 | `--runs` | `8` | 추적할 최근 Orca Run 의 최소 개수 |
 | `--host` | `127.0.0.1` | 바인드 주소. 여러 번 줄 수 있다 |
+| `--origin` | 없음 | CORS 를 허용할 페이지 출처. 하위 도메인(Pages 프리뷰 배포)도 포함. 여러 번 줄 수 있다 |
 
 ## 상시 실행 (launchd)
 
-`launchd/install.sh` 가 템플릿(`launchd/agent-dashboard.plist.in`)을 채워 `~/Library/LaunchAgents/` 에 설치하고 시작한다.
+`server/launchd/install.sh` 가 템플릿(`server/launchd/agent-dashboard.plist.in`)을 채워 `~/Library/LaunchAgents/` 에 설치하고 시작한다.
 
 ```sh
-DASH_HOSTS="127.0.0.1 <tailscale ip>" launchd/install.sh   # 설치·재설치
-launchd/install.sh uninstall                               # 중지·제거
+DASH_ORIGINS="https://agent-dashboard-2at.pages.dev" server/launchd/install.sh   # 설치·재설치
+server/launchd/install.sh uninstall                                              # 중지·제거
 ```
 
 | 환경 변수 | 기본값 |
 | --- | --- |
 | `DASH_LABEL` | `local.agent-dashboard` |
 | `DASH_HOSTS` | `127.0.0.1` (공백으로 구분) |
+| `DASH_ORIGINS` | 없음 (공백으로 구분, `--origin` 으로 넘김) |
 | `DASH_PYTHON` | `PATH` 의 `python3` |
 
 - 같은 포트로 손으로 띄운 서버가 있으면 먼저 내려야 한다.
-- 로그는 저장소 폴더의 `server.log` 에 쌓인다.
+- 로그는 `server/server.log` 에 쌓인다.
+
+## 프론트 배포 (Cloudflare Pages)
+
+```sh
+npx wrangler login              # 한 번
+scripts/deploy-frontend.sh      # frontend/ 를 프로덕션에 배포 (프로젝트가 없으면 만든다)
+PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-dashboard-2at.pages.dev)
+```
+
+- 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 5분마다 이것을 확인해 새 배포면 새로 고친다.
+- 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
 ## aplan — 작업 계획 기록
 
@@ -80,7 +114,7 @@ aplan skip N [메모] / aplan fail N [메모]
 
 ## 설정 (`prefs.json`)
 
-저장소 폴더의 `prefs.json` 은 화면 설정(숨김·유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
+`server/prefs.json` 은 화면 설정(숨김·유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
 
 | 키 | 뜻 |
 | --- | --- |
@@ -91,6 +125,7 @@ aplan skip N [메모] / aplan fail N [메모]
 
 - **인증이 없다.** 바인드한 주소(루프백, tailnet 등)에 닿는 클라이언트는 모두 신뢰한다. 공용 네트워크 주소에 바인드하지 않는다.
 - `Host` 헤더가 바인드 주소가 아닌 요청은 거부한다 (DNS rebinding 방지).
+- 브라우저 요청은 `Origin` 이 `--origin`(과 로컬 출처) 밖이면 거부한다. 그래야 사용자가 연 다른 웹페이지가 세션 로그를 읽거나 터미널을 닫지 못한다. 페이지 자체는 공개라 누구나 열 수 있지만, 그 사람 브라우저는 그 사람 자신의 로컬 주소를 부를 뿐이다.
 - 세션 로그 내용이 화면에 그대로 보인다. 화면 공유·원격 접근 시 주의한다.
 
 ## 공개 면
@@ -98,11 +133,13 @@ aplan skip N [메모] / aplan fail N [메모]
 다른 도구·자동화가 의존해도 되는 것은 아래뿐이다. 나머지(웹 UI 가 쓰는 `/api/*` HTTP 엔드포인트 등)는 내부용이라 예고 없이 바뀔 수 있다.
 
 - `aplan` CLI 와 그 기록 형식 (`~/.agent-plans/*.jsonl`)
-- `server.py` 실행 옵션과 `launchd/install.sh` 환경 변수
+- `server/server.py` 실행 옵션과 `server/launchd/install.sh` 환경 변수
 - 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`
 
 - 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
 
 ## 로컬 상태 파일 (git 무시)
+
+`server/` 아래에 쌓인다. 저장소 루트에 있던 것(구조 분리 전)은 `server/` 로 옮기면 그대로 이어진다.
 
 `prefs.json` · `settled.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `server.log` · `.token`
