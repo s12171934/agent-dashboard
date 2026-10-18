@@ -8,12 +8,15 @@
 #   DASH_ORIGINS page origins allowed over CORS, space-separated (default: none, local pages only),
 #                e.g. "https://agent-dashboard.pages.dev"
 #   DASH_PYTHON  python3 to run server.py (default: python3 on PATH)
+#   DASH_PROJECTS_DIRS  folders of project folders (progress.json), colon-separated like PATH since paths may hold
+#                spaces (default: none, project progress off), passed as --projects-dir
 # A server started by hand on the same port must be stopped first, or the agent cannot bind.
 set -eu
 LABEL="${DASH_LABEL:-local.agent-dashboard}"
 HOSTS="${DASH_HOSTS:-127.0.0.1}"
 ORIGINS="${DASH_ORIGINS:-}"
 PYTHON="${DASH_PYTHON:-$(command -v python3)}"
+PROJECTS_DIRS="${DASH_PROJECTS_DIRS:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIR="$(dirname "$HERE")"
 DST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -32,6 +35,13 @@ done
 for o in $ORIGINS; do
   host_args="$host_args    <string>--origin</string>\n    <string>$o</string>\n"
 done
+old_ifs="$IFS"; IFS=:
+for d in $PROJECTS_DIRS; do
+  [ -n "$d" ] || continue
+  d="$(printf '%s' "$d" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"  # plist is XML
+  host_args="$host_args    <string>--projects-dir</string>\n    <string>$d</string>\n"
+done
+IFS="$old_ifs"
 # a generated copy, not a link: launchd does not follow edits to a linked plist reliably
 sed -e "s|@LABEL@|$LABEL|" -e "s|@PYTHON@|$PYTHON|" -e "s|@DIR@|$DIR|g" "$HERE/agent-dashboard.plist.in" \
   | awk -v hosts="$host_args" '{ if ($0 == "@HOSTS@") printf "%s", hosts; else print }' > "$DST"
