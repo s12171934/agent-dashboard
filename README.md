@@ -94,6 +94,13 @@ server/launchd/install.sh uninstall                                             
 
 ## 프론트 배포 (Cloudflare Pages)
 
+main 에 `frontend/`·`design-system/`·`scripts/deploy-frontend.sh` 변경이 들어오면 GitHub Actions(`.github/workflows/deploy-frontend.yml`)가 `scripts/deploy-frontend.sh` 로 프로덕션에 배포한다. Actions 탭에서 손으로 돌릴 수도 있다(workflow_dispatch).
+
+- 저장소 시크릿 두 개가 있어야 돈다: `CLOUDFLARE_API_TOKEN`(권한 Account · Cloudflare Pages · Edit), `CLOUDFLARE_ACCOUNT_ID`.
+- Pages 프로젝트가 직접 업로드 방식이라 Cloudflare 의 Git 연동은 쓰지 않는다(직접 업로드 프로젝트는 나중에 Git 을 붙일 수 없다).
+
+손으로 배포할 때:
+
 ```sh
 npx wrangler login              # 한 번
 scripts/deploy-frontend.sh      # frontend/ 를 프로덕션에 배포 (프로젝트가 없으면 만든다)
