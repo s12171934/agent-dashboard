@@ -148,6 +148,7 @@ aplan skip N [메모] / aplan fail N [메모]
 | --- | --- |
 | `GET /api/projects` | `{"enabled", "version", "dirs": [{"dir", "error"}], "projects": [...]}` — 프로젝트마다 아래 필드, 단계(`stages`)에는 `steps` 를 빼고 |
 | `GET /api/project?name=<폴더 이름>[&dir=<--projects-dir>]` | 프로젝트 하나, 단계마다 `steps` 포함. 같은 이름이 두 `--projects-dir` 에 있으면 `dir` 로 고르고, 없으면 먼저 준 폴더의 것. 없으면 404 |
+| `GET /api/project/note?name=<폴더 이름>&path=<노트 경로>[&dir=]` | 프로젝트 폴더 안 노트 하나: `{"project", "path", "abs", "mtime", "content", "links": [{"target", "path"}]}`. `path` 는 프로젝트 폴더 기준(step 의 `path` 그대로). 스텝 노트가 아니어도 그 폴더 안 `.md` 면 준다 — 노트의 `[[링크]]` 를 따라갈 수 있게. `links` 는 본문의 위키링크를 같은 폴더 안 노트로 푼 것(볼트 경로면 뒤쪽이 가장 길게 맞는 것, 이름만이면 파일 이름으로; 폴더 밖이면 `null`). 실제 경로(symlink·`..` 해석 후)가 폴더 밖이거나 `.md` 가 아니면 404, 1MB 초과는 413 |
 | `GET /events` | 기존 `data: <version>` 메시지와 별도로, 프로젝트가 바뀌면 이름 붙은 이벤트 `event: projects` / `data: <version>` 을 보낸다. 연결 직후 한 번 보낸다. `onmessage` 만 듣는 페이지는 깨우지 않는다 |
 
 `--projects-dir` 를 주지 않으면 `/api/projects` 는 `{"enabled": false, ...}`, `/api/project` 는 404, `projects` 이벤트는 나가지 않는다.
