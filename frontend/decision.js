@@ -1,7 +1,7 @@
-// 결정 버튼 cards. The decision_buttons server (8799) owns each pending question and the keys typed into its
-// terminal; the dashboard shows the questions and relays answers through its own server (api.decide).
-// Behaviour follows ~/tools/decision-buttons/index.html: a lone single-choice question sends on click, several
-// questions or a multiSelect send together with 「답 보내기」, typed text only on single-choice questions.
+// 결정 버튼 cards. The metrics server holds each AskUserQuestion that server/decision-hook registered while the hook
+// waits; an answer (api.decide) goes back through the hook to Claude, and 「터미널에서 답하기」 (api.release) lets the
+// terminal picker open instead. A lone single-choice question sends on click, several questions or a multiSelect send
+// together with 「답 보내기」, typed text only on single-choice questions.
 // Cards live in #decisions, outside #view, which every refresh rebuilds. A card is built once per request id and
 // later refreshes only touch its meta and status lines, so picks, typed text, focus and an IME composition
 // survive (a periodic re-render wiping input is the bug the 8799 page hit first).
@@ -30,7 +30,6 @@ const decisions = (() => {
     try { res = await api.decide(c.r.id, c.r.questions.map((q, i) => answerOf(q, c.ans[i]))); }
     catch { res = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
     if (res.status === 200) return setStatus(c, '답을 보냈습니다');
-    if (res.status === 202) return setStatus(c, '터미널에 답을 넣는 중…');
     c.sentAt = 0;
     c.el.classList.toggle('done', res.status === 409);  // 409: answered elsewhere; the card goes on the next refresh
     setStatus(c, res.status === 409 ? '이미 답한 질문입니다' : res.body?.error || `전송 실패 (${res.status})`, true);
@@ -65,7 +64,7 @@ const decisions = (() => {
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
         ${q.multiSelect ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
       </div>`).join('')}
-      ${needsSubmit(r) ? '<button class="dc-submit" disabled>답 보내기</button>' : ''}
+      <div class="dc-actions">${needsSubmit(r) ? '<button class="dc-submit" disabled>답 보내기</button>' : ''}<button class="dc-release" title="대시보드에서 기다리지 않고 터미널에 선택지를 띄웁니다">터미널에서 답하기</button></div>
       <div class="dc-status"></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}), sentAt: 0 };
     el.querySelectorAll('.dc-q').forEach(qel => {
@@ -95,16 +94,22 @@ const decisions = (() => {
     });
     const sub = el.querySelector('.dc-submit');
     if (sub) sub.onclick = () => send(c);
+    el.querySelector('.dc-release').onclick = async () => {
+      c.sentAt = Date.now(); c.el.classList.add('done'); setStatus(c, '터미널로 넘기는 중…');
+      const res = await api.release(r.id).catch(() => ({ status: 0, body: {} }));
+      if (res.status === 200) return setStatus(c, '터미널에서 답하세요');
+      c.sentAt = 0; c.el.classList.remove('done');
+      setStatus(c, res.body?.error || `넘기지 못했습니다 (${res.status})`, true);
+    };
     return c;
   }
 
   function update(c, owner) {
     const r = c.r, o = owner(r);
     c.el.querySelector('.dc-meta').innerHTML = `<b>결정 대기</b> · ${o ? (o.href ? `<a href="${esc(o.href)}">${esc(o.name)}</a>` : esc(o.name)) : esc(r.agent || '에이전트')}`
-      + ` · ${since(r.created_at)}${r.terminal ? '<span class="badge">터미널에도 떠 있음</span>' : ''}`;
+      + ` · ${since(r.created_at)}`;
     const held = c.sentAt && Date.now() - c.sentAt < SENT_HOLD;
-    if (r.delivering) { c.el.classList.add('done'); setStatus(c, '터미널에 답을 넣는 중…'); }
-    else if (r.error) { c.sentAt = 0; c.el.classList.remove('done'); setStatus(c, r.error + ' — 다시 답할 수 있습니다', true); }
+    if (r.error) { c.sentAt = 0; c.el.classList.remove('done'); setStatus(c, r.error + ' — 다시 답할 수 있습니다', true); }
     else if (!held) { c.sentAt = 0; c.el.classList.remove('done'); if (!c.el.querySelector('.dc-status.err')) setStatus(c, ''); }
   }
 
