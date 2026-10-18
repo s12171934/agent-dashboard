@@ -235,7 +235,6 @@ a.tkc:hover { border-color: var(--accent); }
 .back { display: inline-flex; gap: 6px; align-items: center; color: var(--accent); text-decoration: none; margin-bottom: 10px; font-weight: 600; }
 h2.d { font-size: 17px; margin: 0 0 4px; word-break: break-word; }
 .sub-h { color: var(--muted); font-size: 12px; margin-bottom: 12px; word-break: break-all; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .rel { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rel a { color: var(--accent); text-decoration: none; }
 svg text { fill: var(--muted); font-size: 10px; }
@@ -300,10 +299,11 @@ svg text { fill: var(--muted); font-size: 10px; }
   .tree > .grid > .card::before, .tree > .family.nested::before { left: -14px; width: 12px; }
   .family.nested { padding: 8px; }
   .grid { grid-template-columns: 1fr; }
-  .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+  /* a card's six figures: three and three in a half-screen card, one row of six once it is wide (fold-card below) */
+  .grid > .card { container: fold-card / inline-size; }
+  .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .row { grid-template-columns: 1fr auto; grid-template-areas: "nm val" "bar bar"; gap: 4px 8px; }
   .row .nm { grid-area: nm; } .row .val { grid-area: val; } .row .track { grid-area: bar; }
-  .grid2 { grid-template-columns: 1fr; }
   .log div { grid-template-columns: 52px 1fr; }
   .log div > span:nth-child(2) { display: none; }
 }
@@ -699,6 +699,34 @@ a.act { text-decoration: none; display: inline-block; }
 .pj-src { list-style: none; padding: 0; margin: 12px auto; display: table; text-align: left; }
 .pj-src li { padding: 2px 0; }
 
+/* the fold layout: an unfolded foldable (ds tokens.css, GUIDELINES B8) is two halves of one screen. Cards run two to a
+   row so the fold falls between them, panes that stack on a narrow screen stay side by side (.panes does that itself),
+   and the header keeps to a title row and one row of figures. Same rules for a hinge the browser reports. A folded
+   phone held sideways (height 500 or less) also matches; the rail below then takes the header. */
+@media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
+  .hrow { gap: 6px 10px; padding: 8px 14px 6px; }
+  .hrow h1 { flex: 1; }
+  .kpis-h { order: 3; width: 100%; display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px 8px; }
+  .stat { grid-template-columns: minmax(0, 1fr); }
+  .stat .gi { display: none; }
+  .stat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+  .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: max(10px, var(--hinge)); }
+  /* a card's six figures: three and three in a half-screen card, one row of six once it is wide (fold-card below) */
+  .grid > .card { container: fold-card / inline-size; }
+  .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .plan-grid, .pj-split.on, .pj-tlwrap.side.focused { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pane-gap); }
+  .pj-split.on .pj-note { position: sticky; max-height: calc(100vh - var(--hdr-top) - 90px); }
+  .pj-split.on .pj-obs { display: none; }  /* half a screen is too narrow for it; the open note has 「Obsidian 에서 열기」 */
+  .pj-tlwrap.side.focused .pj-focus { margin-top: 0; }
+  details.pj-row > summary { grid-template-columns: minmax(0, 220px) 1fr; }
+  .row { grid-template-columns: minmax(0, 200px) 1fr 88px; grid-template-areas: none; gap: 10px; }
+  .row .nm, .row .val, .row .track { grid-area: auto; }
+  /* a side bar pads both sides alike, so the page's middle stays on the fold */
+  :root:is([data-dock="left"], [data-dock="right"]) :is(main, #decisions, #decide-head, #inbox) { padding-inline: calc(var(--dock-pick, 38px) + 38px); }
+}
+@container fold-card (min-width: 380px) { .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
 /* phone held sideways (short landscape, a finger device — a short desktop window keeps the header on top): a header across the top would take a third of the height, so it becomes a
    rail down the left edge — the icon, the figures stacked (no icons), the connection — and the page moves right */
 @media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
@@ -706,7 +734,7 @@ a.act { text-decoration: none; display: inline-block; }
   header { position: fixed; top: 0; bottom: 0; left: 0; width: var(--rail); margin: 0; box-sizing: border-box; overflow-y: auto;
     border-left: 0; border-radius: 0 18px 18px 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); }
   .hrow { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; padding: 10px; }
-  .hrow h1 { font-size: 0; justify-content: center; }
+  .hrow h1 { font-size: 0; justify-content: center; flex: none; }
   .kpis-h { order: 0; width: auto; display: flex; flex-direction: column; gap: 8px; }
   .stat { grid-template-columns: minmax(0, 1fr); }
   .stat .gi { display: none; }

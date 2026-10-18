@@ -1,0 +1,8 @@
+/* panes: two equal panes side by side (list and detail, a table beside a log). They stack below 700px, except in the
+   fold layout (an unfolded foldable, tokens.css), where two halves are what the screen is made of. Equal halves and
+   --pane-gap put the gap on the fold when the panes span the page; a hinge the browser reports widens the gap. */
+.panes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pane-gap); }
+.panes > * { min-width: 0; }
+@media (max-width: 700px) { .panes { grid-template-columns: minmax(0, 1fr); } }
+@media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) { .panes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (horizontal-viewport-segments: 2) { .panes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

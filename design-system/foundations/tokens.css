@@ -48,3 +48,21 @@
 }
 @media (max-width: 700px) { :root { --gutter: 12px; } }
 @media (pointer: coarse) { :root { --tap: 36px; } }
+
+/* foldable (GUIDELINES B8–B10). A book-style foldable opened flat (iPhone Duo inner screen: 669 × 951 pt, 951 × 669
+   held sideways) is a finger screen wider than a phone, close to square (5:8 to 8:5), whose short side is at most 700px.
+   That is the one fold query below; copy it verbatim (media queries cannot be named):
+     (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px))
+   or, where the browser reports a hinge, (horizontal-viewport-segments: 2). In it, two equal panes replace one column,
+   and the gap between them sits on the fold. Folded, the cover screen (466 × 678) is the phone layout.
+     --fold      1 in the fold layout, else 0 (scripts read it: getComputedStyle(…).getPropertyValue('--fold'))
+     --hinge     width the hardware hides between two screens (0 on a seamless panel)
+     --seg-w     width of the first screen segment: what a modal or popover keeps to so the fold does not cut it
+     --pane-gap  the gap between two panes; at least the hinge plus a gutter on each side */
+:root { --fold: 0; --hinge: 0px; --seg-w: 100vw; --pane-gap: 14px; }
+@media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) { :root { --fold: 1; } }
+@media (horizontal-viewport-segments: 2) {
+  :root { --fold: 1; --seg-w: env(viewport-segment-right 0 0, 50vw);
+    --hinge: calc(env(viewport-segment-left 1 0, 50vw) - env(viewport-segment-right 0 0, 50vw));
+    --pane-gap: max(14px, calc(var(--hinge) + 2 * var(--gutter))); }
+}

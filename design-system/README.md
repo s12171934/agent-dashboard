@@ -57,6 +57,7 @@ design-system/
 | 대화상자 | `<dialog class="dialog">` + `.dialog-warn`, `.dialog-btns` | `dialog/` |
 | 박스 | `.box` (+ `<h3>`), `<details class="box">` | `box/` |
 | 카드 | `.card` — 누르는 타일, 호버 때 떠오름 | `card/` |
+| 두 칸 | `.panes` > 자식 둘 — 같은 폭 두 칸. 700px 이하에서 쌓이지만 펼친 접이식 화면(B8)에서는 나란히, 칸 사이 틈이 주름 위에 온다 | `panes/` |
 | KPI | `.kpis` > `.kpi` (`<span>` 라벨, `<b>` 값, `<small>` 메모) | `kpi/` |
 | 표 | `<table>`, 숫자 열 `.n`, 넓은 표는 `<div class="tscroll">` 로 감싼다 | `table/` |
 | 범례 | `.legend` > `<span><i style="background:…"></i>이름</span>` | `legend/` |
@@ -76,6 +77,15 @@ design-system/
 - 토큰: `--gutter` (페이지 가장자리 여백, 700px 이하 12px), `--tap` (누르는 영역, 손가락 기기 36px).
 - 컴포넌트가 스스로 하는 것: 휴대폰에서 바는 아래 가운데 런처 알약(48px)이 되고 누르면 버튼마다 이름이 붙은 52px 행의 바텀시트로 열림(위치·크기 설정은 휴대폰에서 쓰지 않음), 호버 없는 기기에서 바 이름표 끔, `.seg`·`.tscroll` 가로 스크롤, 손가락 기기에서 `.act`·`.tgl`·`.field` 누르는 영역 확대와 입력란 16px.
 - 미리보기 위쪽에 지금 폭 단계가 보인다. 창 폭을 바꾸거나 개발자 도구 기기 모드로 확인한다.
+
+### 접이식 (펼친 화면)
+
+펼친 책 모양 접이식(iPhone Duo 내부 화면 669 × 951, 옆으로 들면 951 × 669)은 폭 단계와 따로 **펼침 레이아웃**으로 본다. 규칙은 GUIDELINES B8–B10.
+
+- 조건(그대로 복사해 쓴다): `(pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px))`, 또는 브라우저가 힌지를 알려 주면 `(horizontal-viewport-segments: 2)`.
+- 토큰: `--fold` (펼침이면 1, 스크립트가 읽는다), `--hinge` (가려지는 힌지 폭, 이음매 없는 화면은 0), `--seg-w` (첫 화면 조각의 폭, 기본 `100vw`), `--pane-gap` (두 칸 사이, 힌지 + 양쪽 여백 이상).
+- 컴포넌트가 스스로 하는 것: `.panes` 는 펼침에서 두 칸을 유지한다. 힌지가 보고되면 대화상자·팝오버는 `--seg-w` 안에 머물고, 위·아래 바와 그 팝오버는 첫 화면 가운데로 옮긴다.
+- 접은 커버 화면(466 × 678)은 휴대폰 단계(500px 이하) 그대로다.
 
 ## 페이지에 붙이기
 

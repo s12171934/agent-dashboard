@@ -104,6 +104,25 @@ for p in sorted(css_files):
             for feat, val in re.findall(r'\((min|max)-width\s*:\s*([^)]+)\)', q):
                 if feat != 'max' or val.strip() not in BREAKPOINTS:
                     report('B1', f'{rel(p)}:{n}', f'({feat}-width: {val.strip()}); use max-width 500px, 700px or 900px')
+            for val in re.findall(r'\bwidth\s*[<>]=?\s*([\d.]+\w*)', q) + re.findall(r'([\d.]+\w*)\s*[<>]=?\s*width\b', q):
+                if val not in BREAKPOINTS:
+                    report('B1', f'{rel(p)}:{n}', f'width {val} in range syntax; only 500px, 700px or 900px')
+
+# --- the fold layout (B8, B10): the one fold query, copied verbatim from tokens.css (the rule that sets --fold: 1)
+SEGMENTS = '(horizontal-viewport-segments: 2)'
+tokens_body = css_body(read(os.path.join(DS, 'foundations', 'tokens.css')))
+FOLD = next((m.strip() for m in re.findall(r'@media([^{]*)\{\s*:root\s*\{\s*--fold:\s*1;', tokens_body) if 'viewport-segments' not in m), None)
+if not FOLD:
+    report('B8', 'design-system/foundations/tokens.css', 'no fold query (an @media that sets :root { --fold: 1; })')
+norm = lambda q: re.sub(r'\s+', ' ', q).strip()
+for p in sorted(css_files):
+    for n, line in lines(read(p)):
+        for q in re.findall(r'@media([^{]*)', line):
+            for part in q.split(','):
+                if re.search(r'aspect-ratio|viewport-segments|height', part) and FOLD and norm(part) not in (norm(FOLD), SEGMENTS):
+                    report('B8', f'{rel(p)}:{n}', f'{norm(part)}: aspect, height and segment conditions only as the fold query (tokens.css) or {SEGMENTS}')
+        if 'env(viewport-segment' in line and not p.endswith(os.path.join('foundations', 'tokens.css')):
+            report('B10', f'{rel(p)}:{n}', 'env(viewport-segment-*) outside tokens.css; use --hinge, --seg-w or --pane-gap')
 
 # --- registration (R1–R5)
 ds_css = read(os.path.join(DS, 'ds.css'))

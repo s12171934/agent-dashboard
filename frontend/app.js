@@ -3,6 +3,8 @@ const fmt = n => n == null ? '–' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >
 const usd = n => n == null ? '—' : n >= 100 ? '$' + n.toFixed(0) : '$' + n.toFixed(2);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const cut = (t, n) => { t = String(t ?? ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+// The narrow layout (max-width 700px) without the fold layout, which keeps an unfolded foldable in two panes (ds --fold).
+const narrow = () => innerWidth <= 700 && getComputedStyle(document.documentElement).getPropertyValue('--fold').trim() !== '1';
 const hhmm = ts => ts ? new Date(ts).toLocaleTimeString('ko-KR', { hour12: false }) : '';
 const ago = ts => { if (!ts) return ''; const s = (Date.now() - new Date(ts)) / 1000; return s < 60 ? Math.max(0, Math.round(s)) + '초 전' : s < 3600 ? Math.round(s / 60) + '분 전' : s < 86400 ? Math.round(s / 3600) + '시간 전' : Math.round(s / 86400) + '일 전'; };
 const toDate = a => new Date(a.includes('T') ? a : a.replace(' ', 'T') + 'Z');
@@ -3295,7 +3297,7 @@ function renderHourly() {
   const val = (x, b) => (x.h[b] ? H(x.h[b]) : 0);
   const col = vis.map(b => series.reduce((a, x) => a + val(x, b), 0));
   const multiDay = new Set(vis.map(b => Math.floor(localMin(b) / 1440))).size > 1;
-  const w = box.clientWidth - 24 || 600, h = (window.innerWidth <= 700 ? 200 : 260) + (multiDay ? 12 : 0);
+  const w = box.clientWidth - 24 || 600, h = (narrow() ? 200 : 260) + (multiDay ? 12 : 0);
   const pl = 48, pr = 6, pt = 10, pb = multiDay ? 34 : 22, iw = w - pl - pr, ih = h - pt - pb, bw = iw / Math.max(1, vis.length);
   const top0 = Math.max(1e-9, ...col), tick = niceStep(top0 / 4), nt = Math.ceil(top0 / tick), max = tick * nt, y = v => pt + ih - v / max * ih;
   let g = `<svg width="${w}" height="${h}" class="hr-chart">`;
@@ -3516,7 +3518,7 @@ function renderSession(navigated) {
     ${costHtml}
     ${subsHtml}
     ${ctxHtml}
-    <div class="grid2">${useHtml}${logHtml}
+    <div class="panes">${useHtml}${logHtml}
     </div>`;
   }
   $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
@@ -3548,7 +3550,7 @@ function renderSession(navigated) {
 }
 
 function ctxChart(d) {
-  const el = $('#ctx-chart'), T = d.turn_list, w = el.clientWidth || 600, h = window.innerWidth <= 700 ? 170 : 210;
+  const el = $('#ctx-chart'), T = d.turn_list, w = el.clientWidth || 600, h = narrow() ? 170 : 210;
   if (!T.length) { el.innerHTML = '<div class="st">아직 턴이 없습니다.</div>'; return; }
   const pl = 40, pr = 6, pt = 8, pb = 18, iw = w - pl - pr, ih = h - pt - pb, bw = iw / T.length;
   const max = Math.max(d.ctx_window && d.ctx_peak > d.ctx_window * 0.5 ? d.ctx_window : 0, ...T.map(t => t.ctx)) * 1.05;
