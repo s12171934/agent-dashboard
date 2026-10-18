@@ -12,8 +12,10 @@ class DsDock extends HTMLElement {
     if (this.menu) return;
     if (!this.hasAttribute('role')) this.setAttribute('role', 'navigation');
     const above = this.getAttribute('inset-from') && document.querySelector(this.getAttribute('inset-from'));
-    if (above) new ResizeObserver(() => document.documentElement.style.setProperty('--dock-inset-top',
-      (parseFloat(getComputedStyle(above).top) || 0) + above.offsetHeight + 'px')).observe(above);
+    // the header's sticky top holds the status bar's safe area, which changes on rotation without resizing it
+    const inset = () => document.documentElement.style.setProperty('--dock-inset-top',
+      (parseFloat(getComputedStyle(above).top) || 0) + above.offsetHeight + 'px');
+    if (above) { new ResizeObserver(inset).observe(above); addEventListener('resize', inset); }
     const btn = document.createElement('button');
     btn.className = 'dock-btn';
     btn.dataset.tip = '바 설정';

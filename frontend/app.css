@@ -1,7 +1,7 @@
 
 /* header: floats --hdr-top below the screen edge (<ds-dock inset-from="header"> keeps a top dock under it) */
 :root { --hdr-top: calc(8px + env(safe-area-inset-top)); }
-header { background: var(--panel); border: 1px solid var(--line); position: sticky; top: var(--hdr-top); z-index: 20; margin: var(--hdr-top) 12px 0; border-radius: 20px; }
+header { background: var(--panel); border: 1px solid var(--line); position: sticky; top: var(--hdr-top); z-index: 20; margin: var(--hdr-top) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); border-radius: 20px; }
 .hrow { display: flex; align-items: center; gap: 18px; padding: 10px 14px; flex-wrap: wrap; }
 .hrow h1 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .hrow h1 img { width: 28px; height: 28px; border-radius: 8px; box-shadow: var(--surface-shadow-sm); }
@@ -510,7 +510,7 @@ button.dc-opt.picked { background: var(--surface-sheen), color-mix(in srgb, var(
 .gi svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .stat:first-child .gi { color: var(--ok); }
 .stat.dec .gi { color: var(--warn); }
-@media (max-width: 700px) { header { margin: var(--hdr-top) 8px 0; border-radius: 18px; } }
+@media (max-width: 700px) { header { margin: var(--hdr-top) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left)); border-radius: 18px; } }
 /* phone: the sticky header keeps to two short rows of figures (no icons, four across) so it does not eat the screen */
 @media (max-width: 500px) {
   .hrow { gap: 6px; }
@@ -525,10 +525,10 @@ button.dc-opt.picked { background: var(--surface-sheen), color-mix(in srgb, var(
 #srv-btn.on .srv-dot { background: var(--ok); } #srv-btn.part .srv-dot { background: var(--warn); }
 
 /* the dock (<ds-dock>) floats over the page: keep a gutter on its side so it never covers the end of a scroll */
-:root[data-dock="bottom"] main { padding-bottom: calc(var(--dock-pick, 38px) + 58px + env(safe-area-inset-bottom)); }
+:root[data-dock="bottom"] main { padding-bottom: calc(var(--dock-pick, 38px) + 44px + var(--dock-bottom)); }
 :root[data-dock="top"] header { margin-bottom: calc(var(--dock-pick, 38px) + 24px); }
-:root[data-dock="left"] :is(main, #decisions) { padding-left: calc(var(--dock-pick, 38px) + 38px); }
-:root[data-dock="right"] :is(main, #decisions) { padding-right: calc(var(--dock-pick, 38px) + 38px); }
+:root[data-dock="left"] :is(main, #decisions) { padding-left: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-left)); }
+:root[data-dock="right"] :is(main, #decisions) { padding-right: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-right)); }
 
 /* projects (#projects): progress.json from the servers' --projects-dir. Stage colours are state tokens: --done
    finished, --run in progress, --bad failed, --idle not started. */

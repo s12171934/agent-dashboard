@@ -6,4 +6,4 @@ ds-toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 
   box-shadow: var(--control-hi), var(--surface-shadow-float); }
 ds-toast[open] { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 ds-toast button { background: none; border: 0; color: var(--accent); font-weight: 700; cursor: pointer; font-size: 13px; }
-:root[data-dock="bottom"] ds-toast { bottom: calc(var(--dock-pick, 38px) + 42px + env(safe-area-inset-bottom)); }
+:root[data-dock="bottom"] ds-toast { bottom: calc(var(--dock-pick, 38px) + 28px + var(--dock-bottom)); }

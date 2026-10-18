@@ -41,16 +41,20 @@ ds-dock .dn[hidden] { display: none; }
 .dock-menu[hidden] { display: none; }
 .dock-size { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .dock-size input { flex: 1; accent-color: var(--accent); }
-:root[data-dock="bottom"] ds-dock { left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 16px); }
-:root[data-dock="top"] ds-dock { left: 50%; top: calc(var(--dock-inset-top, 0px) + 10px); transform: translateX(-50%); max-width: calc(100vw - 16px); }
+:root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100vw - 16px); }
+:root[data-dock="top"] ds-dock { left: 50%; top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); transform: translateX(-50%); max-width: calc(100vw - 16px); }
 :root[data-dock="left"] ds-dock, :root[data-dock="right"] ds-dock { top: 50%; transform: translateY(-50%); flex-direction: column; border-radius: 26px; }
-:root[data-dock="left"] ds-dock { left: 12px; } :root[data-dock="right"] ds-dock { right: 12px; }
+/* a side bar keeps clear of a landscape notch, and on a screen shorter than the bar it scrolls instead of running off both ends */
+:root:is([data-dock="left"], [data-dock="right"]) ds-dock { max-height: calc(100% - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto; scrollbar-width: none; overscroll-behavior-y: contain; }
+:root:is([data-dock="left"], [data-dock="right"]) ds-dock::-webkit-scrollbar { display: none; }
+:root[data-dock="left"] ds-dock { left: calc(12px + env(safe-area-inset-left)); } :root[data-dock="right"] ds-dock { right: calc(12px + env(safe-area-inset-right)); }
 @media (max-width: 500px) {
   ds-dock { gap: 0; padding: 4px; }
   .dock-sep { margin: 0 2px; }
   /* a top or bottom bar spans at most the screen less 8px a side; its buttons give up width (down to 28px) to stay on
      one row, and if even that is too wide the bar scrolls sideways */
-  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock { left: 8px; right: 8px; width: fit-content; max-width: none; margin-inline: auto;
+  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); width: fit-content; max-width: none; margin-inline: auto;
     transform: none; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
   :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock::-webkit-scrollbar { display: none; }
   :root:is([data-dock="bottom"], [data-dock="top"]) :is(ds-dock > a, ds-dock .dock-btn) { flex: 0 1 var(--dock-sz); width: auto; min-width: 28px; }
@@ -62,7 +66,7 @@ ds-dock .dn[hidden] { display: none; }
    from the edge, so resizing the bar moves nothing. Give it position: fixed and a z-index above the dock; open and
    close it with `hidden`. All .dock-pop are one group: opening one closes the others (ds-dock.js). */
 .dock-pop { right: auto; top: auto; }
-:root[data-dock="bottom"] .dock-pop { left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom) + var(--dock-reach) + 10px); }
-:root[data-dock="top"] .dock-pop { left: 50%; transform: translateX(-50%); top: calc(var(--dock-inset-top, 0px) + 10px + var(--dock-reach) + 10px); }
-:root[data-dock="left"] .dock-pop { left: calc(12px + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
-:root[data-dock="right"] .dock-pop { right: calc(12px + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
+:root[data-dock="bottom"] .dock-pop { left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-bottom) + var(--dock-reach) + 10px); }
+:root[data-dock="top"] .dock-pop { left: 50%; transform: translateX(-50%); top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px + var(--dock-reach) + 10px); }
+:root[data-dock="left"] .dock-pop { left: calc(12px + env(safe-area-inset-left) + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
+:root[data-dock="right"] .dock-pop { right: calc(12px + env(safe-area-inset-right) + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
