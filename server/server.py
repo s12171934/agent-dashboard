@@ -1815,14 +1815,18 @@ def interactions(limit, heartbeats):
     return {"messages": out, "fetched": len(raw)}
 
 
-# ---- 결정 버튼 (~/tools/decision-buttons, port 8799) ----
-# The 8799 server is the single owner of pending questions and of the keys typed into their terminals; the
-# dashboard only reads /api/pending and relays answers (two writers on one terminal would tangle its picker).
-# Design: Obsidian vault 30_Areas/자동화/결정 버튼 대시보드 연동 설계.md (the server code lives in ~/tools/decision-buttons)
-DECISION_URL = os.environ.get("DECISION_URL", "http://127.0.0.1:8799")
+# ---- 결정 버튼: AskUserQuestion answered from the page ----
+# decision-hook (next to this file) is a Claude Code PreToolUse hook on AskUserQuestion. It registers the question
+# here (/api/decision/ask) and waits (/api/decision/wait). An answer from the page goes back to it, and it hands Claude
+# the answer through updatedInput, so the terminal picker never opens. 「터미널에서 답하기」 on the card, or the hook's
+# own wait limit, releases it instead: the hook returns nothing and Claude shows the picker as usual. With this
+# server down the hook gets no id back and steps aside at once, so a question is never lost.
 DECISION_EVERY = 1.5
 DECISION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-decisions = {"available": False, "pending": []}
+DECISION_KEEP_S = 7200  # a card the hook never closed (killed with its session) goes after this
+decisions = {"available": True, "pending": []}  # what /api/state shows: the open cards, oldest first
+decision_cv = threading.Condition()  # guards decision_store; waiters (the hooks) sleep on it
+decision_store = {}  # id -> {"card": the public card, "state": pending|answered|released|cancelled, "answers": {}}
 
 
 def epoch(ts):
@@ -1832,12 +1836,85 @@ def epoch(ts):
         return 0
 
 
-# A question rejected in the terminal (the user types a reply instead of picking) fires neither PostToolUse nor
-# PostToolUseFailure, so the hook never tells 8799 to close its card and it stays pending for good. The transcript
-# knows better: the call 8799's question came from (same session, same first question, logged within ASK_MATCH_S of
-# the card) already has a tool result. Such cards are dropped here and closed on 8799 with its own /api/cancel.
+def publish_decisions():
+    """Copy the open cards into `decisions` for /api/state. Call holding decision_cv, not `lock`."""
+    pending = sorted((d["card"] for d in decision_store.values() if d["state"] == "pending"), key=lambda c: c["created_at"])
+    with lock:
+        if pending != decisions["pending"]:
+            decisions["pending"] = pending
+            bump()
+
+
+def settle_decision(rid, state, answers=None):
+    """pending -> answered | released | cancelled; wakes the hook waiting on it. False when it was not pending."""
+    with decision_cv:
+        d = decision_store.get(rid)
+        if not d or d["state"] != "pending":
+            return False
+        d.update(state=state, answers=answers, settled=time.time())
+        decision_cv.notify_all()
+        publish_decisions()
+        return True
+
+
+def valid_questions(qs):
+    return (isinstance(qs, list) and 1 <= len(qs) <= 4 and all(
+        isinstance(q, dict) and isinstance(q.get("question"), str) and isinstance(q.get("options"), list)
+        and all(isinstance(o, dict) and isinstance(o.get("label"), str) for o in q["options"]) for q in qs))
+
+
+def add_decision(body):
+    """A question from the hook -> its card id."""
+    qs = body.get("questions")
+    if not valid_questions(qs):
+        raise ValueError("questions")
+    rid = f"q{int(time.time() * 1000):x}{os.urandom(3).hex()}"
+    cwd = body.get("cwd") if isinstance(body.get("cwd"), str) else ""
+    card = {"id": rid, "session_id": str(body.get("session_id") or "") or None, "tool_use_id": body.get("tool_use_id"),
+            "agent": os.path.basename(cwd.rstrip("/")) or "에이전트", "cwd": cwd, "created_at": time.time(),
+            "questions": [{"question": q["question"], "header": q.get("header") or "", "multiSelect": bool(q.get("multiSelect")),
+                           "options": [{"label": o["label"], "description": o.get("description") or ""} for o in q["options"]]}
+                          for q in qs]}
+    with decision_cv:
+        decision_store[rid] = {"card": card, "state": "pending", "answers": None}
+        publish_decisions()
+    return rid
+
+
+def answers_for(card, answers):
+    """The page's answers (question order: a label or typed text, a label list for multiSelect) -> AskUserQuestion's
+    `answers` (question text -> label; several labels joined with ", "). None when one is missing."""
+    if len(answers) != len(card["questions"]):
+        return None
+    out = {}
+    for q, a in zip(card["questions"], answers):
+        if q["multiSelect"]:
+            if not (isinstance(a, list) and a and all(isinstance(x, str) and x for x in a)):
+                return None
+            a = ", ".join(a)
+        if not (isinstance(a, str) and a.strip()):
+            return None
+        out[q["question"]] = a.strip()
+    return out
+
+
+def wait_decision(rid, timeout):
+    """Block until the card leaves pending or timeout passes -> {"state", "answers"?}; {"state": "gone"} if unknown."""
+    end = time.time() + timeout
+    with decision_cv:
+        while True:
+            d = decision_store.get(rid)
+            if not d:
+                return {"state": "gone"}
+            if d["state"] != "pending" or time.time() >= end:
+                return {"state": d["state"], **({"answers": d["answers"]} if d["state"] == "answered" else {})}
+            decision_cv.wait(max(0.1, end - time.time()))
+
+
+# A question can end without its hook saying so (the session was interrupted or killed while the hook waited). The
+# transcript knows: the AskUserQuestion call the card came from (same session, same first question, logged within
+# ASK_MATCH_S of the card) already has a tool result. Such cards are cancelled here, as are ones past DECISION_KEEP_S.
 ASK_MATCH_S = 120
-decision_cancelled = set()  # ids already sent to /api/cancel, so a failing cancel is not retried every poll
 
 
 def stale_decisions(pending):
@@ -1849,68 +1926,38 @@ def stale_decisions(pending):
         q0 = qs[0].get("question") if isinstance(qs, list) and qs and isinstance(qs[0], dict) else None
         if not s or not q0 or not isinstance(r.get("created_at"), (int, float)):
             continue
+        if r.get("tool_use_id") in s.asks:
+            if s.asks[r["tool_use_id"]][2]:
+                out.add(r.get("id"))
+            continue
         near = [a for a in s.asks.values() if a[0] == q0 and abs(a[1] - r["created_at"]) <= ASK_MATCH_S]
         if near and min(near, key=lambda a: abs(a[1] - r["created_at"]))[2]:
             out.add(r.get("id"))
     return out
 
 
-def cancel_decision(rid):
-    try:
-        req = Request(f"{DECISION_URL}/api/cancel/{rid}", data=b"{}", method="POST",
-                      headers={"Content-Type": "application/json"})
-        with urlopen(req, timeout=2) as res:
-            res.read()
-    except HTTPError:
-        pass  # 404: 8799 closed it meanwhile
-    except (OSError, ValueError) as e:
-        report_failure("decision", e)
-
-
-def poll_decisions():
-    """Refresh `decisions` from 8799. A server that is down or answers badly reads as unavailable with no
-    questions, so the page just hides the feature; that is not a collector failure."""
-    try:
-        with urlopen(DECISION_URL + "/api/pending", timeout=2) as res:
-            pending = json.load(res).get("pending")
-        snap = {"available": True, "pending": [r for r in pending if isinstance(r, dict)] if isinstance(pending, list) else []}
-    except (OSError, ValueError, AttributeError):
-        snap = {"available": False, "pending": []}
+def sweep_decisions():
+    """Cancel stale or abandoned cards and forget settled ones a while after their hook has read the outcome."""
     with lock:
-        stale = stale_decisions(snap["pending"]) | (decision_cancelled & {r.get("id") for r in snap["pending"]})
-    for rid in stale - decision_cancelled:
-        if DECISION_ID.match(str(rid)):
-            decision_cancelled.add(rid)
-            cancel_decision(rid)
-    snap["pending"] = [r for r in snap["pending"] if r.get("id") not in stale]
-    with lock:
-        if snap != decisions:
-            decisions.update(snap)
-            bump()
+        pending = list(decisions["pending"])
+        stale = stale_decisions(pending)
+    now = time.time()
+    for r in pending:
+        if r["id"] in stale or now - r["created_at"] > DECISION_KEEP_S:
+            settle_decision(r["id"], "cancelled")
+    with decision_cv:
+        for rid in [k for k, d in decision_store.items() if d["state"] != "pending" and now - d.get("settled", now) > 300]:
+            del decision_store[rid]
 
 
 def decision_loop():
     while True:
         try:
-            poll_decisions()
+            sweep_decisions()
             loop_ok("decision")
         except Exception as e:
             loop_failed("decision", e)
         time.sleep(DECISION_EVERY)
-
-
-def relay_answer(rid, answers):
-    """POST the answer to 8799 as is; (status, body bytes) come back unchanged (200 settled, 202 being typed
-    into the terminal, 400 a missing answer, 409 already answered)."""
-    req = Request(f"{DECISION_URL}/api/answer/{rid}", data=json.dumps({"answers": answers}).encode(),
-                  headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urlopen(req, timeout=5) as res:
-            return res.status, res.read()
-    except HTTPError as e:
-        return e.code, e.read()
-    except (URLError, OSError):
-        return 502, json.dumps({"error": "결정 버튼 서버(8799)에 연결할 수 없습니다"}, ensure_ascii=False).encode()
 
 
 # ---- HTTP ----
@@ -2027,7 +2074,7 @@ class Handler(BaseHTTPRequestHandler):
                        **{w.get("taskId"): w.get("dispatchStatus") for w in orca_state.get("workers", [])
                           if w.get("dispatchStatus") in ("completed", "failed", "cancelled")}}
             summaries = []
-            waiting = {}  # Claude session id -> its oldest pending question (8799 lists oldest first)
+            waiting = {}  # Claude session id -> its oldest pending question (decisions lists oldest first)
             for r in decisions["pending"]:
                 waiting.setdefault(r.get("session_id") or None, r)
             for sess in by_id.values():
@@ -2143,6 +2190,17 @@ class Handler(BaseHTTPRequestHandler):
             if not body:
                 return self.send_json({"error": "not found"}, 404)
             self.send_body(body)
+        elif url.path == "/api/decision/wait":
+            # The hook's long poll: answers within ~25 s, and it asks again while the card stays open.
+            q = parse_qs(url.query)
+            rid = (q.get("id") or [""])[0]
+            if not DECISION_ID.match(rid):
+                return self.send_json({"error": "bad request"}, 400)
+            try:
+                t = min(55.0, max(0.0, float((q.get("t") or ["25"])[0] or 25)))
+            except ValueError:
+                t = 25.0
+            self.send_json(wait_decision(rid, t))
         elif url.path == "/api/orca/job":
             jid = parse_qs(url.query).get("id", [""])[0]
             with jobs_lock:
@@ -2189,10 +2247,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         # JSON only: a cross-site form cannot send this content type without a CORS preflight, which authorized()
         # already limits to --origin.
-        if url.path not in ("/api/pref", "/api/decision/answer", "/api/orca/focus", "/api/orca/close") or not self.headers.get("Content-Type", "").startswith("application/json"):
+        if url.path not in ("/api/pref", "/api/orca/focus", "/api/orca/close", *DECISION_POSTS) or not self.headers.get("Content-Type", "").startswith("application/json"):
             return self.send_json({"error": "bad request"}, 400)
-        if url.path == "/api/decision/answer":
-            return self.decision_answer()
+        if url.path in DECISION_POSTS:
+            return self.decision_post(url.path.rsplit("/", 1)[1])
         if url.path in ("/api/orca/focus", "/api/orca/close"):
             return self.orca_terminal(url.path.rsplit("/", 1)[1])
         try:
@@ -2261,21 +2319,36 @@ class Handler(BaseHTTPRequestHandler):
         subprocess.run(["open", "-a", "Orca"], capture_output=True, timeout=5)
         self.send_json({"ok": True})
 
-    def decision_answer(self):
-        """Relay {"id", "answers"} to 8799 and hand back its status and body (8799 itself has no CORS, so the
-        page goes through here)."""
+    def decision_post(self, action):
+        """ask {session_id, tool_use_id, cwd, questions} from the hook -> {id}. answer {id, answers} from the page:
+        200 settled (the hook hands Claude the answer), 400 an answer missing, 409 no longer open. release {id}: the
+        hook steps aside and the terminal picker opens. done {id}: the hook gave up waiting on its own."""
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
-            rid, answers = body["id"], body["answers"]
-            assert isinstance(rid, str) and DECISION_ID.match(rid) and isinstance(answers, list)
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 262144)))
+            assert isinstance(body, dict)
+            if action == "ask":
+                return self.send_json({"id": add_decision(body)})
+            rid = body["id"]
+            assert isinstance(rid, str) and DECISION_ID.match(rid)
+            assert action != "answer" or isinstance(body["answers"], list)
         except (ValueError, KeyError, AssertionError, TypeError):
             return self.send_json({"error": "bad request"}, 400)
-        status, out = relay_answer(rid, answers)
-        try:
-            poll_decisions()  # show 「터미널에 넣는 중」 / drop the card on the next refresh without waiting a cycle
-        except Exception as e:
-            report_failure("decision", e)
-        self.send_body(out, status)
+        if action == "answer":
+            with decision_cv:
+                d = decision_store.get(rid)
+                card = d and d["state"] == "pending" and d["card"]
+            if not card:
+                return self.send_json({"error": "이미 답했거나 닫힌 질문입니다"}, 409)
+            answers = answers_for(card, body["answers"])
+            if answers is None:
+                return self.send_json({"error": "답하지 않은 질문이 있습니다"}, 400)
+            ok = settle_decision(rid, "answered", answers)
+        else:
+            ok = settle_decision(rid, "released" if action == "release" else "cancelled")
+        self.send_json({"ok": True} if ok else {"error": "이미 답했거나 닫힌 질문입니다"}, 200 if ok else 409)
+
+
+DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/done")
 
 
 class Server(ThreadingHTTPServer):

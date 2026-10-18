@@ -217,10 +217,12 @@ const api = (() => {
       for (const p of paths) (by[owner.path[p] || enabled()[0]?.id] ||= []).push(p);
       await Promise.all(Object.entries(by).map(([id, ps]) => post(byId(id), '/api/pref', { action, paths: ps })));
     },
-    // 결정 버튼 answer, relayed to the 8799 server: answers in question order (a label or typed text, a label list
-    // for multiSelect). Resolves to {status, body}: 200 settled, 202 being typed into the terminal, 400 an answer
-    // missing, 409 already answered, 502 the 8799 server is unreachable.
+    // 결정 버튼 answer: answers in question order (a label or typed text, a label list for multiSelect); the server
+    // hands them to the waiting decision-hook. Resolves to {status, body}: 200 settled, 400 an answer missing,
+    // 409 already answered or closed.
     decide: (id, answers) => post(ownerOf('decision', id), '/api/decision/answer', { id, answers }),
+    // Let the question go to the terminal picker instead (the hook stops waiting). {status, body} as above.
+    release: id => post(ownerOf('decision', id), '/api/decision/release', { id }),
     // Bring an Orca terminal's tab (and the Orca window) forward: handle is a session's `orca_focus` or a driver
     // terminal. Resolves to {status, body}: 200 ok, 404 not a connected terminal, 502 Orca failed.
     focus: handle => post(ownerOf('handle', handle), '/api/orca/focus', { handle }),

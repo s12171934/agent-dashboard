@@ -19,7 +19,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 폴더 | 무엇 | 어디서 도는가 |
 | --- | --- | --- |
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
-| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `aplan`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `aplan`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/` 를 Pages 에 배포 | |
 | `exports/` | 공개 스키마 | |
 
@@ -53,7 +53,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | Orca Run·터미널 | `orca` CLI 호출 |
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
 | 테스트 진행 | `/private/tmp/agent-test-progress/*.json` |
-| 결정 대기 (선택) | 로컬 결정 버튼 서버 (`127.0.0.1:8799`) |
+| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문 (아래 「결정 버튼」) |
 
 ## 실행
 
@@ -104,6 +104,21 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 - 아이콘 원본은 `icons/icon.svg` 이고 PNG 는 그것을 렌더링한 것이다. 바꾸면 PNG 도 다시 만든다.
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 5분마다 이것을 확인해 새 배포면 새로 고친다.
 - 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
+
+## 결정 버튼 — AskUserQuestion 을 대시보드에서 답하기
+
+`server/decision-hook` 은 AskUserQuestion 에 거는 Claude Code PreToolUse 훅이다. 질문을 메트릭 서버에 등록하고 기다리다가, 대시보드에서 온 답을 `updatedInput.answers` 로 Claude 에 넘긴다. 이 경우 터미널 선택기는 뜨지 않는다.
+
+```json
+{"hooks": {"PreToolUse": [{"matcher": "AskUserQuestion",
+  "hooks": [{"type": "command", "command": "<저장소>/server/decision-hook", "timeout": 3600}]}]}}
+```
+
+- 카드의 「터미널에서 답하기」를 누르거나 `DECISION_WAIT`(기본 1800초)가 지나면 훅은 아무것도 돌려주지 않는다. 그러면 평소처럼 터미널 선택기가 뜬다. 훅의 `timeout` 은 `DECISION_WAIT` 보다 길게 준다.
+- 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 질문을 잃지 않는다.
+- 훅이 기다리는 동안 터미널에는 선택기 대신 「running PreToolUse hooks」가 보인다. 터미널에서 답하려면 대시보드에서 넘긴다.
+- 세션이 중단돼 훅이 끝나면 카드도 닫힌다. 트랜스크립트에 그 호출의 결과가 이미 있으면 서버가 카드를 치운다.
+- 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`), `DECISION_WAIT`.
 
 ## aplan — 작업 계획 기록
 

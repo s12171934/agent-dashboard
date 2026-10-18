@@ -468,6 +468,11 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 .dc-other button, .dc-submit { font-size: 15px; padding: 0 18px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
 .dc-submit { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; }
 .dc-submit:disabled { opacity: .35; cursor: default; }
+.dc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.dc-actions .dc-submit { flex: 1; width: auto; }
+.dc-release { margin-top: 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; font-size: 13px; }
+.dc-release:hover { color: var(--text); border-color: var(--muted); }
+.dc-actions:not(:has(.dc-submit)) .dc-release { margin-left: auto; }
 .dc-status { margin-top: 10px; font-size: 13px; color: var(--muted); } .dc-status:empty { display: none; }
 .dc-status.err { color: var(--bad); }
 .act.focus { border-color: var(--accent); color: var(--accent); }
