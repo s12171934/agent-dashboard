@@ -1,0 +1,6 @@
+/* table: plain data tables. Header cells muted and small, rows ruled; .n right-aligns a numeric column. */
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; font-size: 11px; }
+td.n, th.n { text-align: right; }
+th, td { border-color: color-mix(in srgb, var(--muted) 20%, transparent); }

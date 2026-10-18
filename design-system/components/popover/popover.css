@@ -1,0 +1,9 @@
+/* popover: a floating panel (settings, editors) on --surface-strong. Place it with .dock-pop (off the dock) or the
+   page's own position; .pop-h is its header row: title, a muted note that takes the space, then buttons. */
+.popover { position: fixed; z-index: 50; width: min(420px, calc(100vw - 24px)); max-height: min(70vh, 640px); overflow: auto;
+  border: 1px solid var(--surface-edge); border-radius: 18px; padding: 12px; color: var(--text);
+  background: var(--surface-sheen), var(--surface-strong); -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
+  box-shadow: var(--surface-hi), var(--surface-shadow); }
+.popover[hidden] { display: none; }
+.pop-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 10px; }
+.pop-h .st { flex: 1; }

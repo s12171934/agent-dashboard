@@ -1,0 +1,14 @@
+<!-- bar — horizontal measures. Widths are inline percentages set by the page.
+     <div class="track"><div style="width: N%; background: COLOUR"></div>…</div>   stacked segments (18px)
+     <div class="ctxbar"><div style="width: N%"></div></div>                        one fill (5px); .ctx-warn / .ctx-bad on the fill
+     <div class="prog"><div style="width: N%; background: COLOUR"></div>…</div>    stacked, thin (6px)
+     <span class="tbar"><i style="width: P%"></i><i class="f" style="width: F%"></i></span>   passed from the left, failed from the right
+     <div class="pbar"><i class="done|run|fail|skip"></i>…</div>                   one cell per step, in order -->
+<div class="bars">
+  <div class="track"><div style="width: 30%; background: var(--s-write)"></div><div style="width: 25%; background: var(--s-read)"></div><div style="width: 15%; background: var(--s-out)"></div></div>
+  <div class="ctxbar"><div style="width: 62%"></div></div>
+  <div class="ctxbar"><div class="ctx-warn" style="width: 86%"></div></div>
+  <div class="prog"><div style="width: 40%; background: var(--done)"></div><div style="width: 20%; background: var(--run)"></div></div>
+  <span class="tbar"><i style="width: 70%"></i><i class="f" style="width: 10%"></i></span>
+  <div class="pbar"><i class="done"></i><i class="done"></i><i class="run"></i><i></i><i class="fail"></i><i class="skip"></i></div>
+</div>

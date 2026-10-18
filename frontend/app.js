@@ -39,7 +39,7 @@ function status(s) {
 const famStatus = members => { const st = members.map(m => m.st); return ['run', 'stalled', 'bg', 'wait'].find(x => st.includes(x)) || 'idle'; };
 const ST_LABEL = { run: '실행 중', bg: '백그라운드', wait: '입력 대기', stalled: '응답 없음', idle: '유휴', done: '완료', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동' };
 function pill(st, s) {
-  return `<span class="pill ${st}" title="${esc(s.state_reason || '')}"><i></i>${ST_LABEL[st]}${st === 'bg' && s.bg_tasks ? ' ' + s.bg_tasks : ''}${s.manual_idle && st === 'idle' ? '(수동)' : ''}${st === 'run' ? '' : ' · ' + ago(s.last_ts)}</span>`;
+  return `<ds-pill state="${st}" title="${esc(s.state_reason || '')}">${ST_LABEL[st]}${st === 'bg' && s.bg_tasks ? ' ' + s.bg_tasks : ''}${s.manual_idle && st === 'idle' ? '(수동)' : ''}${st === 'run' ? '' : ' · ' + ago(s.last_ts)}</ds-pill>`;
 }
 // A subagent still running while its parent's own turn has ended is a background agent: the parent shows 백그라운드.
 const subBg = (s, a, own) => own !== 'done' && own !== 'run' && a.live && !s.live ? 'bg' : own;
@@ -59,82 +59,9 @@ let onlyLive = false;
 try { onlyLive = localStorage.getItem('adash.live') === '1'; } catch {}
 $('#only-live').checked = onlyLive;
 $('#only-live').onchange = e => { onlyLive = e.target.checked; try { localStorage.setItem('adash.live', onlyLive ? '1' : '0'); } catch {} gKey = ''; render(); };
-// Colour theme (applyTheme lives in index.html so it runs before the first paint). SVG charts read the CSS
-// variables, so switching needs no re-render.
-// 테마 button: cycles 시스템 → 라이트 → 다크; data-choice picks which of its three icons shows.
-const THEMES = [['system', '시스템'], ['light', '라이트'], ['dark', '다크']];
-const markTheme = c => { const b = $('#theme'); b.dataset.choice = c; const n = THEMES.find(t => t[0] === c)[1]; b.dataset.tip = `테마 · ${n}`; b.setAttribute('aria-label', `테마: ${n} (누르면 바뀜, 이 기기에만 저장)`); };
-try { markTheme(localStorage.getItem('adash.theme') || 'system'); } catch { markTheme('system'); }
-$('#theme').onclick = () => {
-  const c = THEMES[(THEMES.findIndex(t => t[0] === $('#theme').dataset.choice) + 1) % THEMES.length][0];
-  try { localStorage.setItem('adash.theme', c); } catch {} markTheme(c); applyTheme(c); if (!$('#theme-panel').hidden) themePanel();
-};
-// Tab bar settings (⋯): where the floating bar sits and how big its buttons are. A top bar sits under the header, whose height --hdr-h tracks.
-const dockMenu = $('#dock-menu'), markDock = () => dockMenu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
-$('#dock-set').onclick = e => { e.stopPropagation(); markDock(); dockMenu.hidden = !dockMenu.hidden; };
-dockMenu.onclick = e => {
-  const b = e.target.closest('[data-dock]'); if (!b) return;
-  try { localStorage.setItem('adash.dock', b.dataset.dock); } catch {}
-  applyDock(b.dataset.dock); markDock();
-};
-document.addEventListener('click', e => { if (!dockMenu.hidden && !e.target.closest('#dock, #dock-menu')) dockMenu.hidden = true; });
-$('#dock-size').value = dockSize();
-$('#dock-size').oninput = e => { try { localStorage.setItem('adash.dock.size', e.target.value); } catch {} applyDock(dockPos(), +e.target.value); };
-new ResizeObserver(([e]) => document.documentElement.style.setProperty('--hdr-h', e.target.offsetHeight + 'px')).observe($('header'));
-// 「색 편집」: per-base overrides of the palette's main variables (light and dark are kept apart, so a custom dark theme
-// survives switching to light and back). Each change applies at once; 「기본값」 drops one colour, 「모두 기본값」 the base.
-const THEME_VARS = [['--bg', '배경'], ['--panel', '카드·상자'], ['--panel2', '카드 안쪽'], ['--line', '테두리'], ['--text', '글자'],
-  ['--muted', '흐린 글자'], ['--accent', '강조'], ['--run', '실행 중'], ['--ok', '연결·진행'], ['--warn', '입력 대기·결정'], ['--bad', '오류·응답 없음'],
-  ['--done', '완료'], ['--idle', '유휴'], ['--coord', '코디네이터']];
-// Palette examples for 「색 편집」, each with a light and a dark set over THEME_VARS; picking one replaces the
-// overrides of the base in use. --warn also fills badges with white text (결정 대기), so it stays a mid-dark tone.
-const V = s => Object.fromEntries(s.split(' ').map((c, i) => [THEME_VARS[i][0], c]));
-const PALETTES = [
-  ['GitHub', { light: V('#f6f8fa #ffffff #f6f8fa #d0d7de #1f2328 #656d76 #0969da #0969da #0969da #9a6700 #cf222e #1a7f37 #d0d7de #8250df'),
-               dark: V('#0d1117 #161b22 #1c2128 #30363d #e6edf3 #8d96a0 #2f81f7 #2f81f7 #2f81f7 #bb8009 #f85149 #3fb950 #484f58 #a371f7') }],
-  ['Nord', { light: V('#eceff4 #ffffff #e5e9f0 #d8dee9 #2e3440 #5f6b7f #5e81ac #5e81ac #5e81ac #b0841e #bf616a #6e9a50 #c5cdd9 #5e81ac'),
-             dark: V('#2e3440 #3b4252 #434c5e #4c566a #eceff4 #a3acbd #88c0d0 #81a1c1 #81a1c1 #9a7520 #e0868f #a3be8c #4c566a #5e81ac') }],
-  ['Solarized', { light: V('#fdf6e3 #fffbf0 #eee8d5 #e0d9c3 #073642 #657b83 #268bd2 #268bd2 #2aa198 #b58900 #dc322f #859900 #c9c2ad #6c71c4'),
-                  dark: V('#002b36 #073642 #0a3f4c #164c58 #eee8d5 #93a1a1 #268bd2 #268bd2 #2aa198 #b58900 #f2645a #859900 #3d5a62 #6c71c4') }],
-  ['Dracula', { light: V('#fffbeb #ffffff #f5f1e3 #e3dfd0 #1f1f1f #6c664b #644ac9 #036a96 #036a96 #a34d14 #cb3a2a #14710a #cfcfde #644ac9'),
-                dark: V('#1e1f29 #282a36 #2f3241 #44475a #f8f8f2 #a3a7c2 #bd93f9 #8be9fd #8be9fd #b0621a #ff5555 #50fa7b #44475a #7a58c2') }],
-  ['Gruvbox', { light: V('#f9f5d7 #fbf1c7 #f2e5bc #d5c4a1 #3c3836 #7c6f64 #076678 #076678 #427b58 #b57614 #9d0006 #79740e #d5c4a1 #8f3f71'),
-                dark: V('#1d2021 #282828 #32302f #504945 #ebdbb2 #a89984 #83a598 #83a598 #8ec07c #a86a12 #fb4934 #b8bb26 #504945 #a35a7a') }],
-  ['고대비', { light: V('#ffffff #ffffff #ffffff #000000 #000000 #333333 #0033cc #0033cc #0033cc #8a5a00 #c00000 #006400 #888888 #0033cc'),
-              dark: V('#000000 #000000 #0a0a0a #ffffff #ffffff #d0d0d0 #4da3ff #4da3ff #4da3ff #9a6a00 #ff4d4d #3ddc84 #777777 #1f6fd1') }],
-];
-const palOn = (set, own = {}) => THEME_VARS.every(([v]) => own[v] === set[v]);  // the base's colours are exactly that palette
-const saveCustom = c => { try { localStorage.setItem('adash.theme.custom', JSON.stringify(c)); } catch {} };
-function themePanel() {
-  const base = document.documentElement.dataset.theme, own = themeCustom()[base] || {}, el = $('#theme-panel');
-  const cur = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  el.innerHTML = `<div class="tp-h"><b>${base === 'dark' ? '다크' : '라이트'} 테마 색</b><span class="st">이 기기에만 저장 · 바꾸는 즉시 적용</span>
-      <button class="act" data-tp="reset-all">모두 기본값</button><button class="act" data-tp="close">닫기</button></div>
-    <div class="tp-pals"><span class="st">팔레트 예시</span>${PALETTES.map(([n, p], i) => {
-      const set = p[base], on = palOn(set, own);
-      return `<button class="tp-pal${on ? ' on' : ''}" data-pal="${i}" title="${esc(n)} ${base === 'dark' ? '다크' : '라이트'} 팔레트 적용">
-        <span class="tp-sw" style="background:${set['--bg']};border-color:${set['--line']}">${['--accent', '--done', '--warn', '--bad'].map(v => `<i style="background:${set[v]}"></i>`).join('')}</span>${esc(n)}</button>`;
-    }).join('')}</div>
-    <div class="tp-grid">${THEME_VARS.map(([v, n]) => `<label class="tp-row${own[v] ? ' own' : ''}"><input type="color" data-var="${v}" value="${esc(cur(v))}"><span>${n}</span>
-      <button class="act" data-tp="reset" data-var="${v}"${own[v] ? '' : ' disabled'}>기본값</button></label>`).join('')}</div>`;
-  el.querySelectorAll('input[type=color]').forEach(i => i.oninput = () => {
-    const c = themeCustom(); (c[base] ||= {})[i.dataset.var] = i.value; saveCustom(c); applyTheme();
-    const row = i.closest('.tp-row'); row.classList.add('own'); row.querySelector('button').disabled = false;
-    el.querySelectorAll('.tp-pal').forEach(b => b.classList.toggle('on', palOn(PALETTES[+b.dataset.pal][1][base], c[base])));
-  });
-  el.querySelectorAll('[data-pal]').forEach(b => b.onclick = () => {
-    const c = themeCustom(); c[base] = { ...PALETTES[+b.dataset.pal][1][base] }; saveCustom(c); applyTheme(); themePanel();
-  });
-  el.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
-    const c = themeCustom();
-    if (b.dataset.tp === 'close') { el.hidden = true; return; }
-    if (b.dataset.tp === 'reset') delete (c[base] || {})[b.dataset.var];
-    else delete c[base];
-    saveCustom(c); applyTheme(); themePanel();
-  });
-  el.hidden = false;
-}
-$('#theme-edit').onclick = () => { if ($('#theme-panel').hidden) { $('#server-panel').hidden = true; themePanel(); } else $('#theme-panel').hidden = true; };
+// Theme and material: the 테마 button (<ds-theme-toggle>) and the 「색 편집」 panel (<ds-theme-editor>) are design
+// system components; SVG charts read the CSS variables, so switching needs no re-render.
+$('#theme-edit').onclick = () => { $('#theme-panel').hidden = !$('#theme-panel').hidden; };
 // 「Orca 에 열린 것만」: only agents whose connected Orca terminal the server found (session.orca_focus), the same set
 // that gets the 「Orca 에서 열기」 button. Combines with 「실행 중만」 (both must hold).
 let onlyOrca = false;
@@ -759,15 +686,7 @@ async function pref(action, paths, undo) {
   await refresh();
   if (undo) toast(undo.msg, () => pref(undo.action, paths));
 }
-let toastT;
-function toast(msg, onUndo) {
-  let t = $('#toast');
-  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
-  t.innerHTML = `<span>${esc(msg)}</span>${onUndo ? '<button>되돌리기</button>' : ''}`;
-  t.className = 'show';
-  if (onUndo) t.querySelector('button').onclick = () => { t.className = ''; onUndo(); };
-  clearTimeout(toastT); toastT = setTimeout(() => t.className = '', 6000);
-}
+const toast = (msg, onUndo) => $('#toast').show(msg, onUndo ? { action: '되돌리기', onAction: onUndo } : {});
 function actBtns(s, big) {
   const st = status(s), cls = big ? 'act big' : 'act';
   const idle = s.manual_idle ? `<button class="${cls} idle-w" data-act="unidle" data-path="${esc(s.path)}" title="수동 유휴를 풀고 자동 판정으로">자동 상태</button>`
@@ -779,14 +698,14 @@ function actBtns(s, big) {
   return `<span class="acts">${big ? orcaBtns(s, true) : ''}${idle}${hide}</span>`;
 }
 // 「Orca 에서 열기」 only where the server found the connected Orca terminal the agent runs in.
-const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} focus" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
+const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} accent" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
 // 「Orca 에서 열기」 + 「닫기」 for a session. The session page's detail object comes from /api/session, which has no
 // orca_focus; the snapshot row does. Closing a running agent is allowed; the confirm dialog warns about it.
 function orcaBtns(s, big) {
   const focus = s.orca_focus ?? state.all?.find(x => x.path === s.path)?.orca_focus;
   if (!focus) return '';
   const cls = big ? 'act big' : 'act';
-  return `${focusBtn(focus, big)}<button class="${cls} close" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
+  return `${focusBtn(focus, big)}<button class="${cls} danger" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
 }
 // Fold a repository group of a driver plan (agents list and session page alike).
 document.addEventListener('click', e => {
@@ -823,9 +742,9 @@ function closeOrca(s, name, handle) {
   const below = s?.orca_close_tree || [], all = state.all || state.sessions;
   const kids = all.filter(x => x.orca_focus && below.includes(x.orca_focus));
   const busy = kids.filter(isLive).length, scripts = below.length - kids.length;
-  const warn = t => `<p class="cd-warn">⚠ ${t}</p>`;
+  const warn = t => `<p class="dialog-warn">⚠ ${t}</p>`;
   let d = $('#close-dlg');
-  if (!d) { d = document.createElement('dialog'); d.id = 'close-dlg'; document.body.appendChild(d); }
+  if (!d) { d = document.createElement('dialog'); d.id = 'close-dlg'; d.className = 'dialog'; document.body.appendChild(d); }
   d.innerHTML = `<form method="dialog">
     <h3>"${esc(cut(name, 40))}" 의 Orca 터미널을 닫을까요?</h3>
     ${s && isLive(s) ? warn('지금 실행 중입니다. 진행 중인 응답·도구 실행이 그 자리에서 끊깁니다.') : ''}
@@ -833,7 +752,7 @@ function closeOrca(s, name, handle) {
     ${below.length ? `<label class="cd-tree"><input type="checkbox" name="cascade" checked> 하위 터미널 ${below.length}개도 함께 닫기
       <span class="st">(${[kids.length && `워커 ${kids.length}`, scripts && `스크립트 ${scripts}`].filter(Boolean).join(' · ')}, 하위부터 닫음)</span></label>
       ${busy ? warn(`하위 워커 ${busy}개가 실행 중입니다.`) : ''}` : ''}
-    <div class="cd-btns"><button class="act big" value="">취소</button><button class="act big close" value="ok">닫기</button></div></form>`;
+    <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div></form>`;
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
     const cascade = !!d.querySelector('[name=cascade]')?.checked;
@@ -933,18 +852,7 @@ const liveFam = f => !filtering() || f.members.some(liveSess) || (onlyLive && !o
 const liveDrv = d => !filtering() || d.workers.some(liveSess);
 const shut = f => isMin(f);
 const isMin = f => f.coord && !f.members.some(m => m.decision) && (famMin[f.key] ?? (!workerPlan(f.handle, f.extra)?.waiting && f.members.filter(m => m !== f.coord).every(m => ['done', 'idle'].includes(status(m)))));
-function donut(counts, total) {
-  const r = 24, C = 2 * Math.PI * r;
-  let off = 0, segs = '';
-  for (const [k, c] of DONUT) {
-    if (!counts[k]) continue;
-    const len = counts[k] / total * C;
-    segs += `<circle r="${r}" cx="32" cy="32" fill="none" stroke="${c}" stroke-width="10" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 32 32)"/>`;
-    off += len;
-  }
-  return `<svg width="64" height="64" class="donut"><circle r="${r}" cx="32" cy="32" fill="none" stroke="var(--line)" stroke-width="10"/>${segs}
-    ${(t => `<text x="32" y="31" text-anchor="middle" class="d1"${t.length > 5 ? ' textLength="34" lengthAdjust="spacingAndGlyphs"' : ''}>${t}</text>`)(`${counts.done || 0}/${total}`)}<text x="32" y="43" text-anchor="middle" class="d2">완료</text></svg>`;
-}
+const donut = (counts, total) => `<ds-donut segments="${DONUT.filter(([k]) => counts[k]).map(([k, c]) => `${counts[k]} ${c}`).join('; ')}" value="${counts.done || 0}/${total}" caption="완료"></ds-donut>`;
 function miniFam(f) {
   const s = f.coord, below = f.members.filter(m => m !== s);
   const counts = below.reduce((a, m) => (a[status(m)] = (a[status(m)] || 0) + 1, a), {});
@@ -1555,7 +1463,7 @@ async function renderTests() {
         <div class="seg" id="tests-span">${Object.entries(TEST_SPANS).map(([k, l]) => `<button data-k="${k}">최근 ${l}</button>`).join('')}</div>
         <div class="seg" id="tests-result">${Object.entries(TEST_RESULTS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
         <div class="seg" id="tests-kind" data-kinds="${esc(kinds.join(','))}"><button data-k="all">모든 종류</button>${kinds.map(k => `<button data-k="${esc(k)}">${esc(k.toUpperCase())}</button>`).join('')}</div>
-        <input type="search" id="tests-q" placeholder="이름·실행자·실패 검색" value="${esc(tst.q)}">
+        <input type="search" id="tests-q" class="field" placeholder="이름·실행자·실패 검색" value="${esc(tst.q)}">
       </div><div id="tests-body"></div>`;
     for (const [id, key] of [['#tests-span', 'span'], ['#tests-result', 'result'], ['#tests-kind', 'kind']])
       $(id).querySelectorAll('button').forEach(b => b.onclick = () => { tst[key] = key === 'span' ? +b.dataset.k : b.dataset.k; save(); renderTests(); });
@@ -1751,8 +1659,8 @@ function renderCompare() {
         ${hourly ? `<div class="seg" id="seg-u" title="막대 하나의 시간 폭">${Object.entries(UNITS).map(([k, l]) => `<button data-k="${k}"${cmp.span === WEEK && +k < 15 ? ' disabled title="7일 범위에서는 15분 이상"' : ''}>${l}</button>`).join('')}</div>
         <div class="seg" id="seg-s" title="표시 범위">${Object.entries(SPANS).map(([k, l]) => `<button data-k="${k}">최근 ${l}</button>`).join('')}</div>
         <span class="tod" title="하루 중 이 시간대의 막대만 보여 줍니다">시간대
-          <select id="tod-a">${Array.from({ length: 24 }, (_, i) => `<option value="${i}">${String(i).padStart(2, '0')}시</option>`).join('')}</select> –
-          <select id="tod-b">${Array.from({ length: 24 }, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}시</option>`).join('')}</select>
+          <select id="tod-a" class="field">${Array.from({ length: 24 }, (_, i) => `<option value="${i}">${String(i).padStart(2, '0')}시</option>`).join('')}</select> –
+          <select id="tod-b" class="field">${Array.from({ length: 24 }, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}시</option>`).join('')}</select>
           <button id="tod-all">전체</button><button id="tod-work">08–20시</button></span>` : ''}</div>
       <div class="legend" id="cmp-leg"></div>
       <div class="cmp" id="cmp"></div>
@@ -1924,11 +1832,11 @@ function renderHourly() {
     r.onmousemove = e => {
       const rows = series.map(s => [s, val(s, b)]).filter(([, v]) => v > 0).sort((a, c) => c[1] - a[1]);
       const t = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-      tip.innerHTML = `<b>${d0.getMonth() + 1}/${d0.getDate()} (${WD[d0.getDay()]}) ${t(d0)}–${t(d1)}</b> · ${M.label} ${M.f(col[k])}`
+      const html = `<b>${d0.getMonth() + 1}/${d0.getDate()} (${WD[d0.getDay()]}) ${t(d0)}–${t(d1)}</b> · ${M.label} ${M.f(col[k])}`
         + (rows.length ? rows.map(([s, v]) => `<br><i class="sw" style="background:${s.c}"></i>${esc(s.name)} <b>${M.f(v)}</b>`).join('') : '<br>사용 없음');
-      tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 12, innerWidth - 330) + 'px'; tip.style.top = e.clientY + 12 + 'px';
+      tip.show(html, e);
     };
-    r.onmouseleave = () => tip.style.display = 'none';
+    r.onmouseleave = () => tip.hide();
   });
 }
 
@@ -2016,10 +1924,9 @@ function runGraph(run, tasks, stages, depsOf, workers, result, sessByTask, coord
     if (!t) return;
     g.onmousemove = e => {
       const r = result(t);
-      tip.innerHTML = `<b>${esc(t.display_name || t.task_title)}</b><br>${esc(t.status)} · ${dur(t.created_at, t.completed_at)}${r?.body ? '<br>' + esc(r.body.replace(/\/private\/tmp\S+\//g, '…/')).replace(/\n/g, '<br>') : ''}`;
-      tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 12, innerWidth - 330) + 'px'; tip.style.top = e.clientY + 12 + 'px';
+      tip.show(`<b>${esc(t.display_name || t.task_title)}</b><br>${esc(t.status)} · ${dur(t.created_at, t.completed_at)}${r?.body ? '<br>' + esc(r.body.replace(/\/private\/tmp\S+\//g, '…/')).replace(/\n/g, '<br>') : ''}`, e);
     };
-    g.onmouseleave = () => tip.style.display = 'none';
+    g.onmouseleave = () => tip.hide();
   });
 }
 
@@ -2120,9 +2027,9 @@ function ctxChart(d) {
   el.innerHTML = s + '</svg>';
   const tip = $('#tip');
   el.querySelectorAll('.hit').forEach(r => {
-    const show = e => { const t = T[+r.dataset.i]; tip.innerHTML = `<b>턴 #${+r.dataset.i + 1}</b> · ${hhmm(t.ts)}<br>컨텍스트 ${fmt(t.ctx)} · 출력 ${fmt(t.output)}${t.tools.length ? '<br>도구: ' + esc(t.tools.join(', ')) : ''}`; tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 12, innerWidth - 330) + 'px'; tip.style.top = e.clientY + 12 + 'px'; };
-    r.onmousemove = show; r.onmouseleave = () => tip.style.display = 'none';
-    r.onclick = e => { hlTurn = +r.dataset.i; tip.style.display = 'none'; renderSession(); };
+    const show = e => { const t = T[+r.dataset.i]; tip.show(`<b>턴 #${+r.dataset.i + 1}</b> · ${hhmm(t.ts)}<br>컨텍스트 ${fmt(t.ctx)} · 출력 ${fmt(t.output)}${t.tools.length ? '<br>도구: ' + esc(t.tools.join(', ')) : ''}`, e); };
+    r.onmousemove = show; r.onmouseleave = () => tip.hide();
+    r.onclick = e => { hlTurn = +r.dataset.i; tip.hide(); renderSession(); };
   });
 }
 
@@ -2281,7 +2188,7 @@ async function renderTalk() {
         <span class="seg" id="talk-view">${[['list', '리스트'], ['graph', '그래프']].map(([k, l]) => `<button data-tv="${k}" class="${talk.view === k ? 'on' : ''}">${l}</button>`).join('')}</span>
         <span class="talk-types">${Object.entries(TALK_TYPES).map(([k, [l, c]]) => `<label class="chk talk-t" style="--c:${c}"><input type="checkbox" data-tt="${k}" ${talk.types.has(k) ? 'checked' : ''}> ${l} <b id="tc-${k}"></b></label>`).join('')}</span>
         <label>세션 <select id="talk-who"><option value="">전체</option></select></label>
-        <input id="talk-q" class="talk-q" type="search" placeholder="제목·본문 검색" value="${esc(talk.q)}">
+        <input id="talk-q" class="field talk-q" type="search" placeholder="제목·본문 검색" value="${esc(talk.q)}">
         <label class="chk"><input type="checkbox" id="talk-th" ${talk.threads ? 'checked' : ''}> 질문·답을 스레드로 묶기</label>
         <label>기간 <select id="talk-hours">${[[1, '1시간'], [6, '6시간'], [24, '24시간'], [72, '3일'], [0, '전체']].map(([h, l]) => `<option value="${h}" ${h === talk.hours ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>최근 <select id="talk-lim">${[500, 1500, 5000].map(n => `<option ${n === talk.limit ? 'selected' : ''}>${n}</option>`).join('')}</select>건</label>
@@ -2394,7 +2301,7 @@ setInterval(() => { if (!document.hidden) checkBuild(); }, 5 * 60000);
 const srvState = x => !x.on ? ['', '꺼짐'] : x.live ? ['ok', '연결됨'] : x.error ? ['bad', x.error] : ['bad', '연결 안 됨'];
 function serverPanel() {
   const el = $('#server-panel'), list = api.servers();
-  el.innerHTML = `<div class="tp-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장 · 체크한 서버만 보입니다</span><button class="act" data-sp="close">닫기</button></div>
+  el.innerHTML = `<div class="pop-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장 · 체크한 서버만 보입니다</span><button class="act" data-sp="close">닫기</button></div>
     <div class="sp-row"><span>보기</span><span class="seg" id="sp-view"><button data-k="merged">합쳐 보기</button><button data-k="split">서버별 보기</button></span></div>
     ${list.map(x => `<div class="sp-srv" data-id="${x.id}">
       <div class="sp-row"><input type="checkbox" data-on${x.on ? ' checked' : ''} title="이 서버를 화면에 포함">
@@ -2459,8 +2366,8 @@ function renderConn() {
     if (st && st.textContent !== '시험 중…') { st.className = 'sp-msg ' + cls; st.textContent = text; }
   }
 }
-// The badge and the bar's server button both toggle the panel; it opens off the bar, like 「색 편집」, and one closes the other.
-$('#conn').onclick = $('#srv-btn').onclick = () => { if ($('#server-panel').hidden) { $('#theme-panel').hidden = true; serverPanel(); } else $('#server-panel').hidden = true; };
+// The badge and the bar's server button both toggle the panel. It is a .dock-pop: opening it closes any other one.
+$('#conn').onclick = $('#srv-btn').onclick = () => { if ($('#server-panel').hidden) serverPanel(); else $('#server-panel').hidden = true; };
 setTimeout(() => { if (!srvOn().some(x => x.live) && $('#server-panel').hidden) serverPanel(); }, 4000);
 function connect() {
   const last = {};

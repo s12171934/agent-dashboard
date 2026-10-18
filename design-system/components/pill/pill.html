@@ -1,0 +1,13 @@
+<!-- pill — the run state of an agent or task.
+     <ds-pill state="STATE" title="why">label</ds-pill>
+     state  run | bg | wait | stalled | idle | done   (required; picks colour and the dot's look)
+     title  optional: the reason for the state, shown on hover
+     Content is the label text only; the element adds the leading dot. -->
+<div class="row">
+  <ds-pill state="run">실행 중</ds-pill>
+  <ds-pill state="bg">백그라운드 2</ds-pill>
+  <ds-pill state="wait" title="AskUserQuestion">입력 대기 · 3분 전</ds-pill>
+  <ds-pill state="stalled">응답 없음</ds-pill>
+  <ds-pill state="idle">유휴</ds-pill>
+  <ds-pill state="done">완료</ds-pill>
+</div>

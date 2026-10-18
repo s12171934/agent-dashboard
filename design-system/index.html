@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design System</title>
+<!-- Preview of the design system, built from the same files the dashboard loads. Served at /ds/.
+     Generated: every component imported by ds.css gets a section from its components/<name>/<name>.html (the
+     markup contract): the rendered markup, then its source. Only the token swatches and the icon grid are written here. -->
+<script src="foundations/theme.js"></script>
+<script src="components/dock/dock-boot.js"></script>
+<script type="module" src="ds.js"></script>
+<link rel="stylesheet" href="ds.css">
+<style>
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 130px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  h2 code { font-weight: 400; }
+  section { margin-top: 16px; padding: 14px 16px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bars { display: grid; gap: 10px; max-width: 420px; }
+  .bg-field { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 35%, transparent), color-mix(in srgb, var(--s-write) 30%, transparent)); border-radius: 18px; padding: 18px; }
+  .demo { padding: 4px 0 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  pre { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--surface-edge); overflow: auto; font-size: 11.5px; line-height: 1.5; }
+  .doc { white-space: pre-wrap; color: var(--muted); font-size: 12px; margin: 0 0 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; }
+  code { font-size: 11.5px; color: var(--muted); }
+  .sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .sw div { border: 1px solid var(--surface-edge); border-radius: 10px; overflow: hidden; font-size: 11px; }
+  .sw i { display: block; height: 34px; }
+  .sw span { display: block; padding: 4px 6px; color: var(--muted); }
+  .icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 12px; }
+  .icons div { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; font-size: 11px; color: var(--muted); }
+  .icons svg { width: 22px; height: 22px; color: var(--text); }
+  /* the dock is one per page: its example is placed once at the end of <body>, the section keeps the contract */
+  #c-dock .demo { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Design System</h1>
+  <div class="st">design-system/ · 규칙은 GUIDELINES.md · 컴포넌트마다 &lt;이름&gt;.html 이 마크업 기준</div>
+  <div class="tools">
+    <span class="st">테마</span><span class="seg" id="theme"></span>
+    <span class="st">재질</span><span class="seg" id="mat"></span>
+  </div>
+  <section class="surface"><h2>색 토큰 <code>foundations/tokens.css</code></h2><div class="sw" id="sw"></div></section>
+  <div id="components"></div>
+</main>
+
+<script type="module">
+const $ = s => document.querySelector(s);
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+const seg = (el, items, cur, pick) => {
+  const draw = () => el.innerHTML = items.map(([k, n]) => `<button data-k="${k}"${k === cur() ? ' class="on"' : ''}>${n}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('[data-k]'); if (b) { pick(b.dataset.k); draw(); } };
+  draw();
+};
+seg($('#theme'), [['light', '라이트'], ['dark', '다크']], () => document.documentElement.dataset.theme, applyTheme);
+seg($('#mat'), MATERIALS, () => document.documentElement.dataset.material, applyMaterial);
+
+const TOKENS = ['--bg', '--panel', '--panel2', '--line', '--text', '--muted', '--accent', '--on-accent', '--ok', '--warn', '--bad', '--done', '--idle',
+  '--s-input', '--s-write', '--s-read', '--s-out', '--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--c7'];
+$('#sw').innerHTML = TOKENS.map(t => `<div><i style="background:var(${t})"></i><span>${t}</span></div>`).join('');
+
+// one section per component, in ds.css order, from its markup contract
+const css = await (await fetch('ds.css')).text();
+const names = [...css.matchAll(/@import "components\/([\w-]+)\/\1\.css"/g)].map(m => m[1]);
+for (const name of names) {
+  const src = await (await fetch(`components/${name}/${name}.html`)).text();
+  const doc = (src.match(/^<!--([\s\S]*?)-->/) || [, ''])[1].replace(/^ {5}/gm, '').trim();
+  const body = src.replace(/^<!--[\s\S]*?-->\s*/, '');
+  const [title, ...rest] = doc.split('\n');
+  const sec = document.createElement('section');
+  sec.className = 'surface';
+  sec.id = 'c-' + name;
+  sec.innerHTML = `<h2>${esc(title)} <code>components/${name}/${name}.html</code></h2>
+    <div class="doc">${esc(rest.join('\n'))}</div>
+    <div class="demo">${body}</div>
+    <details><summary>예시 마크업</summary><pre>${esc(body.trim())}</pre></details>`;
+  $('#components').append(sec);
+  if (name === 'dock') document.body.insertAdjacentHTML('beforeend', body);
+  if (name === 'icon') {
+    const sprite = await (await fetch('components/icon/icons.svg')).text();
+    const ids = [...sprite.matchAll(/<symbol id="([\w-]+)"/g)].map(m => m[1]);
+    sec.querySelector('.demo').insertAdjacentHTML('beforeend', `<div class="icons">${ids.map(n => `<div><ds-icon name="${n}"></ds-icon>${n}</div>`).join('')}</div>`);
+  }
+}
+</script>
+</body>
+</html>

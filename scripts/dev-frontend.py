@@ -7,6 +7,7 @@
 - index.html gets a small script that polls /__reload once a second. A change to a .css file swaps the stylesheets in
   place (no reload, the view and scroll stay); any other change under frontend/ reloads the page. Polling, not a held
   stream: Chrome opens at most 6 connections per host, so one stream per tab would lock out the sixth tab.
+- /ds/ serves design-system/ (the deploy copies it there).
 - /sw.js is replaced by a worker that unregisters itself and drops its caches, so the PWA's offline cache never
   serves a stale file here.
 - The page reads the metric server as usual (default http://127.0.0.1:8787); localhost origins need no --origin.
@@ -20,8 +21,9 @@ import socketserver
 import threading
 import time
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend')
-ROOT = os.path.normpath(ROOT)
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend'))
+# The design system lives beside the page and is served under /ds/, as deploy-frontend.sh lays it out.
+DS = os.path.normpath(os.path.join(ROOT, '..', 'design-system'))
 
 RELOAD_JS = b"""<script>
 // dev-frontend.py live reload: css swaps in place, anything else reloads the page.
@@ -57,13 +59,14 @@ self.addEventListener('activate', e => e.waitUntil((async () => {
 
 def snapshot():
     out = {}
-    for d, _, files in os.walk(ROOT):
-        for f in files:
-            p = os.path.join(d, f)
-            try:
-                out[os.path.relpath(p, ROOT)] = os.stat(p).st_mtime_ns
-            except OSError:
-                pass
+    for root, prefix in ((ROOT, ''), (DS, 'ds/')):
+        for d, _, files in os.walk(root):
+            for f in files:
+                p = os.path.join(d, f)
+                try:
+                    out[prefix + os.path.relpath(p, root)] = os.stat(p).st_mtime_ns
+                except OSError:
+                    pass
     return out
 
 
@@ -101,6 +104,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store')
         super().end_headers()
+
+    def translate_path(self, path):
+        clean = path.split('?', 1)[0].split('#', 1)[0]
+        if clean == '/ds' or clean.startswith('/ds/'):
+            rel = os.path.normpath(clean[len('/ds'):].lstrip('/') or '.')
+            if rel.startswith('..'):
+                return os.path.join(DS, '__nope__')
+            return os.path.join(DS, rel)
+        return super().translate_path(path)
 
     def log_message(self, fmt, *args):
         pass
@@ -143,6 +155,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    # The page opens a burst of requests at once (ds.css alone imports a dozen files); the default backlog of 5
+    # drops some, and a dropped @import is skipped without an error.
+    request_queue_size = 128
 
 
 def main():

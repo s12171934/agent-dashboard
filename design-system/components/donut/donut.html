@@ -1,0 +1,11 @@
+<!-- donut — counts by state as a ring, with a centre figure.
+     <ds-donut segments="N COLOUR; N COLOUR" value="TEXT" caption="TEXT"></ds-donut>
+     segments   count and colour pairs, ';' between them, drawn clockwise from the top; zero counts are skipped
+     value      the large centre text (keep it short: past 5 characters it is squeezed to fit)
+     caption    the small line under it
+     Always empty; 64px. Put its legend next to it in the page. -->
+<div class="row">
+  <ds-donut segments="2 var(--ok); 1 var(--warn); 3 var(--done); 1 var(--idle)" value="3/7" caption="완료"></ds-donut>
+  <ds-donut segments="5 var(--done)" value="5/5" caption="완료"></ds-donut>
+  <ds-donut segments="1 var(--bad); 1 color-mix(in srgb, var(--muted) 45%, transparent)" value="0/12" caption="완료"></ds-donut>
+</div>

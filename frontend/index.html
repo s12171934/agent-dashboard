@@ -14,42 +14,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Agents">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<script>
-// Colour theme: adash.theme = system | light | dark, per device. Resolved before the stylesheet paints, so a dark
-// choice never flashes light; 「시스템」 keeps following the OS while the page is open.
-// adash.theme.custom = {light: {"--accent": "#…", …}, dark: {…}}: the user's colours over the built-in palette of
-// that base, set inline on <html> (they beat the stylesheet's :root rules).
-(() => {
-  const os = matchMedia('(prefers-color-scheme: dark)');
-  const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
-  let applied = [];
-  window.themeCustom = () => { try { return JSON.parse(read('adash.theme.custom', '{}')) || {}; } catch { return {}; } };
-  window.applyTheme = (choice = read('adash.theme', 'system')) => {
-    const dark = choice === 'dark' || (choice === 'system' && os.matches), base = dark ? 'dark' : 'light', root = document.documentElement;
-    root.dataset.theme = base;
-    applied.forEach(v => root.style.removeProperty(v));
-    const own = themeCustom()[base] || {};
-    applied = Object.keys(own).filter(v => v.startsWith('--'));
-    applied.forEach(v => root.style.setProperty(v, own[v]));
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', own['--bg'] || (dark ? '#0f1215' : '#f4f5f7'));
-    return base;
-  };
-  // Tab bar position: adash.dock = top | bottom (default) | left | right. A side bar needs room, so a narrow screen
-  // shows it at the bottom; data-dock carries the position in effect, not the choice.
-  // adash.dock.size = button size in px (28–56); a phone caps it in the stylesheet.
-  window.dockPos = () => read('adash.dock', 'bottom');
-  window.dockSize = () => +read('adash.dock.size', 38);
-  window.applyDock = (choice = dockPos(), size = dockSize()) => {
-    const root = document.documentElement;
-    root.dataset.dock = innerWidth <= 700 && (choice === 'left' || choice === 'right') ? 'bottom' : choice;
-    root.style.setProperty('--dock-pick', size + 'px');
-  };
-  addEventListener('resize', () => applyDock());
-  os.addEventListener('change', () => applyTheme());
-  applyTheme();
-  applyDock();
-})();
-</script>
+<!-- design system (design-system/, served as ds/): boot scripts first so theme and dock are set before paint -->
+<script src="ds/foundations/theme.js"></script>
+<script src="ds/components/dock/dock-boot.js"></script>
+<script type="module" src="ds/ds.js"></script>
+<link rel="stylesheet" href="ds/ds.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -57,43 +26,41 @@
   <div class="hrow">
     <h1><img src="icons/icon.svg" alt="">Agent Dashboard</h1>
     <div class="kpis-h">
-      <div class="stat"><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg></i><b id="k-live">–</b><span>실행 중</span></div>
-      <div class="stat" id="k-bg-wrap" hidden><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg></i><b id="k-bg">0</b><span>백그라운드</span></div>
-      <div class="stat"><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1"/><path d="M9 14h.01M15 14h.01"/></svg></i><b id="k-agents">–</b><span>에이전트</span></div>
-      <div class="stat"><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></i><b id="k-cost">–</b><span>추정 비용</span></div>
-      <div class="stat"><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
-      <div class="stat"><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></i><b id="k-turns">–</b><span>총 턴</span></div>
-      <div class="stat"><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h8l-1 8 9-12h-8z"/></svg></i><b id="k-runs">–</b><span>진행 Run</span></div>
-      <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></i><b id="k-dec">0</b><span>결정 대기</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
+      <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="bot"></ds-icon></i><b id="k-agents">–</b><span>에이전트</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="dollar"></ds-icon></i><b id="k-cost">–</b><span>추정 비용</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="hash"></ds-icon></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="repeat"></ds-icon></i><b id="k-turns">–</b><span>총 턴</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
+      <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b id="k-dec">0</b><span>결정 대기</span></div>
     </div>
     <div class="conn" id="conn"><i></i><span>연결 중</span></div>
     <div class="health" id="health" hidden></div>
   </div>
 </header>
-<!-- the floating bar: tabs, view filters, the metric servers and display settings, all as icons (data-tip names them). Placed by
-     adash.dock (top | bottom | left | right). -->
-<nav id="dock">
-  <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></a>
-  <a href="#compare" data-v="compare" data-tip="비교" aria-label="비교"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></a>
-  <a href="#talk" data-v="talk" data-tip="상호작용" aria-label="상호작용"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg></a>
-  <a href="#tests" data-v="tests" data-tip="테스트" aria-label="테스트"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2v7.5L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5L14 9.5V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg><b class="dn" id="k-tests" hidden>0</b></a>
-  <a href="#hidden" data-v="hidden" data-tip="숨김" aria-label="숨김"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.9 9.9a3 3 0 1 0 4.2 4.2"/><path d="M10.7 5.1A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7"/><path d="M6.6 6.6A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M2 2l20 20"/></svg><b class="dn" id="k-hidden" hidden>0</b></a>
+<!-- the floating bar (<ds-dock>): tabs | view filters | metric servers and display settings; data-tip names each.
+     The bar adds its own ⋯ settings button (position, size). -->
+<ds-dock id="dock" inset-from="header">
+  <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
+  <a href="#compare" data-v="compare" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
+  <a href="#talk" data-v="talk" data-tip="상호작용" aria-label="상호작용"><ds-icon name="chat"></ds-icon></a>
+  <a href="#tests" data-v="tests" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" id="k-tests" hidden>0</b></a>
+  <a href="#hidden" data-v="hidden" data-tip="숨김" aria-label="숨김"><ds-icon name="eye-off"></ds-icon><b class="dn" id="k-hidden" hidden>0</b></a>
   <i class="dock-sep"></i>
-  <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></label>
-  <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/></svg></label>
+  <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
+  <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
   <i class="dock-sep"></i>
-  <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg><i class="srv-dot"></i></button>
-  <button class="dock-btn" id="theme" data-choice="system" data-tip="테마" aria-label="테마: 시스템 (누르면 바뀜, 이 기기에만 저장)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
-  <button class="dock-btn" id="theme-edit" data-tip="색 편집" aria-label="색 편집: 지금 테마(라이트 또는 다크)의 색을 바꿈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.1 0-.9.8-1.7 1.7-1.7h2c3 0 5.6-2.5 5.6-5.5C22 6 17.5 2 12 2z"/><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/></svg></button>
-  <button class="dock-btn" id="dock-set" data-tip="바 설정" aria-label="바 설정"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
-</nav>
-<div class="dock-menu" id="dock-menu" hidden><span class="st">바 위치</span><div class="seg"><button data-dock="top">↑ 위</button><button data-dock="bottom">↓ 아래</button><button data-dock="left">← 왼쪽</button><button data-dock="right">→ 오른쪽</button></div>
-    <label class="st dock-size">크기 <input type="range" id="dock-size" min="28" max="56" step="2"></label></div>
-<div id="theme-panel" hidden></div>
-<div id="server-panel" hidden></div>
+  <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
+  <ds-theme-toggle id="theme" button-class="dock-btn"></ds-theme-toggle>
+  <button class="dock-btn" id="theme-edit" data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>
+</ds-dock>
+<ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
+<div id="server-panel" class="popover dock-pop" hidden></div>
 <div id="decisions" hidden></div>
 <main id="view"><div class="empty">불러오는 중…</div></main>
-<div class="tip" id="tip"></div>
+<ds-tooltip id="tip"></ds-tooltip>
+<ds-toast id="toast"></ds-toast>
 <script src="api.js"></script>
 <script src="decision.js"></script>
 <script src="app.js"></script>

@@ -1,0 +1,4 @@
+/* <ds-icon name="…">: the element steps out of the layout; its svg is the box. Sizes and colours set by the
+   placing component (a more specific `… svg` rule) win over the 1em default here. */
+ds-icon { display: contents; }
+ds-icon > svg { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

@@ -1,0 +1,8 @@
+/* card: a clickable tile (lighter --surface-2) that lifts on hover. The page lays out what is inside. */
+.card { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 12px; cursor: pointer; min-width: 0; transition: border-color .15s; }
+.card:hover { border-color: var(--accent); }
+.card { background: var(--surface-sheen), var(--surface-2); border-color: var(--surface-edge);
+  -webkit-backdrop-filter: var(--surface-blur-sm); backdrop-filter: var(--surface-blur-sm);
+  box-shadow: var(--surface-hi), var(--surface-shadow-sm); transition: border-color .15s, transform .2s, box-shadow .2s; }
+.card:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--surface-edge)); transform: translateY(var(--surface-lift));
+  box-shadow: var(--surface-hi), var(--surface-shadow-lg); }
