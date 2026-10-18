@@ -64,11 +64,14 @@ const TOKENS = ['--bg', '--panel', '--panel2', '--line', '--text', '--muted', '-
   '--s-input', '--s-write', '--s-read', '--s-out', '--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--c7'];
 $('#sw').innerHTML = TOKENS.map(t => `<div><i style="background:var(${t})"></i><span>${t}</span></div>`).join('');
 
-// one section per component, in ds.css order, from its markup contract
-const css = await (await fetch('ds.css')).text();
+// one section per component, in ds.css order, from its markup contract. Fetched all at once: on Cloudflare Pages each
+// <name>.html costs a redirect (to the extensionless URL), so one by one the page took ~20s to fill in.
+const text = url => fetch(url).then(r => r.text());
+const css = await text('ds.css');
 const names = [...css.matchAll(/@import "components\/([\w-]+)\/\1\.css"/g)].map(m => m[1]);
-for (const name of names) {
-  const src = await (await fetch(`components/${name}/${name}.html`)).text();
+const [sprite, ...srcs] = await Promise.all(['components/icon/icons.svg', ...names.map(n => `components/${n}/${n}.html`)].map(text));
+for (const [i, name] of names.entries()) {
+  const src = srcs[i];
   const doc = (src.match(/^<!--([\s\S]*?)-->/) || [, ''])[1].replace(/^ {5}/gm, '').trim();
   const body = src.replace(/^<!--[\s\S]*?-->\s*/, '');
   const [title, ...rest] = doc.split('\n');
@@ -82,7 +85,6 @@ for (const name of names) {
   $('#components').append(sec);
   if (name === 'dock') document.body.insertAdjacentHTML('beforeend', body);
   if (name === 'icon') {
-    const sprite = await (await fetch('components/icon/icons.svg')).text();
     const ids = [...sprite.matchAll(/<symbol id="([\w-]+)"/g)].map(m => m[1]);
     sec.querySelector('.demo').insertAdjacentHTML('beforeend', `<div class="icons">${ids.map(n => `<div><ds-icon name="${n}"></ds-icon>${n}</div>`).join('')}</div>`);
   }
