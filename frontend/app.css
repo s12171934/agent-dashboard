@@ -8,6 +8,7 @@ header { background: var(--panel); border: 1px solid var(--line); position: stic
 .kpis-h { display: flex; gap: 18px; flex-wrap: wrap; }
 .stat { display: grid; grid-template-columns: auto auto; column-gap: 8px; align-items: center; justify-content: start; min-width: 0; }
 .stat .gi { grid-row: span 2; }
+.stat[hidden] { display: none; }
 .stat b { font-size: 16px; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stat span { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .conn { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
@@ -662,3 +663,20 @@ a.act { text-decoration: none; display: inline-block; }
 .pj-halo { animation: pulse 1.6s infinite; }
 .pj-src { list-style: none; padding: 0; margin: 12px auto; display: table; text-align: left; }
 .pj-src li { padding: 2px 0; }
+
+/* phone held sideways (short landscape): a header across the top would take a third of the height, so it becomes a
+   rail down the left edge — the icon, the figures stacked (no icons), the connection — and the page moves right */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root { --rail: calc(104px + env(safe-area-inset-left)); }
+  header { position: fixed; top: 0; bottom: 0; left: 0; width: var(--rail); margin: 0; box-sizing: border-box; overflow-y: auto;
+    border-left: 0; border-radius: 0 18px 18px 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .hrow { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; padding: 10px; }
+  .hrow h1 { font-size: 0; justify-content: center; }
+  .kpis-h { order: 0; width: auto; display: flex; flex-direction: column; gap: 8px; }
+  .stat { grid-template-columns: minmax(0, 1fr); }
+  .stat .gi { display: none; }
+  .stat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+  .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+  .conn, .health { margin-left: 0; white-space: normal; }
+  :is(main, #decisions) { padding-left: calc(var(--rail) + 12px); }
+}
