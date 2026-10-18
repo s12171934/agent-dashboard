@@ -43,7 +43,7 @@
      max-width: 500px  phone    — the dock becomes a launcher and sheet, controls shrink to fit one row
    Input type is separate from width: (pointer: coarse) is a finger, (hover: none) has no hover. */
 :root {
-  --gutter: 16px;  /* the page's side padding */
+  --gutter: 24px;  /* the page's side padding (a desktop window, installed or not; 12px on a narrow screen) */
   --tap: 28px;     /* the smallest thing you can press */
 }
 @media (max-width: 700px) { :root { --gutter: 12px; } }
