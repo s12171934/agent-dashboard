@@ -54,7 +54,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | Orca Run·터미널 | `orca` CLI 호출 |
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
 | 테스트 진행 | `/private/tmp/agent-test-progress/*.json` |
-| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문 (아래 「결정 버튼」) |
+| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문. 터미널 선택기와 같은 질문이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 
 ## 실행
@@ -118,20 +118,23 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 5분마다 이것을 확인해 새 배포면 새로 고친다.
 - 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
-## 결정 버튼 — AskUserQuestion 을 대시보드에서 답하기
+## 결정 버튼 — AskUserQuestion 을 터미널과 대시보드 양쪽에서 답하기
 
-`server/decision-hook` 은 AskUserQuestion 에 거는 Claude Code PreToolUse 훅이다. 질문을 메트릭 서버에 등록하고 기다리다가, 대시보드에서 온 답을 `updatedInput.answers` 로 Claude 에 넘긴다. 이 경우 터미널 선택기는 뜨지 않는다.
+`server/decision-hook` 은 AskUserQuestion 에 거는 Claude Code PreToolUse 훅이다. 질문을 메트릭 서버에 등록하고 아무것도 출력하지 않은 채 바로 끝난다. 그래서 터미널에는 평소처럼 선택기가 뜨고, 대시보드에는 같은 질문이 카드로 뜬다. 어느 쪽에서 답해도 된다.
 
 ```json
 {"hooks": {"PreToolUse": [{"matcher": "AskUserQuestion",
-  "hooks": [{"type": "command", "command": "<저장소>/server/decision-hook", "timeout": 3600}]}]}}
+  "hooks": [{"type": "command", "command": "<저장소>/server/decision-hook", "timeout": 10}]}]}}
 ```
 
-- 카드의 「터미널에서 답하기」를 누르거나 `DECISION_WAIT`(기본 1800초)가 지나면 훅은 아무것도 돌려주지 않는다. 그러면 평소처럼 터미널 선택기가 뜬다. 훅의 `timeout` 은 `DECISION_WAIT` 보다 길게 준다.
-- 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 질문을 잃지 않는다.
-- 훅이 기다리는 동안 터미널에는 선택기 대신 「running PreToolUse hooks」가 보인다. 터미널에서 답하려면 대시보드에서 넘긴다.
-- 세션이 중단돼 훅이 끝나면 카드도 닫힌다. 트랜스크립트에 그 호출의 결과가 이미 있으면 서버가 카드를 치운다.
-- 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`), `DECISION_WAIT`.
+- 터미널에서 답하면 트랜스크립트에 그 호출의 결과가 생기고, 서버가 카드를 치운다. 터미널에서 Esc 로 취소하거나 세션이 끝나도 마찬가지다.
+- 대시보드에서 답하면 서버가 그 세션의 Orca 터미널에 키 입력(`orca terminal send`)으로 같은 답을 넣는다. 터미널은 훅이 넘긴 `ORCA_TERMINAL_HANDLE` 로 찾고, 없으면 대시보드가 세션에 연결해 둔 터미널을 쓴다.
+- 키를 보내기 전과 매 단계 뒤에 터미널 화면(`orca terminal read --screen`)을 읽는다. 이 질문의 선택기가 처음 상태로 떠 있을 때만 시작하고, 화면이 예상과 다르면 그 자리에서 멈춘다. 선택기에 Esc 는 보내지 않으므로 질문은 터미널에 남는다.
+- 대시보드에서 넣을 수 있는 답: 단일 선택, 여러 질문, 여러 개 고르기, 단일 선택의 「직접 입력」. 서버는 여러 개 고르기의 직접 입력(하나)도 받지만, 카드에는 아직 그 입력 칸이 없다.
+- 카드가 「— 터미널에서 답하세요」라고 알리는 경우: Orca 밖 세션이라 터미널을 못 찾을 때, 선택기가 화면에 없거나 터미널에서 이미 답하기 시작했을 때, 키 입력이 예상대로 반영되지 않았을 때. 줄바꿈이 든 직접 입력처럼 키로 넣을 수 없는 답도 거절한다.
+- 키 입력 흉내라서 Claude Code 선택기의 화면 모양·키 조작이 바뀌면 깨질 수 있다(v2.1 에서 확인). 그때도 터미널 선택기는 그대로 쓸 수 있다.
+- 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 터미널 선택기만 뜬다.
+- 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`).
 
 ## aplan — 작업 계획 기록
 

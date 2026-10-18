@@ -1,7 +1,9 @@
-// 결정 버튼 cards. The metrics server holds each AskUserQuestion that server/decision-hook registered while the hook
-// waits; an answer (api.decide) goes back through the hook to Claude, and 「터미널에서 답하기」 (api.release) lets the
-// terminal picker open instead. A lone single-choice question sends on click, several questions or a multiSelect send
-// together with 「답 보내기」, typed text only on single-choice questions.
+// 결정 버튼 cards. server/decision-hook registers each AskUserQuestion with the metrics server and steps aside, so the
+// same question is open in the terminal picker too. An answer here (api.decide) is typed into that picker by the
+// server through the session's Orca terminal; when it cannot (no Orca terminal, the picker not as expected) the card
+// says so and the question is answered in the terminal. An answer in the terminal closes the card. A lone
+// single-choice question sends on click, several questions or a multiSelect send together with 「답 보내기」, typed
+// text only on single-choice questions.
 // Cards live in #decisions, outside #view, which every refresh rebuilds. A card is built once per request id and
 // later refreshes only touch its meta and status lines, so picks, typed text, focus and an IME composition
 // survive (a periodic re-render wiping input is the bug the 8799 page hit first).
@@ -25,14 +27,14 @@ const decisions = (() => {
   async function send(c) {
     c.sentAt = Date.now();
     c.el.classList.add('done');
-    setStatus(c, '보내는 중…');
+    setStatus(c, '터미널에 입력하는 중…');
     let res;
     try { res = await api.decide(c.r.id, c.r.questions.map((q, i) => answerOf(q, c.ans[i]))); }
     catch { res = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
-    if (res.status === 200) return setStatus(c, '답을 보냈습니다');
+    if (res.status === 200) return setStatus(c, '터미널에 답을 넣었습니다');
     c.sentAt = 0;
-    c.el.classList.toggle('done', res.status === 409);  // 409: answered elsewhere; the card goes on the next refresh
-    setStatus(c, res.status === 409 ? '이미 답한 질문입니다' : res.body?.error || `전송 실패 (${res.status})`, true);
+    c.el.classList.remove('done');  // a question answered elsewhere goes on the next refresh
+    setStatus(c, res.body?.error || `전송 실패 (${res.status})`, true);
   }
 
   // Picks only: the input boxes are never rebuilt, so text being typed stays.
@@ -64,7 +66,8 @@ const decisions = (() => {
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
         ${q.multiSelect ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
       </div>`).join('')}
-      <div class="dc-actions">${needsSubmit(r) ? '<button class="dc-submit" disabled>답 보내기</button>' : ''}<button class="dc-release" title="대시보드에서 기다리지 않고 터미널에 선택지를 띄웁니다">터미널에서 답하기</button></div>
+      <p class="dc-hint">터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.</p>
+      ${needsSubmit(r) ? '<div class="dc-actions"><button class="dc-submit" disabled>답 보내기</button></div>' : ''}
       <div class="dc-status"></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}), sentAt: 0 };
     el.querySelectorAll('.dc-q').forEach(qel => {
@@ -94,13 +97,6 @@ const decisions = (() => {
     });
     const sub = el.querySelector('.dc-submit');
     if (sub) sub.onclick = () => send(c);
-    el.querySelector('.dc-release').onclick = async () => {
-      c.sentAt = Date.now(); c.el.classList.add('done'); setStatus(c, '터미널로 넘기는 중…');
-      const res = await api.release(r.id).catch(() => ({ status: 0, body: {} }));
-      if (res.status === 200) return setStatus(c, '터미널에서 답하세요');
-      c.sentAt = 0; c.el.classList.remove('done');
-      setStatus(c, res.body?.error || `넘기지 못했습니다 (${res.status})`, true);
-    };
     return c;
   }
 

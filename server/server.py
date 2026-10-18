@@ -1816,18 +1816,19 @@ def interactions(limit, heartbeats):
     return {"messages": out, "fetched": len(raw)}
 
 
-# ---- 결정 버튼: AskUserQuestion answered from the page ----
+# ---- 결정 버튼: AskUserQuestion shown on the page, answered in either place ----
 # decision-hook (next to this file) is a Claude Code PreToolUse hook on AskUserQuestion. It registers the question
-# here (/api/decision/ask) and waits (/api/decision/wait). An answer from the page goes back to it, and it hands Claude
-# the answer through updatedInput, so the terminal picker never opens. 「터미널에서 답하기」 on the card, or the hook's
-# own wait limit, releases it instead: the hook returns nothing and Claude shows the picker as usual. With this
-# server down the hook gets no id back and steps aside at once, so a question is never lost.
+# here (/api/decision/ask) and ends at once, so Claude opens the terminal picker as usual and the page shows the same
+# question as a card. An answer in the terminal closes the card once the transcript has the tool result
+# (stale_decisions). An answer from the page is typed into that picker through the session's Orca terminal
+# (type_answers), one key at a time, reading the rendered screen before and after each step; when the terminal is
+# unknown or the screen is not what is expected it stops and says so, and the picker stays for the terminal.
 DECISION_EVERY = 1.5
 DECISION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-DECISION_KEEP_S = 7200  # a card the hook never closed (killed with its session) goes after this
+DECISION_KEEP_S = 7200  # a card whose question never got a result in the transcript goes after this
 decisions = {"available": True, "pending": []}  # what /api/state shows: the open cards, oldest first
-decision_cv = threading.Condition()  # guards decision_store; waiters (the hooks) sleep on it
-decision_store = {}  # id -> {"card": the public card, "state": pending|answered|released|cancelled, "answers": {}}
+decision_lock = threading.Lock()  # guards decision_store
+decision_store = {}  # id -> {"card": the public card, "state": pending|answered|cancelled, "terminal", "busy"}
 
 
 def epoch(ts):
@@ -1838,7 +1839,7 @@ def epoch(ts):
 
 
 def publish_decisions():
-    """Copy the open cards into `decisions` for /api/state. Call holding decision_cv, not `lock`."""
+    """Copy the open cards into `decisions` for /api/state. Call holding decision_lock, not `lock`."""
     pending = sorted((d["card"] for d in decision_store.values() if d["state"] == "pending"), key=lambda c: c["created_at"])
     with lock:
         if pending != decisions["pending"]:
@@ -1846,14 +1847,13 @@ def publish_decisions():
             bump()
 
 
-def settle_decision(rid, state, answers=None):
-    """pending -> answered | released | cancelled; wakes the hook waiting on it. False when it was not pending."""
-    with decision_cv:
+def settle_decision(rid, state):
+    """pending -> answered | cancelled. False when it was not pending."""
+    with decision_lock:
         d = decision_store.get(rid)
         if not d or d["state"] != "pending":
             return False
-        d.update(state=state, answers=answers, settled=time.time())
-        decision_cv.notify_all()
+        d.update(state=state, settled=time.time())
         publish_decisions()
         return True
 
@@ -1871,50 +1871,203 @@ def add_decision(body):
         raise ValueError("questions")
     rid = f"q{int(time.time() * 1000):x}{os.urandom(3).hex()}"
     cwd = body.get("cwd") if isinstance(body.get("cwd"), str) else ""
+    term = body.get("terminal") if isinstance(body.get("terminal"), str) and HANDLE.fullmatch(body["terminal"]) else None
     card = {"id": rid, "session_id": str(body.get("session_id") or "") or None, "tool_use_id": body.get("tool_use_id"),
             "agent": os.path.basename(cwd.rstrip("/")) or "에이전트", "cwd": cwd, "created_at": time.time(),
             "questions": [{"question": q["question"], "header": q.get("header") or "", "multiSelect": bool(q.get("multiSelect")),
                            "options": [{"label": o["label"], "description": o.get("description") or ""} for o in q["options"]]}
                           for q in qs]}
-    with decision_cv:
-        decision_store[rid] = {"card": card, "state": "pending", "answers": None}
+    with decision_lock:
+        decision_store[rid] = {"card": card, "state": "pending", "terminal": term, "busy": False}
         publish_decisions()
     return rid
 
 
-def answers_for(card, answers):
-    """The page's answers (question order: a label or typed text, a label list for multiSelect) -> AskUserQuestion's
-    `answers` (question text -> label; several labels joined with ", "). None when one is missing."""
+TYPED = re.compile(r"^[^\x00-\x1f\x7f]{1,500}$")  # typed text goes into the picker's input line: no control keys
+
+
+def check_answers(card, answers):
+    """The page's answers in question order (a label or typed text; a list of labels, at most one typed, for
+    multiSelect) -> the same, trimmed; or an error string for one missing or one the picker cannot take by key."""
     if len(answers) != len(card["questions"]):
-        return None
-    out = {}
+        return "답하지 않은 질문이 있습니다"
+    out = []
     for q, a in zip(card["questions"], answers):
-        if q["multiSelect"]:
-            if not (isinstance(a, list) and a and all(isinstance(x, str) and x for x in a)):
-                return None
-            a = ", ".join(a)
-        if not (isinstance(a, str) and a.strip()):
-            return None
-        out[q["question"]] = a.strip()
+        labels = [o["label"] for o in q["options"]]
+        picks = a if q["multiSelect"] else [a]
+        if not (isinstance(picks, list) and picks and all(isinstance(x, str) and x.strip() for x in picks)):
+            return "답하지 않은 질문이 있습니다"
+        picks = list(dict.fromkeys(x.strip() for x in picks))
+        typed = [x for x in picks if x not in labels]
+        if len(labels) + 1 > 9 or len(typed) > 1 or not all(TYPED.match(x) for x in typed):
+            return "이 답은 대시보드에서 넣을 수 없습니다 — 터미널에서 답하세요"
+        out.append(picks if q["multiSelect"] else picks[0])
     return out
 
 
-def wait_decision(rid, timeout):
-    """Block until the card leaves pending or timeout passes -> {"state", "answers"?}; {"state": "gone"} if unknown."""
-    end = time.time() + timeout
-    with decision_cv:
+# The picker as Claude Code draws it (checked against v2.1): a tab bar ("←  ☐ 색  ☒ 과일  ✔ Submit  →", or a single
+# "☐ 색"), the question, numbered rows ("❯ 1. [✔] 사과" for multiSelect, "  2. 초록" otherwise; the row after the
+# options is "Type something"), and a footer ending in "Esc to cancel". Several questions end in a review page
+# ("Ready to submit your answers?"). Digit keys pick a single-choice option (and move on) or toggle a multiSelect
+# one; on the typed row the keys go into its input line; → leaves a multiSelect question (but moves the text cursor
+# on the typed row); Enter takes a single-choice typed row.
+# Text sent in one write arrives as a paste, so each key goes on its own.
+PICK_ROW = re.compile(r"^\s*(❯)?\s*(\d)\.\s(?:\[(.)\]\s)?(.*)$")
+KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_ENTER = "\x1b[C", "\x1b[A", "\x1b[B", "\r"
+PICK_STEP_S = 4  # how long one key may take to show on the screen
+
+
+class PickerError(Exception):
+    pass
+
+
+def compact(s):
+    return re.sub(r"\s+", "", s)
+
+
+def picker_state(handle, card):
+    """The terminal's rendered screen -> {"kind": "gone", "answered": the screen shows answers sent} (no picker),
+    {"kind": "review"}, {"kind": "other"}, or
+    {"kind": "question", "qi", "answered": a question already has its tab ticked, "rows": {n: (text, checked)},
+    "cursor": n}."""
+    t = orca("terminal", "read", "--terminal", handle, "--screen", timeout=10)["terminal"]
+    if t.get("source") != "screen":
+        raise PickerError("터미널 화면을 읽지 못했습니다")
+    lines = t["tail"] if isinstance(t["tail"], list) else str(t["tail"]).splitlines()
+    if any("Ready to submit your answers?" in ln for ln in lines[-12:]):
+        return {"kind": "review"}  # it has no footer
+    foot = max((i for i, ln in enumerate(lines) if "Esc to cancel" in ln), default=None)
+    if foot is None:
+        return {"kind": "gone", "answered": any("User answered Claude's question" in ln for ln in lines)}
+    head = next((i for i in range(foot, -1, -1) if "☐" in lines[i] or "☒" in lines[i]), None)
+    if head is None:
+        return {"kind": "other"}
+    body = lines[head + 1:foot]
+    rows, cursor, first = {}, None, None
+    for i, ln in enumerate(body):
+        m = PICK_ROW.match(ln)
+        if not m:
+            continue
+        n = int(m[2])
+        if n == 1 and first is None:
+            first = i
+        if first is not None and n not in rows:
+            rows[n] = (m[4].strip(), m[3] not in (None, " "))
+            cursor = n if m[1] else cursor
+    if first is None:
+        return {"kind": "other"}
+    text = compact("".join(body[:first]))
+    qi = next((i for i, q in enumerate(card["questions"]) if compact(q["question"]) == text), None)
+    if qi is None:
+        return {"kind": "other"}
+    return {"kind": "question", "qi": qi, "answered": "☒" in lines[head], "rows": rows, "cursor": cursor}
+
+
+def type_answers(handle, card, answers):
+    """Drive the picker in `handle` to `answers` (from check_answers). Raises PickerError, leaving the picker open,
+    when the screen is not the fresh picker for this card or stops matching what was typed."""
+    def press(key):
+        orca("terminal", "send", "--terminal", handle, "--text", key, timeout=10)
+        time.sleep(0.15)
+
+    def until(ok, what):
+        end = time.time() + PICK_STEP_S
         while True:
-            d = decision_store.get(rid)
-            if not d:
-                return {"state": "gone"}
-            if d["state"] != "pending" or time.time() >= end:
-                return {"state": d["state"], **({"answers": d["answers"]} if d["state"] == "answered" else {})}
-            decision_cv.wait(max(0.1, end - time.time()))
+            st = picker_state(handle, card)
+            if ok(st):
+                return st
+            if time.time() > end:
+                raise PickerError(what)
+            time.sleep(0.25)
+
+    def sent(st):  # read twice: a frame caught mid-redraw has no footer either
+        if st["kind"] != "gone" or not st["answered"]:
+            return False
+        time.sleep(0.3)
+        st = picker_state(handle, card)
+        return st["kind"] == "gone" and st["answered"]
+
+    on = lambda qi: lambda s: s["kind"] == "question" and s["qi"] == qi
+    st = until(lambda s: s["kind"] in ("question", "review"), "터미널에 이 질문의 선택기가 떠 있지 않습니다")
+    if st["kind"] == "review" or st["qi"] or st["answered"] or any(c for _, c in st["rows"].values()):
+        raise PickerError("터미널에서 이미 답하기 시작했습니다")
+    last = len(card["questions"]) - 1
+    for qi, (q, a) in enumerate(zip(card["questions"], answers)):
+        labels, n = [o["label"] for o in q["options"]], len(q["options"])
+        if q["multiSelect"]:
+            typed = [x for x in a if x not in labels]
+            want = {labels.index(x) + 1 for x in a if x in labels} | ({n + 1} if typed else set())
+            for k in sorted(want):
+                press(str(k))
+            if typed:
+                for _ in range(n + 1 - (st["cursor"] or 1)):
+                    press(KEY_DOWN)
+                until(lambda s: on(qi)(s) and s["cursor"] == n + 1, "직접 입력 칸으로 가지 못했습니다")
+                press(typed[0])
+            until(lambda s: on(qi)(s) and {k for k, (_, c) in s["rows"].items() if c} == want
+                  and (not typed or compact(typed[0]).startswith(compact(s["rows"].get(n + 1, ("", False))[0]) or "-")),
+                  "터미널의 선택이 보낸 답과 다릅니다")
+            if typed:  # → only moves within the input line: step off it first
+                press(KEY_UP)
+                until(lambda s: on(qi)(s) and s["cursor"] == n, "직접 입력 칸에서 나오지 못했습니다")
+            press(KEY_RIGHT)
+        elif a in labels:
+            press(str(labels.index(a) + 1))
+        else:
+            press(str(n + 1))
+            until(lambda s: on(qi)(s) and s["cursor"] == n + 1, "직접 입력 칸으로 가지 못했습니다")
+            press(a)
+            until(lambda s: on(qi)(s) and compact(a).startswith(compact(s["rows"].get(n + 1, ("", False))[0]) or "-"),
+                  "직접 입력한 글이 터미널에 들어가지 않았습니다")
+            press(KEY_ENTER)
+        # The next question, the review page or, after the last one, the picker closing on its own.
+        st = until(lambda s: (s["kind"] == "question" and s["qi"] > qi) or (qi == last and (s["kind"] == "review" or sent(s))),
+                   "터미널이 다음 단계로 넘어가지 않았습니다")
+    if st["kind"] == "review":
+        press("1")  # "1. Submit answers"
+        until(sent, "답을 제출하지 못했습니다")
 
 
-# A question can end without its hook saying so (the session was interrupted or killed while the hook waited). The
-# transcript knows: the AskUserQuestion call the card came from (same session, same first question, logged within
-# ASK_MATCH_S of the card) already has a tool result. Such cards are cancelled here, as are ones past DECISION_KEEP_S.
+def decision_terminal(d):
+    """The Orca terminal a card's session runs in: the hook's ORCA_TERMINAL_HANDLE, else the session's terminal as
+    the last /api/state mapped it (focus_targets). None outside Orca."""
+    if d["terminal"]:
+        return d["terminal"]
+    sid = d["card"]["session_id"]
+    return next((h for h, s in focus_handles.items() if s == sid), None)
+
+
+def answer_decision(rid, answers):
+    """An answer from the page -> (http status, body). Types it into the session's terminal picker."""
+    with decision_lock:
+        d = decision_store.get(rid)
+        if not d or d["state"] != "pending":
+            return 409, {"error": "이미 답했거나 닫힌 질문입니다"}
+        if d["busy"]:
+            return 409, {"error": "이 질문의 답을 터미널에 입력하는 중입니다"}
+        answers = check_answers(d["card"], answers)
+        if isinstance(answers, str):
+            return 400, {"error": answers}
+        handle = decision_terminal(d)
+        if not handle:
+            return 409, {"error": "이 세션의 Orca 터미널을 찾지 못했습니다 — 터미널에서 답하세요"}
+        d["busy"] = True
+    try:
+        type_answers(handle, d["card"], answers)
+    except PickerError as e:
+        return 409, {"error": f"{e} — 터미널에서 답하세요"}
+    except Exception as e:
+        return 502, {"error": f"터미널에 입력하지 못했습니다 ({short(e, 160)}) — 터미널에서 답하세요"}
+    finally:
+        with decision_lock:
+            d["busy"] = False
+    settle_decision(rid, "answered")
+    return 200, {"ok": True}
+
+
+# A question answered in the terminal, cancelled there, or ended with its session is closed by the transcript: the
+# AskUserQuestion call the card came from (its tool_use_id; without one, the same session's call with the same first
+# question logged within ASK_MATCH_S of the card) already has a tool result. Such cards are cancelled here, as are ones past DECISION_KEEP_S.
 ASK_MATCH_S = 120
 
 
@@ -1927,8 +2080,9 @@ def stale_decisions(pending):
         q0 = qs[0].get("question") if isinstance(qs, list) and qs and isinstance(qs[0], dict) else None
         if not s or not q0 or not isinstance(r.get("created_at"), (int, float)):
             continue
-        if r.get("tool_use_id") in s.asks:
-            if s.asks[r["tool_use_id"]][2]:
+        if r.get("tool_use_id"):
+            # Not logged yet while the picker opens; matching by question here would take an earlier identical call.
+            if s.asks.get(r["tool_use_id"], [0, 0, False])[2]:
                 out.add(r.get("id"))
             continue
         near = [a for a in s.asks.values() if a[0] == q0 and abs(a[1] - r["created_at"]) <= ASK_MATCH_S]
@@ -1938,7 +2092,7 @@ def stale_decisions(pending):
 
 
 def sweep_decisions():
-    """Cancel stale or abandoned cards and forget settled ones a while after their hook has read the outcome."""
+    """Cancel stale or abandoned cards and forget settled ones after a while."""
     with lock:
         pending = list(decisions["pending"])
         stale = stale_decisions(pending)
@@ -1946,7 +2100,7 @@ def sweep_decisions():
     for r in pending:
         if r["id"] in stale or now - r["created_at"] > DECISION_KEEP_S:
             settle_decision(r["id"], "cancelled")
-    with decision_cv:
+    with decision_lock:
         for rid in [k for k, d in decision_store.items() if d["state"] != "pending" and now - d.get("settled", now) > 300]:
             del decision_store[rid]
 
@@ -2452,16 +2606,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": "not found"}, 404)
             self.send_body(body)
         elif url.path == "/api/decision/wait":
-            # The hook's long poll: answers within ~25 s, and it asks again while the card stays open.
-            q = parse_qs(url.query)
-            rid = (q.get("id") or [""])[0]
-            if not DECISION_ID.match(rid):
-                return self.send_json({"error": "bad request"}, 400)
-            try:
-                t = min(55.0, max(0.0, float((q.get("t") or ["25"])[0] or 25)))
-            except ValueError:
-                t = 25.0
-            self.send_json(wait_decision(rid, t))
+            # A decision-hook from before the hook stopped waiting may still poll after an update: let it step aside
+            # (the terminal picker opens), since this server no longer holds questions for it.
+            self.send_json({"state": "gone"})
         elif url.path == "/api/orca/job":
             jid = parse_qs(url.query).get("id", [""])[0]
             with jobs_lock:
@@ -2604,9 +2751,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"ok": True})
 
     def decision_post(self, action):
-        """ask {session_id, tool_use_id, cwd, questions} from the hook -> {id}. answer {id, answers} from the page:
-        200 settled (the hook hands Claude the answer), 400 an answer missing, 409 no longer open. release {id}: the
-        hook steps aside and the terminal picker opens. done {id}: the hook gave up waiting on its own."""
+        """ask {session_id, tool_use_id, cwd, terminal, questions} from the hook -> {id}. answer {id, answers} from
+        the page: types them into the session's terminal picker (answer_decision); 200 done, 400 an answer missing or
+        one the picker cannot take, 409 no longer open or the terminal not usable, 502 Orca failed. release {id}: the
+        old page's 「터미널에서 답하기」; the picker is already open, so nothing to do."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 262144)))
             assert isinstance(body, dict)
@@ -2618,21 +2766,12 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, KeyError, AssertionError, TypeError):
             return self.send_json({"error": "bad request"}, 400)
         if action == "answer":
-            with decision_cv:
-                d = decision_store.get(rid)
-                card = d and d["state"] == "pending" and d["card"]
-            if not card:
-                return self.send_json({"error": "이미 답했거나 닫힌 질문입니다"}, 409)
-            answers = answers_for(card, body["answers"])
-            if answers is None:
-                return self.send_json({"error": "답하지 않은 질문이 있습니다"}, 400)
-            ok = settle_decision(rid, "answered", answers)
-        else:
-            ok = settle_decision(rid, "released" if action == "release" else "cancelled")
-        self.send_json({"ok": True} if ok else {"error": "이미 답했거나 닫힌 질문입니다"}, 200 if ok else 409)
+            status, out = answer_decision(rid, body["answers"])
+            return self.send_json(out, status)
+        self.send_json({"ok": True})
 
 
-DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/done")
+DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release")
 
 
 class Server(ThreadingHTTPServer):
