@@ -1,0 +1,7 @@
+/* <ds-donut>: the ring (ds-donut.js draws it); centre value bold, caption muted. */
+ds-donut { display: contents; }
+.donut .d1 { fill: var(--text); font-size: 12px; font-weight: 700; }
+.donut .d2 { fill: var(--muted); font-size: 9px; }
+.donut circle { transition: stroke-dasharray .6s, stroke-dashoffset .6s; }
+.donut circle { stroke-opacity: .88; }
+.donut circle:first-child { stroke: color-mix(in srgb, var(--muted) 18%, transparent); stroke-opacity: 1; }

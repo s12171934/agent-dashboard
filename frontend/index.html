@@ -14,66 +14,53 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Agents">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<script>
-// Colour theme: adash.theme = system | light | dark, per device. Resolved before the stylesheet paints, so a dark
-// choice never flashes light; 「시스템」 keeps following the OS while the page is open.
-// adash.theme.custom = {light: {"--accent": "#…", …}, dark: {…}}: the user's colours over the built-in palette of
-// that base, set inline on <html> (they beat the stylesheet's :root rules).
-(() => {
-  const os = matchMedia('(prefers-color-scheme: dark)');
-  const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
-  let applied = [];
-  window.themeCustom = () => { try { return JSON.parse(read('adash.theme.custom', '{}')) || {}; } catch { return {}; } };
-  window.applyTheme = (choice = read('adash.theme', 'system')) => {
-    const dark = choice === 'dark' || (choice === 'system' && os.matches), base = dark ? 'dark' : 'light', root = document.documentElement;
-    root.dataset.theme = base;
-    applied.forEach(v => root.style.removeProperty(v));
-    const own = themeCustom()[base] || {};
-    applied = Object.keys(own).filter(v => v.startsWith('--'));
-    applied.forEach(v => root.style.setProperty(v, own[v]));
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', own['--bg'] || (dark ? '#0f1215' : '#f4f5f7'));
-    return base;
-  };
-  os.addEventListener('change', () => applyTheme());
-  applyTheme();
-})();
-</script>
+<!-- design system (design-system/, served as ds/): boot scripts first so theme and dock are set before paint -->
+<script src="ds/foundations/theme.js"></script>
+<script src="ds/components/dock/dock-boot.js"></script>
+<script type="module" src="ds/ds.js"></script>
+<link rel="stylesheet" href="ds/ds.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header>
   <div class="hrow">
-    <h1>Agent Dashboard</h1>
+    <h1><img src="icons/icon.svg" alt="">Agent Dashboard</h1>
     <div class="kpis-h">
-      <div class="stat"><b id="k-live">–</b><span>실행 중</span></div>
-      <div class="stat" id="k-bg-wrap" hidden><b id="k-bg">0</b><span>백그라운드</span></div>
-      <div class="stat"><b id="k-agents">–</b><span>에이전트</span></div>
-      <div class="stat"><b id="k-cost">–</b><span>추정 비용</span></div>
-      <div class="stat"><b id="k-tokens">–</b><span>처리 토큰</span></div>
-      <div class="stat"><b id="k-turns">–</b><span>총 턴</span></div>
-      <div class="stat"><b id="k-runs">–</b><span>진행 Run</span></div>
-      <div class="stat dec" id="k-dec-wrap" hidden><b id="k-dec">0</b><span>결정 대기</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
+      <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="bot"></ds-icon></i><b id="k-agents">–</b><span>에이전트</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="dollar"></ds-icon></i><b id="k-cost">–</b><span>추정 비용</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="hash"></ds-icon></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="repeat"></ds-icon></i><b id="k-turns">–</b><span>총 턴</span></div>
+      <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
+      <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b id="k-dec">0</b><span>결정 대기</span></div>
     </div>
     <div class="conn" id="conn"><i></i><span>연결 중</span></div>
     <div class="health" id="health" hidden></div>
   </div>
-  <nav>
-    <a href="#agents" data-v="agents">에이전트</a>
-    <a href="#compare" data-v="compare">비교</a>
-    <a href="#talk" data-v="talk">상호작용</a>
-    <a href="#tests" data-v="tests">테스트 <b id="k-tests" hidden>0</b></a>
-    <a href="#hidden" data-v="hidden" class="nav-hidden">숨김 <b id="k-hidden">0</b></a>
-    <label><input type="checkbox" id="only-live"> 실행 중만</label>
-    <label title="Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"> Orca 에 열린 것만</label>
-    <label title="색상 테마 (이 기기에만 저장)">테마 <select id="theme"><option value="system">시스템</option><option value="light">라이트</option><option value="dark">다크</option></select></label>
-    <button class="act" id="theme-edit" title="지금 테마(라이트 또는 다크)의 색을 바꿈">색 편집</button>
-  </nav>
 </header>
-<div id="theme-panel" hidden></div>
-<div id="server-panel" hidden></div>
+<!-- the floating bar (<ds-dock>): tabs | view filters | metric servers and display settings; data-tip names each.
+     The bar adds its own ⋯ settings button (position, size). -->
+<ds-dock id="dock" inset-from="header">
+  <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
+  <a href="#compare" data-v="compare" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
+  <a href="#talk" data-v="talk" data-tip="상호작용" aria-label="상호작용"><ds-icon name="chat"></ds-icon></a>
+  <a href="#tests" data-v="tests" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" id="k-tests" hidden>0</b></a>
+  <a href="#hidden" data-v="hidden" data-tip="숨김" aria-label="숨김"><ds-icon name="eye-off"></ds-icon><b class="dn" id="k-hidden" hidden>0</b></a>
+  <i class="dock-sep"></i>
+  <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
+  <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
+  <i class="dock-sep"></i>
+  <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
+  <ds-theme-toggle id="theme" button-class="dock-btn"></ds-theme-toggle>
+  <button class="dock-btn" id="theme-edit" data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>
+</ds-dock>
+<ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
+<div id="server-panel" class="popover dock-pop" hidden></div>
 <div id="decisions" hidden></div>
 <main id="view"><div class="empty">불러오는 중…</div></main>
-<div class="tip" id="tip"></div>
+<ds-tooltip id="tip"></ds-tooltip>
+<ds-toast id="toast"></ds-toast>
 <script src="api.js"></script>
 <script src="decision.js"></script>
 <script src="app.js"></script>

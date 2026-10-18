@@ -1,0 +1,4 @@
+/* surfaces: .surface (a pane), .surface.surface-strong (popovers, menus); the material decides how they look */
+.surface { background: var(--surface-sheen), var(--surface); border: 1px solid var(--surface-edge); border-radius: var(--radius);
+  -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow); }
+.surface-strong { background: var(--surface-sheen), var(--surface-strong); }

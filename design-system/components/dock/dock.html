@@ -1,0 +1,21 @@
+<!-- dock — the floating bar. One per page, a direct child of <body>.
+     <ds-dock id="…">
+       <a href="#view" data-tip="name" aria-label="name"><ds-icon name="…"></ds-icon></a>     a tab; the current one has .on
+       <a …><ds-icon …></ds-icon><b class="dn" hidden>0</b></a>                               a tab with a count badge
+       <i class="dock-sep"></i>                                                               a divider between groups
+       <label class="dock-btn" data-tip="name" aria-label="name"><input type="checkbox"><ds-icon …></ds-icon></label>   a toggle
+       <button class="dock-btn" data-tip="name" aria-label="name"><ds-icon …></ds-icon></button>                      a button
+     </ds-dock>
+     Icons only: every item has data-tip (hover name) and aria-label (accessible name).
+     The element appends the last button itself (⋯ 바 설정: position and size); do not write one.
+     Popovers opened from the bar: <div class="… dock-pop" hidden> at the end of <body>, toggled with hidden; opening
+     one closes the others. Placement before first paint needs components/dock/dock-boot.js in <head>. -->
+<ds-dock>
+  <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
+  <a href="#" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
+  <a href="#" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn">2</b></a>
+  <i class="dock-sep"></i>
+  <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox"><ds-icon name="pulse"></ds-icon></label>
+  <i class="dock-sep"></i>
+  <button class="dock-btn" data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
+</ds-dock>

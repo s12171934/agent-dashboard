@@ -1,0 +1,38 @@
+/* Material: matte. Opaque surfaces in the palette's panel colours, a hairline border and a soft shadow; no
+   blur, no sheen, no inset light. Bars and controls are flat. Same contract as glass.css. */
+:root[data-material="matte"], [data-material="matte"] {
+  --surface: var(--panel);
+  --surface-2: var(--panel2);
+  --surface-strong: var(--panel);
+  --surface-edge: var(--line);
+  --surface-sheen: none;
+  --surface-hi: 0 0 transparent;
+  --surface-shadow: 0 1px 2px rgb(30 40 80 / .06), 0 4px 12px rgb(30 40 80 / .05);
+  --surface-shadow-sm: 0 1px 2px rgb(30 40 80 / .05);
+  --surface-shadow-lg: 0 6px 18px rgb(30 40 80 / .10);
+  --surface-shadow-float: 0 8px 24px rgb(30 40 80 / .14), 0 1px 3px rgb(30 40 80 / .08);
+  --surface-blur: none;
+  --surface-blur-sm: none;
+  --surface-lift: 0px;
+  --control-fill: var(--panel);
+  --control-well: var(--panel2);
+  --control-well-inset: 0 0 transparent;
+  --control-hi: 0 0 transparent;
+  --control-glow: 0%;
+  --bar-well: color-mix(in srgb, var(--muted) 18%, transparent);
+  --bar-inset: 0 0 transparent;
+  --bar-sheen: none;
+  --bar-rim: 0 0 transparent;
+  --bar-divider: inset 1px 0 0 var(--panel);
+  --bar-step-hi: 0 0 transparent;
+  --chart-rim: transparent;
+  --chart-fill-opacity: 1;
+  --scrim-blur: none;
+  --scrim-fill: rgb(0 0 0 / .35);
+}
+:root[data-theme="dark"][data-material="matte"], :root[data-theme="dark"] [data-material="matte"] {
+  --surface-shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 14px rgb(0 0 0 / .25);
+  --surface-shadow-sm: 0 1px 2px rgb(0 0 0 / .3);
+  --surface-shadow-lg: 0 6px 18px rgb(0 0 0 / .35);
+  --surface-shadow-float: 0 8px 24px rgb(0 0 0 / .45), 0 1px 3px rgb(0 0 0 / .3);
+}

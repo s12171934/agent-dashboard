@@ -1,0 +1,10 @@
+<!-- icon — a line icon from icons.svg.
+     <ds-icon name="ID"></ds-icon>
+     name   a symbol id in icons.svg (see the grid below)
+     Always empty: the element draws its own <svg>. It is display: contents, so size and colour come from where it is
+     placed (`.parent svg { width: 18px }`, `color`). Decorative: the control around it carries the accessible name. -->
+<div class="row">
+  <ds-icon name="users"></ds-icon>
+  <span style="color: var(--accent); font-size: 22px"><ds-icon name="chart"></ds-icon></span>
+  <span style="color: var(--ok); font-size: 28px"><ds-icon name="pulse"></ds-icon></span>
+</div>

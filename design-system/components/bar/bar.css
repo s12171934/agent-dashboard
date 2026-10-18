@@ -1,0 +1,23 @@
+/* bars: .track (stacked segments), .ctxbar (one fill), .prog (stacked, thin), .tbar (pass/fail), .pbar (steps: <i class="done|skip|fail|run">) */
+.ctxbar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.ctxbar > div { height: 100%; background: var(--accent); transition: width .6s; }
+.pbar { display: flex; gap: 2px; height: 6px; }
+.pbar i { flex: 1; border-radius: 2px; background: var(--line); }
+.pbar i.done { background: var(--done); } .pbar i.skip { background: var(--idle); }
+.pbar i.fail { background: var(--bad); } .pbar i.run { background: var(--ok); animation: blink 1.4s infinite; }
+.track { height: 18px; background: var(--panel2); border-radius: 4px; overflow: hidden; display: flex; }
+.track > div { height: 100%; transition: width .6s ease; }
+.prog { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; display: flex; }
+.prog > div { height: 100%; }
+.tbar { position: relative; display: inline-block; width: 140px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; vertical-align: middle; }
+.tbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); }
+.tbar i.f { left: auto; right: 0; background: var(--bad); }
+.track, .ctxbar, .prog, .tbar { background: var(--bar-well); }
+/* Bars are capsules: a well (--bar-well, --bar-inset) and one overlay across all segments (--bar-sheen, --bar-rim),
+   which the material fills in (a glass tube, or flat). Segment colours are set inline, so the sheen is an overlay,
+   not a background. */
+.track, .ctxbar, .prog, .tbar { position: relative; border-radius: 99px; box-shadow: var(--bar-inset); }
+.track::after, .ctxbar::after, .prog::after, .tbar::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: var(--bar-sheen); box-shadow: var(--bar-rim); }
+.track > div + div, .prog > div + div { box-shadow: var(--bar-divider); }
+.pbar i { border-radius: 99px; box-shadow: var(--bar-step-hi); }

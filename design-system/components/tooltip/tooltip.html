@@ -1,0 +1,6 @@
+<!-- tooltip — a note that follows the pointer over charts and graphs.
+     <ds-tooltip id="tip"></ds-tooltip>      one per page, at the end of <body>
+     Script API: tip.show(html, event) on pointer move, tip.hide() on leave. html is trusted: escape data into it.
+     Content: short lines; <b> for the heading, <br> between lines. Move the pointer over the box below. -->
+<div class="surface" style="padding: 18px; display: inline-block; cursor: crosshair" onmousemove="document.getElementById('tip-demo').show('<b>10/18 (일) 17:00–18:00</b> · 비용 $9.16<br>리퀴드글래스 UI <b>$4.20</b>', event)" onmouseleave="document.getElementById('tip-demo').hide()">여기에 포인터를 올려 보세요</div>
+<ds-tooltip id="tip-demo"></ds-tooltip>

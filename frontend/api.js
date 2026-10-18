@@ -116,18 +116,51 @@ const api = (() => {
   }
 
   // EventSources for the servers that are on; reconnect() swaps them after the list changes.
-  let sources = [], handlers = null;
+  // Shared across tabs: Chrome keeps at most 6 connections per host, so a stream per tab would leave the sixth tab of
+  // this page with no data. One tab (whoever holds the Web Lock) opens the streams and relays them over a
+  // BroadcastChannel; the rest listen, and the next tab takes over when it closes. Without locks, every tab streams.
+  const shared = 'locks' in navigator && 'BroadcastChannel' in window;
+  let sources = [], handlers = null, leader = !shared, bc = null;
+  const lastVer = {};
+  const relay = m => { if (leader && bc) bc.postMessage(m); };
+  const onVersion = (id, v) => { lastVer[id] = v; handlers.version(`${id}:${v}`); };
+  const setLive = (id, live) => { setStatus(id, live ? { live, error: null } : { live }); handlers.change(); };
   function openSources() {
     sources.forEach(es => es.close());
     sources = enabled().map(srv => {
       const es = new EventSource(srv.url + '/events');
-      es.onopen = () => { setStatus(srv.id, { live: true, error: null }); handlers.change(); };
-      es.onmessage = e => handlers.version(`${srv.id}:${e.data}`);
-      es.onerror = () => { if (status[srv.id]?.live !== false) { setStatus(srv.id, { live: false }); handlers.change(); } };
+      es.onopen = () => { setLive(srv.id, true); relay({ t: 'live', id: srv.id, live: true }); };
+      es.onmessage = e => { onVersion(srv.id, e.data); relay({ t: 'v', id: srv.id, v: e.data }); };
+      es.onerror = () => { if (status[srv.id]?.live !== false) { setLive(srv.id, false); relay({ t: 'live', id: srv.id, live: false }); } };
       return es;
     });
     for (const id of Object.keys(status)) if (!enabled().some(s => s.id === id)) delete status[id];
     handlers.change();
+  }
+  // After the server list changes here or in another tab: the streaming tab reopens, the others just redraw.
+  const listChanged = () => { if (!handlers) return; if (leader) openSources(); else handlers.change(); };
+  addEventListener('storage', e => {
+    if (e.key !== KEY) return;
+    try { const list = JSON.parse(e.newValue); if (Array.isArray(list)) { servers = list; listChanged(); } } catch {}
+  });
+  function startEvents() {
+    if (!shared) return openSources();
+    bc = new BroadcastChannel('adash.events');
+    bc.onmessage = ({ data: m }) => {
+      if (leader) {  // a tab that just opened asks where things stand
+        if (m.t === 'hello') {
+          for (const srv of enabled()) bc.postMessage({ t: 'live', id: srv.id, live: !!status[srv.id]?.live });
+          for (const [id, v] of Object.entries(lastVer)) bc.postMessage({ t: 'v', id, v });
+        }
+        return;
+      }
+      if (m.t === 'v') onVersion(m.id, m.v);
+      if (m.t === 'live') setLive(m.id, m.live);
+    };
+    bc.postMessage({ t: 'hello' });
+    handlers.change();
+    // Held until this tab closes; then the next waiting tab gets it and opens the streams.
+    navigator.locks.request('adash.events', () => new Promise(() => { leader = true; openSources(); }));
   }
 
   return {
@@ -140,7 +173,7 @@ const api = (() => {
     setServers: list => {
       servers = list.map(s => ({ id: s.id || newId(), name: (s.name || '').trim() || hostOf(clean(s.url)), url: clean(s.url), on: !!s.on }));
       save();
-      if (handlers) openSources();
+      listChanged();
     },
     // Try a server before adding it: {ok, api} from its root, or {ok: false, error} saying why not.
     probe: async url => {
@@ -238,6 +271,6 @@ const api = (() => {
     closeJob: id => { const srv = byId(jobOwner[id]) || enabled()[0]; return srv ? getJson(srv, '/api/orca/job?id=' + encodeURIComponent(id)) : null; },
     // Version streams: each server sends its state version whenever it changes (version gets "<server>:<version>"),
     // and the page refetches state(). change fires when a server's connection opens or drops.
-    events: ({ version, change }) => { handlers = { version, change }; openSources(); },
+    events: ({ version, change }) => { handlers = { version, change }; startEvents(); },
   };
 })();

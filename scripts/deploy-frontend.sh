@@ -1,6 +1,6 @@
 #!/bin/sh
-# Deploy frontend/ to Cloudflare Pages. Copies it to a temp dir with a build.json stamp (open tabs reload when it
-# changes), then runs `wrangler pages deploy`. Needs `wrangler login` once.
+# Deploy frontend/ to Cloudflare Pages. Copies it, with design-system/ under ds/, to a temp dir with a build.json
+# stamp (open tabs reload when it changes), then runs `wrangler pages deploy`. Needs `wrangler login` once.
 #   scripts/deploy-frontend.sh
 # Settings (environment variables):
 #   PAGES_PROJECT  Pages project name (default: agent-dashboard)
@@ -13,8 +13,9 @@ OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
 cp -R "$ROOT/frontend/." "$OUT/"
+mkdir "$OUT/ds" && cp -R "$ROOT/design-system/." "$OUT/ds/"
 build="$(git -C "$ROOT" rev-parse --short HEAD)"
-git -C "$ROOT" diff --quiet HEAD -- frontend || build="$build-dirty"
+git -C "$ROOT" diff --quiet HEAD -- frontend design-system || build="$build-dirty"
 printf '{"build": "%s-%s"}\n' "$build" "$(date +%Y%m%d%H%M%S)" > "$OUT/build.json"
 
 npx wrangler pages project list 2>/dev/null | grep -q "│ $PROJECT " \

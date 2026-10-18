@@ -1,0 +1,33 @@
+/* Design system tokens: colour (palette), shape and the dock's size. <html data-theme="light|dark">
+   (foundations/theme.js) picks the palette; a user's colours from 「색 편집」 are set inline on <html> and win over
+   these. The palette stays solid hex: colour pickers and SVG strokes read it.
+   How a surface looks (translucency, blur, sheen, shadow) is not here: that is the material (materials/*.css). */
+
+/* palette */
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --panel2: #f9fafb; --line: #e3e6eb; --text: #1b1f24; --muted: #6a7380;
+  --accent: #3b6fd8; --ok: #1d7fe0; --warn: #c98a12; --bad: #d1453b; --run: #1d7fe0; --done: #2f9e5b; --coord: #3b6fd8; --idle: #c2c8cf;
+  --s-input: #e07b39; --s-write: #8a63d2; --s-read: #9cb6e8; --s-out: #2f9e5b;
+  --m-opus: #d9773b; --m-fable: #b04fc4; --m-sonnet: #3b8fd8; --m-haiku: #2fa39a; --m-gpt: #4b5563; --m-other: #9aa3ad;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #6250d6;
+  --on-accent: #fff;  /* text and icons on a filled accent, warn or state colour */
+}
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1215; --panel: #171b20; --panel2: #1c2128; --line: #2a3038; --text: #e6e9ed; --muted: #8b95a1;
+  --accent: #6c9cff; --ok: #4ea8ff; --warn: #e3a93a; --bad: #f06a5f; --run: #4ea8ff; --done: #4cc27f; --coord: #6c9cff; --idle: #444c56;
+  --s-input: #f0915a; --s-write: #a888f0; --s-read: #3d5a8f; --s-out: #4cc27f;
+  --m-opus: #f0915a; --m-fable: #d07ae0; --m-sonnet: #6cb0ff; --m-haiku: #4cc2b8; --m-gpt: #9aa3ad; --m-other: #5b6470;
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9;
+}
+
+/* shape and the dock */
+:root {
+  --radius: 14px;
+  /* dock: --dock-pick is the chosen button size (components/dock/dock-boot.js) */
+  --dock-sz: var(--dock-pick, 38px);
+  /* how far popovers sit from the bar's screen edge: set by the largest bar size, so dragging 「크기」 moves nothing */
+  --dock-reach: 68px;
+}
+@media (max-width: 500px) { :root { --dock-sz: min(var(--dock-pick, 38px), 31px); --dock-reach: 41px; } }
