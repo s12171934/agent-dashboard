@@ -62,7 +62,7 @@ python3 server/server.py --origin https://dashboard.s-dante.com --origin https:/
 tailscale serve --bg 8787                                                  # 다른 기기용 https 주소 (선택)
 ```
 
-로컬에서 페이지를 고칠 때는 `python3 -m http.server 5500 -d frontend` 로 띄운다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다.
+로컬에서 페이지를 고칠 때는 `python3 scripts/dev-frontend.py` 로 띄우고 `http://127.0.0.1:5500` 을 연다(`--port` 로 바꿀 수 있다). `frontend/` 의 파일을 저장하면 열린 탭이 저절로 따라온다: CSS 는 새로 고치지 않고 그 자리에서 바뀌고, 나머지는 페이지를 새로 고친다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다.
 
 | 옵션 | 기본값 | 뜻 |
 | --- | --- | --- |
