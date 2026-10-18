@@ -194,6 +194,7 @@ function families() {
 // ---------- routing ----------
 function route() {
   const h = decodeURIComponent(location.hash.slice(1) || 'agents');
+  if (h === 'projects') return { v: 'projects' };
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
   return { v: ['agents', 'compare', 'talk', 'tests', 'hidden'].includes(h) ? h : 'agents' };
@@ -295,6 +296,7 @@ async function renderView(navigated) {
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'hidden') renderHidden();
+  else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
   else if (r.v === 'session') {
     detail = await api.session(r.id);
@@ -2369,13 +2371,485 @@ function renderConn() {
 // The badge and the bar's server button both toggle the panel. It is a .dock-pop: opening it closes any other one.
 $('#conn').onclick = $('#srv-btn').onclick = () => { if ($('#server-panel').hidden) serverPanel(); else $('#server-panel').hidden = true; };
 setTimeout(() => { if (!srvOn().some(x => x.live) && $('#server-panel').hidden) serverPanel(); }, 4000);
+// ---------- projects ----------
+// Project progress from the metric servers started with --projects-dir (one progress.json per project; the servers
+// derive every figure, this only lays it out). Two views of the same list:
+// - 프로젝트별: one straight line of stages per project, always in stage order. A project folds open (accordion) into
+//   its stages and steps.
+// - 전체 시계열: one trunk with a branch per project, git-graph style (pjTimeline). Picking a project focuses its
+//   branch and opens the same detail below the graph (가로) or beside it (세로).
+// Picking a step splits the detail: the stages and steps on one side, the step's Obsidian note on the other. The
+// documents themselves open in Obsidian: a step's 「Obsidian」 button, the note's title, its 「Obsidian 에서 열기」, and
+// the [[links]] in it (obsidian://open?path=, or a search for a link outside the project folder).
+const PJ_ST = { done: '완료', failed: '실패', active: '진행 중', pending: '예정', scheduling: '일정 미정', empty: '작업 없음' };
+const PJ_C = { done: 'var(--done)', failed: 'var(--bad)', active: 'var(--run)', pending: 'var(--muted)', scheduling: 'var(--idle)', empty: 'var(--idle)' };
+const pjFin = st => st.status === 'done' || st.status === 'failed';
+// A note in Obsidian: by its absolute path, which the project's progress.json path (absolute) gives the folder of.
+const pjObsidian = abs => 'obsidian://open?path=' + encodeURIComponent(abs);
+const pjAbs = (p, rel) => p.path.replace(/[^/]*$/, '') + rel;
+const pjPct = x => x.total ? Math.round(x.counts.done / x.total * 100) : 0;
+const pjPeriod = (a, b) => a ? (b && b !== a ? `${a} ~ ${b}` : a) : '날짜 미정';
+const pjChip = s => `<span class="chip" style="--c: ${PJ_C[s]}">${PJ_ST[s] || s}</span>`;
+// A project is named by its server and folder name; server ids carry no ':'.
+const pjKeyOf = p => `${p.server}:${p.name}`;
+const pjSplitKey = k => { const i = k.indexOf(':'); return [k.slice(0, i), k.slice(i + 1)]; };
+// A stage node: its number in a circle; an active one's ring is a gauge of its finished steps (--pct).
+const pjNode = st => `<i class="pj-dot" style="--pct: ${pjPct(st)}">${st.no}</i>`;
+
+let pj = { view: 'flow', orient: 'auto' };  // adash.proj: which view, and the timeline's orientation (auto|h|v)
+try { Object.assign(pj, JSON.parse(localStorage.getItem('adash.proj') || '{}')); } catch {}
+const pjSave = () => { try { localStorage.setItem('adash.proj', JSON.stringify(pj)); } catch {} };
+let pjData = null;         // api.projects(); dropped when a server says its projects changed
+let pjFull = {};           // key -> api.project() (with steps); dropped with pjData
+const pjNotes = {};        // key + '\n' + path -> api.note()
+let pjOpen = null;         // 프로젝트별: the project folded open
+let pjFocus = null;        // 전체 시계열: the focused project
+let pjNote = null;         // the note in the split: {key, path}, or null
+let pjScrollTo = null;     // a stage number to bring into view once the detail is drawn
+let pjSrcKey = '';         // the servers on and their connection, as of the last projects fetch (connect() watches it)
+const pjVertical = () => pj.orient === 'v' || (pj.orient === 'auto' && innerWidth < innerHeight);
+
+async function renderProjects() {
+  if (!pjData) { try { pjData = await api.projects(); } catch { pjData = { enabled: false, dirs: [], projects: [] }; } }
+  if (route().v !== 'projects') return;
+  const d = pjData, tl = pj.view === 'timeline', vert = tl && pjVertical();
+  const seg = (key, opts) => `<span class="seg" data-pj-seg="${key}">${opts.map(([k, l]) => `<button type="button" data-k="${k}" class="${pj[key] === k ? 'on' : ''}">${l}</button>`).join('')}</span>`;
+  const broken = [...d.dirs.filter(x => x.error).map(x => `${srvName(x.server)} ${x.dir}: ${x.error}`),
+    ...(tl ? d.projects.filter(p => p.error).map(p => `${p.name}: ${p.error}`) : [])];
+  $('#view').innerHTML = `<div class="controls">
+      ${seg('view', [['flow', '프로젝트별'], ['timeline', '전체 시계열']])}
+      ${tl ? seg('orient', [['auto', '자동'], ['h', '가로'], ['v', '세로']]) : ''}
+      <div class="legend pj-leg">${['done', 'active', 'scheduling', 'failed'].map(s => `<span><i style="background:${PJ_C[s]}"></i>${PJ_ST[s]}</span>`).join('')}
+        ${tl ? '<span>날짜 간격은 일정 비율이 아님 · 막대 = 진행 중 (시작일 → 오늘)</span>' : ''}</div>
+    </div>
+    ${!d.enabled ? pjNoSource(d)
+      : !d.projects.length ? '<div class="empty">progress.json 이 있는 프로젝트 폴더가 없습니다.</div>'
+      : tl ? `<div class="pj-tlwrap${vert ? ' side' : ''}${pjFocus ? ' focused' : ''}"><div class="box pj-tl hscroll" id="pj-tl"></div><div class="pj-focus" id="pj-focus"></div></div>`
+      : `<div class="pj-list">${d.projects.map(pjRow).join('')}</div>`}
+    ${broken.map(e => `<div class="pj-err">${esc(e)}</div>`).join('')}`;
+  if (!d.enabled || !d.projects.length) return;
+  if (tl) {
+    pjTimeline($('#pj-tl'), d, vert);
+    if (pjFocus && d.projects.some(p => pjKeyOf(p) === pjFocus)) pjDetail($('#pj-focus'), pjFocus); else pjFocus = null;
+  } else if (pjOpen) {
+    const box = [...document.querySelectorAll('[data-pj-detail]')].find(x => x.dataset.pjDetail === pjOpen);
+    if (box) pjDetail(box, pjOpen); else pjOpen = null;
+  }
+}
+
+// No server that is on sends projects: say, per server, why not, and offer the server panel (to add or turn one on).
+const PJ_SRC = { off: '--projects-dir 없이 떠 있음', old: '프로젝트 기능이 없는 서버 버전 (새 코드로 다시 띄워야 함)', error: '연결할 수 없음' };
+function pjNoSource(d) {
+  const rows = (d.sources || []).map(x => `<li><b>${esc(srvName(x.server))}</b> <span class="st">${esc(api.server(x.server)?.url || '')}</span> — ${PJ_SRC[x.state] || x.state}</li>`).join('');
+  return `<div class="empty">프로젝트 진행을 보내는 메트릭 서버가 없습니다.
+    ${rows ? `<ul class="pj-src">${rows}</ul>` : '<br><small>켜진 메트릭 서버가 없습니다.</small>'}
+    <small><code>--projects-dir</code> 로 띄운 서버를 「메트릭 서버」에서 추가하거나 켜세요.</small><br>
+    <button type="button" class="act big accent" data-pj-servers>메트릭 서버 열기</button></div>`;
+}
+
+// 프로젝트별: a project is a <details class="box"> whose summary is its line of stages; opening it shows the detail.
+function pjRow(p) {
+  if (p.error) return `<div class="box pj-row"><div class="pj-head"><b>${esc(p.name)}</b>${srvBadge(p)}</div><div class="pj-err">${esc(p.error)}</div></div>`;
+  const k = pjKeyOf(p), pct = Math.round((p.ratio || 0) * 100);
+  const line = p.stages.map((st, i) => {
+    const link = pjFin(st) && p.stages[i + 1] && pjFin(p.stages[i + 1]);  // green only between two finished stages
+    const tip = `${st.no}. ${st.name} — ${PJ_ST[st.status]}${st.total ? ` · ${st.counts.done}/${st.total}` : ''}${pjFin(st) && st.end ? ` · 완료 ${st.end}` : ''}`;
+    return `<span class="pj-st ${st.status}${link ? ' link' : ''}${p.current?.no === st.no ? ' cur' : ''}" data-st="${st.no}" title="${esc(tip)}">${pjNode(st)}<span>${esc(st.name)}</span></span>`;
+  }).join('');
+  return `<details class="box pj-row" data-pj="${esc(k)}"${pjOpen === k ? ' open' : ''}><summary>
+      <span class="pj-head"><b>${esc(p.name)}</b>${srvBadge(p)}${pjChip(p.status)}
+        <span class="st">${p.counts.done}/${p.total} · ${pct}% · 현재 ${p.current ? esc(`${p.current.no}. ${p.current.name}`) : '-'}</span></span>
+      <span class="pj-flow hscroll">${line}</span></summary>
+    <div class="pj-detail" data-pj-detail="${esc(k)}"></div></details>`;
+}
+
+// The detail of one project into box: figures, then the stages with their steps, split with the open note.
+async function pjDetail(box, key) {
+  let p = pjFull[key];
+  if (!p) {
+    box.innerHTML = '<div class="st pj-wait">불러오는 중…</div>';
+    try { p = pjFull[key] = await api.project(...pjSplitKey(key)); } catch { p = null; }
+    if (!box.isConnected) return;
+  }
+  if (!p || p.error) { box.innerHTML = `<div class="empty">${esc(p?.error || '프로젝트를 불러오지 못했습니다.')}</div>`; return; }
+  const pct = Math.round((p.ratio || 0) * 100), split = pjNote?.key === key;
+  box.innerHTML = `<div class="kpis pj-kpis">
+      <div class="kpi"><span>완료 스텝</span><b>${p.counts.done}/${p.total}</b><small> · ${pct}%</small></div>
+      <div class="kpi"><span>현재 단계</span><b>${p.current ? esc(`${p.current.no}. ${p.current.name}`) : '-'}</b></div>
+      <div class="kpi"><span>기간</span><b class="pj-sm">${pjPeriod(p.start, p.end)}</b></div>
+      ${p.template ? `<div class="kpi"><span>템플릿</span><b class="pj-sm">${esc(p.template)}</b></div>` : ''}
+    </div>
+    <div class="prog pj-prog"><div style="width: ${pct}%; background: var(--done)"></div></div>
+    <div class="pj-split${split ? ' on' : ''}">
+      <div class="pj-stages">${p.stages.map(st => `<section class="pj-stage" data-st-sec="${st.no}">
+        <h4><span class="pj-st ${st.status}${p.current?.no === st.no ? ' cur' : ''}">${pjNode(st)}</span>${esc(st.name)} ${pjChip(st.status)}
+          <span class="st">${st.total ? `${st.counts.done}/${st.total}` : ''}${st.start ? ` · ${pjPeriod(st.start, st.end)}` : ''}</span></h4>
+        ${st.steps.length ? `<ul class="pj-steps">${st.steps.map(sp => `<li><button type="button" class="pj-step${split && pjNote.path === sp.path ? ' on' : ''}" data-pj-step="${esc(sp.path)}">
+            <i class="pj-sdot ${sp.status}"></i><span class="pj-stitle">${esc(sp.title)}</span><span class="st">${sp.date ? pjPeriod(sp.date, sp.endDate) : PJ_ST.scheduling}</span></button>
+            <a class="act pj-obs" href="${pjObsidian(pjAbs(p, sp.path))}" aria-label="${esc(sp.title)} — Obsidian 에서 열기" data-tip="Obsidian 에서 열기">Obsidian</a></li>`).join('')}</ul>`
+          : '<div class="st pj-none">스텝 없음</div>'}
+      </section>`).join('')}</div>
+      <div class="pj-note" data-pj-note></div>
+    </div>`;
+  if (split) pjShowNote(box, p);
+  if (pjScrollTo) { box.querySelector(`[data-st-sec="${pjScrollTo}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); pjScrollTo = null; }
+}
+
+// The note half of the split: the step's facts when the note is a step, then the note itself.
+async function pjShowNote(box, p) {
+  const pane = box.querySelector('[data-pj-note]'), { key, path } = pjNote, ck = key + '\n' + path;
+  box.querySelectorAll('.pj-step').forEach(b => b.classList.toggle('on', b.dataset.pjStep === path));
+  let n = pjNotes[ck];
+  if (!n) {
+    pane.innerHTML = '<div class="st pj-wait">불러오는 중…</div>';
+    try { n = pjNotes[ck] = await api.note(p.server, p.name, path); } catch (e) { n = { error: String(e.message || e) }; }
+    if (!pane.isConnected || pjNote?.path !== path) return;
+  }
+  const bar = `<div class="pj-nbar"><span class="st">${esc(path)}</span><button type="button" class="act" data-pj-nclose aria-label="노트 닫기">닫기 ✕</button></div>`;
+  if (!n || n.error) { pane.innerHTML = bar + `<div class="empty">${esc(n?.error || '노트를 찾을 수 없습니다.')}</div>`; return; }
+  const st = p.stages.find(s => s.steps.some(x => x.path === path)), sp = st?.steps.find(x => x.path === path);
+  let md = n.content, fm = [];
+  const m = md.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (m) { md = md.slice(m[0].length); fm = m[1].split('\n').map(l => l.match(/^([\w-]+):\s*(.*)$/)).filter(Boolean); }
+  const title = fm.find(x => x[1] === 'title')?.[2] || path.split('/').pop().replace(/\.md$/, '');
+  const links = Object.fromEntries((n.links || []).map(l => [l.target, l.path]));
+  pane.innerHTML = bar + `<h3 class="pj-ntitle"><a href="${pjObsidian(n.abs)}" title="Obsidian 에서 열기">${esc(title)}</a> ${sp ? pjChip(sp.status) : ''}</h3>
+    ${sp ? `<div class="kpis pj-kpis"><div class="kpi"><span>${sp.status === 'active' ? '시작 ~ 마지막 작업일' : sp.status === 'pending' ? '계획' : '날짜'}</span><b class="pj-sm">${pjPeriod(sp.date, sp.endDate)}</b></div>
+      <div class="kpi"><span>단계</span><b class="pj-sm">${st.no}. ${esc(st.name)}</b><small> · ${PJ_ST[st.status]}</small></div></div>` : ''}
+    <div class="pj-acts"><a class="act big accent" href="${pjObsidian(n.abs)}">Obsidian 에서 열기</a>
+      <span class="st">수정 ${new Date(n.mtime * 1000).toLocaleString('ko-KR', { hour12: false })}</span></div>
+    ${fm.length ? `<table class="pj-fm">${fm.filter(x => x[1] !== 'title').map(([, k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>` : ''}
+    <article class="pj-md">${pjMarkdown(md, links, rel => pjAbs(p, rel))}</article>`;
+}
+
+// A small Markdown renderer for notes: headings, paragraphs, lists, quotes, code, tables, rules; inline code, bold,
+// italic, links and [[wikilinks]] (a link the server resolved inside the project folder opens that note in Obsidian,
+// any other one searches Obsidian for it). Everything is escaped first, so a note cannot inject markup.
+function pjMarkdown(md, links, absOf) {
+  const inline = t => {
+    const code = [];
+    t = esc(t).replace(/`([^`]+)`/g, (_, c) => `\u0000${code.push(c) - 1}\u0000`);
+    t = t.replace(/!?\[\[([^\]|#\n]+)(#[^\]|\n]*)?(?:\|([^\]\n]*))?\]\]/g, (_, target, h, alias) => {
+      const to = target.trim(), label = alias || to.split('/').pop() + (h || ''), path = links[to.replace(/&amp;/g, '&')];
+      return path ? `<a class="pj-wl" href="${pjObsidian(absOf(path))}" title="Obsidian 에서 열기">${label}</a>`
+        : `<a class="pj-wl out" href="obsidian://search?query=${encodeURIComponent(to)}" title="프로젝트 폴더 밖 노트 — Obsidian 에서 검색">${label}</a>`;
+    });
+    t = t.replace(/\[([^\]]+)\]\(((?:https?|obsidian):\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+    return t.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${code[i]}</code>`);
+  };
+  const out = [], L = md.split('\n');
+  for (let i = 0; i < L.length;) {
+    const l = L[i];
+    if (/^```/.test(l)) {
+      const body = []; for (i++; i < L.length && !/^```/.test(L[i]); i++) body.push(L[i]);
+      out.push(`<pre><code>${esc(body.join('\n'))}</code></pre>`); i++; continue;
+    }
+    let m;
+    if ((m = l.match(/^(#{1,6})\s+(.*)$/))) { out.push(`<h${Math.min(6, m[1].length + 3)}>${inline(m[2])}</h${Math.min(6, m[1].length + 3)}>`); i++; continue; }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^>/.test(l)) { const q = []; for (; i < L.length && /^>/.test(L[i]); i++) q.push(L[i].replace(/^>\s?/, '')); out.push(`<blockquote>${q.map(inline).join('<br>')}</blockquote>`); continue; }
+    if (/^\s*\|/.test(l)) {
+      const rows = []; for (; i < L.length && /^\s*\|/.test(L[i]); i++) if (!/^\s*\|[\s:|-]+\|\s*$/.test(L[i])) rows.push(L[i].trim().replace(/^\||\|$/g, '').split(/\|(?![^[]*\]\])/));  // a [[target|alias]] keeps its |
+      out.push(`<table>${rows.map((r, j) => `<tr>${r.map(c => j ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join('')}</tr>`).join('')}</table>`); continue;
+    }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      const ol = /^\s*\d/.test(l), items = [];
+      for (; i < L.length && /^\s*([-*+]|\d+[.)])\s+/.test(L[i]); i++) {
+        const depth = Math.floor(L[i].match(/^\s*/)[0].length / 2);
+        items.push(`<li style="margin-left: ${depth * 16}px">${inline(L[i].replace(/^\s*([-*+]|\d+[.)])\s+/, '').replace(/^\[([ xX])\]\s*/, (_, c) => c === ' ' ? '☐ ' : '☑ '))}</li>`);
+      }
+      out.push(ol ? `<ol>${items.join('')}</ol>` : `<ul>${items.join('')}</ul>`); continue;
+    }
+    if (!l.trim()) { i++; continue; }
+    const para = []; for (; i < L.length && L[i].trim() && !/^(#{1,6}\s|>|```|\s*\||\s*([-*+]|\d+[.)])\s+)/.test(L[i]); i++) para.push(L[i]);
+    if (!para.length) para.push(L[i++]);  // never stall on a line no rule above took
+    out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+  }
+  return out.join('');
+}
+
+// 전체 시계열 into box. The time axis is ordinal: every date something happens (a fork, a stage finishing, a stage
+// starting, today) gets a slot and slots sit at an even step, so nodes are evenly spaced however far apart their dates
+// are. A project forks off the trunk the day its first step starts and runs in its own lane: a finished stage sits at
+// the slot it finished, stages finishing the same day run side by side on parallel tracks, a stage in progress runs as
+// a bar from its start to today, and a project whose stages are all finished merges back. Time runs left -> right
+// (가로) or top -> bottom (세로); everything is laid out as (t, c) = (time, across) and P() maps it to x/y.
+function pjTimeline(box, d, vert) {
+  const ps = d.projects.filter(p => !p.error)
+    .sort((a, b) => (a.start || "9999").localeCompare(b.start || "9999") || a.name.localeCompare(b.name));
+  const now = new Date(), todayS = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const isDone = p => p.status === "done" || p.status === "failed";
+
+  // slots: every distinct event date, evenly spaced
+  const dates = new Set([todayS]);
+  ps.forEach(p => {
+    if (p.start) dates.add(p.start);
+    p.stages.forEach(st => { if (pjFin(st) && st.end) dates.add(st.end); if (st.status === "active" && st.start) dates.add(st.start); });
+  });
+  const slots = [...dates].sort(), slotOf = d => slots.indexOf(d), last = slots.length - 1, todaySlot = slotOf(todayS);
+  // each node carries its stage name on the side away from the trunk, so steps and tracks leave room for it
+  const STEP = vert ? 54 : 84, R = 11, TRACK = vert ? 70 : 46, INNER = 36, LANEGAP = 38, NAME = vert ? 0 : R + 16;
+  const T0 = vert ? STEP + 90 : STEP + 30, TAIL = vert ? 30 : 60, CPAD = vert ? 60 : 20;
+  const T = s => T0 + s * STEP, tEnd = T(todaySlot) + STEP * 0.45;
+  const P = (t, c) => vert ? [c, t] : [t, c];
+  const pt = (t, c) => P(t, c).join(",");
+
+  // per project: track allocation. Track 0 is the branch line itself; it carries the finished stages from the fork on.
+  const lanes = ps.map(p => {
+    const fork = p.start ? slotOf(p.start) : todaySlot;
+    const items = [], busy = [];  // busy[track] = [[from, to], ...] in slot units
+    const take = (from, to, min = 0) => {
+      for (let j = min; ; j++) {
+        busy[j] = busy[j] || [];
+        if (busy[j].every(([a, b]) => to <= a || from >= b)) { busy[j].push([from, to]); return j; }
+      }
+    };
+    const byDay = {};
+    p.stages.filter(st => pjFin(st) && st.end).forEach(st => (byDay[st.end] = byDay[st.end] || []).push(st));
+    const finSlots = Object.keys(byDay).map(slotOf).sort((a, b) => a - b);
+    busy[0] = finSlots.length ? [[fork - 0.5, finSlots[finSlots.length - 1] + 0.5]] : [];  // nothing finished: free for a bar
+    finSlots.forEach(s => {
+      const sts = byDay[slots[s]].sort((a, b) => a.no - b.no);
+      items.push({kind: "fin", s, st: sts[0], track: 0});
+      sts.slice(1).forEach(st => items.push({kind: "fin", s, st, track: take(s - 0.5, s + 0.5, 1)}));
+    });
+    p.stages.filter(st => st.status === "active").sort((a, b) => (a.start || "").localeCompare(b.start || "") || a.no - b.no)
+      .forEach(st => { const s = st.start ? slotOf(st.start) : todaySlot; items.push({kind: "active", s, st, track: take(s - 0.5, last + 1)}); });
+    return {p, fork, items, tracks: Math.max(1, busy.length)};
+  });
+  // each branch's extent in time: fork, how far its line runs (own items, and every point a parallel track leaves
+  // or rejoins it), merge, and its label
+  const measure = document.createElement("canvas").getContext("2d"), FONT = getComputedStyle(document.body).fontFamily;
+  lanes.forEach(L => {
+    const {p, fork, items} = L;
+    // fork between slots (never on an earlier date's line), leaving the branch line a short run before its first slot
+    L.forkT = T(fork) - STEP * 0.7; L.laneStart = T(fork) - STEP * 0.4;
+    L.mainEnd = L.laneStart + STEP * 0.3;
+    items.forEach(it => {
+      if (it.track === 0) L.mainEnd = Math.max(L.mainEnd, it.kind === "active" ? tEnd : T(it.s));
+      else L.mainEnd = Math.max(L.mainEnd, T(it.s) + (it.kind === "fin" ? STEP / 2 : -STEP / 2));
+    });
+    L.mergeT = isDone(p) ? L.mainEnd + STEP / 2 : null;
+    L.todo = p.stages.filter(st => !pjFin(st) && st.status !== "active");
+    L.stat = `${p.counts.done}/${p.total} · ${Math.round((p.ratio || 0) * 100)}%` + (vert || !L.todo.length ? "" : ` · 시작 전 ${L.todo.map(st => st.no).join("·")}`);
+    measure.font = `600 12px ${FONT}`; const wName = measure.measureText(p.name).width;
+    measure.font = `11px ${FONT}`; const wStat = measure.measureText(L.stat).width;
+    const end = Math.max(L.mergeT ?? 0, items.some(it => it.kind === "active") ? tEnd + 10 : 0, L.mainEnd + 14);
+    // 가로: the label runs along the trunk side of the line; 세로: it stands above the fork, centered on the lane
+    L.t0 = vert ? L.forkT - 52 : L.forkT;
+    L.t1 = vert ? end : Math.max(end, L.laneStart + 6 + wName + 8 + wStat + 10);
+    L.half = vert ? Math.max(wName, wStat, 90) / 2 + 6 : 0;
+  });
+  // placement: each branch (in fork order) takes the spot nearest the trunk, on either side, where neither its body
+  // (label band to outermost track) nor its fork path from the trunk overlaps a branch already placed during the
+  // time they share. A branch that has ended frees its space for later forks.
+  const boxes = [];  // {t0, t1, c0, c1} relative to the trunk (c = 0)
+  const hit = b => boxes.some(o => b.t0 < o.t1 && o.t0 < b.t1 && b.c0 < o.c1 && o.c0 < b.c1);
+  lanes.forEach(L => {
+    const outer = (L.tracks - 1) * TRACK, band = INNER - 6;  // band: the label strip on the trunk side (가로)
+    const reach = vert ? L.half : band;  // how far this branch reaches toward the trunk from its line (label)
+    const cands = [];
+    [1, -1].forEach(side => {
+      cands.push(side * Math.max(INNER, reach + 14));  // 세로 labels stand centered on the lane: keep them off the trunk
+      boxes.forEach(o => { if (side > 0 ? o.c1 > 0 : o.c0 < 0) cands.push(side > 0 ? o.c1 + reach + 12 : o.c0 - reach - 12); });
+    });
+    cands.sort((a, b) => Math.abs(a) - Math.abs(b) || b - a);
+    // when every spot's fork path would cross a branch alive at that moment, accept the crossing rather than drift
+    // further out
+    for (const strict of [true, false]) { if (L.c0 != null) break; for (const c of cands) {
+      const side = c > 0 ? 1 : -1;
+      const inner = vert ? c - side * L.half : c - side * band, far = vert ? c + side * Math.max(outer + 36, L.half) : c + side * (outer + NAME);
+      const body = {t0: L.t0, t1: L.t1, c0: Math.min(inner, far) - 8, c1: Math.max(inner, far) + 8};
+      const path = {t0: L.forkT - 2, t1: L.laneStart + 2, c0: Math.min(0, c) + (c > 0 ? 3 : 0), c1: Math.max(0, c) - (c < 0 ? 3 : 0)};
+      if (hit(body) || (strict && hit(path))) continue;
+      L.side = side; L.c0 = c; boxes.push(body, path); break;
+    } }
+    if (L.c0 == null) {  // cannot happen with the outermost candidates above; never leave a branch unplaced
+      L.side = 1; L.c0 = Math.max(0, ...boxes.map(o => o.c1)) + reach + 12;
+    }
+  });
+  const reachOut = L => L.c0 + L.side * ((L.tracks - 1) * TRACK + NAME);  // outermost track, with its stage names
+  const cMin = Math.min(0, ...lanes.map(reachOut)) - CPAD - (vert ? 0 : 20);
+  const cMax = Math.max(0, ...lanes.map(reachOut)) + CPAD;
+  const trunk = -cMin + (vert ? 30 : 0), CLEN = trunk + cMax;
+  lanes.forEach(L => { L.c0 += trunk; });  // lane offsets were relative to the trunk
+  const [W, H] = P(T(last) + TAIL, CLEN);
+  const o = [`<svg width="${W}" height="${H}">`];
+  const line = (ta, ca, tb, cb, attrs) => { const [x1, y1] = P(ta, ca), [x2, y2] = P(tb, cb); return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${attrs}/>`; };
+  const text = (t, c, s, attrs = "") => { const [x, y] = P(t, c); return `<text x="${x}" y="${y}" ${attrs}>${s}</text>`; };
+  const curve = (ta, ca, tb, cb) => { const m = (ta + tb) / 2; return `M${pt(ta, ca)} C${pt(m, ca)} ${pt(m, cb)} ${pt(tb, cb)}`; };
+
+  slots.forEach((d, s) => {
+    const lbl = (s === todaySlot ? "오늘 " : "") + `${+d.slice(5, 7)}/${+d.slice(8)}`;
+    o.push(line(T(s), vert ? 0 : 24, T(s), CLEN, `stroke="color-mix(in srgb, var(--muted) 16%, transparent)"`),
+           vert ? text(T(s) + 4, 6, lbl, `class="pj-m" dominant-baseline="middle"${s === todaySlot ? ' style="fill:var(--run)"' : ""}`)
+                : text(T(s), 16, lbl, `class="pj-m" text-anchor="middle"${s === todaySlot ? ' style="fill:var(--run)"' : ""}`));
+  });
+  const tTrunkEnd = T(todaySlot) + STEP * 0.6;
+  o.push(line(T0 - STEP * 0.85, trunk, tTrunkEnd, trunk, `stroke="var(--muted)" stroke-width="5" stroke-linecap="round" opacity=".55"`),
+         `<path d="M${pt(tTrunkEnd + 9, trunk)} L${pt(tTrunkEnd, trunk - 7)} L${pt(tTrunkEnd, trunk + 7)}z" fill="var(--muted)" opacity=".55"/>`);
+
+  // the stage's name beside its node: 가로 on the outer side (below a lower lane, above an upper one), 세로 under it
+  const stageName = (t, c, side, st) => {
+    const name = st.name.length > 8 ? st.name.slice(0, 7) + "…" : st.name;
+    const [x, y] = vert ? P(t + R + 13, c) : P(t, c + side * (R + 13) + (side > 0 ? 4 : 0));
+    return `<text class="pj-sname ${st.status}" x="${x}" y="${y}" text-anchor="middle">${esc(name)}</text>`;
+  };
+  const node = (p, t, c, st) => {
+    const [x, y] = P(t, c), active = st.status === "active";
+    const fill = active ? "var(--panel)" : st.status === "failed" ? "var(--bad)" : "var(--done)";
+    const stroke = active ? "var(--run)" : fill, color = active ? "var(--run)" : "var(--on-accent)";
+    const tip = `${p.name}\n${st.no}. ${st.name} — ${active ? `진행 중 (${st.start} 시작)` : `${st.status} ${st.end}`} · ${st.counts.done}/${st.total}`;
+    const cur = p.current && p.current.no === st.no;
+    const halo = cur ? `<circle cx="${x}" cy="${y}" r="${R + 3}" fill="none" stroke="var(--run)" stroke-width="2" class="pj-halo"/>` : "";
+    // a surface-colored ring keeps touching nodes and the lines under them apart
+    const base = `<circle cx="${x}" cy="${y}" r="${R + 2.5}" fill="var(--panel)"/>`;
+    let body;
+    if (active) {
+      // the ring is a gauge of the stage's finished steps, clockwise from the top
+      const C = 2 * Math.PI * (R - 1.5), f = st.total ? st.counts.done / st.total : 0;
+      body = `<circle cx="${x}" cy="${y}" r="${R - 1.5}" fill="color-mix(in srgb, var(--run) 12%, var(--panel))" stroke="color-mix(in srgb, var(--run) 38%, var(--panel))" stroke-width="3.5"/>` +
+        `<circle cx="${x}" cy="${y}" r="${R - 1.5}" fill="none" stroke="var(--run)" stroke-width="3.5" stroke-linecap="round"
+                 stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${x} ${y})"/>`;
+    } else body = `<circle cx="${x}" cy="${y}" r="${R}" fill="${fill}" stroke="var(--chart-rim)" stroke-width="1.5"/>`;
+    return `<g class="pj-nd" data-st="${st.no}">${halo}${base}${body}<circle cx="${x}" cy="${y}" r="${R + 3}" fill="transparent"><title>${esc(tip)}</title></circle>` +
+      `<text x="${x}" y="${y + 4}" text-anchor="middle" style="font-size:11px;font-weight:700;fill:${color};pointer-events:none">${st.no}</text></g>`;
+  };
+  lanes.forEach(L => {
+    const {p, items, side, c0, forkT, laneStart, mainEnd, mergeT, todo, stat} = L, cOf = j => c0 + side * j * TRACK, done = isDone(p);
+    const k = pjKeyOf(p), on = pjFocus === k;
+    o.push(`<g class="pj-br${on ? ' on' : pjFocus ? ' dim' : ''}" data-pj="${esc(k)}" role="button" tabindex="0" aria-label="${esc(p.name)} 상세" aria-expanded="${on}">`,
+           `<path d="${curve(forkT, trunk, laneStart, c0)} L${pt(mainEnd, c0)}${done ? " " + curve(mainEnd, c0, mergeT, trunk).replace("M", "L") : ""}" fill="none" stroke="var(--idle)" stroke-width="2.5"/>`,
+           `<circle cx="${P(forkT, trunk)[0]}" cy="${P(forkT, trunk)[1]}" r="5" fill="var(--panel)" stroke="var(--muted)" stroke-width="2"/>`);
+    if (done) o.push(`<circle cx="${P(mergeT, trunk)[0]}" cy="${P(mergeT, trunk)[1]}" r="5" fill="var(--done)"/>`);
+    const fins0 = items.filter(it => it.kind === "fin" && it.track === 0);
+    if (fins0.length > 1) o.push(line(T(fins0[0].s), c0, T(fins0[fins0.length - 1].s), c0, `stroke="var(--done)" stroke-width="2.5"`));
+    items.forEach(it => {
+      const c = cOf(it.track), t = T(it.s);
+      // where a parallel track splits off: half a slot back on the branch line, or, in the fork's own slot, where the
+      // line has just begun
+      const split = curve(Math.max(t - STEP / 2, laneStart), c0, t, c);
+      if (it.kind === "fin" && it.track > 0)  // a parallel finish: leaves the branch, then rejoins it
+        o.push(`<path d="${split} ${curve(t, c, t + STEP / 2, c0).replace("M", "L")}" fill="none" stroke="var(--done)" stroke-width="2"/>`);
+      if (it.kind === "active") {
+        if (it.track > 0) o.push(`<path d="${split}" fill="none" stroke="var(--run)" stroke-width="2"/>`);
+        o.push(line(t, c, tEnd, c, `stroke="var(--run)" stroke-width="6" stroke-linecap="round" opacity=".35"`),
+               line(t, c, tEnd, c, `stroke="var(--run)" stroke-width="2"`),
+               `<path d="M${pt(tEnd + 8, c)} L${pt(tEnd, c - 5)} L${pt(tEnd, c + 5)}z" fill="var(--run)"/>`);
+      }
+    });
+    items.forEach(it => o.push(node(p, T(it.s), cOf(it.track), it.st), stageName(T(it.s), cOf(it.track), side, it.st)));
+    if (vert) {
+      // above the fork, where the lane has not begun; 시작 전 goes here too (lanes are too close at the bottom)
+      const [x, y] = P(forkT - (todo.length ? 44 : 30), c0);
+      o.push(`<text class="pj-lblv" x="${x}" y="${y}" text-anchor="middle" style="font-weight:600">${esc(p.name)}<tspan class="pj-m" x="${x}" dy="15" style="font-weight:400">${stat}</tspan>` +
+             (todo.length ? `<tspan class="pj-m" x="${x}" dy="14" style="font-weight:400">시작 전 ${todo.map(st => st.no).join("·")}</tspan>` : "") + `</text>`);
+    } else {
+      // on the trunk side of the branch line, just past the fork
+      o.push(text(laneStart + 6, c0 + (side > 0 ? -16 : 26), `${esc(p.name)}<tspan class="pj-m" dx="8" style="font-weight:400">${stat}</tspan>`, `style="font-weight:600"`));
+    }
+    o.push(`</g>`);
+  });
+  o.push(`</svg>`);
+  box.innerHTML = o.join("");
+  // a label running off either edge (outer lanes in 세로) is pulled back inside
+  box.querySelectorAll(".pj-lblv").forEach(t => {
+    const b = t.getBBox(), dx = Math.max(6 - b.x, 0) || Math.min(W - 6 - (b.x + b.width), 0);
+    if (dx) t.querySelectorAll("tspan").forEach(s => s.setAttribute("x", +s.getAttribute("x") + dx)), t.setAttribute("x", +t.getAttribute("x") + dx);
+  });
+}
+
+// Opening a project (프로젝트별): one at a time, like an accordion. Fires for the open attribute a redraw sets too.
+document.addEventListener('toggle', e => {
+  const row = e.target;
+  if (!row.matches?.('details.pj-row')) return;
+  const k = row.dataset.pj, box = row.querySelector('[data-pj-detail]');
+  if (row.open) {
+    document.querySelectorAll('details.pj-row[open]').forEach(x => { if (x !== row) x.open = false; });
+    if (pjOpen !== k) { pjOpen = k; if (pjNote?.key !== k) pjNote = null; }
+    if (!box.firstChild) pjDetail(box, k);
+  } else if (pjOpen === k) { pjOpen = null; pjNote = null; box.innerHTML = ''; }
+}, true);
+
+function pjSelect(k, stage) {
+  // 전체 시계열: a branch (or one of its stages) focuses that project; the same branch again lets it go.
+  pjFocus = pjFocus === k && !stage ? null : k;
+  if (pjNote && pjNote.key !== pjFocus) pjNote = null;
+  pjScrollTo = stage || null;
+  renderProjects().then(() => {
+    const g = pjFocus && [...document.querySelectorAll('.pj-br')].find(x => x.dataset.pj === pjFocus), tl = $('#pj-tl');
+    if (!g || !tl) return;
+    // bring the branch into view in the graph, and the detail into the window
+    const b = g.getBBox();
+    if (tl.scrollWidth > tl.clientWidth) tl.scrollTo({ left: Math.max(0, b.x - 40), behavior: 'smooth' });
+    if (tl.scrollHeight > tl.clientHeight) tl.scrollTo({ top: Math.max(0, b.y - 40), behavior: 'smooth' });
+    if (!pjVertical()) $('#pj-focus').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+document.addEventListener('click', e => {
+  if (route().v !== 'projects') return;
+  const t = e.target, seg = t.closest('[data-pj-seg] button');
+  if (t.closest('[data-pj-servers]')) return serverPanel();
+  if (seg) {
+    const key = seg.closest('[data-pj-seg]').dataset.pjSeg;
+    pj[key] = seg.dataset.k; pjSave(); if (key === 'view') pjNote = null;
+    return renderProjects();
+  }
+  // a stage on a project's line: open the project there (an open one stays open)
+  const node = t.closest('details.pj-row > summary .pj-st');
+  if (node) {
+    const row = node.closest('details.pj-row');
+    pjScrollTo = +node.dataset.st;
+    if (row.open) { e.preventDefault(); row.querySelector(`[data-st-sec="${pjScrollTo}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); pjScrollTo = null; }
+    return;
+  }
+  const br = t.closest('.pj-br');
+  if (br) return pjSelect(br.dataset.pj, +t.closest('.pj-nd')?.dataset.st || 0);
+  const box = t.closest('[data-pj-detail], #pj-focus'), key = box && (box.dataset.pjDetail || pjFocus);
+  if (!box || !key || !pjFull[key]) return;
+  const step = t.closest('[data-pj-step]');
+  if (step) {
+    if (pjNote?.key === key && pjNote.path === step.dataset.pjStep) pjNote = null;  // the open step again closes the split
+    else pjNote = { key, path: step.dataset.pjStep };
+    box.querySelector('.pj-split').classList.toggle('on', !!pjNote);
+    if (pjNote) pjShowNote(box, pjFull[key]); else box.querySelectorAll('.pj-step.on').forEach(b => b.classList.remove('on'));
+  } else if (t.closest('[data-pj-nclose]')) {
+    pjNote = null; box.querySelector('.pj-split').classList.remove('on'); box.querySelectorAll('.pj-step.on').forEach(b => b.classList.remove('on'));
+  }
+});
+// the graph's branches are role="button": Enter or Space picks one, as a click does
+document.addEventListener('keydown', e => {
+  const br = (e.key === 'Enter' || e.key === ' ') && e.target.closest?.('.pj-br');
+  if (br) { e.preventDefault(); pjSelect(br.dataset.pj, 0); }
+});
+
+// A vertical wheel over something that only scrolls sideways (.hscroll: the 가로 timeline, a project's line of
+// stages) scrolls it sideways. At either end the wheel falls through to the page, so it never traps the page scroll;
+// a sideways trackpad swipe, Shift+wheel and Ctrl+wheel (zoom) are left to the browser.
+addEventListener('wheel', e => {
+  if (e.shiftKey || e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+  const el = e.target.closest?.('.hscroll');
+  if (!el || el.scrollWidth <= el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) return;
+  const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1), max = el.scrollWidth - el.clientWidth;
+  if ((dy < 0 && el.scrollLeft <= 0) || (dy > 0 && el.scrollLeft >= max - 1)) return;
+  e.preventDefault();
+  el.scrollLeft = Math.max(0, Math.min(max, el.scrollLeft + dy));
+}, { passive: false });
+
 function connect() {
   const last = {};
   let wasLive = false;
   api.events({
     version: v => { const i = v.indexOf(':'), id = v.slice(0, i); if (last[id] !== v) { last[id] = v; pump(); } },
+    // a server's projects changed: drop what was fetched and redraw the projects view (an open note stays as it is)
+    projects: () => { pjData = null; pjFull = {}; if (route().v === 'projects') render(); },
     change: () => {
       renderConn();
+      // which servers are on and connected decides where projects come from: refetch them when that changes
+      const srcKey = srvOn().map(x => `${x.id}${x.live ? '+' : '-'}`).join(',');
+      if (srcKey !== pjSrcKey) { pjSrcKey = srcKey; pjData = null; pjFull = {}; if (route().v === 'projects') render(); }
       const live = srvOn().some(x => x.live);
       if (live && !wasLive) checkBuild();
       wasLive = live;
@@ -2384,4 +2858,7 @@ function connect() {
 }
 connect();
 setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests'].includes(route().v) || onlyLive && route().v === 'compare')) render(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
-let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (route().v === 'session' && detail) renderSession(); }, 200); });
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => {
+  if (route().v === 'session' && detail) renderSession();
+  if (route().v === 'projects' && pj.view === 'timeline') render();  // 자동 orientation follows the window's shape
+}, 200); });

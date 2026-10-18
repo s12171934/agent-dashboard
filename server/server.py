@@ -5,6 +5,7 @@ Stdlib only. Tails session logs incrementally and pushes change notices over SSE
 ../frontend and is served elsewhere (Cloudflare Pages); this process only answers /api/* and /events.
 
     python3 server.py [--port 8787] [--hours 24] [--host 127.0.0.1] [--origin https://<project>.pages.dev]
+                      [--projects-dir <folder of project folders>]
 
 There is no authentication: any client that reaches a bound address (loopback, the tailnet) is trusted.
 Requests whose Host header is not one of those addresses are refused, which stops DNS rebinding, and a
@@ -1960,6 +1961,266 @@ def decision_loop():
         time.sleep(DECISION_EVERY)
 
 
+# ---- 프로젝트 진행: <--projects-dir>/<project>/progress.json (../exports/project-progress.schema.json) ----
+# The file holds source facts only (ordered stages, their steps with dates and status); everything derived — stage
+# status and span, step counts, current stage, completion — is computed here, never written back. Read-only: a
+# file that does not match the schema shows as that project's error and the rest carry on.
+PROJECTS_DIRS = []  # main() fills it from --projects-dir; empty turns the feature off
+PROJECTS_EVERY = 2
+STEP_STATES = ("scheduling", "pending", "active", "done", "failed")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATETIME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-](\d{2}):(\d{2}))$")
+project_cache = {}  # progress.json path -> (mtime, entry)
+projects = {"version": 0, "dirs": [], "list": []}  # what /api/projects serves; rebound whole, so readers need no lock
+
+
+def valid_date(v):
+    try:
+        return isinstance(v, str) and bool(DATE_RE.match(v)) and bool(datetime.strptime(v, "%Y-%m-%d"))
+    except ValueError:
+        return False
+
+
+def valid_datetime(v):
+    m = isinstance(v, str) and DATETIME_RE.match(v)
+    return bool(m) and valid_date(m.group(1)) and int(m.group(2)) < 24 and int(m.group(3)) < 60 \
+        and int(m.group(4)) < 61 and (m.group(5) is None or (int(m.group(5)) < 24 and int(m.group(6)) < 60))
+
+
+def progress_problems(d, folder):
+    """Schema violations of a parsed progress.json, as short messages ([] when it conforms)."""
+    def text(v):
+        return isinstance(v, str) and len(v) >= 1
+
+    def number(v):
+        return isinstance(v, int) and not isinstance(v, bool)
+
+    if not isinstance(d, dict):
+        return ["최상위가 객체가 아님"]
+    out = [f"알 수 없는 키 {k}" for k in d if k not in ("schemaVersion", "project", "template", "generatedAt", "stages")]
+    out += [f"{k} 없음" for k in ("schemaVersion", "project", "stages") if k not in d]
+    if "schemaVersion" in d and not (number(d["schemaVersion"]) and d["schemaVersion"] == 1):
+        out.append(f"지원하지 않는 schemaVersion {d['schemaVersion']!r}")
+    if "project" in d:
+        if not text(d["project"]):
+            out.append("project 가 비어 있지 않은 문자열이 아님")
+        elif d["project"] != folder:  # the schema: "as the project folder is named; the project's identity"
+            out.append(f"project {d['project']!r} 가 폴더 이름과 다름")
+    if "template" in d and not text(d["template"]):
+        out.append("template 이 비어 있지 않은 문자열이 아님")
+    if "generatedAt" in d and not valid_datetime(d["generatedAt"]):
+        out.append(f"generatedAt {d['generatedAt']!r} 가 date-time 이 아님")
+    stages = d.get("stages")
+    if "stages" in d and not (isinstance(stages, list) and stages):
+        out.append("stages 가 비어 있지 않은 배열이 아님")
+        stages = []
+    nos, paths = set(), set()
+    for i, st in enumerate(stages or []):
+        where = f"stages[{i}]"
+        if not isinstance(st, dict):
+            out.append(f"{where} 가 객체가 아님")
+            continue
+        out += [f"{where}: 알 수 없는 키 {k}" for k in st if k not in ("no", "name", "steps")]
+        out += [f"{where}: {k} 없음" for k in ("no", "name", "steps") if k not in st]
+        if "no" in st:
+            if not (number(st["no"]) and st["no"] >= 1):
+                out.append(f"{where}: no 가 1 이상의 정수가 아님")
+            elif st["no"] in nos:
+                out.append(f"{where}: no {st['no']} 중복")
+            else:
+                nos.add(st["no"])
+        if "name" in st and not text(st["name"]):
+            out.append(f"{where}: name 이 비어 있지 않은 문자열이 아님")
+        if "steps" in st and not isinstance(st["steps"], list):
+            out.append(f"{where}: steps 가 배열이 아님")
+            continue
+        for j, sp in enumerate(st.get("steps") or []):
+            at = f"{where}.steps[{j}]"
+            if not isinstance(sp, dict):
+                out.append(f"{at} 가 객체가 아님")
+                continue
+            out += [f"{at}: 알 수 없는 키 {k}" for k in sp if k not in ("path", "date", "endDate", "status")]
+            out += [f"{at}: {k} 없음" for k in ("path", "status") if k not in sp]
+            if "path" in sp:
+                if not text(sp["path"]):
+                    out.append(f"{at}: path 가 비어 있지 않은 문자열이 아님")
+                elif sp["path"] in paths:
+                    out.append(f"{at}: path {sp['path']!r} 중복")
+                else:
+                    paths.add(sp["path"])
+            if "status" in sp and sp["status"] not in STEP_STATES:
+                out.append(f"{at}: status {sp['status']!r} 가 {'·'.join(STEP_STATES)} 가 아님")
+            for k in ("date", "endDate"):
+                if k in sp and not valid_date(sp[k]):
+                    out.append(f"{at}: {k} {sp[k]!r} 가 date(YYYY-MM-DD) 가 아님")
+            if sp.get("status") == "scheduling":
+                if "date" in sp or "endDate" in sp:
+                    out.append(f"{at}: scheduling 인데 날짜가 있음")
+            elif "status" in sp and "date" not in sp:
+                out.append(f"{at}: {sp['status']} 인데 date 없음")
+    return out
+
+
+def flow_status(counts):
+    """Status of a group of steps (a stage, or the whole project) from its per-status counts.
+    empty: no steps. done: all done. failed: all finished (done/failed), some failed. active: a step in progress, or
+    some finished while others are still to come. pending: none started, some scheduled. scheduling: all undated."""
+    total = sum(counts.values())
+    finished = counts["done"] + counts["failed"]
+    if not total:
+        return "empty"
+    if counts["done"] == total:
+        return "done"
+    if finished == total:
+        return "failed"
+    if counts["active"] or finished:
+        return "active"
+    return "pending" if counts["pending"] else "scheduling"
+
+
+def tally(steps):
+    counts = dict.fromkeys(STEP_STATES, 0)
+    for sp in steps:
+        counts[sp["status"]] += 1
+    total = sum(counts.values())
+    return {"status": flow_status(counts), "total": total, "counts": counts,
+            "ratio": round(counts["done"] / total, 4) if total else None}
+
+
+def span(steps):
+    """(start, end) over the dated steps: earliest date, latest endDate (a one-day item ends on its date).
+    Planned dates of pending steps count too."""
+    dated = [sp for sp in steps if sp.get("date")]
+    if not dated:
+        return None, None
+    return min(sp["date"] for sp in dated), max(sp.get("endDate") or sp["date"] for sp in dated)
+
+
+def current_stage(stages):
+    """The earliest active stage; with none active, the first stage still to start (pending/scheduling) after the
+    last one with any finished step (the first such stage when nothing has finished); None when nothing is left."""
+    active = [st for st in stages if st["status"] == "active"]
+    if active:
+        return active[0]
+    worked = [i for i, st in enumerate(stages) if st["counts"]["done"] or st["counts"]["failed"]]
+    rest = stages[worked[-1] + 1:] if worked else stages
+    return next((st for st in rest if st["status"] in ("pending", "scheduling")), None)
+
+
+def derive_progress(d):
+    """Parsed, schema-valid progress.json -> the derived view: stages in flow order with status, span and counts,
+    plus the project's totals and current stage."""
+    stages = []
+    for st in sorted(d["stages"], key=lambda st: st["no"]):
+        steps = [{**sp, "title": os.path.splitext(os.path.basename(sp["path"]))[0]} for sp in st["steps"]]
+        start, end = span(steps)
+        stages.append({"no": st["no"], "name": st["name"], **tally(steps), "start": start, "end": end,
+                       "steps": sorted(steps, key=lambda sp: (sp.get("date") or "9999", sp["path"]))})
+    every = [sp for st in stages for sp in st["steps"]]
+    start, end = span(every)
+    cur = current_stage(stages)
+    return {**tally(every), "start": start, "end": end, "template": d.get("template"),
+            "generated_at": d.get("generatedAt"), "stage_count": len(stages),
+            "current": cur and {"no": cur["no"], "name": cur["name"], "status": cur["status"]}, "stages": stages}
+
+
+def read_progress(path, mtime, base, name):
+    entry = {"name": name, "dir": base, "path": path, "mtime": mtime, "error": None}
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError) as e:
+        return {**entry, "error": "읽지 못함: " + short(e, 200)}
+    problems = progress_problems(d, name)
+    if problems:
+        return {**entry, "error": f"스키마 불일치 ({len(problems)}건): " + short("; ".join(problems[:5]), 400),
+                "problems": problems[:50]}
+    return {**entry, **derive_progress(d)}
+
+
+def lite_project(p):
+    """List form: the detail without each stage's steps."""
+    return {**p, "stages": [{k: v for k, v in st.items() if k != "steps"} for st in p["stages"]]} if "stages" in p else p
+
+
+NOTE_MAX = 1 << 20
+WIKILINK = re.compile(r"\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|[^\]\n]*)?\]\]")
+
+
+def find_project(name, base=None):
+    """The listed project by folder name; ?dir= picks one when the same name sits in two --projects-dir."""
+    return next((e for e in projects["list"] if e["name"] == name and base in (None, e["dir"])), None)
+
+
+def project_note(entry, rel):
+    """(body, status) for a note inside a project's folder: any .md under it, not only the steps, so the page can
+    follow a step note's [[links]]. The resolved path must stay inside the folder (no .., no symlink out)."""
+    root = os.path.realpath(os.path.dirname(entry["path"]))
+    full = os.path.realpath(os.path.join(root, rel))
+    if not full.startswith(root + os.sep) or not full.endswith(".md") or not os.path.isfile(full):
+        return {"error": "not found"}, 404
+    if os.path.getsize(full) > NOTE_MAX:
+        return {"error": "노트가 너무 큼"}, 413
+    try:
+        with open(full, encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        return {"error": short(e, 200)}, 500
+    # [[target]] -> a note in this project folder: a vault path ("10_Projects/<p>/x/_index") matches by suffix,
+    # a bare name by file name. Links outside the folder stay unresolved (path None).
+    notes = []
+    for d, subdirs, files in os.walk(root):
+        subdirs[:] = [s for s in subdirs if not s.startswith(".")]
+        notes += [os.path.relpath(os.path.join(d, f), root) for f in files if f.endswith(".md")]
+    links = []
+    for target in dict.fromkeys(m.strip() for m in WIKILINK.findall(content)):
+        want = target if target.endswith(".md") else target + ".md"
+        # the longest suffix match wins, so ".../3 설계문서/_index" is not taken for the folder's own _index
+        hit = sorted((n for n in notes if ("/" + want).endswith("/" + n) or ("/" + n).endswith("/" + want)), key=len, reverse=True) or \
+              [n for n in notes if os.path.basename(n) == os.path.basename(want)]
+        links.append({"target": target, "path": hit[0] if hit else None})
+    return {"project": entry["name"], "path": os.path.relpath(full, root), "abs": full,
+            "mtime": os.path.getmtime(full), "content": content, "links": links}, 200
+
+
+def scan_projects():
+    """One pass over every --projects-dir; rebinds `projects` (and bumps its version) only when something changed."""
+    dirs, found = [], {}
+    for base in PROJECTS_DIRS:
+        try:
+            names = sorted(os.listdir(base))
+        except OSError as e:
+            dirs.append({"dir": base, "error": short(e.strerror or e, 200)})
+            continue
+        dirs.append({"dir": base, "error": None})
+        for name in names:
+            path = os.path.join(base, name, "progress.json")
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                continue  # not a project folder (or not one yet)
+            cached = project_cache.get(path)
+            if not cached or cached[0] != mtime:
+                cached = project_cache[path] = (mtime, read_progress(path, mtime, base, name))
+            found[path] = cached[1]
+    for path in [p for p in project_cache if p not in found]:
+        project_cache.pop(path)  # a folder removed or its progress.json deleted
+    global projects
+    listed = list(found.values())
+    if listed != projects["list"] or dirs != projects["dirs"]:
+        projects = {"version": projects["version"] + 1, "dirs": dirs, "list": listed}
+
+
+def projects_loop():
+    while True:
+        try:
+            scan_projects()
+            loop_ok("projects")
+        except Exception as e:
+            loop_failed("projects", e)
+        time.sleep(PROJECTS_EVERY)
+
+
 # ---- HTTP ----
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
 # with the one it was built for and says so instead of rendering garbage.
@@ -2220,14 +2481,37 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # orca not running, CLI changed, etc.
                 return self.send_json({"error": str(e)}, 502)
             self.send_body(inbox_cache["body"])
+        elif url.path == "/api/projects":
+            p = projects
+            self.send_json({"enabled": bool(PROJECTS_DIRS), "version": p["version"], "dirs": p["dirs"],
+                            "projects": [lite_project(e) for e in p["list"]]})
+        elif url.path == "/api/project":
+            # By folder name; ?dir= picks one when the same name sits in two --projects-dir (else the first listed).
+            q = parse_qs(url.query)
+            found = find_project((q.get("name") or [""])[0], (q.get("dir") or [None])[0])
+            if not found:
+                return self.send_json({"error": "not found" if PROJECTS_DIRS else "--projects-dir 가 지정되지 않음"}, 404)
+            self.send_json(found)
+        elif url.path == "/api/project/note":
+            # ?name=<project>&path=<note path relative to the project folder>[&dir=]: a step note or a note it links to
+            q = parse_qs(url.query)
+            found = find_project((q.get("name") or [""])[0], (q.get("dir") or [None])[0])
+            if not found:
+                return self.send_json({"error": "not found" if PROJECTS_DIRS else "--projects-dir 가 지정되지 않음"}, 404)
+            self.send_json(*project_note(found, (q.get("path") or [""])[0]))
         elif url.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            seen = -1
+            seen = seen_projects = -1
             try:
                 while True:
+                    # Project changes go out as a named event, so a page listening only for plain messages
+                    # (the /api/state refetch) is not woken by them.
+                    if PROJECTS_DIRS and projects["version"] != seen_projects:
+                        seen_projects = projects["version"]
+                        self.wfile.write(f"event: projects\ndata: {seen_projects}\n\n".encode())
                     if version != seen:
                         seen = version
                         self.wfile.write(f"data: {seen}\n\n".encode())
@@ -2370,13 +2654,18 @@ def main():
                     help="address to bind; repeatable (default 127.0.0.1). e.g. --host 127.0.0.1 --host <tailscale ip>")
     ap.add_argument("--origin", action="append", default=[],
                     help="page origin allowed over CORS, subdomains included; repeatable. e.g. --origin https://<project>.pages.dev")
+    ap.add_argument("--projects-dir", action="append", default=[],
+                    help="folder whose subfolders with a progress.json are projects; repeatable. Off when not given")
     args = ap.parse_args()
     hosts = args.host or ["127.0.0.1"]
+    PROJECTS_DIRS.extend(os.path.abspath(os.path.expanduser(d)) for d in args.projects_dir)
     threading.Thread(target=scan_loop, args=(args.hours,), daemon=True).start()
     threading.Thread(target=orca_loop, args=(args.runs, args.hours), daemon=True).start()
     threading.Thread(target=ext_plan_loop, daemon=True).start()
     threading.Thread(target=history_loop, daemon=True).start()
     threading.Thread(target=decision_loop, daemon=True).start()
+    if PROJECTS_DIRS:
+        threading.Thread(target=projects_loop, daemon=True).start()
     servers = []
     ALLOWED_HOSTS.update(h.lower() for h in hosts)
     ALLOWED_ORIGINS.update(o.rstrip("/").lower() for o in args.origin)
@@ -2385,6 +2674,7 @@ def main():
         servers.append(server)
         print(f"agent-dashboard API → http://{host}:{args.port}/", flush=True)
     print(f"allowed origins: {', '.join(sorted(ALLOWED_ORIGINS)) or '(local only)'}", flush=True)
+    print(f"project dirs: {', '.join(PROJECTS_DIRS) or '(off)'}", flush=True)
     for server in servers[1:]:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     servers[0].serve_forever()

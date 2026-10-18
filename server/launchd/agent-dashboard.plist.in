@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Keeps the dashboard server up across crashes and reboots. Template: launchd/install.sh fills in the label, python, bind addresses, allowed origins and directory, then installs the result.
+  Keeps the dashboard server up across crashes and reboots. Template: launchd/install.sh fills in the label, python, bind addresses, allowed origins, project folders and directory, then installs the result.
   Binding the Tailscale address fails until tailscaled is up; KeepAlive retries every ThrottleInterval.
 -->
 <plist version="1.0">

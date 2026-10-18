@@ -55,6 +55,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
 | 테스트 진행 | `/private/tmp/agent-test-progress/*.json` |
 | 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문 (아래 「결정 버튼」) |
+| 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 
 ## 실행
 
@@ -72,6 +73,7 @@ tailscale serve --bg 8787                                                  # 다
 | `--runs` | `8` | 추적할 최근 Orca Run 의 최소 개수 |
 | `--host` | `127.0.0.1` | 바인드 주소. 여러 번 줄 수 있다 |
 | `--origin` | 없음 | CORS 를 허용할 페이지 출처. 하위 도메인(Pages 프리뷰 배포)도 포함하므로, 다른 서비스가 사는 도메인이면 그 하위 도메인들도 허용된다. 여러 번 줄 수 있다 |
+| `--projects-dir` | 없음 (기능 꺼짐) | 프로젝트 폴더들을 담은 폴더. 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 본다. 여러 번 줄 수 있다 |
 
 ## 상시 실행 (launchd)
 
@@ -88,6 +90,9 @@ server/launchd/install.sh uninstall                                             
 | `DASH_HOSTS` | `127.0.0.1` (공백으로 구분) |
 | `DASH_ORIGINS` | 없음 (공백으로 구분, `--origin` 으로 넘김) |
 | `DASH_PYTHON` | `PATH` 의 `python3` |
+| `DASH_PROJECTS_DIRS` | 없음 (`:` 로 구분 — 경로에 공백이 있을 수 있어서. 각각 `--projects-dir` 로 넘김) |
+
+예: `DASH_PROJECTS_DIRS="$HOME/notes/projects" DASH_ORIGINS="…" server/launchd/install.sh`
 
 - 같은 포트로 손으로 띄운 서버가 있으면 먼저 내려야 한다.
 - 로그는 `server/server.log` 에 쌓인다.
@@ -143,6 +148,60 @@ aplan skip N [메모] / aplan fail N [메모]
 - 호출한 세션은 `CLAUDE_CODE_SESSION_ID` · `CODEX_THREAD_ID` · Orca 터미널 핸들 순으로 식별한다.
 - 기록은 출력만 하는 명령이다. 실패해도 에이전트의 본 작업을 멈추지 않는다.
 
+## 프로젝트 진행 API
+
+`--projects-dir` 를 주면 그 폴더 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 읽는다(조회 전용, 파일을 쓰지 않는다). 파일 형식은 `exports/project-progress.schema.json` 이고, 파일에는 원천 사실만 있으므로 아래 파생값은 모두 서버가 계산한다. 2초마다 mtime 을 보고 바뀐 파일만 다시 읽는다.
+
+| 엔드포인트 | 응답 |
+| --- | --- |
+| `GET /api/projects` | `{"enabled", "version", "dirs": [{"dir", "error"}], "projects": [...]}` — 프로젝트마다 아래 필드, 단계(`stages`)에는 `steps` 를 빼고 |
+| `GET /api/project?name=<폴더 이름>[&dir=<--projects-dir>]` | 프로젝트 하나, 단계마다 `steps` 포함. 같은 이름이 두 `--projects-dir` 에 있으면 `dir` 로 고르고, 없으면 먼저 준 폴더의 것. 없으면 404 |
+| `GET /api/project/note?name=<폴더 이름>&path=<노트 경로>[&dir=]` | 프로젝트 폴더 안 노트 하나: `{"project", "path", "abs", "mtime", "content", "links": [{"target", "path"}]}`. `path` 는 프로젝트 폴더 기준(step 의 `path` 그대로). 스텝 노트가 아니어도 그 폴더 안 `.md` 면 준다 — 노트의 `[[링크]]` 를 따라갈 수 있게. `links` 는 본문의 위키링크를 같은 폴더 안 노트로 푼 것(볼트 경로면 뒤쪽이 가장 길게 맞는 것, 이름만이면 파일 이름으로; 폴더 밖이면 `null`). 실제 경로(symlink·`..` 해석 후)가 폴더 밖이거나 `.md` 가 아니면 404, 1MB 초과는 413 |
+| `GET /events` | 기존 `data: <version>` 메시지와 별도로, 프로젝트가 바뀌면 이름 붙은 이벤트 `event: projects` / `data: <version>` 을 보낸다. 연결 직후 한 번 보낸다. `onmessage` 만 듣는 페이지는 깨우지 않는다 |
+
+대시보드의 「프로젝트」 탭(바의 흐름 아이콘)이 이 API 를 그린다. 켜진 메트릭 서버 중 `--projects-dir` 로 띄운 서버의 프로젝트를 모두 모은다.
+
+- **프로젝트별:** 프로젝트마다 단계를 단계 순서대로 한 줄로 잇는다. 프로젝트를 누르면 그 자리에서 펼쳐져(아코디언, 한 번에 하나) 단계와 스텝이 나온다. 단계 노드를 누르면 그 단계로 간다.
+- **전체 시계열:** 굵은 줄기 하나에서 프로젝트마다 가지가 갈라진다. 날짜가 있는 사건마다 같은 간격의 칸을 주고(실제 날짜 간격에 비례하지 않음), 같은 날 끝난 단계는 나란히, 진행 중인 단계는 시작일부터 오늘까지 막대로 그린다. 모든 단계가 끝난 프로젝트는 줄기로 합류하고, 그 자리는 뒤에 갈라지는 가지가 다시 쓴다. 가로(시간 좌→우)·세로(위→아래)·자동(창 비율)으로 바꿀 수 있다. 프로젝트를 누르면 그 가지가 강조되고 상세가 그래프 아래(가로) 또는 옆(세로)에 나온다.
+- **스텝을 누르면** 상세가 둘로 나뉘어 한쪽에 스텝 목록, 다른 쪽에 그 스텝의 Obsidian 노트(속성, 본문)가 나온다. 문서 자체는 Obsidian 에서 열린다: 스텝 줄의 「Obsidian」, 노트 제목, 「Obsidian 에서 열기」, 본문의 `[[링크]]`(프로젝트 폴더 안 노트는 `obsidian://open?path=<절대 경로>`, 폴더 밖은 Obsidian 검색).
+- 가로로만 넘치는 영역(가로 그래프, 단계 줄)은 세로 휠로 가로 스크롤한다. 양 끝에서는 페이지가 스크롤된다.
+- 기기별 저장값: `adash.proj` (보기, 방향).
+
+`--projects-dir` 를 주지 않으면 `/api/projects` 는 `{"enabled": false, ...}`, `/api/project` 는 404, `projects` 이벤트는 나가지 않는다.
+
+프로젝트 필드 (예: 폴더 `Sample App`)
+
+```json
+{"name": "Sample App", "dir": "/…/projects", "path": "/…/projects/Sample App/progress.json", "mtime": 1760000000.0,
+ "error": null, "template": "basic", "generated_at": "2026-10-18T09:00:00+09:00",
+ "status": "active", "total": 6, "counts": {"scheduling": 1, "pending": 1, "active": 1, "done": 2, "failed": 1},
+ "ratio": 0.3333, "start": "2026-10-01", "end": "2026-10-20", "stage_count": 4,
+ "current": {"no": 2, "name": "Build", "status": "active"},
+ "stages": [{"no": 1, "name": "Design", "status": "failed", "total": 2, "counts": {…}, "ratio": 0.5,
+             "start": "2026-10-01", "end": "2026-10-04",
+             "steps": [{"path": "1 Design/spec.md", "title": "spec", "date": "2026-10-01", "endDate": "2026-10-03", "status": "done"}, …]}, …]}
+```
+
+- 파일을 읽지 못하거나 스키마에 맞지 않으면 그 프로젝트만 `error`(요약)와 `problems`(위반 목록)를 갖고 파생값 필드가 없다. 서버와 다른 프로젝트는 그대로 돈다. 열지 못한 `--projects-dir` 는 `dirs[].error` 에 뜬다.
+- 검사하는 것: 스키마의 필수 키·알 수 없는 키·타입·`schemaVersion` 1·빈 문자열·`no` ≥ 1·`status` 값·`date`(YYYY-MM-DD)·`generatedAt`(RFC 3339)·`scheduling` 이면 날짜 없음, 아니면 `date` 있음. 설명에 적힌 것도 검사한다 — `no` 중복, 파일 안 `path` 중복, `project` 가 폴더 이름과 같음.
+
+파생 규칙
+
+- **단계 순서:** `no` 오름차순 (파일 안 순서가 아니라). 단계 안의 `steps` 는 순서가 의미 없다는 스키마에 따라 `date` 순(날짜 없는 것은 뒤), 같으면 `path` 순으로 준다.
+- **step `title`:** `path` 의 파일 이름에서 확장자를 뺀 것 (스키마: 「Its title is the step name」).
+- **개수·진행률:** `total` 은 단계의 step 수, `counts` 는 상태별 수, `ratio` = `done` / `total` (step 이 없으면 `null`). 프로젝트 값은 모든 단계의 step 을 합쳐 같은 식으로 낸다(단계 평균이 아니다).
+- **기간 `start`/`end`:** 날짜가 있는 step 중 가장 이른 `date` 와 가장 늦은 `endDate`(없으면 그 `date` — 하루짜리). `pending` 의 계획 날짜와 `active` 의 「지금까지 일한 마지막 날」도 그대로 포함한다. 날짜 있는 step 이 없으면 `null`.
+- **단계 상태** (step 상태들로, 위에서부터 처음 맞는 것. 프로젝트 `status` 도 모든 step 에 같은 규칙):
+  1. `empty` — step 이 없다
+  2. `done` — 모두 `done`
+  3. `failed` — 모두 끝났는데(`done`/`failed`) 하나 이상 `failed`
+  4. `active` — `active` 가 있거나, 끝난 step 과 남은 step(`pending`/`scheduling`)이 섞여 있다
+  5. `pending` — 시작한 것은 없고 `pending` 이 있다
+  6. `scheduling` — 모두 `scheduling`
+- **현재 단계 `current`:** `active` 인 단계 중 `no` 가 가장 작은 것. 없으면 끝난 step 이 있는 마지막 단계 다음에서 처음 나오는 `pending`/`scheduling` 단계(끝난 step 이 하나도 없으면 처음부터). 그것도 없으면 `null`.
+
+스키마에 근거가 없어 서버가 정한 것: 단계 상태 6가지와 그 우선순위(`empty` 추가, `done`·`failed` 가 섞인 채 끝난 단계는 `failed`, 일부만 끝나고 진행 중인 step 이 없는 단계도 `active`), `failed` step 을 진행률 분자에 넣지 않음, 계획 날짜를 기간에 포함, 현재 단계 고르는 법(앞 단계가 `scheduling` 으로 남아 있어도 뒤 단계가 진행 중이면 그쪽 — 단계가 순서대로만 진행되지 않는 실제 파일이 있어서), `endDate` < `date` 는 검사하지 않음.
+
 ## 설정 (`prefs.json`)
 
 `server/prefs.json` 은 화면 설정(숨김·유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
@@ -167,7 +226,7 @@ aplan skip N [메모] / aplan fail N [메모]
 - `server/server.py` 실행 옵션과 `server/launchd/install.sh` 환경 변수
 - 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`
 
-- 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
+- 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 서버는 `--projects-dir` 아래에서 읽어 위 「프로젝트 진행 API」로 준다. 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
 
 ## 로컬 상태 파일 (git 무시)
 
