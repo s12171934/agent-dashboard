@@ -1,5 +1,5 @@
 // <ds-dock>: the floating bar. Its children are the buttons (see dock.css); this element adds the last one, ⋯ 바 설정,
-// with a menu for where the bar sits and how big it is. The choice is saved as adash.dock / adash.dock.size, and
+// with a menu for where the bar sits (not on a phone: dockLocked() keeps it at the bottom) and how big it is. The choice is saved as adash.dock / adash.dock.size, and
 // dock-boot.js (loaded in <head>) applies it before the first paint; applyDock, dockPos and dockSize come from there.
 // The menu lives at the end of <body>, not in the bar: the bar's transform would make it the menu's containing block.
 // inset-from="SELECTOR": a sticky element (the page header) the bar keeps below when it sits at the top; the bar
@@ -34,11 +34,11 @@ class DsDock extends HTMLElement {
     const menu = this.menu = document.createElement('div');
     menu.className = 'dock-menu dock-pop';
     menu.hidden = true;
-    menu.innerHTML = `<span class="st">바 위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div>
+    menu.innerHTML = `<div class="dock-side"><span class="st">바 위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div></div>
       <label class="st dock-size">크기 <input type="range" min="28" max="56" step="2"></label>`;
     document.body.append(menu);
     const mark = () => menu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
-    btn.onclick = e => { e.stopPropagation(); mark(); menu.hidden = !menu.hidden; };
+    btn.onclick = e => { e.stopPropagation(); mark(); menu.querySelector('.dock-side').hidden = dockLocked(); menu.hidden = !menu.hidden; };
     menu.onclick = e => {
       const b = e.target.closest('[data-dock]'); if (!b) return;
       save('adash.dock', b.dataset.dock); applyDock(b.dataset.dock); mark();
