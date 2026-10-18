@@ -30,8 +30,9 @@
   /* how far popovers sit from the bar's screen edge: set by the largest bar size, so dragging 「크기」 moves nothing */
   --dock-reach: 68px;
   /* the bottom bar's distance from the screen's bottom edge. The home indicator's safe area (an installed PWA on
-     iPhone: 34px) takes the place of the 14px margin rather than adding to it, so the bar does not float 48px up */
-  --dock-bottom: max(14px, env(safe-area-inset-bottom));
+     iPhone: 34px) is mostly empty: the indicator itself is the bottom ~13px. The bar sits just clear of it (22px)
+     rather than above the whole area, like the system's own floating tab bars; elsewhere the margin is 14px */
+  --dock-bottom: max(14px, env(safe-area-inset-bottom) - 12px);
 }
 /* phone: the bar is the launcher pill (dock.css), 58px tall whatever the chosen size */
 @media (max-width: 500px) { :root { --dock-reach: 58px; } }
