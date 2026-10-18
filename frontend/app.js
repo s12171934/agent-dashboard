@@ -704,9 +704,10 @@ function actBtns(s, big) {
 const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} accent" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
 // 「Orca 에서 열기」 + 「닫기」 for a session. The session page's detail object comes from /api/session, which has no
 // orca_focus; the snapshot row does. Closing a running agent is allowed; the confirm dialog warns about it.
+// A terminal being closed (closing) shows no buttons from the click on, as once it is gone; a failed close puts them back.
 function orcaBtns(s, big) {
   const focus = s.orca_focus ?? state.all?.find(x => x.path === s.path)?.orca_focus;
-  if (!focus) return '';
+  if (!focus || closing.has(focus)) return '';
   const cls = big ? 'act big' : 'act';
   return `${focusBtn(focus, big)}<button class="${cls} danger" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
 }
@@ -740,15 +741,25 @@ document.addEventListener('click', e => {
 
 // 「닫기」: confirm, then close the session's Orca terminal. A coordinator also offers its tree (orca_close_tree, as the
 // server mapped it: workers' terminals and the scripts it opened), checked by default; the server closes those first.
+// On a phone the dialog drops the Orca/CLI detail (the terminal is not in reach there) and says only what happens.
 const isLive = x => status(x) === 'run' || agg(x).live;
+const PHONE = matchMedia('(max-width: 500px)');
+const closing = new Set();
 function closeOrca(s, name, handle) {
   const below = s?.orca_close_tree || [], all = state.all || state.sessions;
   const kids = all.filter(x => x.orca_focus && below.includes(x.orca_focus));
   const busy = kids.filter(isLive).length, scripts = below.length - kids.length;
-  const warn = t => `<p class="dialog-warn">⚠ ${t}</p>`;
+  const warn = t => `<p class="dialog-warn">⚠ ${t}</p>`, phone = PHONE.matches;
   let d = $('#close-dlg');
   if (!d) { d = document.createElement('dialog'); d.id = 'close-dlg'; d.className = 'dialog'; document.body.appendChild(d); }
-  d.innerHTML = `<form method="dialog">
+  d.innerHTML = phone ? `<form method="dialog">
+    <h3>"${esc(cut(name, 24))}" 닫을까요?</h3>
+    ${s && isLive(s) ? warn('실행 중인 작업이 바로 끊깁니다.') : ''}
+    <p>에이전트가 종료됩니다. 기록은 남아 나중에 이어 갈 수 있어요.</p>
+    ${below.length ? `<label class="cd-tree"><input type="checkbox" name="cascade" checked> 하위 ${below.length}개도 함께 닫기</label>
+      ${busy ? warn(`하위 ${busy}개가 실행 중입니다.`) : ''}` : ''}
+    <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div></form>`
+  : `<form method="dialog">
     <h3>"${esc(cut(name, 40))}" 의 Orca 터미널을 닫을까요?</h3>
     ${s && isLive(s) ? warn('지금 실행 중입니다. 진행 중인 응답·도구 실행이 그 자리에서 끊깁니다.') : ''}
     <p>에이전트 프로세스가 끝납니다. 세션 기록은 남아 claude --resume 으로 이어 갈 수 있습니다.</p>
@@ -758,34 +769,38 @@ function closeOrca(s, name, handle) {
     <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div></form>`;
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
-    const cascade = !!d.querySelector('[name=cascade]')?.checked;
+    const cascade = !!d.querySelector('[name=cascade]')?.checked, hs = [handle, ...(cascade ? below : [])];
+    hs.forEach(h => closing.add(h));
+    render();
+    const fail = msg => { hs.forEach(h => closing.delete(h)); render(); toast(msg); };
     api.close(handle, cascade).then(r => {
-      if (r.status !== 202) return toast(r.body?.error || `닫기 실패 (${r.status})`);
-      followClose(r.body.job, name, r.body.total);
-    }).catch(() => toast('대시보드 서버에 보내지 못했습니다'));
+      if (r.status !== 202) return fail(r.body?.error || `닫기 실패 (${r.status})`);
+      followClose(r.body.job, name, hs, fail);
+    }).catch(() => fail('대시보드 서버에 보내지 못했습니다'));
   };
   d.returnValue = '';
   d.showModal();
 }
 
-// The server closes terminals in the background (each takes seconds; a busy Orca can take half a minute):
-// show progress while it runs and the outcome once it ends.
-async function followClose(job, name, total) {
-  const who = `"${cut(name, 30)}"`;
-  toast(total > 1 ? `${who} 와 하위 ${total - 1}개를 닫는 중…` : `${who} 터미널을 닫는 중…`);
-  const t0 = Date.now();
-  let j = null, shown = 0;
+// The server closes terminals in the background (each takes seconds; a busy Orca can take half a minute). The buttons
+// are already gone, so a clean close says nothing; a failure puts back the terminals still open and says why.
+async function followClose(job, name, hs, fail) {
+  const who = `"${cut(name, 30)}"`, t0 = Date.now();
+  let j = null;
   while (Date.now() - t0 < 10 * 60e3) {
     await new Promise(r => setTimeout(r, 1500));
     try { j = await api.closeJob(job); } catch { continue; }
-    if (!j) return toast(`${who} 닫기 결과를 찾을 수 없습니다 (대시보드 서버가 재시작됨)`);
+    if (!j) return fail(`${who} 닫기 결과를 찾을 수 없습니다 (대시보드 서버가 재시작됨)`);
     if (j.state === 'done') break;
-    if (total > 1 && j.done !== shown && Date.now() - t0 > 4000) { shown = j.done; toast(`${who} 닫는 중… ${j.done}/${j.total}`); }
   }
-  if (j?.state !== 'done') return toast(`${who} 닫기가 10분 넘게 끝나지 않았습니다`);
+  if (j?.state !== 'done') return fail(`${who} 닫기가 10분 넘게 끝나지 않았습니다`);
   const self = j.failed.find(f => f.handle === j.handle), below = j.failed.filter(f => f.handle !== j.handle);
-  toast(self ? `${who} 닫기 실패: ${self.error}${below.length ? ` · 하위 ${below.length}개도 실패` : ''}`
-    : `${who} 터미널을 닫았습니다${j.closed.length > 1 ? ` (하위 ${j.closed.length - 1}개 포함)` : ''}${below.length ? ` · 하위 ${below.length}개 실패: ${below[0].error}` : ''}`);
+  // Refresh first so the closed terminals' buttons do not flash back from a snapshot that still lists them.
+  await refresh().catch(() => {});
+  hs.filter(h => !j.failed.some(f => f.handle === h)).forEach(h => closing.delete(h));
+  if (!j.failed.length) return render();
+  fail(self ? `${who} 닫기 실패: ${self.error}${below.length ? ` · 하위 ${below.length}개도 실패` : ''}`
+    : `${who} 하위 ${below.length}개 닫기 실패: ${below[0].error}`);
 }
 
 function renderHidden() {
