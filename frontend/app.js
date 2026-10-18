@@ -308,6 +308,7 @@ async function renderView(navigated) {
 function renderHeader() {
   const ss = state.sessions;
   $('#k-live').textContent = ss.filter(s => s.live).length;
+  $('#dock').setAttribute('summary', `실행 ${ss.filter(s => status(s) === 'run').length} · 대기 ${ss.filter(s => status(s) === 'wait').length}`);
   const bg = ss.filter(s => status(s) === 'bg').length;
   $('#k-bg').textContent = bg;
   $('#k-bg-wrap').hidden = !bg;

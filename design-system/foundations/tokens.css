@@ -29,13 +29,17 @@
   --dock-sz: var(--dock-pick, 38px);
   /* how far popovers sit from the bar's screen edge: set by the largest bar size, so dragging 「크기」 moves nothing */
   --dock-reach: 68px;
+  /* the bottom bar's distance from the screen's bottom edge. The home indicator's safe area (an installed PWA on
+     iPhone: 34px) takes the place of the 14px margin rather than adding to it, so the bar does not float 48px up */
+  --dock-bottom: max(14px, env(safe-area-inset-bottom));
 }
-@media (max-width: 500px) { :root { --dock-sz: min(var(--dock-pick, 38px), 31px); --dock-reach: 41px; } }
+/* phone: the bar is the launcher pill (dock.css), 58px tall whatever the chosen size */
+@media (max-width: 500px) { :root { --dock-reach: 58px; } }
 
 /* layout. Breakpoints (media queries cannot read custom properties, so these three widths are the contract — GUIDELINES B1):
      max-width: 900px  tablet   — side-by-side panes stack
      max-width: 700px  narrow   — grids fold to one column, the header compacts
-     max-width: 500px  phone    — the dock and controls shrink to fit one row
+     max-width: 500px  phone    — the dock becomes a launcher and sheet, controls shrink to fit one row
    Input type is separate from width: (pointer: coarse) is a finger, (hover: none) has no hover. */
 :root {
   --gutter: 16px;  /* the page's side padding */
