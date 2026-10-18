@@ -416,6 +416,11 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 
 /* 「닫기」 confirm dialog (a ds dialog): the cascade checkbox row */
 #close-dlg .cd-tree { display: block; margin: 12px 0 4px; font-size: 13px; cursor: pointer; }
+/* phone: the Orca app is not in reach, so a session offers only 「닫기」; the dialog's two buttons share the row */
+@media (max-width: 500px) {
+  [data-act="focus"] { display: none; }
+  #close-dlg .dialog-btns { flex-wrap: nowrap; } #close-dlg .dialog-btns .act { flex: 1; }
+}
 
 /* 「테스트」 area: long test runs */
 .tests-sec > summary { cursor: pointer; list-style: none; } .tests-sec > summary::-webkit-details-marker { display: none; }
