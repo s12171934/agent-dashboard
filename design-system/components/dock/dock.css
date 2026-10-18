@@ -39,6 +39,7 @@ ds-dock .dn[hidden] { display: none; }
   border: 1px solid var(--surface-edge); border-radius: 16px; background: var(--surface-sheen), var(--surface-strong);
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow); }
 .dock-menu[hidden] { display: none; }
+.dock-side { display: contents; } .dock-side[hidden] { display: none; }
 .dock-size { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .dock-size input { flex: 1; accent-color: var(--accent); }
 :root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100vw - 16px); }
