@@ -637,3 +637,5 @@ a.act { text-decoration: none; display: inline-block; }
 .pj-nd { transition: transform .15s; transform-box: fill-box; transform-origin: center; }
 .pj-nd:hover { transform: scale(1.18); }
 .pj-halo { animation: pulse 1.6s infinite; }
+.pj-src { list-style: none; padding: 0; margin: 12px auto; display: inline-block; text-align: left; }
+.pj-src li { padding: 2px 0; }

@@ -2402,6 +2402,7 @@ let pjOpen = null;         // 프로젝트별: the project folded open
 let pjFocus = null;        // 전체 시계열: the focused project
 let pjNote = null;         // the note in the split: {key, path, back: [paths]}, or null
 let pjScrollTo = null;     // a stage number to bring into view once the detail is drawn
+let pjSrcKey = '';         // the servers on and their connection, as of the last projects fetch (connect() watches it)
 const pjVertical = () => pj.orient === 'v' || (pj.orient === 'auto' && innerWidth < innerHeight);
 
 async function renderProjects() {
@@ -2417,7 +2418,7 @@ async function renderProjects() {
       <div class="legend pj-leg">${['done', 'active', 'scheduling', 'failed'].map(s => `<span><i style="background:${PJ_C[s]}"></i>${PJ_ST[s]}</span>`).join('')}
         ${tl ? '<span>날짜 간격은 일정 비율이 아님 · 막대 = 진행 중 (시작일 → 오늘)</span>' : ''}</div>
     </div>
-    ${!d.enabled ? '<div class="empty">프로젝트 진행을 보내는 메트릭 서버가 없습니다.<br><small>서버를 <code>--projects-dir</code> 로 띄우면 여기에 나옵니다.</small></div>'
+    ${!d.enabled ? pjNoSource(d)
       : !d.projects.length ? '<div class="empty">progress.json 이 있는 프로젝트 폴더가 없습니다.</div>'
       : tl ? `<div class="pj-tlwrap${vert ? ' side' : ''}${pjFocus ? ' focused' : ''}"><div class="box pj-tl hscroll" id="pj-tl"></div><div class="pj-focus" id="pj-focus"></div></div>`
       : `<div class="pj-list">${d.projects.map(pjRow).join('')}</div>`}
@@ -2430,6 +2431,16 @@ async function renderProjects() {
     const box = [...document.querySelectorAll('[data-pj-detail]')].find(x => x.dataset.pjDetail === pjOpen);
     if (box) pjDetail(box, pjOpen); else pjOpen = null;
   }
+}
+
+// No server that is on sends projects: say, per server, why not, and offer the server panel (to add or turn one on).
+const PJ_SRC = { off: '--projects-dir 없이 떠 있음', old: '프로젝트 기능이 없는 서버 버전 (새 코드로 다시 띄워야 함)', error: '연결할 수 없음' };
+function pjNoSource(d) {
+  const rows = (d.sources || []).map(x => `<li><b>${esc(srvName(x.server))}</b> <span class="st">${esc(api.server(x.server)?.url || '')}</span> — ${PJ_SRC[x.state] || x.state}</li>`).join('');
+  return `<div class="empty">프로젝트 진행을 보내는 메트릭 서버가 없습니다.
+    ${rows ? `<ul class="pj-src">${rows}</ul>` : '<br><small>켜진 메트릭 서버가 없습니다.</small>'}
+    <small><code>--projects-dir</code> 로 띄운 서버를 「메트릭 서버」에서 추가하거나 켜세요.</small><br>
+    <button type="button" class="act big accent" data-pj-servers>메트릭 서버 열기</button></div>`;
 }
 
 // 프로젝트별: a project is a <details class="box"> whose summary is its line of stages; opening it shows the detail.
@@ -2776,6 +2787,7 @@ function pjSelect(k, stage) {
 document.addEventListener('click', e => {
   if (route().v !== 'projects') return;
   const t = e.target, seg = t.closest('[data-pj-seg] button');
+  if (t.closest('[data-pj-servers]')) return serverPanel();
   if (seg) {
     const key = seg.closest('[data-pj-seg]').dataset.pjSeg;
     pj[key] = seg.dataset.k; pjSave(); if (key === 'view') pjNote = null;
@@ -2835,6 +2847,9 @@ function connect() {
     projects: () => { pjData = null; pjFull = {}; if (route().v === 'projects') render(); },
     change: () => {
       renderConn();
+      // which servers are on and connected decides where projects come from: refetch them when that changes
+      const srcKey = srvOn().map(x => `${x.id}${x.live ? '+' : '-'}`).join(',');
+      if (srcKey !== pjSrcKey) { pjSrcKey = srcKey; pjData = null; pjFull = {}; if (route().v === 'projects') render(); }
       const live = srvOn().some(x => x.live);
       if (live && !wasLive) checkBuild();
       wasLive = live;

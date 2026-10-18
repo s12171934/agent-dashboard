@@ -276,11 +276,20 @@ const api = (() => {
     // Progress of a close: {id, handle, total, done, closed[handle], failed[{handle, error}], state running|done}.
     closeJob: id => { const srv = byId(jobOwner[id]) || enabled()[0]; return srv ? getJson(srv, '/api/orca/job?id=' + encodeURIComponent(id)) : null; },
     // Project progress from the servers started with --projects-dir (a server without it, or an older one, is left out):
-    // {enabled, dirs[{dir, error, server}], projects[...]}; each project carries `server` and, per stage, status, counts,
-    // ratio, start, end (no steps). The server derives everything from the progress.json files.
+    // {enabled, dirs[{dir, error, server}], projects[...], sources[{server, state}]}; each project carries `server` and,
+    // per stage, status, counts, ratio, start, end (no steps). The server derives everything from the progress.json
+    // files. sources says, per server that is on, why it did or did not send projects: ok | off (no --projects-dir) |
+    // old (a server version without the API) | error.
     projects: async () => {
-      const parts = (await fromAll('/api/projects')).filter(([, d]) => d.enabled);
-      return { enabled: parts.length > 0, dirs: parts.flatMap(([s, d]) => tag(d.dirs, s.id)),
+      const sources = [], parts = [];
+      await Promise.all(enabled().map(async srv => {
+        try {
+          const d = await getJson(srv, '/api/projects');
+          sources.push({ server: srv.id, state: !d ? 'old' : d.enabled ? 'ok' : 'off' });
+          if (d?.enabled) parts.push([srv, d]);
+        } catch { sources.push({ server: srv.id, state: 'error' }); }
+      }));
+      return { enabled: parts.length > 0, sources, dirs: parts.flatMap(([s, d]) => tag(d.dirs, s.id)),
         projects: parts.flatMap(([s, d]) => tag(d.projects, s.id)) };
     },
     // One project with its stages' steps ({path, title, date, endDate, status}). null when unknown.
