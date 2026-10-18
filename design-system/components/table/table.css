@@ -2,5 +2,7 @@
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 500; font-size: 11px; }
-td.n, th.n { text-align: right; }
+td.n, th.n { text-align: right; white-space: nowrap; }
 th, td { border-color: color-mix(in srgb, var(--muted) 20%, transparent); }
+/* .tscroll: a wrapper that scrolls a table wider than the screen sideways, so the page itself never does */
+.tscroll { overflow-x: auto; max-width: 100%; overscroll-behavior-x: contain; }

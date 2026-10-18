@@ -95,6 +95,16 @@ for n, line in lines(read(app_css)):
     if re.search(r'--(glass|blur)\b|--glass-', line):
         report('M2', where, 'old glass token; use the --surface-* contract')
 
+# --- breakpoints (B1): every @media width in the design system and the page is one of the three in tokens.css
+BREAKPOINTS = {'500px', '700px', '900px'}
+css_files = [app_css] + [os.path.join(d, f) for d, _, fs in os.walk(DS) for f in fs if f.endswith('.css')]
+for p in sorted(css_files):
+    for n, line in lines(read(p)):
+        for q in re.findall(r'@media[^{]*', line):
+            for feat, val in re.findall(r'\((min|max)-width\s*:\s*([^)]+)\)', q):
+                if feat != 'max' or val.strip() not in BREAKPOINTS:
+                    report('B1', f'{rel(p)}:{n}', f'({feat}-width: {val.strip()}); use max-width 500px, 700px or 900px')
+
 # --- registration (R1–R5)
 ds_css = read(os.path.join(DS, 'ds.css'))
 # the files sw.js precaches: literal 'ds/…' paths plus the lists it expands with .map(c => `ds/components/${c}/…`)

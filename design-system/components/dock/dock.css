@@ -48,7 +48,15 @@ ds-dock .dn[hidden] { display: none; }
 @media (max-width: 500px) {
   ds-dock { gap: 0; padding: 4px; }
   .dock-sep { margin: 0 2px; }
+  /* a top or bottom bar spans at most the screen less 8px a side; its buttons give up width (down to 28px) to stay on
+     one row, and if even that is too wide the bar scrolls sideways */
+  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock { left: 8px; right: 8px; width: fit-content; max-width: none; margin-inline: auto;
+    transform: none; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock::-webkit-scrollbar { display: none; }
+  :root:is([data-dock="bottom"], [data-dock="top"]) :is(ds-dock > a, ds-dock .dock-btn) { flex: 0 1 var(--dock-sz); width: auto; min-width: 28px; }
 }
+/* no hover (a touch screen): a tap would leave the name stuck on screen, and aria-label already names the button */
+@media (hover: none) { ds-dock [data-tip]::after { display: none; } }
 
 /* .dock-pop: a popover that opens off the dock, on the side facing the page. It sits --dock-reach (the largest bar)
    from the edge, so resizing the bar moves nothing. Give it position: fixed and a z-index above the dock; open and

@@ -1887,7 +1887,7 @@ function renderRun(id) {
       <div class="kpi"><span>경과</span><b>${dur(tasks[0]?.created_at, tasks.every(t => t.completed_at) ? end.toISOString() : null)}</b></div>
     </div>
     <div class="box"><h3>태스크 관계도 <span class="st">코디네이터 → deps 단계 순 · 노드를 누르면 워커 세션</span></h3><div class="gwrap" id="run-graph"></div></div>
-    <div class="box"><h3>타임라인</h3><div style="overflow-x:auto"><table>${gantt}</table></div></div>`;
+    <div class="box"><h3>타임라인</h3><div class="tscroll"><table>${gantt}</table></div></div>`;
   runGraph(run, tasks, stages, depsOf, workers, result, sessByTask, coord);
 }
 
@@ -1981,10 +1981,10 @@ function renderSession(navigated) {
           const calls = bothUse(d), rows = Object.entries(d.use_tok || {}).sort((a, b) => b[1][2] - a[1][2] || b[1][1] - a[1][1]);
           if (!rows.length) return '';
           const nm = METRICS.both.nm;
-          return `<div style="overflow-x:auto;margin:8px 0"><table><tr><th>스킬·MCP</th><th class="n">호출</th><th class="n" title="호출 결과가 컨텍스트에 한 번 들어간 토큰">주입</th><th class="n">호출당</th><th class="n" title="압축 전까지 이후 매 턴 다시 읽힌 토큰 합">누적</th><th class="n" title="누적을 첫 턴 캐시 쓰기, 이후 캐시 읽기 단가로 환산">누적 비용</th></tr>
+          return `<div class="tscroll" style="margin:8px 0"><table><tr><th>스킬·MCP</th><th class="n">호출</th><th class="n" title="호출 결과가 컨텍스트에 한 번 들어간 토큰">주입</th><th class="n">호출당</th><th class="n" title="압축 전까지 이후 매 턴 다시 읽힌 토큰 합">누적</th><th class="n" title="누적을 첫 턴 캐시 쓰기, 이후 캐시 읽기 단가로 환산">누적 비용</th></tr>
           ${rows.map(([k, [inj, carry, cost]]) => `<tr><td>${esc(nm(k))}</td><td class="n">${calls[k] || 0}</td><td class="n">${fmt(inj)}</td><td class="n">${fmt(inj / (calls[k] || 1))}</td><td class="n">${fmt(carry)}</td><td class="n">${usd(cost)}</td></tr>`).join('')}</table></div>`;
         })()}
-        <div style="overflow-x:auto;margin-top:8px"><table><tr><th>분류</th><th class="n">호출</th><th class="n">컨텍스트 증가</th><th class="n">호출당</th></tr>
+        <div class="tscroll" style="margin-top:8px"><table><tr><th>분류</th><th class="n">호출</th><th class="n">컨텍스트 증가</th><th class="n">호출당</th></tr>
         ${tools.map(([n, b]) => `<tr><td>${esc(n)}</td><td class="n">${b.calls}</td><td class="n">${fmt(b.ctx_growth)}</td><td class="n">${fmt(b.ctx_growth / b.calls)}</td></tr>`).join('') || '<tr><td colspan=4 class="st">도구 호출 없음</td></tr>'}</table></div>
         <div class="st" style="margin-top:6px">스킬은 Skill 도구 호출과 SKILL.md 읽기(Codex)를 셉니다. 컨텍스트 증가는 도구 결과가 다음 턴을 얼마나 키웠는지로 근사합니다. 누적은 그 토큰이 압축 전까지 매 턴 다시 읽힌 합입니다.</div></div>
       <div class="box"><h3>로그 <span class="st">최근 ${d.log.length}건</span></h3>
@@ -2189,11 +2189,11 @@ async function renderTalk() {
     $('#view').innerHTML = `<div class="controls">
         <span class="seg" id="talk-view">${[['list', '리스트'], ['graph', '그래프']].map(([k, l]) => `<button data-tv="${k}" class="${talk.view === k ? 'on' : ''}">${l}</button>`).join('')}</span>
         <span class="talk-types">${Object.entries(TALK_TYPES).map(([k, [l, c]]) => `<label class="chk talk-t" style="--c:${c}"><input type="checkbox" data-tt="${k}" ${talk.types.has(k) ? 'checked' : ''}> ${l} <b id="tc-${k}"></b></label>`).join('')}</span>
-        <label>세션 <select id="talk-who"><option value="">전체</option></select></label>
+        <label>세션 <select id="talk-who" class="field"><option value="">전체</option></select></label>
         <input id="talk-q" class="field talk-q" type="search" placeholder="제목·본문 검색" value="${esc(talk.q)}">
         <label class="chk"><input type="checkbox" id="talk-th" ${talk.threads ? 'checked' : ''}> 질문·답을 스레드로 묶기</label>
-        <label>기간 <select id="talk-hours">${[[1, '1시간'], [6, '6시간'], [24, '24시간'], [72, '3일'], [0, '전체']].map(([h, l]) => `<option value="${h}" ${h === talk.hours ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label>최근 <select id="talk-lim">${[500, 1500, 5000].map(n => `<option ${n === talk.limit ? 'selected' : ''}>${n}</option>`).join('')}</select>건</label>
+        <label>기간 <select id="talk-hours" class="field">${[[1, '1시간'], [6, '6시간'], [24, '24시간'], [72, '3일'], [0, '전체']].map(([h, l]) => `<option value="${h}" ${h === talk.hours ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>최근 <select id="talk-lim" class="field">${[500, 1500, 5000].map(n => `<option ${n === talk.limit ? 'selected' : ''}>${n}</option>`).join('')}</select>건</label>
         <span id="talk-pair"></span><span class="st" id="talk-sub"></span></div>
       <div id="talk-list"><div class="empty">불러오는 중…</div></div>`;
     $('#view').querySelectorAll('[data-tt]').forEach(c => c.onchange = () => { c.checked ? talk.types.add(c.dataset.tt) : talk.types.delete(c.dataset.tt); renderTalk(); });
@@ -2551,7 +2551,7 @@ function pjMarkdown(md, links, absOf) {
     if (/^>/.test(l)) { const q = []; for (; i < L.length && /^>/.test(L[i]); i++) q.push(L[i].replace(/^>\s?/, '')); out.push(`<blockquote>${q.map(inline).join('<br>')}</blockquote>`); continue; }
     if (/^\s*\|/.test(l)) {
       const rows = []; for (; i < L.length && /^\s*\|/.test(L[i]); i++) if (!/^\s*\|[\s:|-]+\|\s*$/.test(L[i])) rows.push(L[i].trim().replace(/^\||\|$/g, '').split(/\|(?![^[]*\]\])/));  // a [[target|alias]] keeps its |
-      out.push(`<table>${rows.map((r, j) => `<tr>${r.map(c => j ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join('')}</tr>`).join('')}</table>`); continue;
+      out.push(`<div class="tscroll"><table>${rows.map((r, j) => `<tr>${r.map(c => j ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join('')}</tr>`).join('')}</table></div>`); continue;
     }
     if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
       const ol = /^\s*\d/.test(l), items = [];

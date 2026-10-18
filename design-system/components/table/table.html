@@ -1,8 +1,15 @@
 <!-- table — rows of data.
      <table><tr><th>…</th><th class="n">…</th></tr><tr><td>…</td><td class="n">…</td></tr></table>
-     .n on a column's cells (th and td) right-aligns numbers. Wrap a wide table in <div style="overflow-x: auto">. -->
+     .n on a column's cells (th and td) right-aligns numbers. A table that can be wider than a phone goes in <div class="tscroll">: the wrapper scrolls sideways, the page
+     never does. -->
 <table>
   <tr><th>스킬·MCP</th><th class="n">호출</th><th class="n">누적 비용</th></tr>
   <tr><td>orca-work-placement</td><td class="n">1</td><td class="n">$0.02</td></tr>
   <tr><td>aplan</td><td class="n">12</td><td class="n">$0.31</td></tr>
 </table>
+<div class="tscroll">
+  <table>
+    <tr><th>스킬·MCP</th><th class="n">호출</th><th class="n">주입</th><th class="n">호출당</th><th class="n">누적</th><th class="n">누적 비용</th></tr>
+    <tr><td>mcp__claude_ai_Notion__notion-query-data-sources</td><td class="n">4</td><td class="n">18.2k</td><td class="n">4.6k</td><td class="n">312.0k</td><td class="n">$0.94</td></tr>
+  </table>
+</div>

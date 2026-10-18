@@ -14,7 +14,8 @@ header { background: var(--panel); border: 1px solid var(--line); position: stic
 .conn i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
 .conn.on i { background: var(--ok); }
 .health { margin-left: 12px; font-size: 12px; color: var(--bad); white-space: nowrap; cursor: help; }
-main { padding: 16px; max-width: 1500px; margin: 0 auto; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+main { padding: 16px var(--gutter); max-width: 1500px; margin: 0 auto; padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  padding-left: max(var(--gutter), env(safe-area-inset-left)); padding-right: max(var(--gutter), env(safe-area-inset-right)); }
 
 /* badges & chips */
 .badge.coord { background: var(--coord); border-color: var(--coord); color: #fff; }
@@ -308,7 +309,7 @@ svg text { fill: var(--muted); font-size: 10px; }
   .hrow h1 { font-size: 14px; flex: 1; }
   .kpis-h { order: 3; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; }
   .stat b { font-size: 14px; }
-  main { padding: 12px; }
+  main { padding-top: 12px; }
   .family { padding: 10px; }
   .tree { margin-left: 6px; padding-left: 12px; }
   .tree > .grid > .card::before, .tree > .family.nested::before { left: -14px; width: 12px; }
@@ -510,6 +511,15 @@ button.dc-opt.picked { background: var(--surface-sheen), color-mix(in srgb, var(
 .stat:first-child .gi { color: var(--ok); }
 .stat.dec .gi { color: var(--warn); }
 @media (max-width: 700px) { header { margin: var(--hdr-top) 8px 0; border-radius: 18px; } }
+/* phone: the sticky header keeps to two short rows of figures (no icons, four across) so it does not eat the screen */
+@media (max-width: 500px) {
+  .hrow { gap: 6px; }
+  .kpis-h { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 8px; }
+  .stat { grid-template-columns: minmax(0, 1fr); }
+  .stat .gi { display: none; }
+  .stat b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; }
+  .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+}
 
 #srv-btn .srv-dot { position: absolute; top: 18%; right: 18%; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 2px var(--panel); }
 #srv-btn.on .srv-dot { background: var(--ok); } #srv-btn.part .srv-dot { background: var(--warn); }

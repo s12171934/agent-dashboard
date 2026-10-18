@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Design System</title>
 <!-- Preview of the design system, built from the same files the dashboard loads. Served at /ds/.
      Generated: every component imported by ds.css gets a section from its components/<name>/<name>.html (the
@@ -12,7 +12,7 @@
 <script type="module" src="ds.js"></script>
 <link rel="stylesheet" href="ds.css">
 <style>
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 130px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px var(--gutter) 130px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   h2 code { font-weight: 400; }
@@ -35,6 +35,8 @@
   .icons svg { width: 22px; height: 22px; color: var(--text); }
   /* the dock is one per page: its example is placed once at the end of <body>, the section keeps the contract */
   #c-dock .demo { display: none; }
+  .vw { font-variant-numeric: tabular-nums; }
+  @media (max-width: 700px) { section { padding: 12px; } h1 { font-size: 18px; } }
 </style>
 </head>
 <body>
@@ -44,6 +46,7 @@
   <div class="tools">
     <span class="st">테마</span><span class="seg" id="theme"></span>
     <span class="st">재질</span><span class="seg" id="mat"></span>
+    <span class="st vw" id="vw"></span>
   </div>
   <section class="surface"><h2>색 토큰 <code>foundations/tokens.css</code></h2><div class="sw" id="sw"></div></section>
   <div id="components"></div>
@@ -59,6 +62,11 @@ const seg = (el, items, cur, pick) => {
 };
 seg($('#theme'), [['light', '라이트'], ['dark', '다크']], () => document.documentElement.dataset.theme, applyTheme);
 seg($('#mat'), MATERIALS, () => document.documentElement.dataset.material, applyMaterial);
+
+// which layout the components are in right now (the breakpoints in foundations/tokens.css), so resizing shows it
+const bp = () => { const w = innerWidth, touch = matchMedia('(pointer: coarse)').matches ? ' · 터치' : '';
+  $('#vw').textContent = `폭 ${w}px · ${w <= 500 ? '휴대폰' : w <= 700 ? '좁은 화면' : w <= 900 ? '태블릿' : '넓은 화면'}${touch}`; };
+addEventListener('resize', bp); bp();
 
 const TOKENS = ['--bg', '--panel', '--panel2', '--line', '--text', '--muted', '--accent', '--on-accent', '--ok', '--warn', '--bad', '--done', '--idle',
   '--s-input', '--s-write', '--s-read', '--s-out', '--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--c7'];

@@ -13,8 +13,8 @@ design-system/
   ds.js                   커스텀 엘리먼트 진입점 (ES 모듈)
   index.html              미리보기
   foundations/
-    tokens.css            팔레트(라이트·다크), 모양(반경), 독 크기
-    base.css              요소 기본값, .st, 깜빡임·맥박 애니메이션
+    tokens.css            팔레트(라이트·다크), 모양(반경), 레이아웃(브레이크포인트·--gutter·--tap), 독 크기
+    base.css              요소 기본값, 터치 기본값(입력란 16px 등), .st, 깜빡임·맥박 애니메이션
     theme.js              테마·재질 전환, 사용자 색, 팔레트 예시 (<head> 부트 스크립트)
   materials/
     glass.css             리퀴드글래스 (기본) — 재질 계약의 기준
@@ -58,7 +58,7 @@ design-system/
 | 박스 | `.box` (+ `<h3>`), `<details class="box">` | `box/` |
 | 카드 | `.card` — 누르는 타일, 호버 때 떠오름 | `card/` |
 | KPI | `.kpis` > `.kpi` (`<span>` 라벨, `<b>` 값, `<small>` 메모) | `kpi/` |
-| 표 | `<table>`, 숫자 열 `.n` | `table/` |
+| 표 | `<table>`, 숫자 열 `.n`, 넓은 표는 `<div class="tscroll">` 로 감싼다 | `table/` |
 | 범례 | `.legend` > `<span><i style="background:…"></i>이름</span>` | `legend/` |
 | 제목 | `.sec-h` > `<h2>` + `<span>` 메모 | `heading/` |
 | 입력 | `.field` (`<input>`, `<select>`) | `field/` |
@@ -66,8 +66,16 @@ design-system/
 | 배지 | `.badge` (색 변형은 페이지가 정한다) | `badge/` |
 | 칩 | `<span class="chip" style="--c: 색">라벨 <i>n</i></span>` | `chip/` |
 | 버튼 | `.act`, `.act.big`, `.act.accent`, `.act.danger`, `.tgl` | `button/` |
-| 세그먼트 | `<span class="seg"><button class="on">…</button>…</span>` | `segmented/` |
+| 세그먼트 | `<span class="seg"><button class="on">…</button>…</span>` — 폭보다 길면 스스로 가로 스크롤 | `segmented/` |
 | 막대 | `.track`(누적), `.ctxbar`(채움), `.prog`(얇은 누적), `.tbar`(통과·실패), `.pbar`(단계 `<i class="done\|run\|fail\|skip">`) | `bar/` |
+
+## 반응형
+
+폭 세 단계(`max-width` 900 태블릿 · 700 좁은 화면 · 500 휴대폰)와 입력 방식(`pointer: coarse`, `hover: none`)을 따로 본다. 규칙은 GUIDELINES 10장(B1–B7).
+
+- 토큰: `--gutter` (페이지 가장자리 여백, 700px 이하 12px), `--tap` (누르는 영역, 손가락 기기 36px).
+- 컴포넌트가 스스로 하는 것: 휴대폰에서 위·아래 바는 버튼 폭을 28px 까지 줄이고 그래도 넘치면 가로 스크롤, 호버 없는 기기에서 바 이름표 끔, `.seg`·`.tscroll` 가로 스크롤, 손가락 기기에서 `.act`·`.tgl`·`.field` 누르는 영역 확대와 입력란 16px.
+- 미리보기 위쪽에 지금 폭 단계가 보인다. 창 폭을 바꾸거나 개발자 도구 기기 모드로 확인한다.
 
 ## 페이지에 붙이기
 
@@ -79,7 +87,7 @@ design-system/
 <link rel="stylesheet" href="app.css">                   <!-- 페이지 CSS 는 디자인 시스템 뒤에 -->
 ```
 
-- 페이지가 정하는 값: `--dock-inset-top` (위쪽 바를 끈적한 헤더 아래로 내릴 거리), 바가 가리지 않도록 본문에 두는 여백.
+- 페이지가 정하는 값: `--dock-inset-top` (위쪽 바를 끈적한 헤더 아래로 내릴 거리), 바가 가리지 않도록 본문에 두는 여백. 본문 좌우 여백은 `--gutter` 를 쓴다.
 - 기기별 저장값: `adash.theme`, `adash.theme.custom`, `adash.material` (theme.js), `adash.dock`, `adash.dock.size` (dock-boot.js · ds-dock.js).
 
 ## 고칠 때

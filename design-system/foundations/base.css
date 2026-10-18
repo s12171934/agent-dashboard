@@ -1,8 +1,13 @@
-/* Design system base: element defaults, text utilities and shared motion. */
+/* Design system base: element defaults, text utilities, touch defaults and shared motion. */
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
 button { font: inherit; color: inherit; }
+/* touch: no grey flash on tap, no double-tap zoom delay on things you press */
+html { -webkit-tap-highlight-color: transparent; }
+a, button, label, summary, select, input { touch-action: manipulation; }
+/* iOS zooms the page into any text field under 16px; on a finger device every field is 16px */
+@media (pointer: coarse) { input:not([type=checkbox], [type=radio], [type=range], [type=color]), select, textarea { font-size: 16px; } }
 .st { font-size: 11px; color: var(--muted); }
 .empty { color: var(--muted); padding: 40px; text-align: center; }
 /* opacity only: compositor-animated, no per-frame repaint (box-shadow keyframes repainted every frame) */
