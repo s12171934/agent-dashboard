@@ -62,6 +62,20 @@ $('#only-live').onchange = e => { onlyLive = e.target.checked; try { localStorag
 // Theme and material: the 테마 button (<ds-theme-toggle>) and the 「색 편집」 panel (<ds-theme-editor>) are design
 // system components; SVG charts read the CSS variables, so switching needs no re-render.
 $('#theme-edit').onclick = () => { $('#theme-panel').hidden = !$('#theme-panel').hidden; };
+// 「앱 아이콘」 panel: the PWA icon, 5 concepts × 4 colours (icon-boot.js lists them and swaps the links). This
+// device only, like the theme.
+function iconPanel() {
+  const el = $('#icon-panel'), cur = appIcon(), ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+  el.innerHTML = `<div class="pop-h"><b>앱 아이콘</b><span class="st">이 기기에만 저장</span><button class="act" data-ip="close">닫기</button></div>
+    <div class="ip-grid">${APP_ICONS.map(x => `<button class="ip-icon${x.id === cur ? ' on' : ''}" data-id="${x.id}" title="${x.concept} · ${x.colour}" aria-label="${x.concept} · ${x.colour}" aria-pressed="${x.id === cur}"><img src="${appIconSrc(x.id)}" alt="" loading="lazy"></button>`).join('')}</div>
+    <div class="ip-name">${(x => `${x.concept} · ${x.colour}`)(APP_ICONS.find(x => x.id === cur))}</div>
+    <p class="ip-help">${ios ? '홈 화면 아이콘은 추가할 때 정해집니다. 바꾸려면 홈 화면에서 지우고 Safari 공유 → 홈 화면에 추가로 다시 넣으세요.'
+      : '탭 아이콘은 바로 바뀝니다. 설치한 앱 아이콘은 브라우저가 다음에 앱을 확인할 때 바뀌며, 바꿀지 물어볼 수 있습니다.'}</p>`;
+  el.querySelectorAll('.ip-icon').forEach(b => b.onclick = () => { setAppIcon(b.dataset.id); iconPanel(); });
+  el.querySelector('[data-ip=close]').onclick = () => { el.hidden = true; };
+  el.hidden = false;
+}
+$('#icon-btn').onclick = () => { if ($('#icon-panel').hidden) iconPanel(); else $('#icon-panel').hidden = true; };
 // 「Orca 에 열린 것만」: only agents whose connected Orca terminal the server found (session.orca_focus), the same set
 // that gets the 「Orca 에서 열기」 button. Combines with 「실행 중만」 (both must hold).
 let onlyOrca = false;

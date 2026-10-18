@@ -10,6 +10,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- the app icon picked in 「앱 아이콘」 swaps the three links above -->
+<script src="icon-boot.js"></script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Agents">
@@ -56,9 +58,11 @@
   <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
   <ds-theme-toggle id="theme" button-class="dock-btn"></ds-theme-toggle>
   <button class="dock-btn" id="theme-edit" data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>
+  <button class="dock-btn" id="icon-btn" data-tip="앱 아이콘" aria-label="앱 아이콘: 홈 화면·작업 표시줄에 보일 아이콘을 고름"><ds-icon name="grid"></ds-icon></button>
 </ds-dock>
 <ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
 <div id="server-panel" class="popover dock-pop" hidden></div>
+<div id="icon-panel" class="popover dock-pop" hidden></div>
 <div id="decisions" hidden></div>
 <main id="view"><div class="empty">불러오는 중…</div></main>
 <ds-tooltip id="tip"></ds-tooltip>

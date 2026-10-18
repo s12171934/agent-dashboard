@@ -114,7 +114,8 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 
 - `dashboard.s-dante.com` 은 Pages 프로젝트 `agent-dashboard` 의 커스텀 도메인이다 (`dashboard` CNAME → `agent-dashboard-2at.pages.dev`, 프록시).
 - PWA 로 설치할 수 있다 (`manifest.webmanifest`, `sw.js`, `icons/`). Chrome·Edge 는 주소창의 설치 버튼, iOS Safari 는 공유 → 홈 화면에 추가. 서비스 워커는 이 출처의 페이지 파일만 네트워크 우선으로 캐시해 오프라인에서도 열리게 하고, 메트릭 서버 요청과 `build.json` 은 건드리지 않는다.
-- 아이콘 원본은 `icons/icon.svg` 이고 PNG 는 그것을 렌더링한 것이다. 바꾸면 PNG 도 다시 만든다.
+- 앱 아이콘은 바의 「앱 아이콘」에서 고른다: 컨셉 5종(그리드·펄스·봇·터미널·노드) × 색 4종(블루·에메랄드·선셋·그래파이트) = 20개, 이 기기에만 저장(`adash.icon`). `icon-boot.js` 가 고른 아이콘의 manifest·파비콘·apple-touch-icon 으로 링크를 바꾼다. 탭 아이콘은 바로 바뀌고, 설치한 앱은 브라우저가 다음에 manifest 를 확인할 때 바뀐다(Chrome 은 바꿀지 물을 수 있음). iOS 는 추가할 때의 아이콘을 유지하므로 홈 화면에 다시 추가해야 한다.
+- 아이콘은 `scripts/make-icons.py` 가 만든다(SVG 템플릿 → headless Chrome 으로 PNG). 기본(그리드·블루)은 `icons/` 와 `manifest.webmanifest`, 나머지는 `icons/app/<컨셉>-<색>/` 에 manifest 와 함께 있다. 아이콘을 바꾸거나 더할 때는 스크립트를 고쳐 다시 돌리고, 목록은 `icon-boot.js` 에도 맞춘다.
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 1분마다, 그리고 화면에 다시 나타나거나 포커스·네트워크를 되찾을 때마다(10초에 한 번까지) 이것을 확인해 새 배포면 서비스 워커를 갱신하고 새로 고친다. 설치한 PWA 는 다시 열기보다 백그라운드에서 돌아오는 일이 많아서다.
 - 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
