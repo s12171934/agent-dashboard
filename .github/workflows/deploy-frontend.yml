@@ -1,0 +1,35 @@
+# Deploy the page to Cloudflare Pages (production) when main gets a change to it.
+# Runs scripts/deploy-frontend.sh; needs repo secrets CLOUDFLARE_API_TOKEN (Account · Cloudflare Pages · Edit)
+# and CLOUDFLARE_ACCOUNT_ID.
+name: Deploy frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - frontend/**
+      - design-system/**
+      - scripts/deploy-frontend.sh
+      - .github/workflows/deploy-frontend.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: scripts/deploy-frontend.sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          npm_config_yes: "true"
