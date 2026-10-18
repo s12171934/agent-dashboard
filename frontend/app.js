@@ -2289,14 +2289,25 @@ async function pump(now) {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && stale) { stale = false; pump(); } });
 // A tab opened before a new deployment keeps old logic (e.g. no hidden filter): reload once build.json changes.
-let pageBuild;
+// An installed PWA is mostly resumed, not reopened, so the check also runs when the page comes back (shown,
+// focused, back online), at most every 10 s; before the reload the service worker updates too.
+let pageBuild, buildChecked = 0;
 async function checkBuild() {
+  buildChecked = Date.now();
   const b = await api.build();
   if (pageBuild === undefined) pageBuild = b;
-  else if (b && b !== pageBuild) location.reload();
+  else if (b && b !== pageBuild) {
+    await navigator.serviceWorker?.getRegistration().then(r => r?.update()).catch(() => {});
+    location.reload();
+  }
 }
+const checkBuildSoon = () => { if (!document.hidden && Date.now() - buildChecked > 10000) checkBuild(); };
 checkBuild();
-setInterval(() => { if (!document.hidden) checkBuild(); }, 5 * 60000);
+setInterval(checkBuildSoon, 60000);
+document.addEventListener('visibilitychange', checkBuildSoon);
+addEventListener('focus', checkBuildSoon);
+addEventListener('online', checkBuildSoon);
+addEventListener('pageshow', e => { if (e.persisted) checkBuildSoon(); });
 // 「메트릭 서버」 panel, opened from the connection badge: the servers this device reads (each tried before it is
 // added), which of them are on, and whether the agents view merges them or splits them per server. It also opens by
 // itself when no server has connected after a few seconds (a new device, the server down), since an empty dashboard
