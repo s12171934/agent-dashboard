@@ -2378,11 +2378,15 @@ setTimeout(() => { if (!srvOn().some(x => x.live) && $('#server-panel').hidden) 
 //   its stages and steps.
 // - 전체 시계열: one trunk with a branch per project, git-graph style (pjTimeline). Picking a project focuses its
 //   branch and opens the same detail below the graph (가로) or beside it (세로).
-// Picking a step splits the detail: the stages and steps on one side, the step's Obsidian note on the other; a
-// [[link]] in the note opens in the same place, and 「Obsidian 에서 열기」 hands it to Obsidian itself.
+// Picking a step splits the detail: the stages and steps on one side, the step's Obsidian note on the other. The
+// documents themselves open in Obsidian: a step's 「Obsidian」 button, the note's title, its 「Obsidian 에서 열기」, and
+// the [[links]] in it (obsidian://open?path=, or a search for a link outside the project folder).
 const PJ_ST = { done: '완료', failed: '실패', active: '진행 중', pending: '예정', scheduling: '일정 미정', empty: '작업 없음' };
 const PJ_C = { done: 'var(--done)', failed: 'var(--bad)', active: 'var(--run)', pending: 'var(--muted)', scheduling: 'var(--idle)', empty: 'var(--idle)' };
 const pjFin = st => st.status === 'done' || st.status === 'failed';
+// A note in Obsidian: by its absolute path, which the project's progress.json path (absolute) gives the folder of.
+const pjObsidian = abs => 'obsidian://open?path=' + encodeURIComponent(abs);
+const pjAbs = (p, rel) => p.path.replace(/[^/]*$/, '') + rel;
 const pjPct = x => x.total ? Math.round(x.counts.done / x.total * 100) : 0;
 const pjPeriod = (a, b) => a ? (b && b !== a ? `${a} ~ ${b}` : a) : '날짜 미정';
 const pjChip = s => `<span class="chip" style="--c: ${PJ_C[s]}">${PJ_ST[s] || s}</span>`;
@@ -2400,7 +2404,7 @@ let pjFull = {};           // key -> api.project() (with steps); dropped with pj
 const pjNotes = {};        // key + '\n' + path -> api.note()
 let pjOpen = null;         // 프로젝트별: the project folded open
 let pjFocus = null;        // 전체 시계열: the focused project
-let pjNote = null;         // the note in the split: {key, path, back: [paths]}, or null
+let pjNote = null;         // the note in the split: {key, path}, or null
 let pjScrollTo = null;     // a stage number to bring into view once the detail is drawn
 let pjSrcKey = '';         // the servers on and their connection, as of the last projects fetch (connect() watches it)
 const pjVertical = () => pj.orient === 'v' || (pj.orient === 'auto' && innerWidth < innerHeight);
@@ -2481,7 +2485,8 @@ async function pjDetail(box, key) {
         <h4><span class="pj-st ${st.status}${p.current?.no === st.no ? ' cur' : ''}">${pjNode(st)}</span>${esc(st.name)} ${pjChip(st.status)}
           <span class="st">${st.total ? `${st.counts.done}/${st.total}` : ''}${st.start ? ` · ${pjPeriod(st.start, st.end)}` : ''}</span></h4>
         ${st.steps.length ? `<ul class="pj-steps">${st.steps.map(sp => `<li><button type="button" class="pj-step${split && pjNote.path === sp.path ? ' on' : ''}" data-pj-step="${esc(sp.path)}">
-            <i class="pj-sdot ${sp.status}"></i><span class="pj-stitle">${esc(sp.title)}</span><span class="st">${sp.date ? pjPeriod(sp.date, sp.endDate) : PJ_ST.scheduling}</span></button></li>`).join('')}</ul>`
+            <i class="pj-sdot ${sp.status}"></i><span class="pj-stitle">${esc(sp.title)}</span><span class="st">${sp.date ? pjPeriod(sp.date, sp.endDate) : PJ_ST.scheduling}</span></button>
+            <a class="act pj-obs" href="${pjObsidian(pjAbs(p, sp.path))}" aria-label="${esc(sp.title)} — Obsidian 에서 열기" data-tip="Obsidian 에서 열기">Obsidian</a></li>`).join('')}</ul>`
           : '<div class="st pj-none">스텝 없음</div>'}
       </section>`).join('')}</div>
       <div class="pj-note" data-pj-note></div>
@@ -2500,8 +2505,7 @@ async function pjShowNote(box, p) {
     try { n = pjNotes[ck] = await api.note(p.server, p.name, path); } catch (e) { n = { error: String(e.message || e) }; }
     if (!pane.isConnected || pjNote?.path !== path) return;
   }
-  const bar = `<div class="pj-nbar">${pjNote.back.length ? '<button type="button" class="act" data-pj-nback>← 이전 노트</button>' : ''}
-    <span class="st">${esc(path)}</span><button type="button" class="act" data-pj-nclose aria-label="노트 닫기">닫기 ✕</button></div>`;
+  const bar = `<div class="pj-nbar"><span class="st">${esc(path)}</span><button type="button" class="act" data-pj-nclose aria-label="노트 닫기">닫기 ✕</button></div>`;
   if (!n || n.error) { pane.innerHTML = bar + `<div class="empty">${esc(n?.error || '노트를 찾을 수 없습니다.')}</div>`; return; }
   const st = p.stages.find(s => s.steps.some(x => x.path === path)), sp = st?.steps.find(x => x.path === path);
   let md = n.content, fm = [];
@@ -2509,25 +2513,25 @@ async function pjShowNote(box, p) {
   if (m) { md = md.slice(m[0].length); fm = m[1].split('\n').map(l => l.match(/^([\w-]+):\s*(.*)$/)).filter(Boolean); }
   const title = fm.find(x => x[1] === 'title')?.[2] || path.split('/').pop().replace(/\.md$/, '');
   const links = Object.fromEntries((n.links || []).map(l => [l.target, l.path]));
-  pane.innerHTML = bar + `<h3 class="pj-ntitle">${esc(title)} ${sp ? pjChip(sp.status) : ''}</h3>
+  pane.innerHTML = bar + `<h3 class="pj-ntitle"><a href="${pjObsidian(n.abs)}" title="Obsidian 에서 열기">${esc(title)}</a> ${sp ? pjChip(sp.status) : ''}</h3>
     ${sp ? `<div class="kpis pj-kpis"><div class="kpi"><span>${sp.status === 'active' ? '시작 ~ 마지막 작업일' : sp.status === 'pending' ? '계획' : '날짜'}</span><b class="pj-sm">${pjPeriod(sp.date, sp.endDate)}</b></div>
       <div class="kpi"><span>단계</span><b class="pj-sm">${st.no}. ${esc(st.name)}</b><small> · ${PJ_ST[st.status]}</small></div></div>` : ''}
-    <div class="pj-acts"><a class="act big accent" href="obsidian://open?path=${encodeURIComponent(n.abs)}">Obsidian 에서 열기</a>
+    <div class="pj-acts"><a class="act big accent" href="${pjObsidian(n.abs)}">Obsidian 에서 열기</a>
       <span class="st">수정 ${new Date(n.mtime * 1000).toLocaleString('ko-KR', { hour12: false })}</span></div>
     ${fm.length ? `<table class="pj-fm">${fm.filter(x => x[1] !== 'title').map(([, k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>` : ''}
-    <article class="pj-md">${pjMarkdown(md, links)}</article>`;
+    <article class="pj-md">${pjMarkdown(md, links, rel => pjAbs(p, rel))}</article>`;
 }
 
 // A small Markdown renderer for notes: headings, paragraphs, lists, quotes, code, tables, rules; inline code, bold,
-// italic, links and [[wikilinks]] (a link the server resolved inside the project folder opens in the split, any other
-// one searches Obsidian). Everything is escaped first, so a note cannot inject markup.
-function pjMarkdown(md, links) {
+// italic, links and [[wikilinks]] (a link the server resolved inside the project folder opens that note in Obsidian,
+// any other one searches Obsidian for it). Everything is escaped first, so a note cannot inject markup.
+function pjMarkdown(md, links, absOf) {
   const inline = t => {
     const code = [];
     t = esc(t).replace(/`([^`]+)`/g, (_, c) => `\u0000${code.push(c) - 1}\u0000`);
     t = t.replace(/!?\[\[([^\]|#\n]+)(#[^\]|\n]*)?(?:\|([^\]\n]*))?\]\]/g, (_, target, h, alias) => {
       const to = target.trim(), label = alias || to.split('/').pop() + (h || ''), path = links[to.replace(/&amp;/g, '&')];
-      return path ? `<button type="button" class="pj-wl" data-pj-link="${esc(path)}">${label}</button>`
+      return path ? `<a class="pj-wl" href="${pjObsidian(absOf(path))}" title="Obsidian 에서 열기">${label}</a>`
         : `<a class="pj-wl out" href="obsidian://search?query=${encodeURIComponent(to)}" title="프로젝트 폴더 밖 노트 — Obsidian 에서 검색">${label}</a>`;
     });
     t = t.replace(/\[([^\]]+)\]\(((?:https?|obsidian):\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
@@ -2805,16 +2809,12 @@ document.addEventListener('click', e => {
   if (br) return pjSelect(br.dataset.pj, +t.closest('.pj-nd')?.dataset.st || 0);
   const box = t.closest('[data-pj-detail], #pj-focus'), key = box && (box.dataset.pjDetail || pjFocus);
   if (!box || !key || !pjFull[key]) return;
-  const step = t.closest('[data-pj-step]'), link = t.closest('[data-pj-link]');
+  const step = t.closest('[data-pj-step]');
   if (step) {
     if (pjNote?.key === key && pjNote.path === step.dataset.pjStep) pjNote = null;  // the open step again closes the split
-    else pjNote = { key, path: step.dataset.pjStep, back: [] };
+    else pjNote = { key, path: step.dataset.pjStep };
     box.querySelector('.pj-split').classList.toggle('on', !!pjNote);
     if (pjNote) pjShowNote(box, pjFull[key]); else box.querySelectorAll('.pj-step.on').forEach(b => b.classList.remove('on'));
-  } else if (link) {
-    pjNote.back.push(pjNote.path); pjNote.path = link.dataset.pjLink; pjShowNote(box, pjFull[key]);
-  } else if (t.closest('[data-pj-nback]')) {
-    pjNote.path = pjNote.back.pop(); pjShowNote(box, pjFull[key]);
   } else if (t.closest('[data-pj-nclose]')) {
     pjNote = null; box.querySelector('.pj-split').classList.remove('on'); box.querySelectorAll('.pj-step.on').forEach(b => b.classList.remove('on'));
   }

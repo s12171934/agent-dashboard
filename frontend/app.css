@@ -581,6 +581,13 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-stage h4 .pj-dot { width: 24px; height: 24px; }
 .pj-stage h4 .pj-st.cur + * { color: var(--run); }
 .pj-steps { list-style: none; margin: 0; padding: 0 0 0 30px; }
+.pj-steps li { display: flex; align-items: center; gap: 6px; }
+.pj-steps li > .pj-step { flex: 1; min-width: 0; }
+.pj-obs { flex: none; text-decoration: none; opacity: 0; transition: opacity .15s; }
+.pj-steps li:hover .pj-obs, .pj-obs:focus-visible, .pj-step.on + .pj-obs { opacity: 1; }
+@media (hover: none) { .pj-obs { opacity: 1; } }
+.pj-ntitle a { color: inherit; text-decoration: none; border-bottom: 1px dashed var(--muted); }
+.pj-ntitle a:hover { color: var(--accent); border-color: currentColor; }
 .pj-step { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; text-align: left; background: none; border: 0; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
 .pj-step:hover, .pj-step:focus-visible { background: var(--control-fill); outline: none; }
 .pj-step.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -611,7 +618,7 @@ a.act { text-decoration: none; display: inline-block; }
 .pj-md pre code { background: none; padding: 0; }
 .pj-md table { margin: 8px 0; }
 .pj-md hr { border: 0; border-top: 1px solid var(--line); }
-.pj-wl { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: none; border-bottom: 1px dashed currentColor; }
+.pj-wl { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; }
 .pj-wl.out { color: var(--muted); }
 
 /* 전체 시계열: the graph, with the focused project's detail below it (가로) or beside it (세로) */
@@ -637,5 +644,5 @@ a.act { text-decoration: none; display: inline-block; }
 .pj-nd { transition: transform .15s; transform-box: fill-box; transform-origin: center; }
 .pj-nd:hover { transform: scale(1.18); }
 .pj-halo { animation: pulse 1.6s infinite; }
-.pj-src { list-style: none; padding: 0; margin: 12px auto; display: inline-block; text-align: left; }
+.pj-src { list-style: none; padding: 0; margin: 12px auto; display: table; text-align: left; }
 .pj-src li { padding: 2px 0; }
