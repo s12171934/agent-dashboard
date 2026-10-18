@@ -1,0 +1,4 @@
+/* field: a text input or select in the controls' pill style. Width and growth are the page's (flex, min-width). */
+.field { font: inherit; color: var(--text); padding: 4px 8px; border: 1px solid var(--surface-edge); border-radius: 8px; background: var(--control-fill);
+  -webkit-backdrop-filter: var(--surface-blur-sm); backdrop-filter: var(--surface-blur-sm); box-shadow: var(--surface-hi); }
+select.field { cursor: pointer; padding: 4px 6px; }

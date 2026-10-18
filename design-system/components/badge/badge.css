@@ -1,0 +1,3 @@
+/* badge: <span class="badge">; the page adds colour variants */
+.badge { font-size: 10.5px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); flex: none; white-space: nowrap; }
+.badge { border-color: color-mix(in srgb, var(--muted) 35%, transparent); background: color-mix(in srgb, var(--panel) 35%, transparent); }

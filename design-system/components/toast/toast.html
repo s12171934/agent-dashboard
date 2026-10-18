@@ -1,0 +1,5 @@
+<!-- toast — a short notice at the bottom of the page, optionally with one action (e.g. 되돌리기).
+     <ds-toast id="toast"></ds-toast>       one per page, at the end of <body>
+     Script API: toast.show(message, { action, onAction }, ms). message is plain text. -->
+<button class="act" onclick="document.getElementById('toast-demo').show('3개를 숨겼습니다', { action: '되돌리기', onAction: () => {} })">토스트 띄우기</button>
+<ds-toast id="toast-demo"></ds-toast>

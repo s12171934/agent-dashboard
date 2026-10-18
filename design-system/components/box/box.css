@@ -1,0 +1,9 @@
+/* box: a pane for one block of a page, with an optional heading (<h3>, its extras inline) or, as <details class="box">,
+   a <summary> that folds it. */
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; min-width: 0; }
+.box {
+  background: var(--surface-sheen), var(--surface); border-color: var(--surface-edge);
+  -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
+  box-shadow: var(--surface-hi), var(--surface-shadow); }
+.box h3 { font-size: 13px; margin: 0 0 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+details.box > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }

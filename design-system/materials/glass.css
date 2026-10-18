@@ -1,0 +1,65 @@
+/* Material: liquid glass (the default). Surfaces are translucent layers over the page, frosted with backdrop blur,
+   lit by a sheen and a bright top edge; bars are glass tubes. */
+/* The material contract: every material defines all of these, for light and dark. Components and pages draw
+   surfaces, controls, bars and chart marks with these tokens only (GUIDELINES.md 「재질」).
+   surfaces   --surface (pane fill) · --surface-2 (inner, cards) · --surface-strong (popovers, menus)
+              --surface-edge (border colour) · --surface-sheen (an image layered over the fill) · --surface-hi (inset light)
+              --surface-shadow (panes) · --surface-shadow-sm (cards at rest) · --surface-shadow-lg (lifted)
+              --surface-shadow-float (things floating over the page: the dock)
+              --surface-blur · --surface-blur-sm (backdrop-filter) · --surface-lift (hover rise, a length)
+   controls   --control-fill (buttons) · --control-well (segmented track) · --control-well-inset
+              --control-hi (inset light on filled accent controls) · --control-glow (% of accent in their glow)
+   bars       --bar-well (empty track) · --bar-inset (track shadow) · --bar-sheen (an image over the fill) · --bar-rim
+              --bar-divider (between stacked segments) · --bar-step-hi (on .pbar steps)
+   charts     --chart-rim (stroke around SVG bars) · --chart-fill-opacity
+   scrim      --scrim-blur · --scrim-fill (behind modal dialogs)
+   Pick one with <html data-material="glass|matte"> (foundations/theme.js, saved as adash.material), or set
+   data-material on any element to give its subtree another material. */
+:root:not([data-material]), :root[data-material="glass"], [data-material="glass"] {
+  --surface: color-mix(in srgb, var(--panel) 50%, transparent);
+  --surface-2: color-mix(in srgb, var(--panel2) 38%, transparent);
+  --surface-strong: color-mix(in srgb, var(--panel) 74%, transparent);
+  --surface-edge: rgb(20 30 60 / .09);
+  --surface-sheen: linear-gradient(180deg, rgb(255 255 255 / .38), rgb(255 255 255 / .06) 60%);
+  --surface-hi: inset 0 1px 0 rgb(255 255 255 / .85), inset 0 -1px 0 rgb(255 255 255 / .2);
+  --surface-shadow: 0 10px 30px rgb(30 40 80 / .10), 0 1px 3px rgb(30 40 80 / .08);
+  --surface-shadow-sm: 0 2px 10px rgb(30 40 80 / .05);
+  --surface-shadow-lg: 0 8px 24px rgb(30 40 80 / .12);
+  --surface-shadow-float: 0 12px 36px rgb(30 40 80 / .18), 0 2px 6px rgb(30 40 80 / .08);
+  --surface-blur: blur(24px) saturate(180%);
+  --surface-blur-sm: blur(14px) saturate(160%);
+  --surface-lift: -1px;
+  --control-fill: color-mix(in srgb, var(--panel) 45%, transparent);
+  --control-well: color-mix(in srgb, var(--panel) 40%, transparent);
+  --control-well-inset: inset 0 1px 2px rgb(0 0 0 / .06);
+  --control-hi: inset 0 1px 0 rgb(255 255 255 / .35);
+  --control-glow: 40%;
+  --bar-well: color-mix(in srgb, var(--muted) 18%, transparent);
+  --bar-inset: inset 0 1px 2px rgb(0 0 0 / .10);
+  --bar-sheen: linear-gradient(180deg, rgb(255 255 255 / .5), rgb(255 255 255 / .08) 55%, rgb(0 0 0 / .04));
+  --bar-rim: inset 0 0 0 1px rgb(255 255 255 / .35);
+  --bar-divider: inset 1px 0 0 rgb(255 255 255 / .45);
+  --bar-step-hi: inset 0 1px 0 rgb(255 255 255 / .45);
+  --chart-rim: rgb(255 255 255 / .6);
+  --chart-fill-opacity: .82;
+  --scrim-blur: blur(6px);
+  --scrim-fill: rgb(0 0 0 / .2);
+}
+:root[data-theme="dark"]:not([data-material]), :root[data-theme="dark"][data-material="glass"], :root[data-theme="dark"] [data-material="glass"] {
+  --surface: color-mix(in srgb, var(--panel) 48%, transparent);
+  --surface-2: color-mix(in srgb, var(--panel2) 34%, transparent);
+  --surface-strong: color-mix(in srgb, var(--panel) 78%, transparent);
+  --surface-edge: rgb(255 255 255 / .12);
+  --surface-sheen: linear-gradient(180deg, rgb(255 255 255 / .08), rgb(255 255 255 / .01) 60%);
+  --surface-hi: inset 0 1px 0 rgb(255 255 255 / .14), inset 0 -1px 0 rgb(255 255 255 / .03);
+  --surface-shadow: 0 10px 34px rgb(0 0 0 / .38), 0 1px 3px rgb(0 0 0 / .3);
+  --bar-sheen: linear-gradient(180deg, rgb(255 255 255 / .22), rgb(255 255 255 / .02) 55%);
+  --bar-rim: inset 0 0 0 1px rgb(255 255 255 / .08);
+  --chart-rim: rgb(255 255 255 / .18);
+}
+/* without backdrop blur, translucent panes would show the page through unfrosted: make them solid */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root:not([data-material]), :root[data-material="glass"], [data-material="glass"], :root[data-theme="dark"]:not([data-material]), :root[data-theme="dark"][data-material="glass"], :root[data-theme="dark"] [data-material="glass"] {
+    --surface: var(--panel); --surface-2: var(--panel2); --surface-strong: var(--panel);
+  }
+}

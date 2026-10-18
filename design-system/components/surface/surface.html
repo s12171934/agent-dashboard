@@ -1,0 +1,10 @@
+<!-- surface — a pane drawn in the current material.
+     <div class="surface"> … </div>                       a pane
+     <div class="surface surface-strong"> … </div>        a denser pane (popovers, menus)
+     The look (translucency, blur, sheen, shadow) comes from the material, never from the markup.
+     Put data-material="matte" on any element to switch the material of its subtree. -->
+<div class="row bg-field">
+  <div class="surface" style="padding: 16px">.surface</div>
+  <div class="surface surface-strong" style="padding: 16px">.surface.surface-strong</div>
+  <div class="surface" data-material="matte" style="padding: 16px">data-material="matte"</div>
+</div>

@@ -1,0 +1,12 @@
+/* <ds-pill state="run|wait|idle|done|bg|stalled">label</ds-pill>: a run-state pill; ds-pill.js adds the dot (<i>). */
+ds-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 1px 8px 1px 6px; border-radius: 99px; white-space: nowrap; flex: none; }
+ds-pill > i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+ds-pill[state="run"] { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+ds-pill[state="run"] > i { animation: blink 1.2s infinite; }
+ds-pill[state="wait"] { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+ds-pill[state="idle"] { color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, transparent); }
+ds-pill[state="done"] { color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); }
+ds-pill[state="bg"] { color: color-mix(in srgb, var(--ok) 70%, var(--muted)); background: color-mix(in srgb, var(--ok) 8%, transparent); }
+ds-pill[state="bg"] > i { background: none; border: 1.5px dotted currentColor; width: 5px; height: 5px; animation: blink 2.4s infinite; }
+ds-pill[state="stalled"] { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+ds-pill[state="done"] > i { background: none; border: 1.5px solid currentColor; width: 5px; height: 5px; }

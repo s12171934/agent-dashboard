@@ -1,0 +1,10 @@
+/* kpi: a grid of figure tiles: label on top, figure, optional small note after it. */
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.kpi {
+  background: var(--surface-sheen), var(--surface); border-color: var(--surface-edge);
+  -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
+  box-shadow: var(--surface-hi), var(--surface-shadow); }
+.kpi span { color: var(--muted); font-size: 11px; display: block; }
+.kpi b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.kpi small { color: var(--muted); }

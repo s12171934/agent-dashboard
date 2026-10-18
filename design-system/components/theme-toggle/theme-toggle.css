@@ -1,0 +1,5 @@
+/* <ds-theme-toggle choice="system|light|dark">: the button inside shows the icon of the choice (ds-theme-toggle.js
+   sets choice). */
+ds-theme-toggle { display: contents; }
+ds-theme-toggle ds-icon { display: none; }
+ds-theme-toggle[choice="system"] ds-icon:nth-of-type(1), ds-theme-toggle[choice="light"] ds-icon:nth-of-type(2), ds-theme-toggle[choice="dark"] ds-icon:nth-of-type(3) { display: contents; }

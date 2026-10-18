@@ -1,0 +1,11 @@
+/* Design system base: element defaults, text utilities and shared motion. */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+button { font: inherit; color: inherit; }
+.st { font-size: 11px; color: var(--muted); }
+.empty { color: var(--muted); padding: 40px; text-align: center; }
+/* opacity only: compositor-animated, no per-frame repaint (box-shadow keyframes repainted every frame) */
+@keyframes pulse { 50% { opacity: .45; } }
+@keyframes blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

@@ -1,0 +1,15 @@
+<!-- dialog — a modal confirmation.
+     <dialog class="dialog"><form method="dialog">
+       <h3>Question?</h3>
+       <p>What happens.</p>
+       <p class="dialog-warn">⚠ A risk.</p>                                   optional
+       <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">Do it</button></div>
+     </form></dialog>
+     Open with showModal(); the clicked button's value becomes returnValue. The confirming button comes last. -->
+<button class="act" onclick="this.nextElementSibling.showModal()">대화상자 열기</button>
+<dialog class="dialog"><form method="dialog">
+  <h3>"리퀴드글래스 UI" 의 Orca 터미널을 닫을까요?</h3>
+  <p class="dialog-warn">⚠ 지금 실행 중입니다.</p>
+  <p>에이전트 프로세스가 끝납니다. 세션 기록은 남습니다.</p>
+  <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div>
+</form></dialog>

@@ -19,8 +19,9 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 폴더 | 무엇 | 어디서 도는가 |
 | --- | --- | --- |
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
+| `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `aplan`, `launchd/` | 로컬 Mac |
-| `scripts/` | `deploy-frontend.sh` — `frontend/` 를 Pages 에 배포 | |
+| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버 | |
 | `exports/` | 공개 스키마 | |
 
 ```
@@ -63,7 +64,7 @@ python3 server/server.py --origin https://dashboard.s-dante.com --origin https:/
 tailscale serve --bg 8787                                                  # 다른 기기용 https 주소 (선택)
 ```
 
-로컬에서 페이지를 고칠 때는 `python3 -m http.server 5500 -d frontend` 로 띄운다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다.
+로컬에서 페이지를 고칠 때는 `python3 scripts/dev-frontend.py` 로 띄우고 `http://127.0.0.1:5500` 을 연다(`--port` 로 바꿀 수 있다). `frontend/` 의 파일을 저장하면 열린 탭이 저절로 따라온다: CSS 는 새로 고치지 않고 그 자리에서 바뀌고, 나머지는 페이지를 새로 고친다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다.
 
 | 옵션 | 기본값 | 뜻 |
 | --- | --- | --- |

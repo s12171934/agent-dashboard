@@ -1,0 +1,9 @@
+/* dialog: a modal <dialog class="dialog"> (showModal) for a confirmation: title, paragraphs, warnings, buttons. */
+dialog.dialog { border: 1px solid var(--surface-edge); border-radius: 18px; color: var(--text); max-width: 440px; padding: 16px 18px;
+  background: var(--surface-sheen), var(--surface-strong); -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
+  box-shadow: var(--surface-hi), var(--surface-shadow); }
+dialog.dialog::backdrop { background: var(--scrim-fill, transparent); -webkit-backdrop-filter: var(--scrim-blur, blur(6px)); backdrop-filter: var(--scrim-blur, blur(6px)); }
+.dialog h3 { margin: 0 0 10px; font-size: 15px; }
+.dialog p { margin: 6px 0; font-size: 13px; }
+.dialog .dialog-warn { color: var(--bad); }
+.dialog .dialog-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
