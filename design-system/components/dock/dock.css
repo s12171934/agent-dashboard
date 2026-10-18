@@ -13,7 +13,7 @@ ds-dock svg { width: calc(var(--dock-sz) * .5); height: calc(var(--dock-sz) * .5
 ds-dock > a:hover, .dock-btn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
 ds-dock > a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
 /* names show on hover (or keyboard focus) as a label (a small --surface-strong) beside the bar, on the side away from the screen edge */
-ds-dock [data-tip]::after { content: attr(data-tip); position: absolute; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .12s, transform .12s;
+ds-dock:not([open]) [data-tip]::after { content: attr(data-tip); position: absolute; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .12s, transform .12s;
   padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text);
   background: var(--surface-sheen), var(--surface-strong); border: 1px solid var(--surface-edge);
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow); }
@@ -49,18 +49,59 @@ ds-dock .dn[hidden] { display: none; }
   overflow-y: auto; scrollbar-width: none; overscroll-behavior-y: contain; }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock::-webkit-scrollbar { display: none; }
 :root[data-dock="left"] ds-dock { left: calc(12px + env(safe-area-inset-left)); } :root[data-dock="right"] ds-dock { right: calc(12px + env(safe-area-inset-right)); }
-@media (max-width: 500px) {
-  ds-dock { gap: 0; padding: 4px; }
-  .dock-sep { margin: 0 2px; }
-  /* a top or bottom bar spans at most the screen less 8px a side; its buttons give up width (down to 28px) to stay on
-     one row, and if even that is too wide the bar scrolls sideways */
-  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); width: fit-content; max-width: none; margin-inline: auto;
-    transform: none; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
-  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock::-webkit-scrollbar { display: none; }
-  :root:is([data-dock="bottom"], [data-dock="top"]) :is(ds-dock > a, ds-dock .dock-btn) { flex: 0 1 var(--dock-sz); width: auto; min-width: 28px; }
-}
 /* no hover (a touch screen): a tap would leave the name stuck on screen, and aria-label already names the button */
 @media (hover: none) { ds-dock [data-tip]::after { display: none; } }
+
+/* phone (≤500px): the bar is a launcher. Closed, only .dock-launch shows (the current tab, the summary attribute and
+   a menu button); open ([open]), the bar becomes a bottom sheet that lays out its own children as named rows — tabs
+   two to a row, toggles as full rows with a switch, .dock-sep[data-label] as group headings. The children stay the
+   page's elements, so ids, checkboxes and click handlers keep working. dock-boot.js keeps a phone bar at the bottom. */
+.dock-launch, .dock-head, .dock-scrim { display: none; }
+@media (max-width: 500px) {
+  :root[data-dock] ds-dock { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: auto; bottom: var(--dock-bottom);
+    width: fit-content; max-width: none; margin-inline: auto; transform: none; padding: 5px; }
+  ds-dock:not([open]) > :not(.dock-launch) { display: none; }
+  ds-dock .dock-cfg { display: none; }
+  .dock-launch { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 4px 0 14px; border: 0; border-radius: 99px; background: none;
+    font-size: 15px; font-weight: 700; color: var(--accent); cursor: pointer; }
+  .dock-launch > span { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .dock-launch small { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .dock-launch small:empty { display: none; }
+  .dock-launch b { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--on-accent); background: var(--accent); }
+  .dock-launch b.dot::after { content: ""; position: absolute; top: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
+  .dock-launch svg { width: 20px; height: 20px; }
+  .dock-launch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  :root[data-dock] ds-dock[open] { left: 0; right: 0; bottom: 0; width: auto; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px calc(12px + env(safe-area-inset-bottom));
+    border-bottom: 0; border-radius: 24px 24px 0 0; }
+  ds-dock[open] > .dock-launch { display: none; }
+  ds-dock[open] > .dock-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 22px 2px 4px; position: relative; font-size: 16px; }
+  ds-dock[open] > .dock-head::before { content: ""; position: absolute; top: 8px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px;
+    background: color-mix(in srgb, var(--muted) 45%, transparent); }
+  .dock-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+    color: var(--muted); background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .dock-close svg { width: 18px; height: 18px; }
+  :is(ds-dock[open] > a, ds-dock[open] .dock-btn) { width: auto; height: 52px; justify-content: flex-start; gap: 12px; padding: 0 14px; border-radius: 14px; font-size: 15px;
+    color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+  :is(ds-dock[open] > a, ds-dock[open] .dock-btn) svg { width: 22px; height: 22px; color: var(--muted); }
+  ds-dock[open] > a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  ds-dock[open] > a.on svg { color: var(--accent); }
+  /* the hover name becomes the row's label */
+  :root:is([data-dock]) ds-dock[open] [data-tip]:is(*, :hover, :focus-visible, :has(:focus-visible))::after { display: block; position: static; flex: 1; min-width: 0;
+    content: attr(data-tip); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transform: none; font-size: 15px; font-weight: 600; text-align: left; }
+  ds-dock[open] .dn { position: static; order: 2; box-shadow: none; }
+  /* a toggle is a full row with a switch (the knob is a gradient on the track) */
+  ds-dock[open] label.dock-btn { grid-column: 1 / -1; }
+  ds-dock[open] label.dock-btn::before { content: ""; order: 3; flex: none; width: 51px; height: 31px; border-radius: 99px; transition: background .15s;
+    background: radial-gradient(circle at 15.5px 50%, var(--on-accent) 12.5px, transparent 13.5px), color-mix(in srgb, var(--muted) 30%, transparent); }
+  ds-dock[open] label.dock-btn:has(input:checked) { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+  ds-dock[open] label.dock-btn:has(input:checked)::before { background: radial-gradient(circle at 35.5px 50%, var(--on-accent) 12.5px, transparent 13.5px), var(--accent); }
+  ds-dock[open] .dock-sep { grid-column: 1 / -1; width: auto; height: auto; margin: 8px 4px 0; background: none; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  ds-dock[open] .dock-sep::after { content: attr(data-label); }
+  .dock-scrim:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 39; background: var(--scrim-fill);
+    -webkit-backdrop-filter: var(--scrim-blur); backdrop-filter: var(--scrim-blur); }
+}
 
 /* .dock-pop: a popover that opens off the dock, on the side facing the page. It sits --dock-reach (the largest bar)
    from the edge, so resizing the bar moves nothing. Give it position: fixed and a z-index above the dock; open and

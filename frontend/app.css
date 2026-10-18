@@ -522,6 +522,7 @@ button.dc-opt.picked { background: var(--surface-sheen), color-mix(in srgb, var(
 }
 
 #srv-btn .srv-dot { position: absolute; top: 18%; right: 18%; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 2px var(--panel); }
+ds-dock[open] #srv-btn .srv-dot { position: static; order: 2; box-shadow: none; }
 #srv-btn.on .srv-dot { background: var(--ok); } #srv-btn.part .srv-dot { background: var(--warn); }
 
 /* the dock (<ds-dock>) floats over the page: keep a gutter on its side so it never covers the end of a scroll */

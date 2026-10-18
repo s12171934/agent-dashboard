@@ -40,7 +40,8 @@
   </div>
 </header>
 <!-- the floating bar (<ds-dock>): tabs | view filters | metric servers and display settings; data-tip names each.
-     The bar adds its own ⋯ settings button (position, size). -->
+     The bar adds its own ⋯ settings button (position, size). On a phone it is a launcher pill (summary: set by app.js)
+     that opens these same buttons as a sheet, grouped under the separators' data-label. -->
 <ds-dock id="dock" inset-from="header">
   <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#compare" data-v="compare" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
@@ -48,10 +49,10 @@
   <a href="#projects" data-v="projects" data-tip="프로젝트" aria-label="프로젝트"><ds-icon name="flow"></ds-icon></a>
   <a href="#tests" data-v="tests" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" id="k-tests" hidden>0</b></a>
   <a href="#hidden" data-v="hidden" data-tip="숨김" aria-label="숨김"><ds-icon name="eye-off"></ds-icon><b class="dn" id="k-hidden" hidden>0</b></a>
-  <i class="dock-sep"></i>
+  <i class="dock-sep" data-label="필터"></i>
   <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
   <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
-  <i class="dock-sep"></i>
+  <i class="dock-sep" data-label="설정"></i>
   <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
   <ds-theme-toggle id="theme" button-class="dock-btn"></ds-theme-toggle>
   <button class="dock-btn" id="theme-edit" data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>

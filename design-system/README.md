@@ -45,7 +45,7 @@ design-system/
 | --- | --- | --- |
 | 아이콘 | `<ds-icon name="users">` — `icons.svg` 의 심볼. 자기는 `display: contents`, 크기는 놓는 쪽이 `… svg` 로 정한다 (기본 1em) | `icon/` |
 | 상태 필 | `<ds-pill state="run\|wait\|idle\|done\|bg\|stalled">라벨</ds-pill>` — 앞의 점은 엘리먼트가 넣는다 | `pill/` |
-| 플로팅 바 | `<ds-dock>` 안에 `<a>` 탭(`.on` = 현재), `<button class="dock-btn">`, `<label class="dock-btn"><input type="checkbox">…</label>` 토글, `<i class="dock-sep">`. `data-tip` 은 호버 이름, `<b class="dn">` 은 개수 배지. 마지막에 ⋯ 바 설정(위치·크기)을 스스로 붙인다 | `dock/` |
+| 플로팅 바 | `<ds-dock>` 안에 `<a>` 탭(`.on` = 현재), `<button class="dock-btn">`, `<label class="dock-btn"><input type="checkbox">…</label>` 토글, `<i class="dock-sep">`. `data-tip` 은 호버 이름, `<b class="dn">` 은 개수 배지. 마지막에 ⋯ 바 설정(위치·크기)을 스스로 붙인다. 휴대폰에서는 런처 알약(현재 탭 + `summary`)이 되고, 누르면 같은 버튼들이 이름 붙은 바텀시트(`[open]`, 묶음 제목은 `.dock-sep` 의 `data-label`)로 열린다 | `dock/` |
 | 바 팝오버 | `.dock-pop` — 바 쪽에서 열리는 팝오버 자리. `hidden` 으로 열고 닫으며, 하나가 열리면 다른 `.dock-pop` 은 닫힌다. 위치는 바의 최대 크기 기준이라 크기를 바꿔도 움직이지 않는다 | `dock/` |
 | 표면 | `.surface`, `.surface.surface-strong` — 현재 재질로 그린 판 | `surface/` |
 | 테마 버튼 | `<ds-theme-toggle button-class="…">` — 시스템 → 라이트 → 다크 순환, 아이콘·이름을 스스로 갱신 | `theme-toggle/` |
@@ -74,7 +74,7 @@ design-system/
 폭 세 단계(`max-width` 900 태블릿 · 700 좁은 화면 · 500 휴대폰)와 입력 방식(`pointer: coarse`, `hover: none`)을 따로 본다. 규칙은 GUIDELINES 10장(B1–B7).
 
 - 토큰: `--gutter` (페이지 가장자리 여백, 700px 이하 12px), `--tap` (누르는 영역, 손가락 기기 36px).
-- 컴포넌트가 스스로 하는 것: 휴대폰에서 위·아래 바는 버튼 폭을 28px 까지 줄이고 그래도 넘치면 가로 스크롤, 호버 없는 기기에서 바 이름표 끔, `.seg`·`.tscroll` 가로 스크롤, 손가락 기기에서 `.act`·`.tgl`·`.field` 누르는 영역 확대와 입력란 16px.
+- 컴포넌트가 스스로 하는 것: 휴대폰에서 바는 아래 가운데 런처 알약(48px)이 되고 누르면 버튼마다 이름이 붙은 52px 행의 바텀시트로 열림(위치·크기 설정은 휴대폰에서 쓰지 않음), 호버 없는 기기에서 바 이름표 끔, `.seg`·`.tscroll` 가로 스크롤, 손가락 기기에서 `.act`·`.tgl`·`.field` 누르는 영역 확대와 입력란 16px.
 - 미리보기 위쪽에 지금 폭 단계가 보인다. 창 폭을 바꾸거나 개발자 도구 기기 모드로 확인한다.
 
 ## 페이지에 붙이기
@@ -88,6 +88,7 @@ design-system/
 ```
 
 - 페이지가 정하는 값: `--dock-inset-top` (위쪽 바를 끈적한 헤더 아래로 내릴 거리), 바가 가리지 않도록 본문에 두는 여백. 본문 좌우 여백은 `--gutter` 를 쓴다.
+- 페이지가 바에 주는 속성(선택): `summary` (휴대폰 런처에 보일 한 줄 요약), `sheet-title` (휴대폰 시트 제목), `.dock-sep` 의 `data-label` (시트의 묶음 제목).
 - 기기별 저장값: `adash.theme`, `adash.theme.custom`, `adash.material` (theme.js), `adash.dock`, `adash.dock.size` (dock-boot.js · ds-dock.js).
 
 ## 고칠 때
