@@ -1,72 +1,36 @@
 #!/usr/bin/env python3
-"""decision-hook — answer Claude Code's AskUserQuestion from the agent dashboard.
+"""decision-hook — show Claude Code's AskUserQuestion on the agent dashboard as well as in the terminal.
 
-A PreToolUse hook (matcher "AskUserQuestion"). It registers the question with the dashboard server, waits for an
-answer from the page, and hands it to Claude through updatedInput, so the terminal picker does not open. When the
-page releases it (「터미널에서 답하기」), the wait runs past DECISION_WAIT, or the server cannot be reached, it prints
-nothing and Claude shows the picker as usual. It never blocks the tool on its own failure.
+A PreToolUse hook (matcher "AskUserQuestion"). It registers the question with the dashboard server and ends at once,
+printing nothing, so Claude opens the terminal picker as usual and the dashboard shows the same question as a card.
+An answer from the card is typed into that picker by the server (through the session's Orca terminal); an answer
+in the terminal closes the card once the transcript has the result. With the server unreachable it steps aside just
+the same, so the question is never lost.
 
   ~/.claude/settings.json → hooks.PreToolUse: [{"matcher": "AskUserQuestion",
-      "hooks": [{"type": "command", "command": "<this file>", "timeout": 3600}]}]
+      "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
 
-Environment: DASH_URL (default http://127.0.0.1:8787), DECISION_WAIT seconds (default 1800; keep it under the
-hook's timeout).
+Environment: DASH_URL (default http://127.0.0.1:8787). ORCA_TERMINAL_HANDLE, set by Orca in its terminals, tells the
+server which terminal to type into.
 """
 import json
 import os
-import signal
 import sys
-import time
 from urllib.request import Request, urlopen
 
 URL = os.environ.get("DASH_URL", "http://127.0.0.1:8787").rstrip("/")
-WAIT = float(os.environ.get("DECISION_WAIT", "1800"))
-
-
-def call(path, body=None, timeout=5):
-    data = None if body is None else json.dumps(body).encode()
-    req = Request(URL + path, data=data, headers={"Content-Type": "application/json"}, method="POST" if data else "GET")
-    with urlopen(req, timeout=timeout) as res:
-        return json.load(res)
 
 
 def main():
     try:
         event = json.load(sys.stdin)
-        tool_input = event["tool_input"]
-        rid = call("/api/decision/ask", {"session_id": event.get("session_id"), "tool_use_id": event.get("tool_use_id"),
-                                         "cwd": event.get("cwd"), "questions": tool_input["questions"]})["id"]
+        body = {"session_id": event.get("session_id"), "tool_use_id": event.get("tool_use_id"), "cwd": event.get("cwd"),
+                "terminal": os.environ.get("ORCA_TERMINAL_HANDLE"), "questions": event["tool_input"]["questions"]}
+        req = Request(URL + "/api/decision/ask", data=json.dumps(body).encode(),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        urlopen(req, timeout=3).close()
     except Exception:
-        return  # no dashboard: the terminal picker as usual
-
-    def give_up(*_):
-        try:
-            call("/api/decision/done", {"id": rid}, timeout=2)
-        except Exception:
-            pass
-        sys.exit(0)
-
-    # Interrupted or timed out by Claude Code: close the card so the page does not offer a dead question.
-    signal.signal(signal.SIGTERM, give_up)
-    signal.signal(signal.SIGINT, give_up)
-    end = time.time() + WAIT
-    while time.time() < end:
-        try:
-            r = call(f"/api/decision/wait?id={rid}&t={min(25, max(1, int(end - time.time())))}", timeout=40)
-        except Exception:
-            time.sleep(2)  # the server restarted or blipped: its cards are gone, so this ends with "gone" next time
-            continue
-        if r.get("state") == "answered":
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "대시보드에서 답함",
-                "updatedInput": {**tool_input, "answers": r["answers"]},
-            }}, ensure_ascii=False))
-            return
-        if r.get("state") != "pending":
-            return  # released, cancelled or gone: the terminal picker
-    give_up()
+        pass  # no dashboard: the terminal picker alone
 
 
 if __name__ == "__main__":
