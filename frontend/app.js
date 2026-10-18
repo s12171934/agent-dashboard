@@ -46,6 +46,14 @@ const subBg = (s, a, own) => own !== 'done' && own !== 'run' && a.live && !s.liv
 const NOW_ROLE = { tool: '도구', assistant: '응답', user: '입력', system: '시스템' };
 const ROLE = { coordinator: '코디네이터', worker: '워커', solo: '단독', sub: '서브에이전트' };
 
+// Metric servers (api.js keeps the list): which are on, their names, and how the agents view shows them.
+const srvOn = () => api.servers().filter(x => x.on);
+const multiSrv = () => srvOn().length > 1;
+const srvName = id => api.server(id)?.name || '';
+// The server a row came from, as a badge, once more than one server is on.
+const srvBadge = x => multiSrv() && x?.server ? `<span class="badge srv" title="메트릭 서버 ${esc(api.server(x.server)?.url || '')}">${esc(srvName(x.server))}</span>` : '';
+let srvView = 'merged';  // merged | split: the agents view as one list, or one section per server
+try { srvView = localStorage.getItem('adash.srvview') === 'split' ? 'split' : 'merged'; } catch {}
 let state = null, view = 'agents', detail = null, runFull = null, hlTurn = null, openState = {}, goneOpen = false;
 let onlyLive = false;
 try { onlyLive = localStorage.getItem('adash.live') === '1'; } catch {}
@@ -291,10 +299,9 @@ function injectPlanTasks() {
 }
 
 async function refresh() {
-  const next = await api.state();
-  // The server and the page deploy separately: a shape this page was not written for is reported, not drawn.
-  if (next.api !== api.API_VERSION) throw new Error(`서버 API v${next.api ?? '?'} 와 페이지 v${api.API_VERSION} 가 맞지 않습니다`);
-  state = next;
+  // Merged over the metrics servers that are on; one that fails or speaks another API version is left out and named
+  // in state.server_errors (shown with the collector health).
+  state = await api.state();
   state.all = state.sessions;
   state.hid = hiddenSet(state.all);
   state.sessions = state.all.filter(s => !state.hid.has(s.path));
@@ -435,6 +442,7 @@ function renderHealth() {
     if (l.error && h.now - l.at < 600) failed.push(`${name}: ${l.error}`);
   }
   if (refreshError) failed.unshift('화면 갱신: ' + refreshError);
+  failed.unshift(...(state?.server_errors || []).map(e => '메트릭 서버 ' + e));
   el.hidden = !stalled.length && !failed.length;
   el.textContent = stalled.length ? `⚠ 수집 중단: ${stalled.join(', ')}` : `⚠ 오류 ${failed.length}`;
   el.title = failed.join('\n') || '마지막 정상 수집이 오래됐습니다. 서버 로그를 확인하세요.';
@@ -870,7 +878,7 @@ function card(s, cls) {
     <div class="c-top"><span class="c-title" title="${esc(nameOf(s))}">${esc(nameOf(s))}</span>${s.decision ? '<span class="badge dec" title="카드를 열면 답할 수 있습니다">결정 대기</span>' : ''}${role}</div>
     <div class="c-top">${pill(st, s)}${actBtns(s)}</div>
     <div class="now" title="${esc(la?.text || '')}">${la ? `<b>${st === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[la.role] || '')} · ${esc(la.text)}` : ''}</div>
-    <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span>${t ? `<span class="badge" style="color:${STATUS_COLOR(t.status)};border-color:currentColor">태스크 ${esc(t.status)}</span>` : ''}</div>
+    <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span>${srvBadge(s)}${t ? `<span class="badge" style="color:${STATUS_COLOR(t.status)};border-color:currentColor">태스크 ${esc(t.status)}</span>` : ''}</div>
     <div class="c-metrics">
       <div class="m"><span>턴</span><b>${fmt(a.turns)}</b></div>
       <div class="m" title="${ctxTitle(s)}"><span>컨텍스트</span><b class="${ctxLvl(s)}">${fmt(s.ctx_now)}</b></div>
@@ -933,7 +941,7 @@ function miniFam(f) {
   return `<div class="card mini-fam ${sub ? '' : 'coord'} st-${f.st === 'run' ? 'run' : own}" data-path="${esc(s.path)}">
     <div class="c-top"><span class="c-title" title="${esc(nameOf(s))}">${esc(nameOf(s))}</span>${sub ? '<span class="badge subcoord">하위 코디네이터</span>' : '<span class="badge coord">코디네이터</span>'}</div>
     <div class="c-top">${pill(own, s)}${actBtns(s)}</div>
-    <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span></div>
+    <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span>${srvBadge(s)}</div>
     <div class="mini-body">${donut(counts, total || 1)}
       <div class="mini-leg">${DONUT.filter(([k]) => counts[k]).map(([k, c]) => `<span${PEND_TIP[k] ? ` title="${PEND_TIP[k]}"` : ''}><i style="background:${c}${PEND_TIP[k] ? ';outline:1px dashed var(--muted);outline-offset:-1px' : ''}"></i>${ST_LABEL[k]} <b>${counts[k]}</b></span>`).join('') || '<span class="st">하위 에이전트 없음</span>'}</div></div>
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
@@ -1555,16 +1563,19 @@ async function renderTests() {
     <div class="st" style="margin-top:10px">완료된 실행은 서버가 30일(최대 2,000건) 보관합니다. 원본은 /private/tmp/agent-test-progress 와 run-tc 진행 파일입니다.</div>`;
 }
 
-function renderAgents() {
-  const { fams, solos } = families();
-  const fv = fams.filter(liveFam), sv = solos.filter(liveSess);
+// One block of the agents view: a header with the counts, then the families and solo sessions ordered by state.
+// srv is the metric server the block belongs to in 「서버별 보기」 (null for the merged list).
+function agentsHtml(fv, sv, srv) {
   const count = (f, k) => (k === 'c' ? (f.coord || !termOwner(f.handle).title ? 1 : 0) : f.workers.filter(liveSess).length) + f.subs.filter(liveFam).reduce((a, x) => a + count(x, k), 0);
   // One list ordered by state (attention first, idle last); within a state orchestrations lead solo sessions, then newest first.
   const items = [...fv.map(f => ({ started: f.started, f, r: famRank(f), o: 0 })), ...sv.map(s => ({ started: s.started || '', s, r: sessRank(s), o: 1 }))]
     .sort((a, b) => a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
   const nc = fv.reduce((a, f) => a + count(f, 'c'), 0), nw = fv.reduce((a, f) => a + count(f, 'w'), 0);
-  let h = items.length ? `<div class="sec-h"><h2>에이전트 ${nc + nw + sv.length}</h2><span>코디네이터 ${nc} · 워커 ${nw} · 단독 ${sv.length}</span>
-    <span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span></div>` : '';
+  const [cls, st] = srv ? srvState(srv) : [];
+  const title = srv ? `<h2>${esc(srv.name)}</h2><span class="sp-msg ${cls}" title="${esc(srv.url)}">${esc(st)}</span><span>에이전트 ${nc + nw + sv.length}</span>` : `<h2>에이전트 ${nc + nw + sv.length}</h2>`;
+  if (!items.length) return srv ? `<div class="sec-h srv-h">${title}</div><div class="empty srv-empty">표시할 에이전트가 없습니다.</div>` : '';
+  let h = `<div class="sec-h${srv ? ' srv-h' : ''}">${title}<span>코디네이터 ${nc} · 워커 ${nw} · 단독 ${sv.length}</span>
+    <span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span></div>`;
   let pend = [];
   const flush = () => { if (pend.length) h += `<div class="grid" style="margin-bottom:14px">${pend.join('')}</div>`; pend = []; };
   for (const it of items) {
@@ -1573,6 +1584,16 @@ function renderAgents() {
     else { flush(); h += famHtml(it.f); }
   }
   flush();
+  return h;
+}
+function renderAgents() {
+  const { fams, solos } = families();
+  const fv = fams.filter(liveFam), sv = solos.filter(liveSess);
+  // 「서버별 보기」: one block per server that is on, in list order. A family belongs to its coordinator's server.
+  const famSrv = f => (f.coord || f.members[0])?.server;
+  const h = srvView === 'split' && multiSrv()
+    ? srvOn().map(x => agentsHtml(fv.filter(f => famSrv(f) === x.id), sv.filter(s => s.server === x.id), x)).join('').replace('sec-h srv-h', 'sec-h srv-h first')
+    : agentsHtml(fv, sv, null);
   $('#view').innerHTML = testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>') + extPlansHtml((state.ext_plans || []).filter(p => !planOwner(p)));
   { const el = $('#view .tests-sec'); if (el) el.ontoggle = () => testsOpen = el.open; }  // survives live re-renders
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
@@ -1623,7 +1644,9 @@ const METRICS = {
 };
 const GROUPS = { agent: '에이전트별', family: '코디네이터 그룹별', model: '모델별' };
 // Skill / MCP metrics can also be grouped by the skill or server itself (bars stacked by the models that used it).
-const groupsFor = m => METRICS[m].use ? { name: METRICS[m].unit + '별', ...GROUPS } : GROUPS;
+// 「서버별」 joins once more than one metric server is on.
+const groupsAll = () => multiSrv() ? { ...GROUPS, server: '서버별' } : GROUPS;
+const groupsFor = m => METRICS[m].use ? { name: METRICS[m].unit + '별', ...groupsAll() } : groupsAll();
 let cmp = { metric: 'cost', group: 'agent', view: 'total', span: 24, unit: 60, tod: [0, 24] }, cmpMounted = false;
 try { Object.assign(cmp, JSON.parse(localStorage.getItem('adash.cmp') || '{}')); } catch {}
 // 「시간당」 view: metrics that can be split by the hour the turn happened in.
@@ -1659,7 +1682,7 @@ function cmpItems(group = cmp.group) {
   }
   if (group === 'agent') return top.map(s => {
     const a = agg(s);
-    return { key: s.path, id: s.id, kind: s.kind, name: nameOf(s), model: s.model, live: a.live, st: subBg(s, a, status(s)), a, sub: `${ROLE[s.role]} · ${modelName(s.model)}${a.subs.length ? ' · 서브 ' + a.subs.length : ''}`, go: () => openSession(s.path) };
+    return { key: s.path, id: s.id, kind: s.kind, name: nameOf(s), model: s.model, live: a.live, st: subBg(s, a, status(s)), a, sub: `${multiSrv() ? srvName(s.server) + ' · ' : ''}${ROLE[s.role]} · ${modelName(s.model)}${a.subs.length ? ' · 서브 ' + a.subs.length : ''}`, go: () => openSession(s.path) };
   });
   const groups = new Map();
   const put = (key, name, sub, s, go) => {
@@ -1673,6 +1696,7 @@ function cmpItems(group = cmp.group) {
     g.a.uses = Object.fromEntries(Object.keys(a.uses).map(k => [k, mergeUse([g.a.uses?.[k], a.uses[k]])])); g.a.output += a.output; g.a.ctx = Math.max(g.a.ctx, a.ctx); g.a.slots = mergeSlots([g.a.slots, a.slots]);
   };
   if (group === 'model') top.forEach(s => put(modelName(s.model), modelName(s.model), '', s, null));
+  else if (group === 'server') top.forEach(s => put('srv:' + s.server, srvName(s.server) || '서버 미상', '', s, null));
   else {
     const { fams, solos } = families();
     // Workers launched by a driver script form their own row under their coordinator, so drivers compare side by side.
@@ -1689,7 +1713,7 @@ function cmpItems(group = cmp.group) {
     solos.forEach(s => put(s.path, nameOf(s), '단독', s, () => openSession(s.path)));
   }
   for (const g of groups.values()) {
-    if (group === 'model') g.sub = `에이전트 ${g.n}`;
+    if (group === 'model' || group === 'server') g.sub = `에이전트 ${g.n}`;
     else if (!g.sub) g.sub = `코디네이터 트리 · 에이전트 ${g.n}`;
     else if (g.key.startsWith('d:') || g.sub === '코디네이터 본인 · 직속') g.sub += ` · 에이전트 ${g.n}`;
     if (!g.a.costKnown && g.a.cost === 0) g.a.cost = null;
@@ -1698,13 +1722,14 @@ function cmpItems(group = cmp.group) {
 }
 
 function renderCompare() {
+  if (!groupsFor(cmp.metric)[cmp.group] && cmp.group === 'server') cmp.group = 'agent';  // back to one server
   const M = METRICS[cmp.metric];
   if (!cmpMounted) {
     const hourly = cmp.view === 'hourly';
     $('#view').innerHTML = `<div class="controls">
         <div class="seg" id="seg-v">${Object.entries(VIEWS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
         <div class="seg" id="seg-m">${Object.entries(METRICS).filter(([k]) => !hourly || HOURLY[k]).map(([k, m]) => `<button data-k="${k}">${m.label}</button>`).join('')}</div>
-        <div class="seg" id="seg-g">${Object.entries(hourly ? (cmp.span === WEEK ? { agent: GROUPS.agent } : GROUPS) : groupsFor(cmp.metric)).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
+        <div class="seg" id="seg-g">${Object.entries(hourly ? (cmp.span === WEEK ? { agent: GROUPS.agent } : groupsAll()) : groupsFor(cmp.metric)).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
         ${hourly ? `<div class="seg" id="seg-u" title="막대 하나의 시간 폭">${Object.entries(UNITS).map(([k, l]) => `<button data-k="${k}"${cmp.span === WEEK && +k < 15 ? ' disabled title="7일 범위에서는 15분 이상"' : ''}>${l}</button>`).join('')}</div>
         <div class="seg" id="seg-s" title="표시 범위">${Object.entries(SPANS).map(([k, l]) => `<button data-k="${k}">최근 ${l}</button>`).join('')}</div>
         <span class="tod" title="하루 중 이 시간대의 막대만 보여 줍니다">시간대
@@ -1833,7 +1858,7 @@ function renderHourly() {
   const series = top.map(it => ({ key: it.key, name: it.name, tot: it.tot, h: it.bins, c: `var(--c${hrColor.get(it.key)})`, go: it.go }));
   if (rest.length) series.push({ key: '~', name: `기타 ${rest.length}개`, tot: rest.reduce((a, i) => a + i.tot, 0), h: mergeSlots(rest.map(i => i.bins)), c: 'var(--m-other)' });
   const todTxt = todOn ? ` · ${String(ta).padStart(2, '0')}–${String(tb).padStart(2, '0')}시만` : '';
-  $('#cmp-leg').innerHTML = series.map(x => `<span><i style="background:${x.c}"></i>${esc(x.name)} <b>${M.f(x.tot)}</b></span>`).join('') + (series.length ? `<span>최근 ${SPANS[cmp.span]}${todTxt} 합계 · 막대 = ${UNITS[U]} · 색 = ${GROUPS[groupOf()].replace('별', '')}</span>` : '');
+  $('#cmp-leg').innerHTML = series.map(x => `<span><i style="background:${x.c}"></i>${esc(x.name)} <b>${M.f(x.tot)}</b></span>`).join('') + (series.length ? `<span>최근 ${SPANS[cmp.span]}${todTxt} 합계 · 막대 = ${UNITS[U]} · 색 = ${(groupsAll()[groupOf()] || GROUPS.agent).replace('별', '')}</span>` : '');
   $('#cmp-note').textContent = `시간은 이 기기의 현지 시각입니다. 각 턴의 사용량을 그 턴이 끝난 시각의 ${UNITS[U]} 칸에 넣습니다. 상위 7개 그룹에만 색을 주고 나머지는 「기타」로 묶습니다. `
     + (todOn ? '시간대 밖의 시간은 그래프에서 잘라 내고, 날짜가 바뀌는 곳에 점선을 긋습니다. ' : '')
     + (week ? `7일 범위는 지금 대시보드가 보고 있는 세션에 지난 기록(5분마다 갱신${hist ? ', 마지막 ' + hhmm(new Date(hist.updated * 1000).toISOString()) : ''})을 더해 에이전트별로만 나눕니다${onlyLive || onlyOrca ? ` — 「${onlyLive ? '실행 중만' : 'Orca 에 열린 것만'}」이 켜져 있어 지난 기록은 빠졌습니다` : ''}. ` : '')
@@ -2001,7 +2026,7 @@ function renderSession(navigated) {
   if (a.subs.length) kidsHtml += `<details class="box" id="d-subs" ${openState.subs ? 'open' : ''}><summary><b>서브에이전트 ${a.subs.length}</b> <span class="st">합계 비용 ${usd(a.subs.reduce((x, k) => x + (k.cost || 0), 0))}</span></summary><div class="grid" style="margin-top:10px">${a.subs.map(k => card(k)).join('')}</div></details>`;
   $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
     <h2 class="d">${esc(nameOf(d))}</h2>${d.hidden || state.hid.has(d.path) ? `<div class="box st" style="border-color:var(--warn)">이 세션은 대시보드에서 숨겨져 있습니다${d.hidden ? '' : ' (상위 코디네이터가 숨겨짐)'}. ${d.hidden ? '"복원"을 누르면 다시 보입니다.' : '<a href="#hidden">숨김 탭</a>에서 복원하세요.'}</div>` : ''}
-    <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>
+    <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>
     <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
     ${rel ? `<div class="box">${rel}</div>` : ''}
     ${workerPlanBox(d)}
@@ -2320,10 +2345,11 @@ function drawTalk() {
 // the view, so coalesce bursts into at most one refresh per MIN_GAP and skip work while the tab is hidden.
 const MIN_GAP = 4000;
 let pending = false, again = false, lastRun = 0, gapT = null, stale = false;
-async function pump() {
+// now: the user changed what to show (e.g. a metric server turned off), so skip the gap.
+async function pump(now) {
   if (document.hidden) { stale = true; return; }
   if (pending) { again = true; return; }
-  const wait = lastRun + MIN_GAP - Date.now();
+  const wait = now ? 0 : lastRun + MIN_GAP - Date.now();
   if (wait > 0) { if (!gapT) gapT = setTimeout(() => { gapT = null; pump(); }, wait); return; }
   pending = true;
   // A failed fetch or a render that throws on unexpected data keeps the last screen and says so, instead of an
@@ -2343,56 +2369,89 @@ async function checkBuild() {
 }
 checkBuild();
 setInterval(() => { if (!document.hidden) checkBuild(); }, 5 * 60000);
-// 「메트릭 서버」 panel, opened from the connection badge: which server this device reads, tried before it is kept.
-// It also opens by itself when the first connection has not come up after a few seconds (a new device, the server
-// down), since an empty dashboard alone does not say why.
-let connected = false;
+// 「메트릭 서버」 panel, opened from the connection badge: the servers this device reads (each tried before it is
+// added), which of them are on, and whether the agents view merges them or splits them per server. It also opens by
+// itself when no server has connected after a few seconds (a new device, the server down), since an empty dashboard
+// alone does not say why.
+const srvState = x => !x.on ? ['', '꺼짐'] : x.live ? ['ok', '연결됨'] : x.error ? ['bad', x.error] : ['bad', '연결 안 됨'];
 function serverPanel() {
-  const el = $('#server-panel');
-  el.innerHTML = `<div class="tp-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장</span><button class="act" data-sp="close">닫기</button></div>
-    <div class="sp-row">지금: <code>${esc(api.base)}</code> ${connected ? '<span class="sp-msg ok">연결됨</span>' : '<span class="sp-msg bad">연결 안 됨</span>'}</div>
-    <div class="sp-row"><input id="sp-url" type="url" spellcheck="false" autocomplete="url" value="${esc(api.base)}" placeholder="${esc(api.DEFAULT)}"></div>
-    <div class="sp-row"><button class="act big" data-sp="test">연결 시험</button><button class="act big" data-sp="save">저장하고 연결</button>
-      <button class="act big" data-sp="default">기본값</button></div>
+  const el = $('#server-panel'), list = api.servers();
+  el.innerHTML = `<div class="tp-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장 · 체크한 서버만 보입니다</span><button class="act" data-sp="close">닫기</button></div>
+    <div class="sp-row"><span>보기</span><span class="seg" id="sp-view"><button data-k="merged">합쳐 보기</button><button data-k="split">서버별 보기</button></span></div>
+    ${list.map(x => `<div class="sp-srv" data-id="${x.id}">
+      <div class="sp-row"><input type="checkbox" data-on${x.on ? ' checked' : ''} title="이 서버를 화면에 포함">
+        <input class="sp-name" data-name value="${esc(x.name)}" title="이름 (바꾸면 바로 저장)">
+        <button class="act" data-sp="test">시험</button><button class="act" data-sp="del">삭제</button></div>
+      <div class="sp-row sp-sub"><code>${esc(x.url)}</code><span class="sp-msg ${srvState(x)[0]}" data-st>${esc(srvState(x)[1])}</span></div>
+    </div>`).join('') || '<div class="sp-msg bad">등록된 서버가 없습니다.</div>'}
+    <div class="sp-row sp-add"><input id="sp-new-name" placeholder="이름 (선택)" spellcheck="false">
+      <input id="sp-url" type="url" spellcheck="false" autocomplete="url" placeholder="${esc(api.DEFAULT)}"><button class="act big" data-sp="add">추가</button></div>
     <div class="sp-msg" id="sp-msg"></div>
     <ul class="sp-help">
       <li>이 Mac 에서: <code>${esc(api.DEFAULT)}</code></li>
-      <li>다른 기기(tailnet)에서: Mac 에서 <code>tailscale serve --bg 8787</code> 후 <code>https://&lt;mac&gt;.&lt;tailnet&gt;.ts.net</code></li>
+      <li>다른 기기(tailnet)에서: 그 Mac 에서 <code>tailscale serve --bg 8787</code> 후 <code>https://&lt;mac&gt;.&lt;tailnet&gt;.ts.net</code></li>
       <li>서버는 이 페이지 주소를 허용해야 합니다: <code>--origin ${esc(location.origin)}</code></li>
       <li>Chrome 이 「로컬 네트워크의 기기에 접근」 권한을 물으면 허용해야 합니다 (주소창 왼쪽 사이트 설정에서 바꿀 수 있음)</li>
     </ul>`;
-  const input = $('#sp-url'), msg = $('#sp-msg');
-  const say = (text, cls = '') => { msg.className = 'sp-msg ' + cls; msg.textContent = text; };
-  const test = async () => {
-    say('시험 중…');
-    const r = await api.probe(input.value);
-    if (!r.ok) say(r.error, 'bad');
-    else if (r.api !== api.API_VERSION) say(`연결은 되지만 서버 API v${r.api} 가 페이지 v${api.API_VERSION} 와 다릅니다`, 'bad');
-    else say('연결됩니다', 'ok');
-    return r.ok;
-  };
-  input.onkeydown = e => { if (e.key === 'Enter') el.querySelector('[data-sp=save]').click(); };
-  el.querySelectorAll('[data-sp]').forEach(b => b.onclick = async () => {
-    const act = b.dataset.sp;
-    if (act === 'close') { el.hidden = true; return; }
-    if (act === 'default') { input.value = api.DEFAULT; return test(); }
-    if (act === 'test') return test();
-    if (await test() || confirm('연결 시험에 실패했습니다. 그래도 이 주소로 바꿀까요?')) { api.setBase(input.value); location.reload(); }
+  const msg = $('#sp-msg'), say = (text, cls = '') => { msg.className = 'sp-msg ' + cls; msg.textContent = text; };
+  const verdict = r => !r.ok ? [r.error, 'bad'] : r.api !== api.API_VERSION ? [`연결은 되지만 서버 API v${r.api} 가 페이지 v${api.API_VERSION} 와 다릅니다`, 'bad'] : ['연결됩니다', 'ok'];
+  // Every change goes through setServers, which reconnects; the snapshot is refetched at once.
+  const apply = list => { api.setServers(list); pump(true); serverPanel(); };
+  el.querySelectorAll('#sp-view button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === srvView);
+    b.onclick = () => { srvView = b.dataset.k; try { localStorage.setItem('adash.srvview', srvView); } catch {} serverPanel(); render(); };
   });
+  el.querySelectorAll('.sp-srv').forEach(row => {
+    const id = row.dataset.id, cur = () => api.servers().map(x => ({ ...x }));
+    row.querySelector('[data-on]').onchange = e => apply(cur().map(x => x.id === id ? { ...x, on: e.target.checked } : x));
+    row.querySelector('[data-name]').onchange = e => { api.setServers(cur().map(x => x.id === id ? { ...x, name: e.target.value } : x)); render(); };
+    row.querySelector('[data-sp=del]').onclick = () => { if (confirm(`${api.server(id).name} 을(를) 목록에서 지울까요?`)) apply(cur().filter(x => x.id !== id)); };
+    row.querySelector('[data-sp=test]').onclick = async () => {
+      const st = row.querySelector('[data-st]');
+      st.className = 'sp-msg'; st.textContent = '시험 중…';
+      const [text, cls] = verdict(await api.probe(api.server(id).url));
+      st.className = 'sp-msg ' + cls; st.textContent = text;
+    };
+  });
+  const add = async () => {
+    const url = $('#sp-url').value.trim().replace(/\/+$/, '');
+    if (!url) return say('주소를 입력하세요', 'bad');
+    if (api.servers().some(x => x.url === url)) return say('이미 등록된 주소입니다', 'bad');
+    say('시험 중…');
+    const r = await api.probe(url), [text, cls] = verdict(r);
+    say(text, cls);
+    if (cls === 'ok' || confirm(`${text}\n그래도 추가할까요?`)) apply([...api.servers(), { name: $('#sp-new-name').value, url, on: true }]);
+  };
+  el.querySelector('[data-sp=add]').onclick = add;
+  $('#sp-url').onkeydown = e => { if (e.key === 'Enter') add(); };
+  el.querySelector('[data-sp=close]').onclick = () => { el.hidden = true; };
   el.hidden = false;
 }
-$('#conn').title = `메트릭 서버: ${api.base}\n눌러서 바꾸기`;
+// Connection badge: 실시간 when every server that is on streams, n/m when some do; the panel's status lines follow.
+function renderConn() {
+  const on = srvOn(), live = on.filter(x => x.live).length;
+  $('#conn').className = live ? 'conn on' + (live < on.length ? ' part' : '') : 'conn';
+  $('#conn span').textContent = !on.length ? '서버 없음' : live === on.length ? '실시간' + (on.length > 1 ? ` ${live}` : '') : live ? `실시간 ${live}/${on.length}` : '재연결 중';
+  $('#conn').title = on.map(x => `${x.name} (${x.url}): ${srvState(x)[1]}`).join('\n') + '\n눌러서 메트릭 서버 설정';
+  const el = $('#server-panel');
+  if (!el.hidden) for (const x of api.servers()) {
+    const st = el.querySelector(`.sp-srv[data-id="${x.id}"] [data-st]`), [cls, text] = srvState(x);
+    if (st && st.textContent !== '시험 중…') { st.className = 'sp-msg ' + cls; st.textContent = text; }
+  }
+}
 $('#conn').onclick = () => { if ($('#server-panel').hidden) serverPanel(); else $('#server-panel').hidden = true; };
-setTimeout(() => { if (!connected && $('#server-panel').hidden) serverPanel(); }, 4000);
+setTimeout(() => { if (!srvOn().some(x => x.live) && $('#server-panel').hidden) serverPanel(); }, 4000);
 function connect() {
-  let last = null;
+  const last = {};
+  let wasLive = false;
   api.events({
-    open: () => {
-      $('#conn').className = 'conn on'; $('#conn span').textContent = '실시간'; checkBuild();
-      if (!connected) { connected = true; if (!$('#server-panel').hidden) serverPanel(); }
+    version: v => { const i = v.indexOf(':'), id = v.slice(0, i); if (last[id] !== v) { last[id] = v; pump(); } },
+    change: () => {
+      renderConn();
+      const live = srvOn().some(x => x.live);
+      if (live && !wasLive) checkBuild();
+      wasLive = live;
     },
-    version: v => { if (v !== last) { last = v; pump(); } },
-    error: () => { connected = false; $('#conn').className = 'conn'; $('#conn span').textContent = '재연결 중'; },
   });
 }
 connect();
