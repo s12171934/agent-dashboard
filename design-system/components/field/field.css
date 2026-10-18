@@ -2,3 +2,5 @@
 .field { font: inherit; color: var(--text); padding: 4px 8px; border: 1px solid var(--surface-edge); border-radius: 8px; background: var(--control-fill);
   -webkit-backdrop-filter: var(--surface-blur-sm); backdrop-filter: var(--surface-blur-sm); box-shadow: var(--surface-hi); }
 select.field { cursor: pointer; padding: 4px 6px; }
+.field { max-width: 100%; }
+@media (pointer: coarse) { .field { min-height: var(--tap); } }

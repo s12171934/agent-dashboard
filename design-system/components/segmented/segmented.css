@@ -7,3 +7,7 @@
 .seg button { border-radius: 99px; padding: 5px 12px; transition: background .15s, color .15s; }
 .seg button.on { background: var(--accent); box-shadow: var(--control-hi), 0 2px 8px color-mix(in srgb, var(--accent) var(--control-glow), transparent); }
 .seg button:disabled { opacity: .4; cursor: not-allowed; }
+/* narrower than its buttons (a phone): the control scrolls sideways instead of pushing the page wide */
+.seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { flex: none; }

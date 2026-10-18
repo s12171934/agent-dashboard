@@ -1,5 +1,5 @@
 /* <ds-tooltip>: a small --surface-strong note that follows the pointer (ds-tooltip.js places it). */
 ds-tooltip { position: fixed; pointer-events: none; border: 1px solid var(--surface-edge); border-radius: 10px; padding: 6px 8px; font-size: 12px;
-  display: none; z-index: 30; max-width: 320px; color: var(--text);
+  display: none; z-index: 30; max-width: min(320px, calc(100vw - 16px)); color: var(--text);
   background: var(--surface-sheen), var(--surface-strong); -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
   box-shadow: var(--surface-hi), var(--surface-shadow); }

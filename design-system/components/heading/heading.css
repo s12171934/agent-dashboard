@@ -1,4 +1,4 @@
 /* heading: a section title with a muted note on the same baseline. */
-.sec-h { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 10px; }
+.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 18px 0 10px; }
 .sec-h h2 { font-size: 14px; margin: 0; }
 .sec-h span { color: var(--muted); font-size: 12px; }

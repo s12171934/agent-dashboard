@@ -12,3 +12,10 @@
 .act.accent { border-color: var(--accent); color: var(--accent); }
 .act.danger { border-color: var(--bad); color: var(--bad); }
 .act:disabled { opacity: .35; cursor: default; }
+.act, .tgl { white-space: nowrap; }
+/* on a finger device the small pills keep their look but answer a --tap tall area (an invisible ::before) */
+@media (pointer: coarse) {
+  .act, .tgl { position: relative; }
+  .act::before, .tgl::before { content: ""; position: absolute; left: -3px; right: -3px;
+    top: min(0px, calc((100% - var(--tap)) / 2)); bottom: min(0px, calc((100% - var(--tap)) / 2)); }
+}

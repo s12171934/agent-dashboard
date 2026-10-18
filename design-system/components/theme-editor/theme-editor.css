@@ -6,7 +6,7 @@
 .tp-row input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; cursor: pointer; }
 .tp-row span { flex: 1; }
 .tp-row .act:disabled { opacity: .35; cursor: default; }
-@media (max-width: 420px) { .tp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 500px) { .tp-grid { grid-template-columns: 1fr; } }
 .tp-pals { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
 .tp-pals > .st { width: 100%; font-size: 11px; }
 .tp-pal { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); color: var(--text); font-size: 12px; cursor: pointer; }
