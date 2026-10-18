@@ -18,13 +18,13 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 
 | 폴더 | 무엇 | 어디서 도는가 |
 | --- | --- | --- |
-| `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
+| `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `aplan`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/` 를 Pages 에 배포 | |
 | `exports/` | 공개 스키마 | |
 
 ```
-브라우저 ── https://s-dante.com (페이지)
+브라우저 ── https://dashboard.s-dante.com (페이지)
    └─ fetch / EventSource ──► http://127.0.0.1:8787          (이 Mac)
                           └─► https://<mac>.<tailnet>.ts.net  (tailnet 기기, tailscale serve 경유)
 ```
@@ -53,7 +53,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 ## 실행
 
 ```sh
-python3 server/server.py --origin https://s-dante.com --origin https://agent-dashboard-2at.pages.dev
+python3 server/server.py --origin https://dashboard.s-dante.com --origin https://agent-dashboard-2at.pages.dev
 tailscale serve --bg 8787                                                  # 다른 기기용 https 주소 (선택)
 ```
 
@@ -72,8 +72,8 @@ tailscale serve --bg 8787                                                  # 다
 `server/launchd/install.sh` 가 템플릿(`server/launchd/agent-dashboard.plist.in`)을 채워 `~/Library/LaunchAgents/` 에 설치하고 시작한다.
 
 ```sh
-DASH_ORIGINS="https://s-dante.com https://agent-dashboard-2at.pages.dev" server/launchd/install.sh   # 설치·재설치
-server/launchd/install.sh uninstall                                                                 # 중지·제거
+DASH_ORIGINS="https://dashboard.s-dante.com https://agent-dashboard-2at.pages.dev" server/launchd/install.sh   # 설치·재설치
+server/launchd/install.sh uninstall                                                                           # 중지·제거
 ```
 
 | 환경 변수 | 기본값 |
@@ -94,7 +94,7 @@ scripts/deploy-frontend.sh      # frontend/ 를 프로덕션에 배포 (프로�
 PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-dashboard-2at.pages.dev)
 ```
 
-- `s-dante.com` 은 Pages 프로젝트 `agent-dashboard` 의 커스텀 도메인이다 (루트에 Pages 를 가리키는 CNAME, 프록시).
+- `dashboard.s-dante.com` 은 Pages 프로젝트 `agent-dashboard` 의 커스텀 도메인이다 (`dashboard` CNAME → `agent-dashboard-2at.pages.dev`, 프록시).
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 5분마다 이것을 확인해 새 배포면 새로 고친다.
 - 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
