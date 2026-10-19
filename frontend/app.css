@@ -759,3 +759,48 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .wt-px-subcoord { border-color: color-mix(in srgb, var(--s-write) 55%, var(--line)); border-left-color: var(--s-write); }
 .wt-px-drv { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 @media (max-width: 700px) { .tree > .wt-away-grid > .wt-proxy::before { left: -18px; width: 14px; } }
+
+/* Ticket dependency graph (coordinator detail): stages as columns on a wide box, stacked stages when narrow. */
+.tg-box { margin: 4px 0 10px; }
+.tg-leg { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.tg-leg b { color: var(--text); }
+.tg-l { display: inline-block; width: 22px; vertical-align: middle; margin-right: 5px; border-top: 2px solid var(--muted); }
+.tg-l.pred { border-top-color: var(--accent); border-top-style: dashed; }
+.tg-wrap { container-type: inline-size; position: relative; isolation: isolate; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.tg-grid { display: grid; grid-template-columns: minmax(70px, max-content) repeat(var(--cols), minmax(78px, 1fr)); column-gap: 22px; row-gap: 8px; padding: 8px 12px 10px 0; align-items: center; }
+.tg-edges { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; }
+.tg-st { grid-row: 1; font-size: 11px; color: var(--muted); text-align: center; padding: 2px 0; border-bottom: 2px solid var(--line); }
+.tg-st b { color: var(--text); }
+.tg-st.done { border-bottom-color: var(--done); color: var(--done); }
+.tg-st.run { border-bottom-color: var(--run); }
+.tg-lane { grid-column: 1 / -1; align-self: stretch; margin: -4px -12px -4px 0; border-radius: 6px; }
+.tg-lane.odd { background: color-mix(in srgb, var(--muted) 7%, transparent); }
+.tg-repo { grid-column: 1; padding-left: 10px; font-size: 11px; font-weight: 600; color: var(--muted); overflow-wrap: anywhere; }
+.tg-n { position: relative; z-index: 3; min-width: 0; padding: 5px 7px 4px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; font-size: 11px; transition: opacity .15s; }
+.tg-k { display: flex; align-items: center; gap: 4px; font-weight: 600; white-space: nowrap; }
+.tg-k i { font-style: normal; font-size: 10px; }
+.tg-k span { margin-left: auto; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tg-bar { height: 4px; margin: 4px 0 3px; border-radius: 2px; background: color-mix(in srgb, var(--muted) 20%, transparent); overflow: hidden; }
+.tg-bar i { display: block; height: 100%; background: var(--done); }
+.tg-s { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-p { display: none; color: var(--muted); font-size: 10px; }
+.tg-n.done { border-color: var(--done); background: color-mix(in srgb, var(--done) 10%, var(--panel)); }
+.tg-n.done .tg-k i { color: var(--done); }
+.tg-n.run { border-color: var(--run); border-width: 2px; background: color-mix(in srgb, var(--run) 10%, var(--panel)); }
+.tg-n.run .tg-k i, .tg-n.run .tg-bar i { color: var(--run); } .tg-n.run .tg-bar i { background: var(--run); }
+.tg-n.pending { border-color: var(--accent); border-style: dashed; }
+.tg-n.blocked { border-style: dashed; color: var(--muted); }
+.tg-e { fill: none; stroke-width: 1.5; transition: opacity .15s; }
+.tg-e.chain { stroke: var(--muted); }
+.tg-e.pred { stroke: var(--accent); stroke-dasharray: 4 3; opacity: .65; }
+#tg-arr path { fill: var(--muted); }
+.tg-wrap.hl .tg-n:not(.on), .tg-wrap.hl .tg-e:not(.on) { opacity: .18; }
+.tg-wrap.hl .tg-e.on { opacity: 1; stroke-width: 2.2; }
+/* Narrow: each stage is a row of boxes that wrap; predecessors are written in the box. */
+@container (max-width: 640px) {
+  .tg-grid { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; padding: 8px; }
+  .tg-lane, .tg-repo { display: none; }
+  .tg-st { order: var(--o); flex-basis: 100%; text-align: left; margin-top: 4px; }
+  .tg-n { order: var(--o); flex: 1 1 130px; }
+  .tg-p { display: block; }
+}

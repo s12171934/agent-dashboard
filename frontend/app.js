@@ -1391,9 +1391,86 @@ function extPlansHtml(plans, inSession) {
     const sub = `티켓 ${tickets.length} · ${cnt(all)}${p.generated_at ? ` · 계획 갱신 ${esc(ago(p.generated_at))}` : ''}${p.design_commit ? ` · <span title="${esc(p.design_root || '')}">설계 ${esc(p.design_commit.slice(0, 7))}</span>` : ''}`;
     const sched = p.scheduler_terminal ? `<div class="drv-h" title="${esc(p.scheduler_terminal)}"><b>⚙ ${esc(termOwner(p.scheduler_terminal).title || 'scheduler')}</b><span class="badge">스케줄러(스크립트)</span><span>${termNote(p.scheduler_terminal)}</span><span>아래 티켓 드라이버를 순서대로 띄움</span></div>` : '';
     const title = `${esc(p.project || '')} 워커 계획 (${p.driver ? esc(p.driver) + ' ' : ''}드라이버 사전 계획)`;
-    return inSession ? `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${sched}<div class="tks">${body}${xwtHtml(p)}</div></div>`
+    return inSession ? `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${ticketGraph(p)}${sched}<div class="tks">${body}${xwtHtml(p)}</div></div>`
       : `<div class="sec-h"><h2>${title}</h2><span>${sub}</span></div>${sched}<div class="tks">${body}${xwtHtml(p)}</div>`;
   }).join('');
+}
+
+// Ticket dependency graph of a driver plan (coordinator detail). An HTML grid, so it follows the width: columns are
+// dependency stages (longest chain of predecessors), rows are repositories; arrows are drawn over it from the laid-out
+// boxes (and redrawn when it resizes). Edges: a ticket's predecessors and its repo chain's previous ticket, minus any
+// implied by a longer path. Each box carries its checkbox progress and each stage how many of its tickets are done.
+// Narrow: stages stack as rows and each box names its predecessors instead of arrows.
+// Hover lights a ticket's whole upstream and downstream; a click opens its row in the plan below.
+function ticketGraph(p) {
+  const dp = driverPlan(p), by = new Map(dp.list.map(x => [x.k.package, x]));
+  if (by.size < 2) return '';
+  const chainOf = x => x.k.worktree?.trigger?.chain_previous;
+  const preds = n => { const x = by.get(n); return [...new Set([...(x.k.predecessors || []), chainOf(x)])].filter(m => m && m !== n && by.has(m)); };
+  const lv = new Map(), level = n => { if (lv.has(n)) return lv.get(n); lv.set(n, 0); const v = Math.max(-1, ...preds(n).map(level)) + 1; lv.set(n, v); return v; };
+  by.forEach((x, n) => level(n));
+  // Is there a path a ⇝ b other than the direct edge a → b?
+  const longer = (a, b) => { const st = [b], seen = new Set();
+    while (st.length) { const n = st.pop(); for (const m of preds(n)) { if (n === b && m === a) continue; if (m === a) return true; if (!seen.has(m)) { seen.add(m); st.push(m); } } }
+    return false; };
+  const edges = [];
+  by.forEach((x, n) => preds(n).forEach(m => { const chain = chainOf(x) === m; if (chain || !longer(m, n)) edges.push({ a: m, b: n, chain }); }));
+  const cols = Math.max(...lv.values()) + 1, stages = [...Array(cols)].map((_, c) => [...by.values()].filter(x => lv.get(x.k.package) === c));
+  // Grid rows: 1 = stage headers, then one band per repository (taller when two of its tickets share a stage).
+  let row = 2;
+  const lanes = byRepo(dp.list).map(g => { const used = {}, cells = g.items.map(x => { const c = lv.get(x.k.package); return { x, c, r: used[c] = (used[c] ?? -1) + 1 }; });
+    const l = { repo: g.repo, row, rows: Math.max(...cells.map(o => o.r)) + 1, cells }; row += l.rows; return l; });
+  const sum = (xs, f) => xs.reduce((a, x) => a + (x.k[f] ?? 0), 0), all = [...by.values()];
+  const head = stages.map((xs, c) => { const d = xs.filter(x => x.st === 'done').length, run = xs.some(x => x.st === 'run');
+    return `<div class="tg-st ${d === xs.length ? 'done' : run ? 'run' : ''}" style="grid-column:${c + 2};--o:${c * 2}">${c + 1}단계 <b>${d}/${xs.length}</b></div>`; }).join('');
+  const box = ({ x, c, r }, l) => { const n = x.k.package, k = x.k, [cls, lbl] = TKP[x.st === 'wait' ? x.why.k : x.st], bt = k.boxes_total ?? 0, bd = k.boxes_done ?? 0;
+    const tip = `${n}${k.jira ? ' · ' + k.jira : ''} · ${x.st === 'wait' ? x.why.t : XP_TICKET[k.status] || lbl} · 체크박스 ${bd}/${bt}\n선행: ${preds(n).join(', ') || '없음'}`;
+    return `<div class="tg-n ${cls}" style="grid-column:${c + 2};grid-row:${l.row + r};--o:${c * 2 + 1}" data-n="${esc(n)}" data-id="${esc('ext:' + p.path + ':' + n)}" data-repo="${esc('repo:' + p.path + ':' + l.repo)}" title="${esc(tip)}">
+      <div class="tg-k"><i>${TK_IC[cls] || '·'}</i>${esc(n)}<span>${bd}/${bt}</span></div><div class="tg-bar"><i style="width:${bt ? Math.round(bd / bt * 100) : x.st === 'done' ? 100 : 0}%"></i></div>
+      <div class="tg-s">${esc(k.jira || '')} · ${esc(x.st === 'wait' ? TKP[x.why.k][1] : lbl)}</div>${preds(n).length ? `<div class="tg-p">← ${preds(n).map(esc).join(', ')}</div>` : ''}</div>`; };
+  const c = k => all.filter(x => x.st === k).length;
+  return `<div class="tg-box"><div class="tg-leg"><b>티켓 의존 그래프</b><span>완료 <b>${c('done')}/${all.length}</b> · 실행 <b style="color:var(--run)">${c('run')}</b> · 대기 ${c('wait')} · 체크박스 ${sum(all, 'boxes_done')}/${sum(all, 'boxes_total')}</span>
+      <span><i class="tg-l chain"></i>같은 저장소 체인</span><span><i class="tg-l pred"></i>다른 티켓 선행</span><span class="st">간접 선행은 생략 · 올리면 앞뒤 의존 강조, 누르면 아래 행으로</span></div>
+    <div class="tg-wrap"><div class="tg-grid" style="--cols:${cols}">${head}
+      ${lanes.map((l, i) => `<div class="tg-lane ${i % 2 ? 'odd' : ''}" style="grid-row:${l.row} / span ${l.rows}"></div><div class="tg-repo" style="grid-row:${l.row} / span ${l.rows}">${esc(l.repo)}</div>${l.cells.map(o => box(o, l)).join('')}`).join('')}</div>
+      <svg class="tg-edges" data-edges="${esc(JSON.stringify(edges))}"></svg></div></div>`;
+}
+let tgRO = null, tgHover = null;  // the hovered ticket survives a live re-render
+function ticketGraphBind() {
+  tgRO?.disconnect();
+  $('#view').querySelectorAll('.tg-wrap').forEach(wrap => {
+    const svg = wrap.querySelector('.tg-edges'), grid = wrap.querySelector('.tg-grid'), edges = JSON.parse(svg.dataset.edges || '[]');
+    const ns = [...grid.querySelectorAll('.tg-n')], at = new Map(ns.map(g => [g.dataset.n, g]));
+    const walk = (n, from, to, s = new Set()) => { edges.forEach(e => { if (e[from] === n && !s.has(e[to])) { s.add(e[to]); walk(e[to], from, to, s); } }); return s; };
+    const light = n => { const on = new Set([n, ...walk(n, 'b', 'a'), ...walk(n, 'a', 'b')]);
+        wrap.classList.add('hl'); ns.forEach(x => x.classList.toggle('on', on.has(x.dataset.n)));
+        svg.querySelectorAll('.tg-e').forEach(e => e.classList.toggle('on', on.has(e.dataset.a) && on.has(e.dataset.b))); };
+    const draw = () => {
+      const o = grid.getBoundingClientRect(), W = grid.scrollWidth, H = grid.scrollHeight;
+      svg.setAttribute('width', W); svg.setAttribute('height', H);
+      // Stacked (narrow) layout: boxes list their predecessors, no arrows.
+      if (getComputedStyle(grid).display !== 'grid') return (svg.innerHTML = '');
+      const pt = (g, side) => { const r = g.getBoundingClientRect(); return [(side ? r.left : r.right) - o.left, r.top - o.top + r.height / 2]; };
+      svg.innerHTML = `<defs><marker id="tg-arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z"/></marker></defs>`
+        + edges.filter(e => at.has(e.a) && at.has(e.b)).map(e => { const [x1, y1] = pt(at.get(e.a), 0), [x2, y2] = pt(at.get(e.b), 1), c = Math.max(16, (x2 - x1) / 2);
+          return `<path class="tg-e ${e.chain ? 'chain' : 'pred'}" data-a="${esc(e.a)}" data-b="${esc(e.b)}" d="M${x1},${y1} C${x1 + c},${y1} ${x2 - 3 - c},${y2} ${x2 - 3},${y2}" marker-end="url(#tg-arr)"/>`; }).join('');
+      if (tgHover && at.has(tgHover)) light(tgHover);
+    };
+    draw();
+    tgRO ||= new ResizeObserver(es => es.forEach(e => e.target._tgDraw?.()));
+    grid._tgDraw = draw; tgRO.observe(grid);
+    ns.forEach(g => {
+      g.onmouseenter = () => light(tgHover = g.dataset.n);
+      g.onmouseleave = () => { tgHover = null; wrap.classList.remove('hl'); };
+      g.onclick = () => {
+        tgHover = null;
+        famMin[g.dataset.id] = true; famMin[g.dataset.repo] = true;
+        try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
+        renderSession();
+        $('#view').querySelector(`[data-ttoggle="${CSS.escape(g.dataset.id)}"]`)?.scrollIntoView({ block: 'center' });
+      };
+    });
+  });
 }
 
 // One section per driver script: its run, progress, estimate and the workers it launched.
@@ -2327,6 +2404,7 @@ function renderSession(navigated) {
     try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
     { const sv = saveScroll(); renderSession(); restoreScroll(sv); }
   });
+  ticketGraphBind();
   ctxChart(d);
   planChart(d);
   wpChart(d);
