@@ -19,6 +19,7 @@ import base64
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -1063,14 +1064,16 @@ def read_plan_stores(known, offsets):
 PRUNE_EVERY = 60
 
 
-def prune_sessions(known, cutoff):
+def prune_sessions(known, cutoff, held=frozenset()):
     """Drop sessions whose transcript has not changed since `cutoff`, the same test that keeps a file out at
     discovery, so a long-running server holds what a fresh start would (it held every session it ever saw:
     944 after a day, 10 of them live, with /api/state growing to 2.9MB). A dropped session moves to the
     history cache so the 7-day compare keeps it; prefs (idle/hidden) are keyed by path and survive.
-    Returns the dropped paths."""
+    Sessions in `held` (ids with a 메일함 item, inbox_sessions) stay whatever their age. Returns the dropped paths."""
     gone = []
     for path, s in list(known.items()):
+        if s.id in held:
+            continue
         try:
             st = os.stat(path)
         except OSError:
@@ -1086,7 +1089,11 @@ def prune_sessions(known, cutoff):
     return gone
 
 
+scan_ready = False  # scan_loop has read every transcript once: a session it does not know by now does not exist
+
+
 def scan_loop(hours):
+    global scan_ready
     known = {}
     plan_offsets = {}
     pruned = set()  # paths dropped by prune_sessions, in case one comes back to life
@@ -1095,9 +1102,10 @@ def scan_loop(hours):
         now = time.time()
         try:
             cutoff = min(now - hours * 3600, horizon_since or now)
+            held = inbox_sessions()  # a 메일함 item keeps its session listed, however old
             if now - last_prune > PRUNE_EVERY:
                 last_prune = now
-                gone = prune_sessions(known, cutoff)
+                gone = prune_sessions(known, cutoff, held)
                 pruned.update(gone)
                 if gone:
                     with lock:
@@ -1110,7 +1118,7 @@ def scan_loop(hours):
                         if path in known:
                             continue
                         try:
-                            if os.path.getmtime(path) < cutoff:
+                            if os.path.getmtime(path) < cutoff and os.path.splitext(os.path.basename(path))[0] not in held:
                                 continue
                         except OSError:
                             continue
@@ -1152,6 +1160,7 @@ def scan_loop(hours):
                 last_tick = now
                 with lock:
                     bump()
+            scan_ready = True
             loop_ok("scan")
         except Exception as e:
             loop_failed("scan", e)
@@ -1842,6 +1851,9 @@ decision_store = {}  # id -> {"card": the public card, "state": pending|answered
 # to the item. Until then the item shows the recommended options the server worked out. Choosing another answer on
 # the page later sends the session a follow-up message through its Orca terminal (inbox_answer).
 # Items outlive restarts (inbox.json): {id: {"card": the public item, "terminal"}}.
+# While a session has an item it is held: the scan keeps it listed however old (scan_loop), a supervised worker's
+# terminal is retained (retain_worker), and session-guard keeps agents from closing it (guard_command). A person
+# may still close it from the page. An item whose session the scan does not know is dropped, like an orphan card.
 INBOX_PATH = os.path.join(HERE, "inbox.json")
 INBOX_KEEP = 200  # newest items kept ...
 INBOX_KEEP_S = 14 * 86400  # ... and read ones only this long
@@ -1852,6 +1864,12 @@ try:
         inbox_store = {d["card"]["id"]: d for d in json.load(_f)["items"]}
 except (OSError, ValueError, KeyError, TypeError):
     inbox_store = {}
+
+
+def inbox_sessions():
+    """Session ids that have a 메일함 item."""
+    with decision_lock:
+        return {d["card"]["session_id"] for d in inbox_store.values() if d["card"]["session_id"]}
 
 
 def save_inbox():
@@ -1918,6 +1936,7 @@ def add_decision(body):
             card.update(recommended=[recommended(q) for q in card["questions"]], chosen=None, read=False, followup=None)
             inbox_store[rid] = {"card": card, "terminal": term}
             save_inbox()
+            threading.Thread(target=retain_worker, args=(term,), daemon=True).start()
         else:
             decision_store[rid] = {"card": card, "state": "pending", "terminal": term, "busy": False}
         publish_decisions()
@@ -1937,7 +1956,8 @@ def deny_reason(card):
     return ("사용자가 자리를 비워 이 질문을 에이전트 대시보드 메일함에 남겼습니다(메일함 모드). AskUserQuestion 을 다시 부르지 말고, "
             "각 질문의 권장 선택지((Recommended) 가 붙은 것, 없으면 첫 번째)나 가장 합리적인 판단으로 진행하세요. "
             f"진행하기 전에 무엇을 골랐는지 정확히 이 형식의 한 줄로 남기세요: {fmt} "
-            f"(사용자가 나중에 다른 답을 고르면 이 세션에 후속 메시지가 옵니다). 권장 선택지: {rec}")
+            "(사용자가 나중에 다른 답을 고르면 이 세션에 후속 메시지가 옵니다. 그러니 작업이 끝나도 이 세션을 닫지 마세요). "
+            f"권장 선택지: {rec}")
 
 
 TYPED = re.compile(r"^[^\x00-\x1f\x7f]{1,500}$")  # typed text goes into the picker's input line: no control keys
@@ -2161,6 +2181,9 @@ def inbox_answer(rid, action, answers):
             or (isinstance(a, str) and not q["multiSelect"] and TYPED.match(a)) for q, a in zip(qs, answers))
         if not ok:
             return 400, {"error": "고른 답이 없거나 보낼 수 없는 답입니다"}
+        went = [d["card"]["chosen"]] if d["card"]["chosen"] and len(qs) == 1 else None if d["card"]["chosen"] else d["card"]["recommended"]
+        if went and all(a is None or a == w or a == [w] for a, w in zip(answers, went)):
+            return 400, {"error": "에이전트가 진행한 답과 같습니다 — 바꿀 것이 없으면 「확인」을 누르세요"}
         handle = decision_terminal(d)
         if not handle:
             return 409, {"error": "이 세션의 Orca 터미널을 찾지 못했습니다 — 세션에 직접 알려 주세요"}
@@ -2174,6 +2197,92 @@ def inbox_answer(rid, action, answers):
         save_inbox()
         publish_decisions()
     return 200, {"ok": True}
+
+
+def worker_rows(fresh=False):
+    """Supervised worker rows (dispatchId, agentTerminalHandle, ...): the tracked Runs', or Orca's newest 100."""
+    rows = list(orca_state.get("workers", []))
+    if fresh:
+        rows += orca("orchestration", "worker-list", "--limit", "100").get("workers") or []
+    return rows
+
+
+def retain_worker(term):
+    """A supervised worker whose session got a 메일함 item: ask Orca to keep its terminal when the Run releases it."""
+    if not term:
+        return
+    try:
+        w = next((x for x in worker_rows(fresh=True) if x.get("agentTerminalHandle") == term), None)
+        if w and w.get("dispatchId"):
+            orca("orchestration", "worker-retain", "--dispatch", w["dispatchId"], timeout=15)
+    except Exception as e:
+        log(f"worker-retain {term}: {short(e, 160)}")
+
+
+def held_places():
+    """(terminal handles, worktree paths) of the sessions with a 메일함 item."""
+    with decision_lock:
+        items = list(inbox_store.values())
+    terms = {t for t in (decision_terminal(d) for d in items) if t}
+    tdirs = {t.get("handle"): t.get("worktreePath") for t in orca_state.get("terminals", [])}
+    with lock:
+        cwd = {s.id: s.cwd for s in sessions.values() if s.kind == "claude"}
+    dirs = {tdirs.get(t) for t in terms} | {cwd.get(d["card"]["session_id"]) or d["card"]["cwd"] for d in items}
+    return terms, {x.rstrip("/") for x in dirs if x}
+
+
+def worktree_hit(sel, dirs, own_cwd):
+    """Whether an Orca worktree selector (path:, branch:, name:, id:, identity:, issue:, active/current) may name one
+    of `dirs`. Loose on purpose: a wrong match only asks a person to do the close."""
+    kind, _, val = sel.partition(":")
+    if kind in ("active", "current") and not val:
+        return any(own_cwd == d or own_cwd.startswith(d + "/") for d in dirs)
+    val = val.split("::")[-1].removeprefix("refs/heads/").rstrip("/")
+    if not val:
+        return False
+    if kind == "path":
+        return any(os.path.realpath(val) == os.path.realpath(d) for d in dirs)
+    return any(val in d for d in dirs)
+
+
+def guard_command(command, own, own_cwd):
+    """A Bash command an agent is about to run -> why it may not (it would close a held session), or None.
+    Looks for `orca terminal close`, `orca worktree rm` and `orca orchestration worker-stop|worker-release|
+    worker-abandon` in each simple command."""
+    try:
+        words = shlex.split(command, comments=True, posix=True)
+    except ValueError:
+        words = command.split()
+    terms, dirs = held_places()
+    if not terms and not dirs:
+        return None
+    hits = []
+    cmd = []
+    for w in words + [";"]:
+        if w not in (";", "&&", "||", "|", "&"):
+            cmd.append(w)
+            continue
+        i = next((k for k, x in enumerate(cmd) if os.path.basename(x) == "orca"), None)
+        args = [y for x in (cmd[i + 1:] if i is not None else []) for y in (x.split("=", 1) if x.startswith("--") else [x])]
+        cmd = []
+        opt = lambda name: next((args[k + 1] for k, x in enumerate(args[:-1]) if x == name), None)
+        sub = [x for x in args if not x.startswith("-")][:2]
+        if sub == ["terminal", "close"]:
+            if opt("--worktree"):
+                hits += [opt("--worktree")] if worktree_hit(opt("--worktree"), dirs, own_cwd) else []
+            elif (opt("--terminal") or own) in terms:
+                hits.append(opt("--terminal") or own)
+        elif sub == ["worktree", "rm"] and opt("--worktree") and worktree_hit(opt("--worktree"), dirs, own_cwd):
+            hits.append(opt("--worktree"))
+        elif sub[:1] == ["orchestration"] and any(x in args for x in ("worker-stop", "worker-release", "worker-abandon")):
+            h = next((x.get("agentTerminalHandle") for x in worker_rows() if x.get("dispatchId") == opt("--dispatch")), None)
+            if h in terms:
+                hits.append(opt("--dispatch"))
+    if not hits:
+        return None
+    return (f"이 명령은 메일함에 사용자가 확인할 결정이 남은 세션을 닫습니다 ({', '.join(hits)}). 사용자가 나중에 다른 답을 고르면 "
+            "그 세션에 후속 메시지가 가야 하므로 에이전트·오케스트레이션은 이 세션을 닫거나 멈추거나 놓아주지 마세요. "
+            "닫기가 꼭 필요하면 사용자에게 대시보드에서 직접 닫아 달라고 남기고 이 단계는 건너뛰세요.")
 
 
 def set_inbox_mode(on):
@@ -2221,7 +2330,7 @@ def sweep_decisions():
         known = {s.id for s in sessions.values() if s.kind == "claude"}
     now = time.time()
     for r in pending:
-        orphan = r.get("session_id") not in known and now - r["created_at"] > ORPHAN_S
+        orphan = scan_ready and r.get("session_id") not in known and now - r["created_at"] > ORPHAN_S
         if r["id"] in stale or orphan or now - r["created_at"] > DECISION_KEEP_S:
             settle_decision(r["id"], "cancelled")
     with lock:
@@ -2235,7 +2344,9 @@ def sweep_decisions():
                 d["card"]["chosen"] = picks[rid]
                 changed = True
         keep = sorted(inbox_store, key=lambda k: inbox_store[k]["card"]["created_at"], reverse=True)[:INBOX_KEEP]
-        for rid in [k for k, d in inbox_store.items() if k not in keep or (d["card"]["read"] and now - d["card"]["created_at"] > INBOX_KEEP_S)]:
+        orphan = lambda c: scan_ready and c["session_id"] not in known and now - c["created_at"] > ORPHAN_S
+        for rid in [k for k, d in inbox_store.items() if k not in keep or orphan(d["card"])
+                    or (d["card"]["read"] and now - d["card"]["created_at"] > INBOX_KEEP_S)]:
             del inbox_store[rid]
             changed = True
         if changed:
@@ -2897,12 +3008,18 @@ class Handler(BaseHTTPRequestHandler):
         picker (answer_decision); 200 done, 400 an answer missing or one the picker cannot take, 409 no longer open or
         the terminal not usable, 502 Orca failed. release {id}: the old page's 「터미널에서 답하기」; the picker is
         already open, so nothing to do. mode {inbox: bool}: 메일함 mode on or off. inbox {id, action read|unread|answer,
-        answers}: a 메일함 item (inbox_answer)."""
+        answers}: a 메일함 item (inbox_answer). guard {command, terminal, cwd} from session-guard -> {deny} when the
+        command would close a session with a 메일함 item (guard_command), else {}."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 262144)))
             assert isinstance(body, dict)
             if action == "ask":
                 return self.send_json(add_decision(body))
+            if action == "guard":
+                assert isinstance(body["command"], str)
+                own, cwd = body.get("terminal"), body.get("cwd")
+                why = guard_command(body["command"], own if isinstance(own, str) else None, cwd if isinstance(cwd, str) else "")
+                return self.send_json({"deny": why} if why else {})
             if action == "mode":
                 assert isinstance(body["inbox"], bool)
                 set_inbox_mode(body["inbox"])
@@ -2924,7 +3041,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/mode",
-                  "/api/decision/inbox")
+                  "/api/decision/inbox", "/api/decision/guard")
 
 
 class Server(ThreadingHTTPServer):

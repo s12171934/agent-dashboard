@@ -20,7 +20,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | --- | --- | --- |
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `aplan`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버 | |
 | `exports/` | 공개 스키마 | |
 
@@ -150,9 +150,22 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 - 켜져 있으면 훅이 질문을 등록할 때 서버가 카드를 띄우지 않고 메일함(`server/inbox.json`)에 쌓은 뒤 `{"deny": 사유}` 로 답한다. 훅은 이것을 PreToolUse `permissionDecision: "deny"` 로 내보내므로 터미널 선택기는 뜨지 않고, 에이전트는 사유를 답 대신 읽는다.
 - 사유: 사용자가 자리를 비워 질문을 메일함에 남겼으니 AskUserQuestion 을 다시 부르지 말고 각 질문의 권장 선택지(라벨에 `(Recommended)`·`(권장)`·`(추천)` 이 붙은 것, 없으면 첫 번째)나 가장 합리적인 판단으로 진행하라, 그리고 고른 답을 `[메일함 <항목 id>] 1) 답 / 2) 답` 형식의 한 줄로 남겨라. 서버가 고른 권장 선택지도 함께 적어 준다.
 - **에이전트가 진행한 선택을 아는 법:** 서버는 세션 트랜스크립트의 assistant 글에서 `[메일함 <id>] …` 줄을 찾아 그 항목의 「에이전트가 진행한 선택」으로 보여 준다. 그 줄이 아직 없으면(또는 에이전트가 규약을 따르지 않으면) 서버가 질문을 받을 때 정해 둔 권장 선택지를 「권장안으로 진행」으로 보여 준다 — 추정이라는 뜻이다.
-- 메일함 항목에서 다른 답을 고르고 「세션에 바꾸라고 알리기」를 누르면, 서버가 그 세션의 Orca 터미널에 `[대시보드 메일함 <id>] 앞서 X (으)로 진행했지만 사용자는 「질문」에 Y 를 골랐습니다. 반영하세요.` 한 줄을 보내고 Enter 를 누른다(`orca terminal send --enter`). 고르지 않은 질문은 메시지에서 빠진다. 터미널은 결정 버튼과 같은 방법으로 찾고, 못 찾으면 카드에 「세션에 직접 알려 주세요」라고 알린다. 보낸 메시지는 카드에 남고, 다시 보낼 수도 있다.
+- 메일함 항목에서 다른 답을 고르고 「세션에 바꾸라고 알리기」를 누르면, 서버가 그 세션의 Orca 터미널에 `[대시보드 메일함 <id>] 앞서 X (으)로 진행했지만 사용자는 「질문」에 Y 를 골랐습니다. 반영하세요.` 한 줄을 보내고 Enter 를 누른다(`orca terminal send --enter`). 고르지 않은 질문은 메시지에서 빠진다. 에이전트가 진행한 답(남긴 줄이 없으면 권장안)과 같은 답이면 보내지 않고 「확인」을 누르라고 알린다. 터미널은 결정 버튼과 같은 방법으로 찾고, 못 찾으면 카드에 「세션에 직접 알려 주세요」라고 알린다. 보낸 메시지는 카드에 남고, 다시 보낼 수도 있다.
 - 「확인」은 읽음 처리만 한다(「안읽음으로」로 되돌릴 수 있다). 다른 답을 보내도 읽음이 된다. 메일함은 최근 200건까지 두고, 읽은 항목은 14일 뒤 지운다.
 - 꺼져 있을 때는 위 결정 버튼 동작 그대로다.
+
+**메일함 항목이 있는 세션은 붙잡아 둔다.** 사용자가 나중에 다른 답을 고르면 그 세션에 후속 메시지를 보내야 하기 때문이다.
+
+- 서버의 세션 스캔은 `--hours` 와 상관없이 그 세션을 계속 읽는다. 그래서 메일함 카드가 「세션 목록에 없음」이 되지 않는다. 스캔이 트랜스크립트를 한 번 다 읽은 뒤에도 서버가 모르는 세션(세션 id 가 없거나 트랜스크립트가 없는 것)의 항목은 90초 뒤 지운다.
+- 세션이 Orca 오케스트레이션의 워커이면, 서버가 항목을 받을 때 `orca orchestration worker-retain --dispatch <id>` 로 그 워커 터미널을 붙잡아 둔다(Run 이 끝나도 놓아주지 않게).
+- 에이전트·코디네이터가 그 세션을 닫지 못하게 하는 Bash 가드 훅 `server/session-guard` 가 있다. 명령에 `orca` 가 들어 있으면 서버(`/api/decision/guard`)에 물어, 붙잡힌 세션을 닫는 명령이면 PreToolUse deny 로 막는다. 대상 명령은 `orca terminal close`(`--terminal` 이 없으면 자기 터미널, `--worktree … --all` 은 워크트리로 비교), `orca worktree rm --worktree …`, `orca orchestration worker-stop|worker-release|worker-abandon --dispatch …` 다. 워크트리 선택자는 넉넉하게 비교한다 — 잘못 막아도 사람이 대시보드에서 닫으면 된다. 서버에 닿지 않으면 비켜선다. deny 사유에서도 세션을 닫지 말라고 일러 둔다.
+- 사람은 지금처럼 대시보드의 「닫기」로 닫을 수 있다.
+- 붙잡는 기간은 항목이 메일함에 있는 동안이다(읽은 항목은 14일 뒤 지워진다).
+
+```json
+{"hooks": {"PreToolUse": [{"matcher": "Bash",
+  "hooks": [{"type": "command", "command": "<저장소>/server/session-guard", "timeout": 10}]}]}}
+```
 
 | 엔드포인트 | 요청 → 응답 |
 | --- | --- |
@@ -161,7 +174,8 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 | `POST /api/decision/release` | `{"id"}` → `{"ok": true}` (예전 페이지 호환, 하는 일 없음) |
 | `GET /api/decision/mode` | `{"inbox": 켜짐 여부}` |
 | `POST /api/decision/mode` | `{"inbox": true\|false}` → `{"ok": true, "inbox"}` |
-| `POST /api/decision/inbox` | `{"id", "action": "read"\|"unread"\|"answer", "answers"}` — `answer` 는 질문 순서대로, 그대로 둘 질문은 `null`. 200 · 400 고른 답 없음 · 404 없는 항목 · 409 Orca 터미널 없음 · 502 Orca 실패 |
+| `POST /api/decision/inbox` | `{"id", "action": "read"\|"unread"\|"answer", "answers"}` — `answer` 는 질문 순서대로, 그대로 둘 질문은 `null`. 200 · 400 고른 답 없음·진행한 답과 같음 · 404 없는 항목 · 409 Orca 터미널 없음 · 502 Orca 실패 |
+| `POST /api/decision/guard` | `session-guard` 가 보냄. `{"command", "terminal", "cwd"}` → 메일함 항목이 있는 세션을 닫는 명령이면 `{"deny": 사유}`, 아니면 `{}` |
 | `GET /api/state` 의 `decisions` | `{"available", "pending": [카드], "inbox_mode", "inbox": [항목, 최신순]}`. 메일함 항목은 카드 필드에 `recommended`(질문마다 권장 라벨), `chosen`(에이전트가 남긴 줄 또는 `null`), `read`, `followup`(`{"answers", "text", "at"}` 또는 `null`)이 붙는다 |
 
 ## aplan — 작업 계획 기록
