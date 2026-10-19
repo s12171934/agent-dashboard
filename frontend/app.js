@@ -955,8 +955,10 @@ function miniFam(f) {
   </div>`;
 }
 
-function famHtml(f) {
-  const run = f.runs[0];
+// wk: in 「워크트리별」, the worktree being drawn. Workers and sub-trees running elsewhere then show as small stand-ins
+// at the end of the tree (their cards are in their own worktree).
+function famHtml(f, wk) {
+  const run = f.runs[0], here = x => !wk || wtKey(x) === wk;
   const head = f.coord ? card(f.coord, 'coord') : `<div class="card coord" style="cursor:default"><div class="c-top"><span class="c-title">${esc(ownerName(f.handle))}</span><span class="badge coord">코디네이터</span></div><div class="st">${ownerNote(f.handle)} · ${esc(f.handle || '')}</div></div>`;
   const direct = [...f.workers, ...f.subs.map(x => x.coord).filter(Boolean)];
   const done = direct.filter(w => IX.tasks[w.task_id]?.status === 'completed').length;
@@ -966,6 +968,7 @@ function famHtml(f) {
       <span>실행 중 <b style="color:var(--ok)">${all.filter(w => status(w) === 'run').length}</b></span>${all.some(w => status(w) === 'bg') ? `<span>백그라운드 <b>${all.filter(w => status(w) === 'bg').length}</b></span>` : ''}<span>입력 대기 <b>${all.filter(w => status(w) === 'wait').length}</b></span>${all.some(w => status(w) === 'stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${all.filter(w => status(w) === 'stalled').length}</b></span>` : ''}
       <span>${f.subs.length ? '하위 포함 ' : ''}합계 비용 <b>${usd(f.cost)}${f.costKnown ? '' : '+'}</b></span><span>합계 턴 <b>${fmt(f.turns)}</b></span><span>합계 토큰 <b>${fmt(f.tok)}</b></span>
       ${run ? `<span>Run <a href="#r=${run.id}" style="color:var(--accent)">${esc(cut(run.objective, 60))}</a>${f.runs.length > 1 ? ` 외 ${f.runs.length - 1}` : ''}</span>` : ''}
+      ${wk && direct.some(x => !here(x)) ? `<span title="이 코디네이터가 다른 워크트리에서 돌리는 직속 워커·하위 코디네이터">다른 워크트리 <b>${direct.filter(x => !here(x)).length}</b></span>` : ''}
       ${f.coord ? `<button class="tgl" data-toggle="${esc(f.key)}" style="margin-left:auto">▾ 최소화</button>` : ''}</div>
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
     ${f.coord ? plansOf(f.coord).map(p => `<div class="pline" style="padding:2px 2px 0">${drvPlanLine(driverPlan(p))}</div>${ticketStrip(driverPlan(p))}`).join('') : ''}
@@ -977,11 +980,14 @@ function famHtml(f) {
         .sort((a, b) => a.r - b.r || b.sub - a.sub || a.i - b.i);
       let out = '', cells = [];
       const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
+      const away = [];
       for (const k of kids) {
-        if (k.fam && !shut(k.fam)) { flush(); out += famHtml(k.fam); }
+        if (!here(k.fam ? k.fam.coord : k.w)) away.push(k.fam ? k.fam.coord : k.w);
+        else if (k.fam && !shut(k.fam)) { flush(); out += famHtml(k.fam, wk); }
         else cells.push(k.fam ? miniFam(k.fam) : card(k.w));
       }
       flush();
+      if (away.length) out += `<div class="grid wt-away-grid">${away.map(wtProxy).join('')}</div>`;
       return out + driversHtml(f);
     })()}</div>` : ''}</div>`;
 }
@@ -1594,7 +1600,7 @@ function renderAgents() {
   // 「서버별 보기」: one block per server that is on, in list order. A family belongs to its coordinator's server.
   const famSrv = f => (f.coord || f.members[0])?.server;
   const top = state.sessions.filter(s => !s.parent), up = agView === 'wt' ? coordOf(fams) : null;
-  const one = x => agView === 'wt' ? wtHtml(top.filter(s => !x || s.server === x.id), up, x)
+  const one = x => agView === 'wt' ? wtHtml(top, fams, up, x)
     : agentsHtml(fv.filter(f => !x || famSrv(f) === x.id), sv.filter(s => !x || s.server === x.id), x);
   const h = srvView === 'split' && multiSrv() ? srvOn().map(one).join('').replace('sec-h srv-h', 'sec-h srv-h first') : one(null);
   $('#view').innerHTML = `<div class="controls ag-controls"><span class="seg" id="ag-view"><button data-k="tree">코디네이터 트리</button><button data-k="wt">워크트리별</button></span></div>`
@@ -1643,7 +1649,7 @@ function renderAgents() {
     try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
     { const sv = saveScroll(); renderAgents(); restoreScroll(sv); }
   });
-  $('#view').querySelectorAll('[data-jump]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); wtJump(a.dataset.jump, a.dataset.wt); });
+  $('#view').querySelectorAll('[data-jump]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); wtJump(a.dataset.jump); });
   wtMark();
 }
 
@@ -1657,104 +1663,101 @@ const wtId = k => 'wt-' + [...k].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>>
 // opened the script, as they do there.
 function coordOf(fams) {
   const m = new Map();
-  const walk = f => { f.workers.forEach(w => m.set(w.path, f)); f.subs.forEach(x => { if (x.coord) m.set(x.coord.path, f); walk(x); }); };
+  m.head = new Map();  // coordinator path -> the family it heads, for folding its block like the tree view does
+  const walk = f => { if (f.coord) m.head.set(f.coord.path, f); f.workers.forEach(w => m.set(w.path, f)); f.subs.forEach(x => { if (x.coord) m.set(x.coord.path, f); walk(x); }); };
   fams.forEach(walk);
   return m;
 }
-function wtHtml(top, up, srv) {
-  const kids = new Map();
-  top.forEach(s => { const c = up.get(s.path)?.coord; if (c) (kids.get(c.path) || kids.set(c.path, []).get(c.path)).push(s); });
-  // 「실행 중만」·「Orca 에 열린 것만」: a session stays when it passes, or when one below it does (the coordinator
-  // heads its tree and is the target of its workers' links).
-  const keep = new Map(), kept = s => keep.has(s.path) ? keep.get(s.path) : (keep.set(s.path, false), keep.set(s.path, liveSess(s) || (kids.get(s.path) || []).some(kept)).get(s.path));
-  const groups = new Map();
-  top.filter(kept).forEach(s => { const k = wtKey(s); (groups.get(k) || groups.set(k, []).get(k)).push(s); });
-  const order = (a, b) => sessRank(a) - sessRank(b) || (b.started || '').localeCompare(a.started || '');
-  const secs = [...groups].map(([key, ss]) => ({ key, ss, r: Math.min(...ss.map(sessRank)), started: ss.map(s => s.started || '').sort().pop() }))
+// A small stand-in for a session drawn in another worktree: role, name, state and that worktree; it links to the card.
+function wtProxy(x) {
+  const st = status(x), r = x.role === 'coordinator' ? ['coord', '코디네이터'] : isSubCoord(x) ? ['subcoord', '하위 코디네이터'] : ['worker', '워커'];
+  return `<a class="wt-proxy wt-px-${r[0]}" href="#s=${encodeURIComponent(x.path)}" data-jump="${esc(x.path)}" title="${esc(placeLabel(x.place))} 의 카드로 이동"><span class="badge ${r[0]}">${r[1]}</span><b class="wt-px-nm">${esc(nameOf(x))}</b>${pill(st, x)}<span class="wt-px-wt">▣ ${esc(wtShort(x.place))}</span><span class="wt-px-go">카드로 이동 ↗</span></a>`;
+}
+// Each worktree holds, ordered by state like the tree view: the families whose coordinator runs there (drawn by
+// famHtml, folding included), its solo sessions, and per coordinator elsewhere a block headed by that coordinator's
+// stand-in with its workers (and sub-trees) that run here.
+function wtHtml(top, fams, up, srv) {
+  const inSrv = x => !srv || x.server === srv.id;
+  const all = [], flat = f => { all.push(f); f.subs.forEach(flat); };
+  fams.forEach(flat);
+  const secs = new Map(), sec = k => secs.get(k) || secs.set(k, { key: k, items: [], ext: new Map() }).get(k);
+  const addExt = (k, pf, it) => {
+    const S = sec(k);
+    let g = S.ext.get(pf.key);
+    if (!g) { S.ext.set(pf.key, g = { pf, list: [], r: 9, started: '' }); S.items.push(g); }
+    g.list.push(it); g.r = Math.min(g.r, it.r); if (it.started > g.started) g.started = it.started;
+  };
+  for (const f of all) {
+    if (!f.coord || !inSrv(f.coord) || !liveFam(f)) continue;
+    const k = wtKey(f.coord), pf = up.get(f.coord.path), it = { f, r: famRank(f), started: f.started };
+    if (!pf) sec(k).items.push(it);
+    else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);  // a sub-tree whose parent runs elsewhere
+  }
+  // Coordinator-less families (their coordinator is outside the window) count as "elsewhere" for every worker.
+  for (const s of top) {
+    if (!inSrv(s) || up.head.has(s.path) || !liveSess(s)) continue;
+    const pf = up.get(s.path), k = wtKey(s), it = { s, r: sessRank(s), started: s.started || '' };
+    if (!pf) sec(k).items.push(it);
+    else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);
+  }
+  const list = [...secs.values()].map(x => wtSec(x)).filter(x => x.n)
     .sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
-  const n = secs.reduce((a, x) => a + x.ss.length, 0);
-  const head = srv ? `<div class="sec-h srv-h">${srvTitle(srv)}<span>에이전트 ${n} · 워크트리 ${secs.length}</span></div>` : `<div class="sec-h"><h2>에이전트 ${n}</h2><span>워크트리 ${secs.length}</span></div>`;
-  if (!secs.length) return srv ? head + '<div class="empty srv-empty">표시할 에이전트가 없습니다.</div>' : '';
-  return head + secs.map(x => wtSec(x.key, x.ss, kids, up, kept, order)).join('');
+  const n = list.reduce((a, x) => a + x.n, 0);
+  const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
+  const head = srv ? `<div class="sec-h srv-h">${srvTitle(srv)}<span>에이전트 ${n} · 워크트리 ${list.length}</span>${fold}</div>` : `<div class="sec-h"><h2>에이전트 ${n}</h2><span>워크트리 ${list.length}</span>${fold}</div>`;
+  if (!list.length) return srv ? head + '<div class="empty srv-empty">표시할 에이전트가 없습니다.</div>' : '';
+  return head + list.map(x => x.html).join('');
 }
 const WT_ST = ['stalled', 'wait', 'run', 'bg', 'idle', 'done'];
-function wtSec(key, ss, kids, up, kept, order) {
-  const p = ss.find(s => s.place)?.place, min = famMin['wt:' + key];
-  const local = s => (kids.get(s.path) || []).filter(kept).filter(k => wtKey(k) === key);
-  const away = s => (kids.get(s.path) || []).filter(kept).filter(k => wtKey(k) !== key);
-  // The family of a session whose coordinator is in another worktree (or outside the window), else null.
-  const upFam = s => { const f = up.get(s.path); return f && (!f.coord || wtKey(f.coord) !== key) ? f : null; };
-  // A small stand-in for that coordinator heads its workers here and links to the real card.
-  const proxy = f => {
-    const c = f.coord, st = c && status(c);
-    const body = c ? `<span class="badge ${isSubCoord(c) ? 'subcoord' : 'coord'}">${isSubCoord(c) ? '하위 코디네이터' : '코디네이터'}</span><b class="wt-px-nm">${esc(nameOf(c))}</b><ds-pill state="${st}">${ST_LABEL[st]}</ds-pill><span class="wt-px-wt">▣ ${esc(wtShort(c.place))}</span><span class="wt-px-go">카드로 이동 ↗</span>`
-      : `<span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(f.handle))}</b><span class="wt-px-wt">다른 워크트리 · 추적 범위 밖</span>`;
-    return c ? `<a class="wt-proxy" href="#s=${encodeURIComponent(c.path)}" data-jump="${esc(c.path)}" title="${esc(placeLabel(c.place))} 의 코디네이터 카드로 이동">${body}</a>` : `<div class="wt-proxy off">${body}</div>`;
-  };
-  // The other direction: this coordinator's workers in other worktrees, one link per worktree.
-  const awayLine = s => {
-    const by = new Map();
-    away(s).forEach(w => (by.get(wtKey(w)) || by.set(wtKey(w), []).get(wtKey(w))).push(w));
-    return by.size ? `<div class="wt-away">다른 워크트리 워커 <b>${[...by.values()].reduce((a, ws) => a + ws.length, 0)}</b> →${[...by].map(([k, ws]) =>
-      ` <a class="wt-rel" href="#s=${encodeURIComponent(ws[0].path)}" data-jump="${esc(ws[0].path)}" data-wt="${esc(k)}" title="${esc(placeLabel(ws[0].place))}">▣ ${esc(wtShort(ws[0].place))} <b>${ws.length}</b></a>`).join(' ·')}</div>` : '';
-  };
-  const cardOf = card;
-  // A session with workers (here or elsewhere) heads a block; its workers in this worktree form the tree below it.
-  const node = (s, depth) => {
-    const ls = local(s).sort(order);
-    if (!ls.length && !away(s).length) return null;
+function wtSec({ key, items }) {
+  // Sessions drawn here, for the header: family members in this worktree that pass the filters, plus their coordinators.
+  const ss = new Set();
+  for (const it of items) for (const x of it.list || [it]) {
+    if (x.s) ss.add(x.s);
+    else x.f.members.filter(m => wtKey(m) === key && (m === x.f.coord || liveSess(m))).forEach(m => ss.add(m));
+  }
+  const arr = [...ss], min = famMin['wt:' + key];
+  if (!arr.length) return { n: 0 };
+  items.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
+  const grid = (its, solo) => {
     let out = '', cells = [];
     const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
-    for (const k of ls) { const b = node(k, depth + 1); if (b) { flush(); out += b; } else cells.push(cardOf(k)); }
+    for (const it of its) {
+      if (it.list) { flush(); out += `<div class="family nested wt-ext st-${famStatus(it.list.map(x => ({ st: x.f ? x.f.st : status(x.s) })))}"><div class="wt-px-row"><div class="grid">${it.pf.coord ? wtProxy(it.pf.coord)
+        : `<div class="wt-proxy off"><span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(it.pf.handle))}</b><span class="wt-px-wt">추적 범위 밖</span></div>`}</div></div><div class="tree">${grid(it.list.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started)))}</div></div>`; }
+      else if (it.f) { if (shut(it.f)) cells.push(miniFam(it.f)); else { flush(); out += famHtml(it.f, key); } }
+      else cells.push(card(it.s, solo && it.s.role === 'solo' ? 'solo' : ''));
+    }
     flush();
-    const st = famStatus([s, ...ls].map(m => ({ st: status(m) })));
-    return `<div class="family nested wt-fam st-${st}">${cardOf(s, 'coord')}${awayLine(s)}${out ? `<div class="tree">${out}</div>` : ''}</div>`;
+    return out;
   };
-  // Roots: sessions whose coordinator is not in this worktree (or who have none). Those with a coordinator elsewhere
-  // gather under that coordinator's stand-in, one block per coordinator, ordered among the rest by state.
-  const roots = ss.filter(s => { const c = up.get(s.path)?.coord; return !c || wtKey(c) !== key; });
-  const ext = new Map(), items = [];
-  for (const s of roots) {
-    const f = upFam(s);
-    if (!f) { items.push({ r: sessRank(s), started: s.started || '', s }); continue; }
-    let g = ext.get(f.key);
-    if (!g) { ext.set(f.key, g = { f, ws: [], r: 9, started: '' }); items.push(g); }
-    g.ws.push(s); g.r = Math.min(g.r, sessRank(s)); if ((s.started || '') > g.started) g.started = s.started || '';
-  }
-  items.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
-  let body = '', cells = [];
-  const flush = () => { if (cells.length) body += `<div class="grid">${cells.join('')}</div>`; cells = []; };
-  if (!min) for (const it of items) {
-    if (it.s) { const b = node(it.s, 0); if (b) { flush(); body += b; } else cells.push(cardOf(it.s, it.s.role === 'solo' ? 'solo' : '')); continue; }
-    flush();
-    let out = '', cs = [];
-    const fl = () => { if (cs.length) out += `<div class="grid">${cs.join('')}</div>`; cs = []; };
-    for (const w of it.ws.sort(order)) { const b = node(w, 1); if (b) { fl(); out += b; } else cs.push(cardOf(w)); }
-    fl();
-    body += `<div class="family nested wt-fam wt-ext st-${famStatus(it.ws.map(m => ({ st: status(m) })))}"><div class="wt-px-row"><div class="grid">${proxy(it.f)}</div></div><div class="tree">${out}</div></div>`;
-  }
-  flush();
-  const cnt = {}; ss.forEach(s => { const st = status(s); cnt[st] = (cnt[st] || 0) + 1; });
-  const nr = r => ss.filter(s => r(s)).length, nc = nr(s => s.role === 'coordinator'), nw = nr(s => s.role === 'worker'), ns = ss.length - nc - nw;
-  const cross = roots.filter(upFam).length;
+  const p = arr.find(s => s.place)?.place;
+  const cnt = {}; arr.forEach(s => { const st = status(s); cnt[st] = (cnt[st] || 0) + 1; });
+  const nc = arr.filter(s => s.role === 'coordinator').length, nw = arr.filter(s => s.role === 'worker').length, ns = arr.length - nc - nw;
+  const cross = items.filter(it => it.list).reduce((a, it) => a + it.list.length, 0);
   const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
-  return `<section class="family wt-sec st-${famStatus(ss.map(m => ({ st: status(m) })))}${ss.some(s => agg(s).live) ? ' live' : ''}" id="${wtId(key)}" data-wtkey="${esc(key)}">
-    <div class="wt-h" title="${esc(p?.path || '')}"><span class="wt-proj">${esc(p?.project || '')}</span><h3>▣ ${esc(name)}</h3>${p?.branch && p.branch !== name ? `<span class="wt-br">⎇ ${esc(p.branch)}</span>` : ''}${srvBadge(ss[0])}
+  const html = `<section class="wt-sec st-${famStatus(arr.map(m => ({ st: status(m) })))}" id="${wtId(key)}" data-wtkey="${esc(key)}">
+    <div class="wt-h" title="${esc(p?.path || '')}"><span class="wt-proj">${esc(p?.project || '')}</span><h3>▣ ${esc(name)}</h3>${p?.branch && p.branch !== name ? `<span class="wt-br">⎇ ${esc(p.branch)}</span>` : ''}${srvBadge(arr[0])}
+      <span class="wt-sum"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
+      <span class="wt-pills">${WT_ST.filter(k => cnt[k]).map(k => `<ds-pill state="${k}">${ST_LABEL[k]} ${cnt[k]}</ds-pill>`).join('')}</span>
       <button class="tgl" data-wtoggle="${esc(key)}">${min ? '▸ 펼치기' : '▾ 최소화'}</button></div>
-    <div class="fam-sum"><span>에이전트 <b>${ss.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}
-      <span class="wt-pills">${WT_ST.filter(k => cnt[k]).map(k => `<ds-pill state="${k}">${ST_LABEL[k]} ${cnt[k]}</ds-pill>`).join('')}</span></div>
-    ${body}</section>`;
+    ${min ? '' : grid(items, true)}</section>`;
+  return { n: arr.length, html, r: Math.min(...items.map(it => it.r)), started: items.map(it => it.started).sort().pop() || '' };
 }
 // A relation link scrolls to its target card and marks it for a moment; a folded worktree is opened first, and a
 // target that is not on screen (filtered out, another tab) opens the session instead.
 let wtFlash = null;
-function wtJump(path, key) {
-  const s = state.sessions.find(x => x.path === path), k = key || (s && wtKey(s));
-  if (k && famMin['wt:' + k]) { famMin['wt:' + k] = false; try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {} renderAgents(); }
-  const sel = key ? `#${wtId(key)}` : `.card[data-path="${CSS.escape(path)}"]`, el = $('#view').querySelector(sel);
+function wtJump(path) {
+  const s = state.sessions.find(x => x.path === path), k = s && wtKey(s);
+  // Open what hides the target: its worktree, and every folded family above it.
+  let changed = false;
+  if (k && famMin['wt:' + k]) { famMin['wt:' + k] = false; changed = true; }
+  const up = coordOf(families().fams);
+  for (let f = up.get(path), n = 0; f && n < 8; f = f.coord && up.get(f.coord.path), n++) if (isMin(f)) { famMin[f.key] = false; changed = true; }
+  if (changed) { try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {} renderAgents(); }
+  const sel = `.card[data-path="${CSS.escape(path)}"]`, el = $('#view').querySelector(sel);
   if (!el) return openSession(path);
-  el.scrollIntoView({ block: key ? 'start' : 'center' });  // not smooth: a live re-render restores the scroll it saved and would cut a smooth one short
-  if (key) window.scrollBy(0, -($('header').getBoundingClientRect().bottom + 8));  // clear the sticky header
+  el.scrollIntoView({ block: 'center' });  // not smooth: a live re-render restores the scroll it saved and would cut a smooth one short
   wtFlash = { sel, until: Date.now() + 1800 };
   wtMark();
 }
