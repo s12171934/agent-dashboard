@@ -3087,7 +3087,7 @@ def awk_ranges(script):
     if pair:
         return [(int(pair.group(1)), int(pair.group(2)))]
     if not lo and not hi:
-        return None if "NR" in script else [(1, 10 ** 9)]
+        return None if re.search(r"NR\s*[<>=!]", script) else [(1, 10 ** 9)]  # NR only printed: every line
     a = (int(lo.group(2)) + (lo.group(1) == ">")) if lo else 1
     b = (int(hi.group(2)) - (hi.group(1) == "<")) if hi else 10 ** 9
     if lo and lo.group(1) == "==" and not hi:
@@ -3131,8 +3131,8 @@ def apply_filter(argv, ranges, length):
         if rs is None:
             return None
         picked = [lines[k - 1] for a, b in rs for k in range(a, min(b, len(lines)) + 1)]
-    elif name in ("cut", "tr", "fold", "less", "more", "cat", "expand", "column"):
-        return ranges
+    elif name in ("cut", "tr", "fold", "less", "more", "cat", "expand", "column", "nl") or name == "sed" and "-n" not in argv:
+        return ranges  # one line out per line in (sed without -n only rewrites them)
     else:
         return None
     return to_ranges(picked)
@@ -3245,6 +3245,34 @@ def search_reads(rx, targets, out, cwd, single):
     return [{"abs": p, "kind": "search", "hits": sorted(ns), "exact": exact} for p, ns in found.items()]
 
 
+def unroll_loops(pipes):
+    """`for NAME in w1 w2 …; do BODY; done` becomes NAME=w1 BODY NAME=w2 BODY …, so a read of "$D/$NAME" can be
+    followed. A loop over a glob or a command's output is left as it is (its reads count as missed)."""
+    out, k = [], 0
+    while k < len(pipes):
+        pipe = pipes[k]
+        k += 1
+        head = pipe[0][1:] if pipe[0][:1] in (["do"], ["then"]) else pipe[0]
+        if head[:1] != ["for"] or len(head) < 3 or head[2] != "in" or any(c in w for w in head[3:] for c in "*?[`$(") or len(head) > 60:
+            out.append(pipe)
+            continue
+        name, words, depth, body = head[1], head[3:], 1, []
+        while k < len(pipes):
+            p2 = pipes[k]
+            k += 1
+            h = p2[0][1:] if p2[0][:1] == ["do"] else p2[0]
+            depth += h[:1] == ["for"]
+            depth -= h[:1] == ["done"]
+            if depth == 0:
+                break
+            body.append(p2)
+        body = unroll_loops(body)
+        for w in words:
+            out.append([[f"{name}={w}"]])
+            out.extend(body)
+    return out
+
+
 def shell_reads(cmd, cwd, out, stats):
     """Design reads in a shell command (Bash, Codex exec): [{abs, kind, ranges|hits, exact}], approximate by nature.
     A command that names a design path but cannot be followed (a loop variable, a script, an unresolved $VAR) is
@@ -3256,8 +3284,8 @@ def shell_reads(cmd, cwd, out, stats):
         if any(b in cmd for b in design_bases):
             stats["해석 불가"] += 1
         return []
-    env, reads, loop = {}, [], 0
-    for pipe in pipes:
+    env, reads, loop, talkers = {}, [], 0, 0
+    for pipe in unroll_loops(pipes):
         first = pipe[0]
         while first and re.match(r"^[A-Za-z_]\w*=", first[0]):  # NAME=value [command]
             k, v = first[0].split("=", 1)
@@ -3280,6 +3308,7 @@ def shell_reads(cmd, cwd, out, stats):
             if target:
                 cwd = os.path.normpath(os.path.join(cwd or "/", target))
             continue
+        talkers += 1  # a command that may print: the output belongs to one read only when it is the only one
         named = [t for t in (expand(t, env, cwd, True) for t in first) if any("/" + b + "/" in "/" + t or t.startswith(b) for b in design_bases)]
         in_design = cwd and design_key(os.path.join(cwd, "x.md"))
         if not named and not in_design:
@@ -3386,15 +3415,56 @@ def shell_reads(cmd, cwd, out, stats):
                 else:
                     rs.append(r)
             rs = [(max(1, a), min(b, length)) for a, b in rs if a <= length]
+            searched = False
             for later in pipe[1:]:
                 later = [expand(t, env, cwd) for t in later]
+                if None not in later and os.path.basename(later[0]) in SEARCHERS and rs:
+                    rx, _, _, pat = grep_regex(later, os.path.basename(later[0]))
+                    if any(a.startswith("-") and not a.startswith("--") and "v" in a for a in later[1:]):
+                        continue  # grep -v: the lines that do not match, a read of the rest
+                    if rx is not None and not TOC_PATTERN.match(pat or ""):
+                        try:
+                            with open(f, encoding="utf-8", errors="replace") as fh:
+                                text = fh.read().split("\n")
+                        except OSError:
+                            text = []
+                        hits = [n for a, b in rs for n in range(a, b + 1) if n <= len(text) and rx.search(text[n - 1])]
+                        if hits:
+                            reads.append({"abs": f, "kind": "search", "hits": hits, "exact": False})
+                    elif rx is not None:
+                        stats["목차 조회"] += 1
+                    searched = True
+                    break
                 rs = apply_filter(later, rs, length) if None not in later and rs else None
                 if rs is None:
                     stats["파이프 뒤 필터"] += 1
                     break
-            if rs:
+            if rs and not searched:
                 reads.append({"abs": f, "kind": "read", "ranges": rs, "exact": False})
+    if talkers == 1 and len(reads) == 1 and reads[0]["kind"] == "read" and len(reads[0]["ranges"]) == 1 and out:
+        # the output is this one read: its `## ` lines place the sections, as a Read's do (line numbers from cat -n /
+        # nl are dropped; with a filter that drops lines in between, the count would be off, so only plain ranges)
+        a, b = reads[0]["ranges"][0]
+        body = [re.sub(r"^\s*\d+(?:\t|: )", "", l) for l in out.split("\n")]
+        if body and not body[-1]:
+            body.pop()
+        if len(body) == b - a + 1:
+            reads[0]["heads"] = output_heads(enumerate(body, a))
     return reads
+
+
+def output_heads(numbered):
+    """[(line, title)] of the `## ` headings outside code fences among (line, text) pairs."""
+    heads, fence = [], None
+    for n, text in numbered:
+        f = FENCE.match(text)
+        if f:
+            fence = None if fence == f.group(1) else fence or f.group(1)
+        elif not fence:
+            h = HEADING.match(text)
+            if h and len(h.group(1)) == 2:
+                heads.append((n, h.group(2)))
+    return heads
 
 
 def read_tool_reads(inp, body, result):
@@ -3404,20 +3474,8 @@ def read_tool_reads(inp, body, result):
         return []
     if os.path.splitext(path)[1].lower() != ".md":
         return [{"abs": path, "kind": "read", "ranges": [], "exact": True}]
-    nums, heads, fence = [], [], None
-    for line in body.split("\n"):
-        m = READ_LINE.match(line)
-        if not m:
-            continue
-        n, text = int(m.group(1)), m.group(2)
-        nums.append(n)
-        f = FENCE.match(text)
-        if f:
-            fence = None if fence == f.group(1) else fence or f.group(1)
-        elif not fence:
-            h = HEADING.match(text)
-            if h and len(h.group(1)) == 2:
-                heads.append((n, h.group(2)))
+    numbered = [(int(m.group(1)), m.group(2)) for m in map(READ_LINE.match, body.split("\n")) if m]
+    nums, heads = [n for n, _ in numbered], output_heads(numbered)
     file = (result or {}).get("file") if isinstance(result, dict) else None
     if not nums and isinstance(file, dict) and file.get("numLines"):
         start = int(file.get("startLine") or 1)
@@ -3475,26 +3533,31 @@ def tool_reads(name, inp, cwd, body, result, stats):
 
 
 def sections_read(toc, a, b, heads):
-    """{section id: lines read} for lines a..b. Headings seen in the output place their sections first (they survive a
-    document edited after the read); without any, the line numbers are matched against the current table of contents."""
-    out = collections.Counter()
+    """{section id: (lines read, first, last)} for lines a..b. Headings seen in the output place their sections first
+    (they survive a document edited after the read; first/last are then the lines as numbered when read); a heading the
+    current table of contents no longer has keeps its old title, so the page lists it apart. Without any heading, the
+    line numbers are matched against the current table of contents."""
+    out = {}
     by_title = {}
     for s in toc:
         by_title.setdefault(s["title"], s)
-    marks = [(n, by_title[t]) for n, t in heads or [] if t in by_title]
+    marks = [(n, by_title.get(t) or {"id": t}) for n, t in heads or []]
     if marks:
         n0, s0 = marks[0]
         if a < n0:
-            k = toc.index(s0)
-            if k > 0:
-                out[toc[k - 1]["id"]] += n0 - a
+            k = next((i for i, x in enumerate(toc) if x is s0), None)
+            prev = toc[k - 1] if k else next((x for x in toc if x["start"] <= a <= x["end"]), None)
+            if prev:
+                out[prev["id"]] = (n0 - a, a, n0 - 1)
         for j, (n, s) in enumerate(marks):
-            out[s["id"]] += (marks[j + 1][0] - 1 if j + 1 < len(marks) else b) - n + 1
+            end = marks[j + 1][0] - 1 if j + 1 < len(marks) else b
+            k0, lo, hi = out.get(s["id"], (0, n, end))
+            out[s["id"]] = (k0 + end - n + 1, min(lo, n), max(hi, end))
     else:
         for s in toc:
             lo, hi = max(a, s["start"]), min(b, s["end"])
             if lo <= hi:
-                out[s["id"]] += hi - lo + 1
+                out[s["id"]] = (hi - lo + 1, lo, hi)
     return out
 
 
@@ -3515,9 +3578,11 @@ def anchor(read):
         return [(sid, None, None, k) for sid, k in per.items()]
     out = []
     for a, b in read["ranges"]:
-        for sid, k in sections_read(toc, a, b, read.get("heads")).items():
-            s = next(x for x in toc if x["id"] == sid)
-            out.append((sid, round(min(1.0, k / size[sid]), 3), [max(a, s["start"]), min(b, s["end"])], None))
+        for sid, (k, lo, hi) in sections_read(toc, a, b, read.get("heads")).items():
+            if sid in size:
+                out.append((sid, round(min(1.0, k / size[sid]), 3), [lo, hi], None))
+            else:  # a heading this document no longer has: its length is unknown
+                out.append((sid, None, [lo, hi], None))
     return out
 
 
