@@ -1076,7 +1076,7 @@ const xpTags = x => [x.verify_scene && `<span class="badge" title="verify 확인
 // Worktrees the driver will make (ticket.worktree, filled before start) and its auxiliary ones (plan.extra_worktrees).
 const XP_WT = { planned: ['pending', '생성 예정'], created: ['done', '생성됨'], removed: ['blocked', '제거됨'], undecided: ['blocked', '미정'] };
 const wtChip = st => { const [cls, lbl] = XP_WT[st] || ['pending', st || '상태 미상']; return `<span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(lbl)}</span>`; };
-function wtHtml(k) {
+function tkWtHtml(k) {
   const w = k.worktree;
   if (!w) return '';
   const tr = w.trigger || {}, pre = tr.predecessors || [];
@@ -1341,7 +1341,7 @@ function extPlansHtml(plans, inSession) {
         <div class="tk-h" data-ttoggle="${esc(id)}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>⚙ ${x.st === 'wait' ? esc(pdrvName(k)) : `${esc(k.driver_terminal || k.package)} 드라이버(스크립트)`}</b>${k.jira ? `<span class="tk-key">${esc(k.jira)}</span>` : ''}
           <span>${esc(k.repo || '')} ${x.pos}/${x.len}</span>${x.why ? `<span class="xp-why ${x.why.k}">${esc(x.why.t)}</span>` : ''}<span title="${esc(k.driver_terminal_handle || '')}">${termNote(k.driver_terminal_handle)}${shared.length ? ` · 공유: ${shared.map(esc).join('·')}` : ''}</span>${k.run_id ? `<a href="#r=${esc(k.run_id)}" style="color:var(--accent)">Run</a>` : ''}<span>${esc(XP_TICKET[k.status] || k.status)}</span><span>체크박스 <b>${k.boxes_done ?? 0}/${k.boxes_total ?? 0}</b></span><span>${cnt(n)}</span>
           <span class="tk-bar">${pbar({ steps: rows.filter(r => !r.drv).map(r => r.st === 'spawned' && r.w && status(r.w) !== 'run' ? (status(r.w) === 'stalled' ? 'fail' : 'wait') : r.st) })}</span></div>
-        ${wtHtml(k)}${e2eHtml(k)}
+        ${tkWtHtml(k)}${e2eHtml(k)}
         ${open ? `<div class="tk-body">${rows.map(line).join('')}</div>` : ''}</div>`;
     };
     // A repository folds as a whole; it starts open while any of its tickets is not verified yet.
