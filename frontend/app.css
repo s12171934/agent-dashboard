@@ -807,7 +807,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 
 /* 설계문서: projects · documents · table of contents (left) · the document with a badge per section (middle) · the picked section's readers (right) */
 .dz { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr) minmax(240px, 320px); gap: 14px; align-items: start; }
-.dz.empty-doc { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); }
+.dz.empty-doc, .dz.no-pane { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); }
+.dz-ph { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 /* The page itself stays put; only the document scrolls (the sidebar and the readers scroll on their own). --dz-top is
    where the grid starts, measured by the page; 96px is the view's room for the dock. A phone scrolls the page. */
 .dz { height: calc(100dvh - var(--dz-top, 120px) - 96px); align-items: stretch; }
@@ -884,7 +885,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tg-d { color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tg-d span { color: var(--muted); font-weight: 400; }
 @media (max-width: 900px) {
-  .dz, .dz.empty-doc { grid-template-columns: minmax(0, 1fr); height: auto; align-items: start; }
+  .dz, .dz.empty-doc, .dz.no-pane { grid-template-columns: minmax(0, 1fr); height: auto; align-items: start; }
   .dz-main { grid-template-rows: none; }
   .dz-doc { overflow: visible; overflow-x: auto; }
   .dz-doc h2 { scroll-margin-top: 90px; }

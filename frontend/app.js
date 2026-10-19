@@ -3286,7 +3286,7 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
   s.onerror = () => { delete dzLibs[name]; fail(new Error(name + ' 을 불러오지 못했습니다')); };
   document.head.append(s);
 });
-let dz = { search: false, live: false, q: '', last: null, lastIn: {}, fold: {} };  // adash.design: the toggles, the last document (overall and per project), the sidebar boxes left open or closed
+let dz = { search: false, live: false, pane: true, q: '', last: null, lastIn: {}, fold: {} };  // adash.design: the toggles, the last document (overall and per project), the sidebar boxes left open or closed
 try { Object.assign(dz, JSON.parse(localStorage.getItem('adash.design') || '{}')); } catch {}
 const dzSave = () => { try { localStorage.setItem('adash.design', JSON.stringify(dz)); } catch {} };
 let dzList = null, dzListV = null;  // api.designs(), dropped when a server's index or references change
@@ -3330,7 +3330,7 @@ async function renderDesigns() {
     doc ||= { error: '문서를 찾을 수 없습니다.' };
     if (route().v !== 'designs') return;
   }
-  const mk = [ck, doc?.mtime, multiSrv()].join('\n');
+  const mk = [ck, doc?.mtime, multiSrv(), dz.pane].join('\n');
   if (dzMounted !== mk || !$('#dz-side')) {
     // the sidebar boxes: as they were for the same document (edited, a server added); else as last left on a wide
     // screen, and on a phone closed once a document is open (the document is the page there)
@@ -3343,8 +3343,9 @@ async function renderDesigns() {
     $('#view').innerHTML = `<div class="controls dz-ctl">
         <label class="chk"><input type="checkbox" data-dz-opt="search"${dz.search ? ' checked' : ''}> 검색 적중 포함</label>
         <label class="chk"><input type="checkbox" data-dz-opt="live"${dz.live ? ' checked' : ''}> 진행 중 세션만</label>
+        <label class="chk"><input type="checkbox" data-dz-opt="pane"${dz.pane ? ' checked' : ''}> 읽은 세션 보기</label>
         <span class="st" id="dz-sum"></span></div>
-      ${!dzList.enabled ? dzNoSource() : `<div class="dz${meta ? '' : ' empty-doc'}">
+      ${!dzList.enabled ? dzNoSource() : `<div class="dz${meta ? dz.pane ? '' : ' no-pane' : ' empty-doc'}">
         <div class="dz-side" id="dz-side">
           <details class="box dz-box dz-projbox" data-fold="proj"${fold('proj') ? ' open' : ''}><summary><b>설계 프로젝트</b> <span class="st">${meta ? esc(dzSlug(key)) : ''}</span></summary>
             <div id="dz-projs"></div></details>
@@ -3353,7 +3354,7 @@ async function renderDesigns() {
             <div id="dz-list"></div></details></div>
         <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
           : '<div class="empty">왼쪽에서 설계 프로젝트와 문서를 고르세요. 숫자는 그 문서를 읽거나 검색한 세션 수입니다.</div>'}</div>
-        ${meta ? '<aside class="box dz-pane" id="dz-pane"></aside>' : ''}</div>`}`;
+        ${meta && dz.pane ? '<aside class="box dz-pane" id="dz-pane"></aside>' : ''}</div>`}`;
     if (meta) await dzArticle(doc);
     if (route().v !== 'designs' || dzMounted !== mk) return;
   }
@@ -3501,10 +3502,10 @@ function dzFill(server, key, sec, meta, doc) {
     h.classList.toggle('on', h.dataset.sec === sec);
     h.insertAdjacentHTML('beforeend', ` <button type="button" class="badge dz-b${c.s ? '' : ' zero'}" data-dz-sec="${esc(h.dataset.sec)}" aria-label="${esc(h.dataset.sec)} 섹션을 읽은 세션 보기">세션 ${c.s} · ${c.n}회</button>`);
   });
-  const pane = dzPane(doc, sec, doc.toc || []);
-  $('#dz-pane').innerHTML = pane;
+  const pane = dz.pane ? dzPane(doc, sec, doc.toc || []) : '';
+  if ($('#dz-pane')) $('#dz-pane').innerHTML = pane;
   const at = sec && [...art.querySelectorAll('[data-sec]')].find(h => h.dataset.sec === sec);
-  if (at) at.insertAdjacentHTML('afterend', `<div class="dz-inline">${pane}</div>`);
+  if (at && pane) at.insertAdjacentHTML('afterend', `<div class="dz-inline">${pane}</div>`);
   // two frames on, after render() has put the old scroll position back
   if (dzScroll !== null) { const to = dzScroll && at || art; dzScroll = null; requestAnimationFrame(() => requestAnimationFrame(() => to.scrollIntoView({ block: 'start' }))); }
 }
@@ -3531,7 +3532,7 @@ function dzPane(doc, sec, toc) {
       <span class="dz-k">${kinds}<span class="st">${r.reads + r.searches}회${r.secs ? ` · 섹션 ${r.secs.size}` : ''} · ${esc(ago(r.last))}</span></span></a></li>`;
   };
   const gone = [...new Set((doc.refs || []).map(r => r.section))].filter(x => x && !toc.some(s => s.id === x));
-  return `<h3>${one ? `「${esc(sec)}」 섹션을 읽은 세션` : '이 문서를 읽은 세션'} <span class="st">${rows.length}</span></h3>
+  return `<h3 class="dz-ph"><span>${one ? `「${esc(sec)}」 섹션을 읽은 세션` : '이 문서를 읽은 세션'} <span class="st">${rows.length}</span></span><button type="button" class="tgl" data-dz-hide aria-label="읽은 세션 숨기기">숨기기</button></h3>
     ${rows.length ? `<ul class="dz-ss">${rows.slice(0, DZ_ROWS).map(item).join('')}</ul>${rows.length > DZ_ROWS ? `<div class="st">최근 ${DZ_ROWS}개만 보입니다 (전체 ${rows.length})</div>` : ''}` : `<div class="st">${dz.live ? '진행 중인 세션 중에는 없습니다.' : '읽은 세션이 없습니다.'}${dz.search ? '' : ' 검색 적중은 「검색 적중 포함」을 켜면 셉니다.'}</div>`}
     ${one ? `<button type="button" class="act" data-dz-sec="">문서 전체 보기</button>` : `<div class="st dz-hint">섹션 제목의 배지를 누르면 그 섹션을 읽은 세션만 봅니다. 누르면 세션 상세로 갑니다.</div>`}
     ${!one && gone.length ? `<h3>현재 목차에 없는 섹션</h3><ul class="dz-gone">${gone.map(g => `<li><button type="button" class="tgl" data-dz-sec="${esc(g)}">${esc(g)}</button></li>`).join('')}</ul>` : ''}`;
@@ -3541,8 +3542,10 @@ document.addEventListener('click', e => {
   if (route().v !== 'designs') return;
   const f = e.target.closest('[data-dz-fold]');
   if (f) { e.preventDefault(); dz.tocShut = !dz.tocShut; dzSave(); render(); return; }
+  if (e.target.closest('[data-dz-hide]')) { dz.pane = false; dzSave(); render(); return; }
   const b = e.target.closest('[data-dz-sec]');
   if (!b) return;
+  if (!b.hasAttribute('data-dz-toc') && !dz.pane) { dz.pane = true; dzSave(); }  // a section badge brings the readers back
   const r = route(), key = r.key || dz.last?.[1], server = r.server || dz.last?.[0], cur = r.sec || '';
   const toc = b.hasAttribute('data-dz-toc');  // the table of contents picks and goes there; a badge toggles
   const sec = !toc && b.dataset.dzSec === cur ? '' : b.dataset.dzSec;  // the open section again lets it go
