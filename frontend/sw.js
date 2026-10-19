@@ -24,7 +24,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.endsWith('/build.json')) return;
   e.respondWith(fetch(e.request).then(res => {
-    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+    // Kept by path: a deploy stamps ?v=<build> on the files, and one copy each is all offline needs.
+    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(url.origin + url.pathname, copy)); }
     return res;
   }).catch(async () => (await caches.match(e.request, { ignoreSearch: true }))
     || (e.request.mode === 'navigate' && await caches.match('index.html')) || Response.error()));

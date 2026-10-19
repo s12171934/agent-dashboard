@@ -110,12 +110,14 @@ main 에 `frontend/`·`design-system/`·`scripts/deploy-frontend.sh` 변경이 �
 npx wrangler login              # 한 번
 scripts/deploy-frontend.sh      # frontend/ 를 프로덕션에 배포 (프로젝트가 없으면 만든다)
 PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-dashboard-2at.pages.dev)
+DEPLOY_OUT=/tmp/adash-out scripts/deploy-frontend.sh   # 배포하지 않고 올릴 파일만 만들어 확인
 ```
 
 - `dashboard.s-dante.com` 은 Pages 프로젝트 `agent-dashboard` 의 커스텀 도메인이다 (`dashboard` CNAME → `agent-dashboard-2at.pages.dev`, 프록시).
 - PWA 로 설치할 수 있다 (`manifest.webmanifest`, `sw.js`, `icons/`). Chrome·Edge 는 주소창의 설치 버튼, iOS Safari 는 공유 → 홈 화면에 추가. 서비스 워커는 이 출처의 페이지 파일만 네트워크 우선으로 캐시해 오프라인에서도 열리게 하고, 메트릭 서버 요청과 `build.json` 은 건드리지 않는다.
 - 앱 아이콘은 바의 「앱 아이콘」에서 고른다: 컨셉 5종(그리드·펄스·봇·터미널·노드) × 색 4종(블루·에메랄드·선셋·그래파이트) = 20개, 이 기기에만 저장(`adash.icon`). `icon-boot.js` 가 고른 아이콘의 manifest·파비콘·apple-touch-icon 으로 링크를 바꾼다. 탭 아이콘은 바로 바뀌고, 설치한 앱은 브라우저가 다음에 manifest 를 확인할 때 바뀐다(Chrome 은 바꿀지 물을 수 있음). iOS 는 추가할 때의 아이콘을 유지하므로 홈 화면에 다시 추가해야 한다.
 - 아이콘은 `scripts/make-icons.py` 가 만든다(SVG 템플릿 → headless Chrome 으로 PNG). 기본(그리드·블루)은 `icons/` 와 `manifest.webmanifest`, 나머지는 `icons/app/<컨셉>-<색>/` 에 manifest 와 함께 있다. 아이콘을 바꾸거나 더할 때는 스크립트를 고쳐 다시 돌리고, 목록은 `icon-boot.js` 에도 맞춘다.
+- 배포할 때 페이지가 이름으로 불러오는 파일(`index.html` 의 스크립트·스타일, `ds.css` 의 `@import`, `ds.js` 의 `import`, 아이콘 스프라이트 `icons.svg`)에 `?v=<build>` 를 붙인다(원본은 그대로). `dashboard.s-dante.com` zone 이 `_headers` 의 `no-cache` 를 무시하고 JS·CSS·SVG 를 4시간 브라우저 캐시로 내보내서, 새 `index.html` 이 예전 `app.js`·`app.css`·`icons.svg` 와 섞여 화면이 깨졌기 때문이다(`*.pages.dev` 주소는 `no-cache` 그대로). 근본적으로는 그 zone 의 Caching → Browser Cache TTL 을 「Respect Existing Headers」로 두면 된다. 서비스 워커는 파일을 쿼리 없이 경로로 캐시한다.
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 1분마다, 그리고 화면에 다시 나타나거나 포커스·네트워크를 되찾을 때마다(10초에 한 번까지) 이것을 확인해 새 배포면 서비스 워커를 갱신하고 새로 고친다. 설치한 PWA 는 다시 열기보다 백그라운드에서 돌아오는 일이 많아서다.
 - 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
