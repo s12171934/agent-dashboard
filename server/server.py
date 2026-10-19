@@ -335,6 +335,7 @@ class Session:
         self.bg = {}  # background task id -> (kind, started ts): run_in_background Bash, Monitor, async agents
         self.stop_calls = {}  # TaskStop tool call id -> task id
         self.asks = {}  # AskUserQuestion call id -> [first question, epoch seconds, has a result]; see stale_decisions
+        self.inbox_picks = {}  # 메일함 item id -> the pick the agent wrote for it ("[메일함 <id>] ..."); see sweep_decisions
         self.bg_calls = {}  # tool call id -> tool name, for calls that may start a background task
         self.own_run_calls = set()  # tool call ids of this session's run-create/run-use
         self.own_votes = collections.Counter()
@@ -619,6 +620,8 @@ class Session:
                         turn["uses"].append(keys)
                     self.add_log(ts, "tool", block.get("name"), detail=tool_hint(block.get("name"), block.get("input")))
                 elif block.get("type") == "text" and block.get("text", "").strip():
+                    for m in INBOX_PICK.finditer(block["text"]):
+                        self.inbox_picks[m[1]] = m[2].strip(" `*")
                     self.add_log(ts, "assistant", short(block["text"]))
         elif typ == "user":
             content = msg.get("content")
@@ -1826,9 +1829,37 @@ def interactions(limit, heartbeats):
 DECISION_EVERY = 1.5
 DECISION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 DECISION_KEEP_S = 7200  # a card whose question never got a result in the transcript goes after this
-decisions = {"available": True, "pending": []}  # what /api/state shows: the open cards, oldest first
-decision_lock = threading.Lock()  # guards decision_store
+decisions = {"available": True, "pending": [], "inbox_mode": False, "inbox": []}  # what /api/state shows: the open
+# cards, oldest first; whether 메일함 mode is on; the 메일함, newest first
+decision_lock = threading.Lock()  # guards decision_store and inbox_store
 decision_store = {}  # id -> {"card": the public card, "state": pending|answered|cancelled, "terminal", "busy"}
+
+# 메일함 모드 (prefs "decision_inbox", one switch for the whole server): the user is away. The hook still registers
+# each question, but it is filed in the 메일함 instead of opening a card, and /api/decision/ask answers {"deny": reason};
+# the hook turns that into a PreToolUse deny, so no picker opens and Claude goes on with the recommended option
+# ("(Recommended)" in its label, else the first) or its own best call. The reason asks it to write its pick as one
+# line "[메일함 <id>] ..."; the transcript scan keeps that line (Session.inbox_picks) and sweep_decisions copies it
+# to the item. Until then the item shows the recommended options the server worked out. Choosing another answer on
+# the page later sends the session a follow-up message through its Orca terminal (inbox_answer).
+# Items outlive restarts (inbox.json): {id: {"card": the public item, "terminal"}}.
+INBOX_PATH = os.path.join(HERE, "inbox.json")
+INBOX_KEEP = 200  # newest items kept ...
+INBOX_KEEP_S = 14 * 86400  # ... and read ones only this long
+INBOX_PICK = re.compile(r"\[메일함 (q[0-9a-f]{8,40})\][ \t]*([^\n]{1,300})")
+RECOMMENDED = re.compile(r"\((?:Recommended|권장|추천)\)", re.I)
+try:
+    with open(INBOX_PATH) as _f:
+        inbox_store = {d["card"]["id"]: d for d in json.load(_f)["items"]}
+except (OSError, ValueError, KeyError, TypeError):
+    inbox_store = {}
+
+
+def save_inbox():
+    """Call holding decision_lock."""
+    tmp = INBOX_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"items": list(inbox_store.values())}, f, ensure_ascii=False)
+    os.replace(tmp, INBOX_PATH)
 
 
 def epoch(ts):
@@ -1841,9 +1872,11 @@ def epoch(ts):
 def publish_decisions():
     """Copy the open cards into `decisions` for /api/state. Call holding decision_lock, not `lock`."""
     pending = sorted((d["card"] for d in decision_store.values() if d["state"] == "pending"), key=lambda c: c["created_at"])
+    inbox = sorted((dict(d["card"]) for d in inbox_store.values()), key=lambda c: c["created_at"], reverse=True)
     with lock:
-        if pending != decisions["pending"]:
-            decisions["pending"] = pending
+        mode = bool(prefs.get("decision_inbox"))
+        if pending != decisions["pending"] or inbox != decisions["inbox"] or mode != decisions["inbox_mode"]:
+            decisions.update(pending=pending, inbox=inbox, inbox_mode=mode)
             bump()
 
 
@@ -1865,7 +1898,8 @@ def valid_questions(qs):
 
 
 def add_decision(body):
-    """A question from the hook -> its card id."""
+    """A question from the hook -> {"id"} for a card, or {"id", "inbox": true, "deny": reason} when 메일함 mode
+    filed it instead."""
     qs = body.get("questions")
     if not valid_questions(qs):
         raise ValueError("questions")
@@ -1877,10 +1911,33 @@ def add_decision(body):
             "questions": [{"question": q["question"], "header": q.get("header") or "", "multiSelect": bool(q.get("multiSelect")),
                            "options": [{"label": o["label"], "description": o.get("description") or ""} for o in q["options"]]}
                           for q in qs]}
+    with lock:
+        away = bool(prefs.get("decision_inbox"))
     with decision_lock:
-        decision_store[rid] = {"card": card, "state": "pending", "terminal": term, "busy": False}
+        if away:
+            card.update(recommended=[recommended(q) for q in card["questions"]], chosen=None, read=False, followup=None)
+            inbox_store[rid] = {"card": card, "terminal": term}
+            save_inbox()
+        else:
+            decision_store[rid] = {"card": card, "state": "pending", "terminal": term, "busy": False}
         publish_decisions()
-    return rid
+    return {"id": rid, "inbox": True, "deny": deny_reason(card)} if away else {"id": rid}
+
+
+def recommended(q):
+    labels = [o["label"] for o in q["options"]]
+    return next((x for x in labels if RECOMMENDED.search(x)), labels[0] if labels else "")
+
+
+def deny_reason(card):
+    """What Claude reads in place of the user's answer."""
+    qs, picks = card["questions"], card["recommended"]
+    fmt = f"[메일함 {card['id']}] " + ("답" if len(qs) == 1 else " / ".join(f"{i + 1}) 답" for i in range(len(qs))))
+    rec = "; ".join(f"{i + 1}) {short(q['question'], 80)} → {p}" for i, (q, p) in enumerate(zip(qs, picks)))
+    return ("사용자가 자리를 비워 이 질문을 에이전트 대시보드 메일함에 남겼습니다(메일함 모드). AskUserQuestion 을 다시 부르지 말고, "
+            "각 질문의 권장 선택지((Recommended) 가 붙은 것, 없으면 첫 번째)나 가장 합리적인 판단으로 진행하세요. "
+            f"진행하기 전에 무엇을 골랐는지 정확히 이 형식의 한 줄로 남기세요: {fmt} "
+            f"(사용자가 나중에 다른 답을 고르면 이 세션에 후속 메시지가 옵니다). 권장 선택지: {rec}")
 
 
 TYPED = re.compile(r"^[^\x00-\x1f\x7f]{1,500}$")  # typed text goes into the picker's input line: no control keys
@@ -2065,6 +2122,55 @@ def answer_decision(rid, answers):
     return 200, {"ok": True}
 
 
+def followup_text(card, answers):
+    """The message a later answer sends to the session: one line, so --enter submits it whole."""
+    went = card["chosen"] or " / ".join(card["recommended"])
+    chose = "; ".join(f"「{short(q['question'], 80)}」에 {', '.join(a) if isinstance(a, list) else a}"
+                      for q, a in zip(card["questions"], answers) if a is not None)
+    return re.sub(r"\s+", " ", f"[대시보드 메일함 {card['id']}] 앞서 {went} (으)로 진행했지만 사용자는 {chose} 를 골랐습니다. 반영하세요.")
+
+
+def inbox_answer(rid, action, answers):
+    """read | unread | answer from the page -> (http status, body). answer: answers in question order, null for a
+    question left as it went; sends followup_text to the session's Orca terminal and marks the item read."""
+    with decision_lock:
+        d = inbox_store.get(rid)
+        if not d:
+            return 404, {"error": "메일함에 없는 항목입니다"}
+        if action != "answer":
+            d["card"]["read"] = action == "read"
+            save_inbox()
+            publish_decisions()
+            return 200, {"ok": True}
+        qs = d["card"]["questions"]
+        ok = len(answers) == len(qs) and any(a is not None for a in answers) and all(
+            a is None or (isinstance(a, list) and q["multiSelect"] and a and all(isinstance(x, str) and TYPED.match(x) for x in a))
+            or (isinstance(a, str) and not q["multiSelect"] and TYPED.match(a)) for q, a in zip(qs, answers))
+        if not ok:
+            return 400, {"error": "고른 답이 없거나 보낼 수 없는 답입니다"}
+        handle = decision_terminal(d)
+        if not handle:
+            return 409, {"error": "이 세션의 Orca 터미널을 찾지 못했습니다 — 세션에 직접 알려 주세요"}
+        text = followup_text(d["card"], answers)
+    try:
+        orca("terminal", "send", "--terminal", handle, "--text", text, "--enter", timeout=15)
+    except Exception as e:
+        return 502, {"error": f"터미널에 보내지 못했습니다 ({short(e, 160)}) — 세션에 직접 알려 주세요"}
+    with decision_lock:
+        d["card"].update(read=True, followup={"answers": answers, "text": text, "at": time.time()})
+        save_inbox()
+        publish_decisions()
+    return 200, {"ok": True}
+
+
+def set_inbox_mode(on):
+    with lock:
+        prefs["decision_inbox"] = on
+        save_prefs()
+    with decision_lock:
+        publish_decisions()
+
+
 # A question answered in the terminal, cancelled there, or ended with its session is closed by the transcript: the
 # AskUserQuestion call the card came from (its tool_use_id; without one, the same session's call with the same first
 # question logged within ASK_MATCH_S of the card) already has a tool result. Such cards are cancelled here, as are ones past DECISION_KEEP_S.
@@ -2100,9 +2206,23 @@ def sweep_decisions():
     for r in pending:
         if r["id"] in stale or now - r["created_at"] > DECISION_KEEP_S:
             settle_decision(r["id"], "cancelled")
+    with lock:
+        picks = {k: v for s in sessions.values() if s.kind == "claude" for k, v in s.inbox_picks.items()}
     with decision_lock:
         for rid in [k for k, d in decision_store.items() if d["state"] != "pending" and now - d.get("settled", now) > 300]:
             del decision_store[rid]
+        changed = False
+        for rid, d in inbox_store.items():
+            if picks.get(rid) and d["card"]["chosen"] != picks[rid]:
+                d["card"]["chosen"] = picks[rid]
+                changed = True
+        keep = sorted(inbox_store, key=lambda k: inbox_store[k]["card"]["created_at"], reverse=True)[:INBOX_KEEP]
+        for rid in [k for k, d in inbox_store.items() if k not in keep or (d["card"]["read"] and now - d["card"]["created_at"] > INBOX_KEEP_S)]:
+            del inbox_store[rid]
+            changed = True
+        if changed:
+            save_inbox()
+        publish_decisions()
 
 
 def decision_loop():
@@ -2609,6 +2729,9 @@ class Handler(BaseHTTPRequestHandler):
             # A decision-hook from before the hook stopped waiting may still poll after an update: let it step aside
             # (the terminal picker opens), since this server no longer holds questions for it.
             self.send_json({"state": "gone"})
+        elif url.path == "/api/decision/mode":
+            with lock:
+                self.send_json({"inbox": bool(prefs.get("decision_inbox"))})
         elif url.path == "/api/orca/job":
             jid = parse_qs(url.query).get("id", [""])[0]
             with jobs_lock:
@@ -2751,27 +2874,39 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"ok": True})
 
     def decision_post(self, action):
-        """ask {session_id, tool_use_id, cwd, terminal, questions} from the hook -> {id}. answer {id, answers} from
-        the page: types them into the session's terminal picker (answer_decision); 200 done, 400 an answer missing or
-        one the picker cannot take, 409 no longer open or the terminal not usable, 502 Orca failed. release {id}: the
-        old page's 「터미널에서 답하기」; the picker is already open, so nothing to do."""
+        """ask {session_id, tool_use_id, cwd, terminal, questions} from the hook -> {id}, or with 메일함 mode on
+        {id, inbox, deny} (add_decision). answer {id, answers} from the page: types them into the session's terminal
+        picker (answer_decision); 200 done, 400 an answer missing or one the picker cannot take, 409 no longer open or
+        the terminal not usable, 502 Orca failed. release {id}: the old page's 「터미널에서 답하기」; the picker is
+        already open, so nothing to do. mode {inbox: bool}: 메일함 mode on or off. inbox {id, action read|unread|answer,
+        answers}: a 메일함 item (inbox_answer)."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 262144)))
             assert isinstance(body, dict)
             if action == "ask":
-                return self.send_json({"id": add_decision(body)})
+                return self.send_json(add_decision(body))
+            if action == "mode":
+                assert isinstance(body["inbox"], bool)
+                set_inbox_mode(body["inbox"])
+                return self.send_json({"ok": True, "inbox": body["inbox"]})
             rid = body["id"]
             assert isinstance(rid, str) and DECISION_ID.match(rid)
             assert action != "answer" or isinstance(body["answers"], list)
+            assert action != "inbox" or body["action"] in ("read", "unread", "answer")
+            assert action != "inbox" or body["action"] != "answer" or isinstance(body["answers"], list)
         except (ValueError, KeyError, AssertionError, TypeError):
             return self.send_json({"error": "bad request"}, 400)
         if action == "answer":
             status, out = answer_decision(rid, body["answers"])
             return self.send_json(out, status)
+        if action == "inbox":
+            status, out = inbox_answer(rid, body["action"], body.get("answers") or [])
+            return self.send_json(out, status)
         self.send_json({"ok": True})
 
 
-DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release")
+DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/mode",
+                  "/api/decision/inbox")
 
 
 class Server(ThreadingHTTPServer):
