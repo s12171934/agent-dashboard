@@ -40,6 +40,9 @@ main { padding: 16px var(--gutter); max-width: 1500px; margin: 0 auto; padding-b
 .nest-label { font-size: 11px; color: var(--s-write); font-weight: 600; margin: 0 0 6px 2px; }
 .badge.subcoord { background: var(--s-write); border-color: var(--s-write); color: #fff; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+/* Cards under a coordinator or a driver share each line equally: two take half each, a lone one the full width. */
+.tree > .grid:not(.wt-away-grid), .drv > .grid { display: flex; flex-wrap: wrap; }
+.tree > .grid:not(.wt-away-grid) > *, .drv > .grid > * { flex: 1 1 0; min-width: min(250px, 100%); }
 .card { display: flex; flex-direction: column; gap: 8px; }
 .card.coord { background: var(--panel); border-left: 4px solid var(--coord); }
 .card.solo { background: var(--panel); }
@@ -220,12 +223,11 @@ a.wchip:hover { border-color: var(--accent); }
 .mini-leg b { color: var(--text); }
 .mini-leg span { word-break: keep-all; }
 .drv-grid { margin: 8px 0; }
-/* Open drivers as tiles: a span grid of at most 3 columns, sized by the space the tree actually has (container query,
-   not the viewport), so nested trees step down too. Breakpoints keep a column at about 340px or wider, where a
-   checkbox row fits. dense packing lets a short driver fill the gap beside a wide one. */
-.drv-wrap { container-type: inline-size; margin-top: 12px; }
-.drv-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 10px; }
-.drv-tile { min-width: 0; display: flex; }
+/* Open drivers as tiles that wrap and share each line equally. The span (1–3) is only how narrow a tile may get
+   (300px, 600px, or a line of its own), so a wide driver starts a new line rather than squeeze its worker cards. */
+.drv-wrap { margin-top: 12px; }
+.drv-tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.drv-tile { flex: 1 1 0; min-width: min(300px, 100%); display: flex; }
 .drv-tile > .drv, .drv-tile > .card { margin-top: 0; flex: 1; min-width: 0; }
 .drv-tile.folded { align-self: start; }
 /* Narrow tiles: tighter checkbox rows so a row of four role chips (구현 · 리뷰 ×2 · 판정) stays on one line. */
@@ -233,9 +235,7 @@ a.wchip:hover { border-color: var(--accent); }
 .drv-tile .cbr { gap: 3px; font-size: 11px; }
 .drv-tile .tkc { padding: 1px 5px; gap: 3px; }
 .drv-tile .cbn { width: 30px; }
-.drv-tile.s2 { grid-column: span 2; } .drv-tile.s3 { grid-column: span 3; }
-@container (max-width: 1049px) { .drv-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .drv-tile.s3 { grid-column: span 2; } }
-@container (max-width: 699px) { .drv-tiles { grid-template-columns: 1fr; } .drv-tile.s2, .drv-tile.s3 { grid-column: span 1; } }
+.drv-tile.s2 { min-width: min(600px, 100%); } .drv-tile.s3 { flex-basis: 100%; }
 .card.mini-fam.drv-mini { border-left: 4px solid var(--muted); }
 .card.mini-fam.coord { border-left: 4px solid var(--coord); }
 

@@ -973,22 +973,24 @@ function famHtml(f, wk) {
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
     ${f.coord ? plansOf(f.coord).map(p => `<div class="pline" style="padding:2px 2px 0">${drvPlanLine(driverPlan(p))}</div>${ticketStrip(driverPlan(p))}`).join('') : ''}
     ${f.workers.length || f.subs.length ? `<div class="tree">${(() => {
-      // State first (attention → idle), and only within the same state do sub-coordinators lead plain workers.
-      // Expanded sub-trees are full-width blocks, so they split the card grid where they fall in that order.
+      // Workers that belong to a group come first: sub-coordinator trees, then script drivers, then the coordinator's own
+      // workers. Each group by state (attention → idle); an expanded sub-tree is a full-width block, folded ones share a grid.
       const drv = new Set((f.drivers || []).map(d => d.handle));
-      const kids = [...f.subs.filter(liveFam).map((x, i) => ({ r: famRank(x), sub: 1, i, fam: x })), ...f.workers.filter(w => !drv.has(w.viaHandle) && liveSess(w)).map((w, i) => ({ r: sessRank(w), sub: 0, i, w }))]
-        .sort((a, b) => a.r - b.r || b.sub - a.sub || a.i - b.i);
+      const subs = byRank(f.subs.filter(liveFam), famRank), own = byRank(f.workers.filter(w => !drv.has(w.viaHandle) && liveSess(w)), sessRank);
       let out = '', cells = [];
       const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
       const away = [];
-      for (const k of kids) {
-        if (!here(k.fam ? k.fam.coord : k.w)) away.push(k.fam ? k.fam.coord : k.w);
-        else if (k.fam && !shut(k.fam)) { flush(); out += famHtml(k.fam, wk); }
-        else cells.push(k.fam ? miniFam(k.fam) : card(k.w));
+      for (const x of subs) {
+        if (!here(x.coord)) away.push(x.coord);
+        else if (!shut(x)) { flush(); out += famHtml(x, wk); }
+        else cells.push(miniFam(x));
       }
       flush();
+      out += driversHtml(f, wk);
+      for (const w of own) if (!here(w)) away.push(w); else cells.push(card(w));
+      flush();
       if (away.length) out += `<div class="grid wt-away-grid">${away.map(wtProxy).join('')}</div>`;
-      return out + driversHtml(f, wk);
+      return out;
     })()}</div>` : ''}</div>`;
 }
 // Tickets inside a driver run, read from its task names ("S1#3 리뷰 codex" = ticket S1, checkbox 3, role).
@@ -1428,7 +1430,7 @@ const drvOpen = d => {
 // A folded driver looks like a minimised coordinator: donut, legend, plan bar, metrics and an expand button.
 // The CELL marker lets driversHtml gather consecutive folded drivers into one card grid.
 const CELL = '<!--cell-->';
-// An open driver is a tile: TILE + column span + '-->' + html. Consecutive tiles share one span grid (.drv-tiles), so
+// An open driver is a tile: TILE + column span + '-->' + html. Consecutive tiles share one wrapping row (.drv-tiles), so
 // a driver takes as many columns as it has worker cards to show (1–3) and short drivers sit side by side.
 const TILE = '<!--tile:';
 function driverMini(d, owner) {
@@ -1458,7 +1460,7 @@ function driverMini(d, owner) {
   </div>`;
 }
 const cellsJoin = parts => {
-  // Open drivers (TILE) and folded ones (CELL) share one span grid: open tiles first in their order, then the folded cards
+  // Open drivers (TILE) and folded ones (CELL) share one wrapping tile row: open tiles first in their order, then the folded cards
   // (one column each), so a short folded card is not stretched to the height of a tall open driver beside it.
   let out = '', tiles = [], folded = [];
   const flush = () => { if (tiles.length || folded.length) out += `<div class="drv-wrap"><div class="drv-tiles">${tiles.join('')}${folded.join('')}</div></div>`; tiles = []; folded = []; };
@@ -1831,12 +1833,13 @@ function wtSec({ key, items }, drivers = []) {
   // driver's own tile span, 3 for an expanded coordinator family.
   let span = 1;
   const want = n => { span = Math.max(span, Math.min(3, n)); };
+  const grp = x => x.f ? 0 : x.d ? 1 : 2;  // under a coordinator: sub-trees, then drivers, then plain workers (as in famHtml)
   const grid = (its, solo) => {
     let out = '', cells = [];
     const flush = () => { if (cells.length) { want(cells.length); out += `<div class="grid">${cells.join('')}</div>`; } cells = []; };
     for (const it of its) {
       if (it.list) { flush(); out += `<div class="family nested wt-ext st-${famStatus(it.list.map(x => ({ st: x.f ? x.f.st : x.d ? drvSt(x.d) : status(x.s) })))}"><div class="wt-px-row"><div class="grid">${it.pf.coord ? wtProxy(it.pf.coord)
-        : `<div class="wt-proxy off"><span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(it.pf.handle))}</b><span class="wt-px-wt">추적 범위 밖</span></div>`}</div></div><div class="tree">${grid(it.list.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started)))}</div></div>`; }
+        : `<div class="wt-proxy off"><span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(it.pf.handle))}</b><span class="wt-px-wt">추적 범위 밖</span></div>`}</div></div><div class="tree">${grid(it.list.sort((a, b) => grp(a) - grp(b) || a.r - b.r || b.started.localeCompare(a.started)))}</div></div>`; }
       else if (it.d) { flush(); const h = driverHtml(it.d, true); want(h.startsWith(TILE) ? +h.slice(TILE.length, h.indexOf('-->')) : 1); out += cellsJoin([h]); }
       else if (it.f) { if (shut(it.f)) cells.push(miniFam(it.f)); else { flush(); want(3); out += famHtml(it.f, key); } }
       else cells.push(card(it.s, solo && it.s.role === 'solo' ? 'solo' : ''));
