@@ -1069,12 +1069,17 @@ function ticketsHtml(d, activeOnly) {
 }
 // ---------- external driver plans: a roster written ahead of time by a driver script (server: ext_plans) ----------
 const XP_KIND = { sheet: '착수 시트', impl: '구현', 'review-codex': '리뷰 codex', 'review-claude': '리뷰 claude', judge: '판정', driver: '드라이버', extra: '추가 태스크',
-  'contract-check': '실서버 대조', 'integration-review': '통합 리뷰', audit: '감사' };
-// Per-session tags: how an impl's verify box is checked, why a box was added after start, whose server a contract check reads.
+  'contract-check': '실서버 대조', 'integration-review': '통합 리뷰', 'pr-review': 'PR 리뷰', 'completion-review': '구현 완료 리뷰', audit: '감사' };
+// Per-session tags: how an impl's verify box is checked, why a box was added after start (and which round of the check
+// added it), a review's round, whose server a contract check reads. The server fills reason_auto / round_auto from the
+// ticket state and launch sheet when the driver does not write fix_reason / round itself.
 const XP_SCENE = { storybook: '스토리북', 'real-screen': '실화면' }, XP_FIX = { 'integration-review': '통합 리뷰 지적', scene: '화면 불일치' };
+const xpRound = x => x.round ?? x.round_auto, xpReason = x => x.fix_reason || x.reason_auto;
 const xpTags = x => [x.verify_scene && `<span class="badge" title="verify 확인 방식">verify ${esc(XP_SCENE[x.verify_scene] || x.verify_scene)}</span>`,
-  x.fix_source && `<span class="badge" title="착수 뒤 더해진 체크박스">수정: ${esc(XP_FIX[x.fix_source] || x.fix_source)}</span>`,
-  x.producer && `<span class="badge" title="대조할 생산자 티켓">생산자 ${esc(x.producer)}</span>`].filter(Boolean).join('');
+  x.fix_source && `<span class="badge" title="착수 뒤 검증이 더한 체크박스">수정: ${esc(XP_FIX[x.fix_source] || x.fix_source)}${xpRound(x) ? ` ${xpRound(x)}차` : ''}</span>`,
+  !x.fix_source && xpRound(x) && `<span class="badge" title="리뷰 차수">${xpRound(x)}차</span>`,
+  x.producer && `<span class="badge" title="대조할 생산자 티켓">생산자 ${esc(x.producer)}</span>`,
+  x.fix_source && `<span class="xp-why" title="추가 사유">사유: ${esc(xpReason(x) || '기록 없음')}</span>`].filter(Boolean).join('');
 // Worktrees the driver will make (ticket.worktree, filled before start) and its auxiliary ones (plan.extra_worktrees).
 const XP_WT = { planned: ['pending', '생성 예정'], created: ['done', '생성됨'], removed: ['blocked', '제거됨'], undecided: ['blocked', '미정'] };
 const wtChip = st => { const [cls, lbl] = XP_WT[st] || ['pending', st || '상태 미상']; return `<span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(lbl)}</span>`; };
