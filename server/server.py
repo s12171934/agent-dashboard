@@ -5,7 +5,7 @@ Stdlib only. Tails session logs incrementally and pushes change notices over SSE
 ../frontend and is served elsewhere (Cloudflare Pages); this process only answers /api/* and /events.
 
     python3 server.py [--port 8787] [--hours 24] [--host 127.0.0.1] [--origin https://<project>.pages.dev]
-                      [--projects-dir <folder of project folders>]
+                      [--projects-dir <folder of project folders>] [--design-dir <design folder>] [--design-days 14]
 
 There is no authentication: any client that reaches a bound address (loopback, the tailnet) is trusted.
 Requests whose Host header is not one of those addresses are refused, which stops DNS rebinding, and a
@@ -352,6 +352,7 @@ class Session:
         self._plans, self._plans_n = [], -1
         self.last_prompt = None
         self.last_prompt_ts = None
+        self.reads = DesignReads(path, kind)  # design-document reads, for the 「설계문서」 tab
         if "/subagents/" in path:
             self.parent = os.path.basename(os.path.dirname(os.path.dirname(path)))
         if kind == "codex":
@@ -387,7 +388,11 @@ class Session:
                 self.started = self.started or ts
                 self.last_ts = ts
             (self.parse_claude if self.kind == "claude" else self.parse_codex)(rec, ts)
+            if self.reads.wants(raw):
+                self.reads.feed(rec, ts)
             changed = True
+        if self.reads.stats:
+            note_design_stats(self.reads)
         return changed
 
     def add_log(self, ts, role, text, **extra):
@@ -2764,6 +2769,1203 @@ def projects_loop():
         time.sleep(PROJECTS_EVERY)
 
 
+# ---- design documents: a viewer for the design folders and the sections each session read ----
+# A design folder (prefs "design_dirs" or --design-dir, e.g. <repo>/feature-designs) is indexed together with the same
+# folder in every git worktree of its repository, since a feature's documents usually live on a branch until merged; an
+# external plan's design_root adds its folder the same way. A document is keyed by its path from the folder's parent
+# ("feature-designs/<slug>/<file>"), so the copies in different worktrees share one key. The configured folder's copy
+# is the one shown, else the copy changed last.
+# Reads are taken from the session logs as they are parsed: Read and Grep calls exactly (file_path/offset/limit and the
+# numbered result; the hit lines), shell reads approximately (sed -n a,bp · head · tail · cat · nl · awk NR ranges,
+# grep/rg hits), each turned into one reference per `## ` section it touched. References are kept in design-refs.json,
+# so they outlive the session's place in the --hours window.
+DESIGN_DIRS = []  # main() fills it from --design-dir and prefs["design_dirs"]; empty turns the feature off
+DESIGN_EVERY = 5
+DESIGN_GIT_EVERY = 60     # worktree lists and HEADs are re-read this often
+DESIGN_DAYS = 14          # main() sets it from --design-days: how far back the backfill reads transcripts
+DESIGN_KINDS = {".md": "md", ".svg": "image", ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",
+                ".webp": "image", ".pdf": "pdf"}
+DESIGN_TYPES = {".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp", ".pdf": "application/pdf"}
+DESIGN_FILE_MAX = 32 << 20
+DESIGN_REFS_PATH = os.path.join(HERE, "design-refs.json")
+design = {"version": 0, "sources": [], "docs": {}}  # rebound whole by scan_designs, so readers need no lock
+design_bases = set()  # folder names that mark a design path ("feature-designs"); read by the session parser
+design_ticket_refs = {}  # external plan path -> {package: [section badge]}, rebuilt with the index
+refs_lock = threading.Lock()  # guards design_refs; taken after `lock` when both are held, never before it
+try:
+    with open(DESIGN_REFS_PATH) as _f:
+        design_refs = json.load(_f)
+except (OSError, ValueError):
+    design_refs = {}
+for _k in ("refs", "sessions", "scanned"):
+    design_refs.setdefault(_k, {})
+design_refs_dirty = False
+
+
+def git_in(cwd, *args):
+    try:
+        r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+_git_cache = {}  # (folder, what) -> (when, value)
+
+
+def git_cached(key, fn):
+    hit = _git_cache.get(key)
+    if not hit or time.time() - hit[0] > DESIGN_GIT_EVERY:
+        hit = _git_cache[key] = (time.time(), fn())
+    return hit[1]
+
+
+def worktree_copies(folder):
+    """The folder, then the same folder in the other worktrees of its repository (that have it)."""
+    def find():
+        top = git_in(folder, "rev-parse", "--show-toplevel")
+        if not top:
+            return [folder]
+        rel = os.path.relpath(folder, top)
+        out = [folder]
+        for line in (git_in(folder, "worktree", "list", "--porcelain") or "").splitlines():
+            if line.startswith("worktree "):
+                wt = line[len("worktree "):]
+                if os.path.realpath(wt) != os.path.realpath(top) and os.path.isdir(os.path.join(wt, rel)):
+                    out.append(os.path.join(wt, rel))
+        return out
+    return git_cached((folder, "worktrees"), find)
+
+
+def repo_info(folder):
+    """Where a design folder sits: repository, worktree, branch and HEAD (cached a minute)."""
+    def find():
+        top = git_in(folder, "rev-parse", "--show-toplevel")
+        if not top:
+            return {"repo": None, "worktree": None, "branch": None, "head": None, "main": True}
+        common = git_in(folder, "rev-parse", "--path-format=absolute", "--git-common-dir") or os.path.join(top, ".git")
+        main = os.path.dirname(common) if os.path.basename(common) == ".git" else common
+        return {"repo": os.path.basename(main), "worktree": os.path.basename(top), "main": main == top,
+                "branch": git_in(folder, "branch", "--show-current") or None, "head": git_in(folder, "rev-parse", "HEAD")}
+    return git_cached((folder, "info"), find)
+
+
+def design_roots():
+    """[(folder, configured)]: each configured folder and each external plan's design folder, followed by its copies
+    in the repository's other worktrees. Real paths, each once."""
+    want = [(d, True) for d in DESIGN_DIRS]
+    names = {os.path.basename(d) for d in DESIGN_DIRS}
+    for p in list(ext_plans.values()):
+        root = p.get("design_root")
+        if not root:
+            continue
+        root = os.path.realpath(os.path.expanduser(root))
+        # the ancestor named like a configured folder (…/feature-designs/<slug> → …/feature-designs), else its parent
+        cur = root
+        while os.path.dirname(cur) != cur and os.path.basename(cur) not in names:
+            cur = os.path.dirname(cur)
+        want.append((cur if os.path.basename(cur) in names else os.path.dirname(root), False))
+    out, seen = [], set()
+    for folder, configured in want:
+        if not os.path.isdir(folder):
+            continue
+        for i, f in enumerate(worktree_copies(folder)):
+            f = os.path.realpath(f)
+            if f not in seen:
+                seen.add(f)
+                out.append((f, configured and i == 0))
+    return out
+
+
+HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+FENCE = re.compile(r"^\s*(```|~~~)")
+SECTION_NO = re.compile(r"^§?\s*(\d+(?:[.-]\d+)*)[.)]?(?=\s|$)")
+_toc_cache = {}  # abs path -> ((mtime, size), (toc, line count))
+
+
+def design_toc(path):
+    """(sections, line count) of a Markdown file: one section per `## ` heading outside code fences, from the heading
+    to the line before the next one; lines before the first are 「머리말」 (「본문」 when there is no `## `).
+    Section: {id, title, no, start, end} with 1-based inclusive lines. The id is the title, numbered on a repeat."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return [], 0
+    v = (st.st_mtime, st.st_size)
+    hit = _toc_cache.get(path)
+    if hit and hit[0] == v:
+        return hit[1]
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().split("\n")
+    except OSError:
+        return [], 0
+    if lines and lines[-1] == "":
+        lines.pop()
+    heads, fence = [], None
+    for n, line in enumerate(lines, 1):
+        m = FENCE.match(line)
+        if m:
+            fence = None if fence == m.group(1) else fence or m.group(1)
+            continue
+        if fence:
+            continue
+        h = HEADING.match(line)
+        if h and len(h.group(1)) == 2:
+            heads.append((n, h.group(2)))
+    toc, seen = [], collections.Counter()
+    if not heads or heads[0][0] > 1:
+        toc.append({"id": "머리말" if heads else "본문", "title": "머리말" if heads else "본문", "no": None,
+                    "start": 1, "end": heads[0][0] - 1 if heads else len(lines)})
+    for i, (n, title) in enumerate(heads):
+        seen[title] += 1
+        no = SECTION_NO.match(title)
+        toc.append({"id": title if seen[title] == 1 else f"{title} ({seen[title]})", "title": title,
+                    "no": no.group(1) if no else None, "start": n,
+                    "end": heads[i + 1][0] - 1 if i + 1 < len(heads) else len(lines)})
+    out = (toc, len(lines))
+    _toc_cache[path] = (v, out)
+    return out
+
+
+def scan_designs():
+    """One pass over the design folders; rebinds `design` (and bumps) only when a document or a source changed."""
+    global design
+    roots = design_roots()
+    sources, docs = [], {}
+    for i, (root, configured) in enumerate(roots):
+        base = os.path.basename(root)
+        sources.append({"dir": root, "configured": configured, **repo_info(root)})
+        for d, subdirs, files in os.walk(root):
+            subdirs[:] = sorted(s for s in subdirs if not s.startswith(".") and s != "node_modules")
+            for f in sorted(files):
+                ext = os.path.splitext(f)[1].lower()
+                if ext not in DESIGN_KINDS:
+                    continue
+                p = os.path.join(d, f)
+                try:
+                    st = os.stat(p)
+                except OSError:
+                    continue
+                key = base + "/" + os.path.relpath(p, root)
+                e = docs.setdefault(key, {"key": key, "kind": DESIGN_KINDS[ext], "copies": []})
+                e["copies"].append({"src": i, "abs": p, "mtime": st.st_mtime, "size": st.st_size})
+    for e in docs.values():
+        e["copies"].sort(key=lambda c: (not sources[c["src"]]["configured"], -c["mtime"]))
+    design_bases.update(os.path.basename(r) for r, _ in roots)
+    if sources != design["sources"] or docs != design["docs"]:
+        design = {"version": design["version"] + 1, "sources": sources, "docs": docs}
+        with lock:
+            bump()
+
+
+def design_key(path):
+    """The document key ("feature-designs/<slug>/<file>") of a path inside any copy of a design folder, else None."""
+    if not path or not design_bases:
+        return None
+    path = os.path.normpath(path)
+    best = None
+    for base in design_bases:
+        i = path.rfind("/" + base + "/")
+        if i >= 0 and (best is None or i > best[0]):
+            best = (i, path[i + 1:])
+    if not best or os.path.splitext(best[1])[1].lower() not in DESIGN_KINDS:
+        return None
+    return best[1]
+
+
+def design_copy(key):
+    e = design["docs"].get(key)
+    return e and e["copies"][0]
+
+
+# ---- reading references out of tool calls ----
+READ_LINE = re.compile(r"^\s*(\d+)(?:\t|→)(.*)$")  # Claude's Read result: "<n>\t<line>" (older builds: "<n>→")
+HIT_LINE = re.compile(r"^(.*?):(\d+)[:-]")          # grep -n / rg -n output: "<path>:<n>:<text>" ("-" on context lines)
+BARE_HIT = re.compile(r"^(\d+)[:-]")                # the same for a single file: "<n>:<text>"
+SED_RANGE = re.compile(r"^\s*(\d+|\$)?\s*(?:,\s*(\d+|\$)\s*)?(?:p|\{\s*p\s*;?\s*\})\s*$")
+JS_CMD = re.compile(r"""\bcmd\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""")
+READERS = {"cat", "nl", "sed", "head", "tail", "awk", "less", "more", "bat", "batcat"}
+SEARCHERS = {"grep", "egrep", "fgrep", "rg", "ag", "ack"}
+QUIET = {"apply_patch", "cp", "mv", "rm", "tee", "ls", "wc", "find", "stat", "file", "test", "[", "echo", "printf", "git", "mkdir", "cd", "du", "readlink",
+         "realpath", "basename", "dirname", "open", "true", "aplan", "orca", "touch", "diff", "cmp", "md5", "shasum"}
+TOC_PATTERN = re.compile(r"^\^?\s*(?:\\)?#")  # grep '^## ' and the like: reading the table of contents, not a search
+SHELL_STOP = {";", "&&", "||", "&", "(", ")", "{", "}", "|", "|&"}
+SHELL_KEYWORDS = {"then", "do", "else", "elif", "fi", "done", "if", "while", "until", "time", "!", "command", "builtin", "exec", "xargs"}
+
+
+def unquote_newlines(cmd):
+    """Unquoted newlines become `;` (shlex treats them as blanks), heredoc bodies are dropped, a trailing \\ joins lines."""
+    out, q, i, n = [], None, 0, len(cmd)
+    while i < n:
+        c = cmd[i]
+        if q:
+            if c == "\\" and q == '"' and i + 1 < n:
+                out.append(cmd[i:i + 2]); i += 2; continue
+            if c == q:
+                q = None
+            out.append(c)
+        elif c == "\\" and i + 1 < n:
+            out.append(" " if cmd[i + 1] == "\n" else cmd[i:i + 2]); i += 2; continue
+        elif c in "'\"":
+            q = c; out.append(c)
+        elif c == "#" and (not out or out[-1] in " \t;\n"):
+            j = cmd.find("\n", i); i = n if j < 0 else j; continue
+        elif c == "<" and cmd.startswith("<<", i) and not cmd.startswith("<<<", i):
+            m = re.match(r"<<-?\s*(['\"]?)(\w+)\1", cmd[i:])
+            if m:
+                end = re.compile(r"\n[ \t]*" + re.escape(m.group(2)) + r"[ \t]*(?:\n|$)").search(cmd, i + m.end())
+                line_end = cmd.find("\n", i + m.end())
+                rest = cmd[i + m.end():line_end if line_end >= 0 else n]
+                out.append(" " + rest + " ;")  # the rest of the heredoc's own line still runs (`<<EOF | cmd`)
+                i = end.end() if end else n
+                continue
+            out.append(c)
+        elif c == "\n":
+            out.append(" ; ")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def shell_commands(cmd):
+    """[[argv, ...] per pipeline] for a shell command line; None when it does not parse."""
+    try:
+        lx = shlex.shlex(unquote_newlines(cmd), posix=True, punctuation_chars=";&|()<>")
+        lx.whitespace_split = True
+        toks = list(lx)
+    except ValueError:
+        return None
+    pipes, pipe, argv = [], [], []
+    for t in toks + [";"]:
+        if t in SHELL_STOP:
+            if argv:
+                pipe.append(argv)
+            argv = []
+            if t not in ("|", "|&") and pipe:
+                pipes.append(pipe)
+                pipe = []
+        elif t in ("<", ">", ">>", "2>", "&>", "2>&1", ">&"):
+            argv.append(t)
+        else:
+            argv.append(t)
+    return pipes
+
+
+def expand(tok, env, cwd, soft=False):
+    """$NAME / ${NAME} / ~ / $HOME in a token; None when a shell variable or a command substitution stays unresolved
+    ($0, $1 … are left alone: inside an awk or sed script they are not the shell's). soft leaves those in place."""
+    tok = re.sub(r"\$\{?([A-Za-z_]\w*)\}?", lambda m: env.get(m.group(1), HOME if m.group(1) == "HOME" else m.group(0)), tok)
+    if tok.startswith("~"):
+        tok = HOME + tok[1:]
+    return tok if soft or not re.search(r"\$\{?[A-Za-z_(]|`", tok) else None
+
+
+def line_ranges_of_sed(scripts):
+    """Line ranges a `sed -n` script prints: "a,bp", "ap", "a,${p}" and ;-separated lists. None when it prints others."""
+    out = []
+    for s in scripts:
+        for part in re.split(r"[;\n]", s):
+            if not part.strip():
+                continue
+            m = SED_RANGE.match(part)
+            if not m or not m.group(1):
+                return None
+            a = 10 ** 9 if m.group(1) == "$" else int(m.group(1))
+            b = a if m.group(2) is None else (10 ** 9 if m.group(2) == "$" else int(m.group(2)))
+            out.append((a, b))
+    return out or None
+
+
+def awk_ranges(script):
+    lo = re.search(r"NR\s*(>=|>|==)\s*(\d+)", script)
+    hi = re.search(r"NR\s*(<=|<)\s*(\d+)", script)
+    pair = re.search(r"NR\s*==\s*(\d+)\s*,\s*NR\s*==\s*(\d+)", script)
+    if pair:
+        return [(int(pair.group(1)), int(pair.group(2)))]
+    if not lo and not hi:
+        return None if "NR" in script else [(1, 10 ** 9)]
+    a = (int(lo.group(2)) + (lo.group(1) == ">")) if lo else 1
+    b = (int(hi.group(2)) - (hi.group(1) == "<")) if hi else 10 ** 9
+    if lo and lo.group(1) == "==" and not hi:
+        b = a
+    return [(a, b)]
+
+
+def count_arg(args, i, default):
+    """-n N / -nN / -N / -n +K for head and tail: (count, from_start)."""
+    a = args[i]
+    if a in ("-n", "--lines") and i + 1 < len(args):
+        v = args[i + 1]
+    elif a.startswith("--lines="):
+        v = a.split("=", 1)[1]
+    elif a.startswith("-n"):
+        v = a[2:]
+    elif re.match(r"^-\d+$", a):
+        v = a[1:]
+    else:
+        return default
+    m = re.match(r"^(\+)?(\d+)$", v)
+    return (int(m.group(2)), bool(m.group(1))) if m else default
+
+
+def apply_filter(argv, ranges, length):
+    """Narrow line ranges by a filter later in a pipeline (sed -n, head, tail, awk NR); None when the filter is not one."""
+    name = os.path.basename(argv[0])
+    lines = [n for a, b in ranges for n in range(a, min(b, length) + 1)]
+    if name == "sed" and "-n" in argv:
+        rs = line_ranges_of_sed([x for x in argv[1:] if not x.startswith("-")][:1])
+        if rs is None:
+            return None
+        picked = [lines[k - 1] for a, b in rs for k in range(a, min(b, len(lines)) + 1)]
+    elif name in ("head", "tail"):
+        n, plus = (10, False)
+        for i in range(1, len(argv)):
+            n, plus = count_arg(argv, i, (n, plus))
+        picked = lines[:n] if name == "head" else lines[n - 1:] if plus else lines[-n:] if n else []
+    elif name == "awk":
+        rs = awk_ranges(next((x for x in argv[1:] if not x.startswith("-")), ""))
+        if rs is None:
+            return None
+        picked = [lines[k - 1] for a, b in rs for k in range(a, min(b, len(lines)) + 1)]
+    elif name in ("cut", "tr", "fold", "less", "more", "cat", "expand", "column"):
+        return ranges
+    else:
+        return None
+    return to_ranges(picked)
+
+
+def to_ranges(nums):
+    out = []
+    for n in sorted(set(nums)):
+        if out and n == out[-1][1] + 1:
+            out[-1][1] = n
+        else:
+            out.append([n, n])
+    return [tuple(r) for r in out]
+
+
+def design_file_lines(path):
+    """Line count of a file (for open-ended ranges); 0 when unreadable."""
+    if path.endswith(".md"):
+        return design_toc(path)[1]
+    try:
+        with open(path, "rb") as f:
+            return sum(1 for _ in f)
+    except OSError:
+        return 0
+
+
+def grep_regex(argv, tool):
+    """(compiled pattern, files and folders, listing only, raw pattern) from a grep/rg argv; the pattern is None when
+    it is not usable."""
+    pat, paths, fixed, icase, word, ere, listing = None, [], False, False, False, tool != "grep", False
+    i = 1
+    takes = {"-e", "--regexp", "-g", "--glob", "-t", "--type", "-A", "-B", "-C", "-m", "--max-count", "--include",
+             "--exclude", "-f", "--max-columns", "--context", "--after-context", "--before-context", "-M", "-T"}
+    while i < len(argv):
+        a = argv[i]
+        if a == "--":
+            paths += argv[i + 1:] if pat is not None else argv[i + 2:]
+            pat = pat if pat is not None else (argv[i + 1] if i + 1 < len(argv) else None)
+            break
+        if a in ("-e", "--regexp") and i + 1 < len(argv):
+            pat = argv[i + 1]; i += 2; continue
+        if a in takes:
+            i += 2; continue
+        if a.startswith("--"):
+            fixed |= a == "--fixed-strings"; icase |= a == "--ignore-case"; word |= a == "--word-regexp"
+            listing |= a in ("--files", "--files-with-matches", "--count", "--files-without-match")
+            ere |= a in ("--extended-regexp", "--perl-regexp")
+        elif a.startswith("-") and len(a) > 1:
+            fl = a[1:]
+            fixed |= "F" in fl; icase |= "i" in fl; word |= "w" in fl; ere |= "E" in fl or "P" in fl
+            listing |= any(c in fl for c in "lLc")
+        elif pat is None:
+            pat = a
+        else:
+            paths.append(a)
+        i += 1
+    if "--files" in argv:
+        return None, paths, True, None
+    if pat is None:
+        return None, paths, listing, None
+    if fixed:
+        rx = re.escape(pat)
+    elif not ere:  # grep's basic syntax: \| \( \) \+ \? are the operators, the bare characters are literal
+        rx = re.sub(r"\\([|()+?{}])|([|()+?{}])", lambda m: m.group(1) or "\\" + m.group(2), pat)
+    else:
+        rx = pat
+    if word:
+        rx = r"\b(?:" + rx + r")\b"
+    try:
+        return re.compile(rx, re.I if icase else 0), paths, listing, pat
+    except re.error:
+        return None, paths, listing, pat
+
+
+def hits_in(path, rx):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return [n for n, line in enumerate(f, 1) if rx.search(line)]
+    except OSError:
+        return []
+
+
+def search_reads(rx, targets, out, cwd, single):
+    """Search hits from a grep/rg run: the numbered lines of its output when it printed numbers, else the pattern run
+    again over the design files it named (or listed). -> [read]"""
+    found = collections.defaultdict(set)
+    if out:
+        for line in out.splitlines():
+            m = HIT_LINE.match(line)
+            if m and not BARE_HIT.match(line):
+                p = os.path.normpath(os.path.join(cwd or "/", os.path.expanduser(m.group(1))))
+                if design_key(p):
+                    found[p].add(int(m.group(2)))
+            elif single and BARE_HIT.match(line):
+                found[single].add(int(BARE_HIT.match(line).group(1)))
+    exact = bool(found)
+    if not found and rx is not None:
+        files = set()
+        if out:
+            for line in out.splitlines():
+                p = os.path.normpath(os.path.join(cwd or "/", os.path.expanduser(line.split(":", 1)[0].strip())))
+                if design_key(p) and os.path.isfile(p):
+                    files.add(p)
+        if not files:
+            files = {t for t in targets if os.path.isfile(t) and design_key(t)}
+        for p in files:
+            hs = hits_in(p, rx)
+            if hs:
+                found[p].update(hs)
+    return [{"abs": p, "kind": "search", "hits": sorted(ns), "exact": exact} for p, ns in found.items()]
+
+
+def shell_reads(cmd, cwd, out, stats):
+    """Design reads in a shell command (Bash, Codex exec): [{abs, kind, ranges|hits, exact}], approximate by nature.
+    A command that names a design path but cannot be followed (a loop variable, a script, an unresolved $VAR) is
+    counted in stats[reason]."""
+    if not isinstance(cmd, str) or not cmd.strip():
+        return []
+    pipes = shell_commands(cmd)
+    if pipes is None:
+        if any(b in cmd for b in design_bases):
+            stats["해석 불가"] += 1
+        return []
+    env, reads, loop = {}, [], 0
+    for pipe in pipes:
+        first = pipe[0]
+        while first and re.match(r"^[A-Za-z_]\w*=", first[0]):  # NAME=value [command]
+            k, v = first[0].split("=", 1)
+            v = expand(v, env, cwd)
+            if v is not None:
+                env[k] = v
+            first = first[1:]
+        while first and first[0] in SHELL_KEYWORDS:
+            first = first[1:]
+        if not first:
+            continue
+        if first[0] == "for":
+            loop += 1
+        if first[0] == "done":
+            loop = max(0, loop - 1)
+        argv = [expand(t, env, cwd) for t in first]
+        name = os.path.basename(argv[0] or "")
+        if name == "cd":
+            target = argv[1] if len(argv) > 1 else HOME
+            if target:
+                cwd = os.path.normpath(os.path.join(cwd or "/", target))
+            continue
+        named = [t for t in (expand(t, env, cwd, True) for t in first) if any("/" + b + "/" in "/" + t or t.startswith(b) for b in design_bases)]
+        in_design = cwd and design_key(os.path.join(cwd, "x.md"))
+        if not named and not in_design:
+            continue
+        if loop:
+            stats["반복문 변수"] += 1 if named else 0
+            continue
+        if None in argv:
+            if named:
+                stats["풀지 못한 변수"] += 1
+            continue
+        resolve = lambda t: os.path.normpath(os.path.join(cwd or "/", t))
+        if name in SEARCHERS:
+            rx, targets, listing, pat = grep_regex(argv, name)
+            if rx is None and listing:
+                continue  # rg --files / grep -l with nothing to search for: a listing
+            if TOC_PATTERN.match(pat or ""):
+                stats["목차 조회"] += 1
+                continue
+            targets = [resolve(t) for t in targets] or [cwd or "/"]
+            single = targets[0] if len(targets) == 1 and os.path.isfile(targets[0]) else None
+            reads += search_reads(rx, targets, out, cwd, single)
+            continue
+        if name == "git" and "show" in argv:
+            stats["git show"] += 1 if named else 0
+            continue
+        if name not in READERS:
+            if named and name not in QUIET:
+                stats["읽기 외 명령 (" + (name if re.match(r"^[\w.+-]{1,24}$", name) else "기타") + ")"] += 1
+            continue
+        # a reader: its file arguments and the line ranges it prints
+        args = argv[1:]
+        files, ranges = [], [(1, 10 ** 9)]
+        if name == "sed":
+            scripts, i, quiet = [], 0, False
+            while i < len(args):
+                a = args[i]
+                if a in ("-e", "--expression") and i + 1 < len(args):
+                    scripts.append(args[i + 1]); i += 2; continue
+                if a.startswith("-") and a != "-":
+                    quiet |= "n" in a.lstrip("-") and not a.startswith("--")
+                    i += 1; continue
+                if not scripts:
+                    scripts.append(a)
+                else:
+                    files.append(a)
+                i += 1
+            if quiet:
+                ranges = line_ranges_of_sed(scripts)
+                if ranges is None:
+                    stats["sed 스크립트"] += 1
+                    continue
+        elif name in ("head", "tail"):
+            n, plus = (10, False)
+            for i, a in enumerate(args):
+                n, plus = count_arg(args, i, (n, plus))
+            skip = False
+            for i, a in enumerate(args):
+                if skip:
+                    skip = False
+                    continue
+                if a in ("-n", "--lines", "-c", "--bytes"):
+                    skip = True
+                    continue
+                if not a.startswith("-") or a == "-":
+                    files.append(a)
+            ranges = [("head", n)] if name == "head" else [("tail", n, plus)]
+        elif name == "awk":
+            script, i = None, 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-v", "-F", "-f") and i + 1 < len(args):
+                    if a == "-v" and "=" in args[i + 1]:
+                        k, v = args[i + 1].split("=", 1)
+                        env["awk:" + k] = v
+                    i += 2; continue
+                if script is None:
+                    script = a
+                else:
+                    files.append(a)
+                i += 1
+            script = re.sub(r"\b([A-Za-z_]\w*)\b", lambda m: env.get("awk:" + m.group(1), m.group(1)), script or "")
+            ranges = awk_ranges(script)
+            if ranges is None:
+                stats["awk 스크립트"] += 1
+                continue
+        else:
+            files = [a for a in args if not a.startswith("-") or a == "-"]
+        files = [resolve(f) for f in files if f != "-"]
+        if len(files) != 1 and len(pipe) > 1:
+            if named:
+                stats["여러 파일 파이프"] += 1
+            continue
+        for f in files:
+            if not design_key(f):
+                continue
+            length = design_file_lines(f)
+            rs = []
+            for r in ranges:
+                if r[0] == "head":
+                    rs.append((1, r[1]))
+                elif r[0] == "tail":
+                    rs.append((r[1], length) if r[2] else (max(1, length - r[1] + 1), length))
+                else:
+                    rs.append(r)
+            rs = [(max(1, a), min(b, length)) for a, b in rs if a <= length]
+            for later in pipe[1:]:
+                later = [expand(t, env, cwd) for t in later]
+                rs = apply_filter(later, rs, length) if None not in later and rs else None
+                if rs is None:
+                    stats["파이프 뒤 필터"] += 1
+                    break
+            if rs:
+                reads.append({"abs": f, "kind": "read", "ranges": rs, "exact": False})
+    return reads
+
+
+def read_tool_reads(inp, body, result):
+    """A Claude Read call: the numbered lines of its result give the exact range, and its `## ` lines the sections."""
+    path = inp.get("file_path")
+    if not design_key(path):
+        return []
+    if os.path.splitext(path)[1].lower() != ".md":
+        return [{"abs": path, "kind": "read", "ranges": [], "exact": True}]
+    nums, heads, fence = [], [], None
+    for line in body.split("\n"):
+        m = READ_LINE.match(line)
+        if not m:
+            continue
+        n, text = int(m.group(1)), m.group(2)
+        nums.append(n)
+        f = FENCE.match(text)
+        if f:
+            fence = None if fence == f.group(1) else fence or f.group(1)
+        elif not fence:
+            h = HEADING.match(text)
+            if h and len(h.group(1)) == 2:
+                heads.append((n, h.group(2)))
+    file = (result or {}).get("file") if isinstance(result, dict) else None
+    if not nums and isinstance(file, dict) and file.get("numLines"):
+        start = int(file.get("startLine") or 1)
+        nums = [start, start + int(file["numLines"]) - 1]
+    if not nums:
+        return []
+    return [{"abs": path, "kind": "read", "ranges": [(min(nums), max(nums))], "heads": heads, "exact": True}]
+
+
+def tool_reads(name, inp, cwd, body, result, stats):
+    """Every design read one tool call made, from its input and output."""
+    if isinstance(inp, str):
+        try:
+            inp = json.loads(inp)
+        except ValueError:
+            inp = {"command": inp}
+    if not isinstance(inp, dict):
+        return []
+    if name == "Read":
+        return read_tool_reads(inp, body, result)
+    if name == "Grep":
+        rx, _, _, pat = grep_regex(["rg"] + (["-i"] if inp.get("-i") else []) + ["-e", inp.get("pattern") or ""], "rg")
+        target = os.path.normpath(os.path.join(cwd or "/", os.path.expanduser(inp.get("path") or ".")))
+        if TOC_PATTERN.match(pat or ""):
+            stats["목차 조회"] += 1
+            return []
+        return search_reads(rx, [target], body, cwd, target if os.path.isfile(target) else None)
+    # shell: Claude Bash, Codex exec_command / shell / local_shell_call, and Codex's JS `exec` running several commands
+    wd = inp.get("workdir") or inp.get("working_directory") or cwd
+    cmd = inp.get("command") or inp.get("cmd")
+    if isinstance(cmd, list):
+        cmd = cmd[-1] if len(cmd) >= 3 and cmd[1] in ("-lc", "-c") else " ".join(shlex.quote(c) for c in cmd)
+    if isinstance(cmd, str) and name in ("exec", "js") and "exec_command" in cmd:
+        outs = {}
+        for line in (body or "").splitlines():
+            if line.startswith('{"index"'):
+                try:
+                    x = json.loads(line)
+                    outs[x["index"]] = ((x.get("result") or {}).get("value") or {}).get("output") or ""
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    pass
+        reads = []
+        if re.search(r"\bcmd\s*:\s*`", cmd):
+            stats["JS 템플릿 문자열"] += len(re.findall(r"\bcmd\s*:\s*`", cmd))
+        for i, m in enumerate(JS_CMD.finditer(cmd)):
+            lit = m.group(1)
+            try:
+                c = json.loads(lit) if lit[0] == '"' else json.loads('"' + lit[1:-1].replace('"', '\\"').replace("\\'", "'") + '"')
+            except ValueError:
+                stats["해석 불가"] += 1
+                continue
+            reads += shell_reads(c, wd, outs.get(i, ""), stats)
+        return reads
+    return shell_reads(cmd, wd, body, stats)
+
+
+def sections_read(toc, a, b, heads):
+    """{section id: lines read} for lines a..b. Headings seen in the output place their sections first (they survive a
+    document edited after the read); without any, the line numbers are matched against the current table of contents."""
+    out = collections.Counter()
+    by_title = {}
+    for s in toc:
+        by_title.setdefault(s["title"], s)
+    marks = [(n, by_title[t]) for n, t in heads or [] if t in by_title]
+    if marks:
+        n0, s0 = marks[0]
+        if a < n0:
+            k = toc.index(s0)
+            if k > 0:
+                out[toc[k - 1]["id"]] += n0 - a
+        for j, (n, s) in enumerate(marks):
+            out[s["id"]] += (marks[j + 1][0] - 1 if j + 1 < len(marks) else b) - n + 1
+    else:
+        for s in toc:
+            lo, hi = max(a, s["start"]), min(b, s["end"])
+            if lo <= hi:
+                out[s["id"]] += hi - lo + 1
+    return out
+
+
+def anchor(read):
+    """[(section id or None, cover or None, lines [a, b] or None, hits or None)] for one read."""
+    key = design_key(read["abs"])
+    path = read["abs"] if os.path.isfile(read["abs"]) else (design_copy(key) or {}).get("abs")
+    if not path or not path.endswith(".md"):
+        return [(None, None, None, len(read.get("hits") or []) or None)]
+    toc = design_toc(path)[0]
+    size = {s["id"]: max(1, s["end"] - s["start"] + 1) for s in toc}
+    if read["kind"] == "search":
+        per = collections.Counter()
+        for n in read["hits"]:
+            s = next((s for s in toc if s["start"] <= n <= s["end"]), None)
+            if s:
+                per[s["id"]] += 1
+        return [(sid, None, None, k) for sid, k in per.items()]
+    out = []
+    for a, b in read["ranges"]:
+        for sid, k in sections_read(toc, a, b, read.get("heads")).items():
+            s = next(x for x in toc if x["id"] == sid)
+            out.append((sid, round(min(1.0, k / size[sid]), 3), [max(a, s["start"]), min(b, s["end"])], None))
+    return out
+
+
+class DesignReads:
+    """The design reads in one transcript: tool calls that may read a design folder are held until their result
+    arrives, then turned into references (design_refs). Fed by Session.poll for live sessions and by the backfill."""
+
+    def __init__(self, path, kind):
+        self.path, self.kind = path, kind
+        self.id = os.path.splitext(os.path.basename(path))[0]
+        if kind == "codex":
+            self.id = self.id.split("-", 6)[-1] if self.id.startswith("rollout-") else self.id
+        self.parent = os.path.basename(os.path.dirname(os.path.dirname(path))) if "/subagents/" in path else None
+        self.cwd = self.task = self.title = None
+        self.calls = {}  # call id -> (tool, input, cwd, ts)
+        self.marks = set()  # call ids as bytes, so a result line can be picked out before it is parsed
+        self.stats = collections.Counter()
+        self.seen = 0
+
+    def wants(self, raw):
+        if not design_bases:
+            return False
+        self.seen += 1
+        if self.seen <= 8 or any(m in raw for m in self.marks):  # the opening lines name the session (title, brief)
+            return True
+        if self.kind == "codex" and (b'"session_meta"' in raw or b'"turn_context"' in raw):
+            return True
+        return b"Your task ID is" in raw or b'"ai-title"' in raw or any(b.encode() in raw for b in design_bases)
+
+    def note_call(self, cid, name, inp, ts):
+        text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
+        if not cid or not any(b in text for b in design_bases) and not (self.cwd and design_key(os.path.join(self.cwd, "x.md"))):
+            return
+        self.calls[cid] = (name, inp, self.cwd, ts)
+        self.marks.add(cid.encode())
+
+    def note_result(self, cid, body, ts, result=None):
+        call = self.calls.pop(cid, None)
+        if not call:
+            return
+        self.marks.discard(cid.encode())
+        name, inp, cwd, cts = call
+        try:
+            reads = tool_reads(name, inp, cwd, body or "", result, self.stats)
+        except Exception as e:  # one odd command must not stop the transcript
+            report_failure("design reads", e)
+            return
+        if reads:
+            self.stats["호출"] += 1
+            add_design_refs(self, cid, name, reads, cts or ts)
+
+    def brief(self, text):
+        if not self.task and isinstance(text, str):
+            m = BRIEF_TASK.search(text)
+            if m:
+                self.task = m.group(1)
+
+    def feed(self, rec, ts):
+        if self.kind == "claude":
+            self.cwd = rec.get("cwd") or self.cwd
+            typ = rec.get("type")
+            if typ == "ai-title":
+                self.title = rec.get("aiTitle") or self.title
+                return
+            content = (rec.get("message") or {}).get("content")
+            if typ == "assistant":
+                for b in content or []:
+                    if isinstance(b, dict) and b.get("type") == "tool_use":
+                        self.note_call(b.get("id"), b.get("name"), b.get("input"), ts)
+            elif typ == "user":
+                if isinstance(content, str):
+                    self.brief(content)
+                    self.title = self.title or (short(content, 80) if not content.startswith("<") else None)
+                for b in content if isinstance(content, list) else []:
+                    if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("tool_use_id") in self.calls:
+                        body = b.get("content")
+                        if isinstance(body, list):
+                            body = "\n".join(x.get("text", "") for x in body if isinstance(x, dict))
+                        self.note_result(b["tool_use_id"], str(body or ""), ts, rec.get("toolUseResult"))
+                    elif isinstance(b, dict) and b.get("type") == "text":
+                        self.brief(b.get("text"))
+            return
+        p = rec.get("payload") or {}
+        typ, ptype = rec.get("type"), p.get("type")
+        if typ == "session_meta":
+            self.id = p.get("id") or self.id
+            self.cwd = p.get("cwd") or self.cwd
+        elif typ == "turn_context":
+            self.cwd = p.get("cwd") or self.cwd
+        elif typ == "response_item" and ptype in ("function_call", "custom_tool_call", "local_shell_call"):
+            self.note_call(p.get("call_id"), p.get("name") or ptype, p.get("input") or p.get("arguments") or p.get("action"), ts)
+        elif typ == "response_item" and ptype in ("function_call_output", "custom_tool_call_output"):
+            out = p.get("output")
+            if isinstance(out, list):
+                out = "\n".join(x.get("text", "") for x in out if isinstance(x, dict))
+            elif not isinstance(out, str):
+                out = json.dumps(out, ensure_ascii=False)
+            self.note_result(p.get("call_id"), out, ts)
+        elif typ == "response_item" and ptype == "message" and p.get("role") == "user":
+            text = " ".join(c.get("text", "") for c in p.get("content") or [] if isinstance(c, dict))
+            self.brief(text)
+
+
+def plan_tickets():
+    """{task id: (plan path, ticket)} over the external plans' session rows."""
+    out = {}
+    for path, p in list(ext_plans.items()):
+        for k in p.get("tickets") or []:
+            for r in k.get("sessions") or []:
+                if isinstance(r, dict) and r.get("task_id"):
+                    out[r["task_id"]] = (path, k)
+    return out
+
+
+def design_commit_for(plan_path, doc):
+    """The plan's design_commit when the document is under its design_root."""
+    p = ext_plans.get(plan_path) or {}
+    root, commit = p.get("design_root"), p.get("design_commit")
+    k = root and design_key(os.path.join(os.path.realpath(os.path.expanduser(root)), "x.md"))
+    return commit if k and doc.startswith(k[:-len("x.md")]) else None
+
+
+def add_design_refs(src, cid, tool, reads, ts):
+    """Record one reference per (document, section) of a call; a call seen again (a re-parse) replaces its own."""
+    global design_refs_dirty
+    tickets = plan_tickets()
+    task = src.task or (design_refs["sessions"].get(src.parent) or {}).get("task")
+    hit = tickets.get(task)
+    new = {}
+    for r in reads:
+        doc = design_key(r["abs"])
+        if not doc:
+            continue
+        for sid, cover, lines, hits in anchor(r):
+            key = f"{src.id}|{cid}|{doc}|{sid}|{r['kind']}"
+            old = new.get(key)
+            if old and lines:  # two ranges of one call in the same section
+                old["cover"] = round(min(1.0, (old["cover"] or 0) + (cover or 0)), 3)
+                old["lines"] = [min(old["lines"][0], lines[0]), max(old["lines"][1], lines[1])]
+                continue
+            new[key] = {"session": src.id, "ticket": hit[1].get("package") if hit else None, "doc": doc, "section": sid,
+                        "kind": r["kind"], "cover": cover, "lines": lines, "hits": hits, "tool": tool,
+                        "exact": r.get("exact", False), "commit": design_commit_for(hit[0], doc) if hit else None,
+                        "ts": ts, "call": cid}
+    if not new:
+        return
+    with refs_lock:
+        design_refs["refs"].update(new)
+        meta = design_refs["sessions"].setdefault(src.id, {})
+        meta.update({k: v for k, v in (("path", src.path), ("kind", src.kind), ("title", src.title), ("parent", src.parent),
+                                       ("task", src.task), ("cwd", src.cwd)) if v})
+        design_refs_dirty = True
+
+
+def note_design_stats(src):
+    """Keep a transcript's count of design commands that could not be followed, for the measurement in the README."""
+    global design_refs_dirty
+    if not src.stats:
+        return
+    with refs_lock:
+        meta = design_refs["sessions"].setdefault(src.id, {})
+        if meta.get("stats") != dict(src.stats):
+            meta.update(stats=dict(src.stats), path=src.path, kind=src.kind)
+            if src.title:
+                meta["title"] = src.title
+            design_refs_dirty = True
+
+
+def backfill_designs():
+    """Read the transcripts of the last DESIGN_DAYS that scan_loop does not hold (older than --hours) once each, so a
+    reference made before this server started is there too. Only lines that can matter are parsed."""
+    global design_refs_dirty
+    since = time.time() - DESIGN_DAYS * 86400
+    with lock:
+        live = set(sessions)
+    for pattern, kind in [(CLAUDE_GLOB, "claude")] + [(g, "codex") for g in CODEX_GLOBS]:
+        for path in glob.glob(pattern, recursive=True):
+            path = os.path.realpath(path)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            v = [st.st_mtime, st.st_size]
+            if path in live or st.st_mtime < since or design_refs["scanned"].get(path) == v:
+                continue
+            src = DesignReads(path, kind)
+            try:
+                with open(path, "rb") as f:
+                    for raw in f:
+                        if not src.wants(raw):
+                            continue
+                        try:
+                            rec = json.loads(raw)
+                        except ValueError:
+                            continue
+                        src.feed(rec, rec.get("timestamp"))
+            except OSError:
+                continue
+            note_design_stats(src)
+            with refs_lock:
+                design_refs["scanned"][path] = v
+                design_refs_dirty = True
+            time.sleep(0)  # let the request threads in between files
+
+
+def ticket_section_badges():
+    """{plan path: {package: [{doc, section, no, sessions, count}]}} — the sections each ticket's sessions read."""
+    tickets = plan_tickets()
+    with refs_lock:
+        refs = list(design_refs["refs"].values())
+        metas = dict(design_refs["sessions"])
+    task_of = {sid: m.get("task") or (metas.get(m.get("parent")) or {}).get("task") for sid, m in metas.items()}
+    agg = {}
+    for r in refs:
+        if r["kind"] != "read" or not r["section"]:
+            continue
+        hit = tickets.get(task_of.get(r["session"]))
+        if not hit:
+            continue
+        e = agg.setdefault(hit[0], {}).setdefault(hit[1].get("package"), {}).setdefault((r["doc"], r["section"]), [set(), 0])
+        e[0].add(r["session"])
+        e[1] += 1
+    out = {}
+    for plan, by_pkg in agg.items():
+        for pkg, secs in by_pkg.items():
+            rows = []
+            for (doc, sid), (ss, n) in secs.items():
+                m = SECTION_NO.match(sid)
+                rows.append({"doc": doc, "section": sid, "no": m.group(1) if m else None, "sessions": len(ss), "count": n})
+            out.setdefault(plan, {})[pkg] = sorted(rows, key=lambda x: (-x["count"], x["doc"], x["section"]))
+    return out
+
+
+def save_design_refs():
+    global design_refs_dirty
+    with refs_lock:
+        if not design_refs_dirty:
+            return False
+        body = json.dumps(design_refs, ensure_ascii=False)
+        design_refs_dirty = False
+    tmp = DESIGN_REFS_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(body)
+    os.replace(tmp, DESIGN_REFS_PATH)
+    return True
+
+
+def design_backfill_loop():
+    while not scan_ready:
+        time.sleep(2)
+    while True:
+        try:
+            backfill_designs()
+            loop_ok("design_backfill")
+        except Exception as e:
+            loop_failed("design_backfill", e)
+        time.sleep(300)
+
+
+def design_loop():
+    global design_ticket_refs
+    while True:
+        try:
+            scan_designs()
+            badges = ticket_section_badges()
+            changed = save_design_refs()
+            if changed or badges != design_ticket_refs:
+                design_ticket_refs = badges
+                with lock:
+                    bump()
+            loop_ok("design")
+        except Exception as e:
+            loop_failed("design", e)
+        time.sleep(DESIGN_EVERY)
+
+
+def design_list():
+    """GET /api/designs: the sources, and each document with how many sessions read it."""
+    d = design
+    with refs_lock:
+        refs = list(design_refs["refs"].values())
+    per = {}
+    for r in refs:
+        e = per.setdefault(r["doc"], {"sessions": set(), "reads": 0, "searches": 0})
+        e["sessions"].add(r["session"])
+        e["reads" if r["kind"] == "read" else "searches"] += 1
+    docs = []
+    for key, e in sorted(d["docs"].items()):
+        c = e["copies"][0]
+        p = per.get(key)
+        docs.append({"key": key, "kind": e["kind"], "src": c["src"], "copies": len(e["copies"]), "mtime": c["mtime"],
+                     "size": c["size"], "sessions": len(p["sessions"]) if p else 0, "reads": p["reads"] if p else 0,
+                     "searches": p["searches"] if p else 0})
+    known = set(d["docs"])
+    gone = sorted({r["doc"] for r in refs} - known)  # read once, no longer in any copy
+    plans = [{"project": p.get("project"), "path": path, "design_root": p.get("design_root"), "design_commit": p.get("design_commit")}
+             for path, p in list(ext_plans.items()) if p.get("design_root")]
+    return {"enabled": bool(DESIGN_DIRS or d["sources"]), "version": d["version"], "sources": d["sources"], "docs": docs,
+            "gone": gone, "plans": plans, "refs": len(refs)}
+
+
+def session_meta(sid, live):
+    """Title, path, kind and task of a session for the reference lists: the live session when it is held (live: id ->
+    Session), else what design-refs.json kept."""
+    with refs_lock:
+        m = dict(design_refs["sessions"].get(sid) or {})
+    s = live.get(sid)
+    if s:
+        m.update(path=s.path, kind=s.kind, title=s.title or m.get("title"), task=s.task_id or m.get("task"), live=True)
+    return m
+
+
+def span_ts(row, ts):
+    if ts:
+        row["first"] = min(row["first"] or ts, ts)
+        row["last"] = max(row["last"] or ts, ts)
+
+
+def design_doc(key):
+    """GET /api/design: one document with its table of contents, the references per section, and its version."""
+    e = design["docs"].get(key)
+    if not e:
+        return {"error": "not found"}, 404
+    c = e["copies"][0]
+    src = design["sources"][c["src"]]
+    out = {"key": key, "kind": e["kind"], "mtime": c["mtime"], "size": c["size"], "source": src,
+           "copies": [{**design["sources"][x["src"]], "mtime": x["mtime"]} for x in e["copies"]]}
+    if e["kind"] == "md":
+        if c["size"] > DESIGN_FILE_MAX:
+            return {"error": "문서가 너무 큼"}, 413
+        try:
+            with open(c["abs"], encoding="utf-8", errors="replace") as f:
+                out["content"] = f.read()
+        except OSError as err:
+            return {"error": short(err, 200)}, 500
+        out["toc"] = design_toc(c["abs"])[0]
+    with refs_lock:
+        refs = [r for r in design_refs["refs"].values() if r["doc"] == key]
+    tickets = plan_tickets()
+    with lock:
+        live = {s.id: s for s in sessions.values()}
+    metas = {}
+    rows = {}
+    for r in refs:
+        m = metas.get(r["session"]) or metas.setdefault(r["session"], session_meta(r["session"], live))
+        row = rows.setdefault((r["section"], r["session"]), {
+            "section": r["section"], "session": r["session"], "title": m.get("title") or r["session"][:8],
+            "path": m.get("path"), "kind": m.get("kind"), "parent": m.get("parent"), "reads": 0, "searches": 0,
+            "lines": [], "cover": None, "first": None, "last": None, "exact": False, "commits": set(),
+            "ticket": r.get("ticket") or (tickets.get(m.get("task")) or (None, {}))[1].get("package")})
+        row["reads" if r["kind"] == "read" else "searches"] += 1
+        row["exact"] |= r["kind"] == "read" and r.get("exact", False)
+        if r.get("lines"):
+            row["lines"].append(r["lines"])
+        elif r["kind"] == "read" and r.get("cover") is not None:
+            row["cover"] = max(row["cover"] or 0, r["cover"])
+        if r.get("commit"):
+            row["commits"].add(r["commit"])
+        span_ts(row, r["ts"])
+    size = {s["id"]: max(1, s["end"] - s["start"] + 1) for s in out.get("toc") or []}
+    for row in rows.values():
+        if row["lines"]:  # union of the line ranges read in the section, over the section's current length
+            covered = sum(b - a + 1 for a, b in to_ranges(n for a, b in row["lines"] for n in range(a, b + 1)))
+            row["cover"] = round(min(1.0, covered / size.get(row["section"], covered or 1)), 3)
+        row["lines"] = to_ranges(n for a, b in row["lines"] for n in range(a, b + 1))
+        row["commits"] = sorted(row["commits"])
+    out["refs"] = sorted(rows.values(), key=lambda x: x["last"] or "", reverse=True)
+    # the plans whose design_root holds this document: their design_commit against the copy's HEAD
+    out["plans"] = []
+    for path, p in list(ext_plans.items()):
+        if design_commit_for(path, key):
+            head, commit = src.get("head"), p["design_commit"]
+            same_file = None
+            if head and commit and head != commit:
+                same_file = git_cached((c["abs"], commit, head), lambda: subprocess.run(
+                    ["git", "-C", os.path.dirname(c["abs"]), "diff", "--quiet", commit, head, "--", c["abs"]],
+                    capture_output=True, timeout=5).returncode == 0)
+            out["plans"].append({"project": p.get("project"), "path": path, "design_commit": commit, "head": head,
+                                 "same": bool(head) and head == commit, "same_file": same_file})
+    return out, 200
+
+
+def design_file(key):
+    """(bytes, content type) of a picture or PDF in a design folder; the path must resolve inside the folder."""
+    e = design["docs"].get(key)
+    if not e or e["kind"] == "md":
+        return None, 404
+    c = e["copies"][0]
+    root = os.path.realpath(design["sources"][c["src"]]["dir"])
+    full = os.path.realpath(c["abs"])
+    if not full.startswith(root + os.sep) or not os.path.isfile(full):
+        return None, 404
+    if os.path.getsize(full) > DESIGN_FILE_MAX:
+        return None, 413
+    with open(full, "rb") as f:
+        return (f.read(), DESIGN_TYPES[os.path.splitext(full)[1].lower()]), 200
+
+
+_archived = collections.OrderedDict()  # (path, mtime, size) -> Session, the last few opened
+
+
+def archived_session(path):
+    """A transcript outside the live window, parsed on demand, when design-refs.json names it (the 「설계문서」 tab links
+    every session that read a document, however old). Others stay unknown: this never reads an arbitrary path."""
+    with refs_lock:
+        known = any(m.get("path") == path for m in design_refs["sessions"].values())
+    if not known:
+        return None
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (path, st.st_mtime, st.st_size)
+    if key not in _archived:
+        s = Session(path, "codex" if os.path.basename(path).startswith("rollout-") else "claude")
+        s.poll()
+        _archived[key] = s
+        while len(_archived) > 4:
+            _archived.popitem(last=False)
+    return _archived[key]
+
+
+def session_design_refs(sid):
+    """The design sections one session (and its subagents) read: [{doc, section, no, reads, searches, cover, last}]."""
+    with refs_lock:
+        kids = {k for k, m in design_refs["sessions"].items() if m.get("parent") == sid}
+        refs = [r for r in design_refs["refs"].values() if r["session"] == sid or r["session"] in kids]
+    rows = {}
+    for r in refs:
+        row = rows.setdefault((r["doc"], r["section"]), {"doc": r["doc"], "section": r["section"], "reads": 0, "searches": 0,
+                                                         "lines": [], "cover": None, "first": None, "last": None, "sub": False})
+        row["reads" if r["kind"] == "read" else "searches"] += 1
+        row["sub"] |= r["session"] != sid
+        if r.get("lines"):
+            row["lines"].append(r["lines"])
+        span_ts(row, r["ts"])
+    for row in rows.values():
+        e = design_copy(row["doc"])
+        toc = design_toc(e["abs"])[0] if e and e["abs"].endswith(".md") else []
+        s = next((x for x in toc if x["id"] == row["section"]), None)
+        row["no"] = s["no"] if s else (SECTION_NO.match(row["section"] or "") or [None, None])[1]
+        row["start"] = s["start"] if s else None
+        if row["lines"] and s:
+            covered = sum(b - a + 1 for a, b in to_ranges(n for a, b in row["lines"] for n in range(a, b + 1)))
+            row["cover"] = round(min(1.0, covered / max(1, s["end"] - s["start"] + 1)), 3)
+        del row["lines"]
+    return sorted(rows.values(), key=lambda x: (x["doc"], x["start"] or 0))
+
+
 # ---- HTTP ----
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
 # with the one it was built for and says so instead of rendering garbage.
@@ -2902,7 +4104,9 @@ class Handler(BaseHTTPRequestHandler):
                 "version": version, "api": API_VERSION,
                 "sessions": sorted(summaries, key=lambda s: s["last_ts"] or "", reverse=True),
                 "orca": lite_orca(orca_state),
-                "ext_plans": [plan_with_owner(ext_plans[p], summaries) for p in EXTERNAL_PLANS if p in ext_plans],
+                "ext_plans": [{**plan_with_owner(ext_plans[p], summaries), "design_refs": design_ticket_refs.get(p) or {}}
+                              for p in EXTERNAL_PLANS if p in ext_plans],
+                "design": {"enabled": bool(DESIGN_DIRS), "version": design["version"]},
                 "tests": test_progress,
                 "health": {"now": time.time(), "loops": health},
                 "decisions": decisions,
@@ -2973,7 +4177,14 @@ class Handler(BaseHTTPRequestHandler):
             path = parse_qs(url.query).get("path", [""])[0]
             with lock:
                 s = sessions.get(path)
-                body = s and self.encode(apply_prefs(with_plan_terms(s.detail())))
+            extra = {}
+            if not s:
+                s = archived_session(path)  # a session the 「설계문서」 tab links to, outside --hours
+                extra["archived"] = True
+            if s and design_bases:
+                extra["design_refs"] = session_design_refs(s.id)  # the sections it (and its subagents) read
+            with lock:
+                body = s and self.encode({**apply_prefs(with_plan_terms(s.detail())), **extra})
             if not body:
                 return self.send_json({"error": "not found"}, 404)
             self.send_body(body)
@@ -3038,6 +4249,25 @@ class Handler(BaseHTTPRequestHandler):
             if not found:
                 return self.send_json({"error": "not found" if PROJECTS_DIRS else "--projects-dir 가 지정되지 않음"}, 404)
             self.send_json(*project_note(found, (q.get("path") or [""])[0]))
+        elif url.path == "/api/designs":
+            self.send_json(design_list())
+        elif url.path == "/api/design":
+            self.send_json(*design_doc((parse_qs(url.query).get("path") or [""])[0]))
+        elif url.path == "/api/design/file":
+            body, status = design_file((parse_qs(url.query).get("path") or [""])[0])
+            if not body:
+                return self.send_json({"error": "not found" if status == 404 else "파일이 너무 큼"}, status)
+            self.send_response(200)
+            self.send_header("Content-Type", body[1])
+            self.send_header("Content-Length", str(len(body[0])))
+            self.send_header("Cache-Control", "no-cache")
+            # an SVG opened on its own must not run its scripts on this origin
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body[0])
+        elif url.path == "/api/design/refs":
+            self.send_json({"refs": session_design_refs((parse_qs(url.query).get("session") or [""])[0])})
         elif url.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -3200,6 +4430,7 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
+    global DESIGN_DAYS
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--hours", type=float, default=24, help="only sessions touched within this window")
@@ -3210,7 +4441,17 @@ def main():
                     help="page origin allowed over CORS, subdomains included; repeatable. e.g. --origin https://<project>.pages.dev")
     ap.add_argument("--projects-dir", action="append", default=[],
                     help="folder whose subfolders with a progress.json are projects; repeatable. Off when not given")
+    ap.add_argument("--design-dir", action="append", default=[],
+                    help="design document folder (e.g. <repo>/feature-designs), added to prefs.json design_dirs; repeatable")
+    ap.add_argument("--design-days", type=float, default=DESIGN_DAYS,
+                    help="how far back (days) design reads are looked for in transcripts outside --hours")
     args = ap.parse_args()
+    DESIGN_DAYS = args.design_days
+    for d in (prefs.get("design_dirs") or []) + args.design_dir:
+        d = os.path.realpath(os.path.expanduser(d))
+        if d not in DESIGN_DIRS:
+            DESIGN_DIRS.append(d)
+    design_bases.update(os.path.basename(d) for d in DESIGN_DIRS)  # before scan_loop parses the first transcript
     hosts = args.host or ["127.0.0.1"]
     PROJECTS_DIRS.extend(os.path.abspath(os.path.expanduser(d)) for d in args.projects_dir)
     threading.Thread(target=scan_loop, args=(args.hours,), daemon=True).start()
@@ -3220,6 +4461,9 @@ def main():
     threading.Thread(target=decision_loop, daemon=True).start()
     if PROJECTS_DIRS:
         threading.Thread(target=projects_loop, daemon=True).start()
+    if DESIGN_DIRS or EXTERNAL_PLANS:  # an external plan's design_root is a design folder too
+        threading.Thread(target=design_loop, daemon=True).start()
+        threading.Thread(target=design_backfill_loop, daemon=True).start()
     servers = []
     ALLOWED_HOSTS.update(h.lower() for h in hosts)
     ALLOWED_ORIGINS.update(o.rstrip("/").lower() for o in args.origin)
@@ -3229,6 +4473,7 @@ def main():
         print(f"agent-dashboard API → http://{host}:{args.port}/", flush=True)
     print(f"allowed origins: {', '.join(sorted(ALLOWED_ORIGINS)) or '(local only)'}", flush=True)
     print(f"project dirs: {', '.join(PROJECTS_DIRS) or '(off)'}", flush=True)
+    print(f"design dirs: {', '.join(DESIGN_DIRS) or '(off)'}", flush=True)
     for server in servers[1:]:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     servers[0].serve_forever()

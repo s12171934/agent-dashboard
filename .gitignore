@@ -14,3 +14,4 @@ __pycache__/
 history-cache.json
 bak-archive-*.tar.gz
 .wrangler/
+design-refs.json
