@@ -31,6 +31,7 @@ main { padding: 16px var(--gutter); max-width: 1500px; margin: 0 auto; padding-b
 .fam-sum { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; margin: 8px 2px 10px; }
 .fam-sum b { color: var(--text); font-variant-numeric: tabular-nums; }
 .tree { position: relative; margin-left: 16px; padding-left: 16px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.family > .tree { padding-top: 8px; }  /* a little air between a coordinator's summary/plan and its worker list */
 .tree > .grid > .card::before { content: ""; position: absolute; left: -18px; top: 22px; width: 16px; border-top: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .tree > .grid > .card { position: relative; overflow: visible; }
 .family.nested { margin: 12px 0 0; padding: 10px; background: var(--panel2); border-style: dashed; position: relative; }
@@ -740,10 +741,11 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .wt-px-row::after { content: ""; position: absolute; left: -2px; top: 50%; bottom: -8px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .wt-px-row .wt-proxy { width: auto; position: relative; }
 .wt-px-row .wt-proxy::before { content: ""; position: absolute; left: -22px; top: 50%; width: 18px; border-top: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
-.wt-ext > .tree { margin-top: 8px; }
+.wt-ext > .tree { margin-top: 8px; padding-top: 0; }
 @media (max-width: 700px) { .wt-px-row { margin-left: 6px; padding-left: 12px; } .wt-px-row .wt-proxy::before { left: -18px; width: 14px; } }
 /* this coordinator's workers in other worktrees, as stand-ins in its tree (one card wide, not row-tall) */
 .wt-away-grid { margin-top: 10px; align-items: start; }
+.tree > .wt-away-grid:first-child { margin-top: 0; }
 .tree > .wt-away-grid > .wt-proxy { position: relative; width: auto; }
 .tree > .wt-away-grid > .wt-proxy::before { content: ""; position: absolute; left: -22px; top: 50%; width: 18px; border-top: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .wt-px-worker { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); border-left: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); }
