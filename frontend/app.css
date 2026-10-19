@@ -805,19 +805,26 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
   .tg-p { display: block; }
 }
 
-/* 설계문서: documents (left) · the document with a badge per section (middle) · the picked section's readers (right) */
+/* 설계문서: projects · documents · table of contents (left) · the document with a badge per section (middle) · the picked section's readers (right) */
 .dz { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr) minmax(240px, 320px); gap: 14px; align-items: start; }
 .dz.empty-doc { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); }
-.dz-tree, .dz-pane { position: sticky; top: calc(var(--hdr-top) + 70px); max-height: calc(100vh - var(--hdr-top) - 90px); overflow: auto; }
-.dz-tree > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.dz-tree > summary .st { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dz-q { width: 100%; margin: 8px 0; }
+.dz-side, .dz-pane { position: sticky; top: calc(var(--hdr-top) + 70px); max-height: calc(100vh - var(--hdr-top) - 90px); overflow: auto; }
+.dz-side { display: grid; gap: 10px; align-content: start; overscroll-behavior: contain; }
+.dz-box > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.dz-box > summary .st { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-box[open] > summary { margin-bottom: 6px; }
+.dz-projbox[open] #dz-projs { max-height: 30vh; overflow: auto; }
+.dz-ul { list-style: none; margin: 0 0 6px; padding: 0; }
+.dz-toc { list-style: none; margin: 2px 0 6px 10px; padding: 0 0 0 6px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.dz-t { display: flex; gap: 6px; align-items: center; width: 100%; padding: 3px 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; min-height: 26px; }
+.dz-t > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-t:hover { background: var(--control-well); }
+.dz-t.on { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
+.dz-t.zero { color: var(--muted); }
+.dz-t:focus-visible { outline: 2px solid var(--accent); }
+.dz-q { width: 100%; margin: 0 0 8px; }
 .dz-srv { font-size: 11px; font-weight: 700; color: var(--muted); margin: 10px 0 4px; }
-.dz-f { margin: 2px 0; }
-.dz-f > summary { cursor: pointer; display: flex; gap: 6px; align-items: center; padding: 3px 2px; font-size: 12.5px; font-weight: 600; }
-.dz-fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dz-f ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 12px; }
-.dz-ch { margin: 6px 0 2px 12px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.dz-ch { margin: 6px 0 2px 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
 .dz-d { display: flex; gap: 6px; align-items: center; padding: 3px 6px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 12px; min-height: 26px; }
 .dz-d > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dz-d:hover { background: var(--control-well); }
@@ -871,7 +878,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tg-d span { color: var(--muted); font-weight: 400; }
 @media (max-width: 900px) {
   .dz, .dz.empty-doc { grid-template-columns: minmax(0, 1fr); }
-  .dz-tree { position: static; max-height: 50vh; }
+  .dz-side { position: static; max-height: none; overflow: visible; }
+  #dz-list { max-height: 60vh; overflow: auto; }
   .dz-pane { display: none; }
   .dz-inline { display: block; }
 }
