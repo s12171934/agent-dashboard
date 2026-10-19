@@ -389,7 +389,8 @@ function notifyDecisions() {
 if (window.Notification?.permission === 'default') document.addEventListener('click', () => Notification.requestPermission(), { once: true });
 
 // 결정 버튼 cards for the current screen: a session's own questions on its page; on the agents list, questions
-// whose session is not listed (hidden, outside the window, or asked by a script), so none is out of sight; on the
+// whose session is not listed (hidden; one with no session at all is closed by the server soon), so none is out of
+// sight; on the
 // 결정 대기 screen (#decide) every one, then the 메일함.
 function showDecisions() {
   const pending = state.decisions?.pending || [], r = route();

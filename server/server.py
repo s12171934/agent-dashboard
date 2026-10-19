@@ -1978,6 +1978,10 @@ class PickerError(Exception):
     pass
 
 
+class PickerGone(PickerError):
+    """No picker on the screen at all: the question was closed (answered or cancelled) before the transcript said so."""
+
+
 def compact(s):
     return re.sub(r"\s+", "", s)
 
@@ -2045,7 +2049,12 @@ def type_answers(handle, card, answers):
         return st["kind"] == "gone" and st["answered"]
 
     on = lambda qi: lambda s: s["kind"] == "question" and s["qi"] == qi
-    st = until(lambda s: s["kind"] in ("question", "review"), "터미널에 이 질문의 선택기가 떠 있지 않습니다")
+    try:
+        st = until(lambda s: s["kind"] in ("question", "review"), "터미널에 이 질문의 선택기가 떠 있지 않습니다")
+    except PickerError:
+        if picker_state(handle, card)["kind"] == "gone":  # another question's picker ("other") may be a misread: kept
+            raise PickerGone("터미널에 이 질문의 선택기가 없습니다. 이미 닫힌 질문이라 카드를 치웠습니다")
+        raise
     if st["kind"] == "review" or st["qi"] or st["answered"] or any(c for _, c in st["rows"].values()):
         raise PickerError("터미널에서 이미 답하기 시작했습니다")
     last = len(card["questions"]) - 1
@@ -2095,7 +2104,8 @@ def decision_terminal(d):
 
 
 def answer_decision(rid, answers):
-    """An answer from the page -> (http status, body). Types it into the session's terminal picker."""
+    """An answer from the page -> (http status, body). Types it into the session's terminal picker. 410 {closed}:
+    the terminal shows no picker, so the card is closed (PickerGone)."""
     with decision_lock:
         d = decision_store.get(rid)
         if not d or d["state"] != "pending":
@@ -2111,6 +2121,9 @@ def answer_decision(rid, answers):
         d["busy"] = True
     try:
         type_answers(handle, d["card"], answers)
+    except PickerGone as e:
+        settle_decision(rid, "cancelled")
+        return 410, {"error": str(e), "closed": True}
     except PickerError as e:
         return 409, {"error": f"{e} — 터미널에서 답하세요"}
     except Exception as e:
@@ -2174,7 +2187,10 @@ def set_inbox_mode(on):
 # A question answered in the terminal, cancelled there, or ended with its session is closed by the transcript: the
 # AskUserQuestion call the card came from (its tool_use_id; without one, the same session's call with the same first
 # question logged within ASK_MATCH_S of the card) already has a tool result. Such cards are cancelled here, as are ones past DECISION_KEEP_S.
+# So is a card no Claude session in the scan window owns (no session id, or a session the scan does not know) once
+# ORPHAN_S has passed: the page could not link it to a session, and such a question has been closed.
 ASK_MATCH_S = 120
+ORPHAN_S = 90  # time for the scan to pick up the transcript of a session that just started
 
 
 def stale_decisions(pending):
@@ -2198,13 +2214,15 @@ def stale_decisions(pending):
 
 
 def sweep_decisions():
-    """Cancel stale or abandoned cards and forget settled ones after a while."""
+    """Cancel stale, orphaned or abandoned cards and forget settled ones after a while."""
     with lock:
         pending = list(decisions["pending"])
         stale = stale_decisions(pending)
+        known = {s.id for s in sessions.values() if s.kind == "claude"}
     now = time.time()
     for r in pending:
-        if r["id"] in stale or now - r["created_at"] > DECISION_KEEP_S:
+        orphan = r.get("session_id") not in known and now - r["created_at"] > ORPHAN_S
+        if r["id"] in stale or orphan or now - r["created_at"] > DECISION_KEEP_S:
             settle_decision(r["id"], "cancelled")
     with lock:
         picks = {k: v for s in sessions.values() if s.kind == "claude" for k, v in s.inbox_picks.items()}

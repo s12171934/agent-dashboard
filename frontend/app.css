@@ -375,6 +375,7 @@ ds-tooltip i.sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .dc-q h3 { font-size: 17px; margin: 0 0 10px; white-space: pre-wrap; line-height: 1.4; }
 .dc-tag { display: inline-block; font-size: 12px; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 1px 9px; margin-bottom: 6px; }
 .dc-hint { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+.dc-q + .dc-hint { margin-top: 14px; }  /* the closing note under the last question's 직접 입력 */
 .dc-options { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 button.dc-opt { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 6px; min-height: 64px; padding: 14px 16px; border-radius: 12px;
   border: 2px solid var(--line); background: var(--panel2); transition: transform .08s, border-color .1s; }

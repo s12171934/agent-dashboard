@@ -33,6 +33,7 @@ const decisions = (() => {
     try { res = await api.decide(c.r.id, c.r.questions.map((q, i) => answerOf(q, c.ans[i]))); }
     catch { res = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
     if (res.status === 200) return setStatus(c, '터미널에 답을 넣었습니다');
+    if (res.body?.closed) return document.getElementById('toast')?.show?.(res.body.error);  // the card goes on the next refresh
     c.sentAt = 0;
     c.el.classList.remove('done');  // a question answered elsewhere goes on the next refresh
     setStatus(c, res.body?.error || `전송 실패 (${res.status})`, true);
