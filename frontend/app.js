@@ -3286,7 +3286,7 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
   s.onerror = () => { delete dzLibs[name]; fail(new Error(name + ' 을 불러오지 못했습니다')); };
   document.head.append(s);
 });
-let dz = { search: false, live: false, q: '', last: null };  // adash.design: the toggles and the last document
+let dz = { search: false, live: false, q: '', last: null, open: {} };  // adash.design: the toggles, open folders, last document
 try { Object.assign(dz, JSON.parse(localStorage.getItem('adash.design') || '{}')); } catch {}
 const dzSave = () => { try { localStorage.setItem('adash.design', JSON.stringify(dz)); } catch {} };
 let dzList = null, dzListV = null;  // api.designs(), dropped when a server's index or references change
@@ -3329,13 +3329,16 @@ async function renderDesigns() {
   }
   const mk = [ck, doc?.mtime, multiSrv()].join('\n');
   if (dzMounted !== mk || !$('#dz-tree')) {
+    // the same document again (edited, or a server added): the tree box keeps how it was; a new one opens its folder
+    const keep = dzMounted?.split('\n')[0] === ck && $('#dz-tree') ? $('#dz-tree').open : null;
+    if (meta && keep === null) { dz.open[server + '|' + dzSlug(key)] = true; dzSave(); }
     dzMounted = mk;
     $('#view').innerHTML = `<div class="controls dz-ctl">
         <label class="chk"><input type="checkbox" data-dz-opt="search"${dz.search ? ' checked' : ''}> 검색 적중 포함</label>
         <label class="chk"><input type="checkbox" data-dz-opt="live"${dz.live ? ' checked' : ''}> 진행 중 세션만</label>
         <span class="st" id="dz-sum"></span></div>
       ${!dzList.enabled ? dzNoSource() : `<div class="dz${meta ? '' : ' empty-doc'}">
-        <details class="box dz-tree" id="dz-tree"${innerWidth > 900 || !meta ? ' open' : ''}><summary><b>설계문서</b> <span class="st">${meta ? esc(dzTitle(key, meta.title)) : ''}</span></summary>
+        <details class="box dz-tree" id="dz-tree"${(keep ?? (innerWidth > 900 || !meta)) ? ' open' : ''}><summary><b>설계문서</b> <span class="st">${meta ? esc(dzTitle(key, meta.title)) : ''}</span></summary>
           <input class="field dz-q" type="search" placeholder="문서 이름으로 거르기" value="${esc(dz.q)}" aria-label="문서 이름으로 거르기">
           <div id="dz-list"></div></details>
         <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
@@ -3436,9 +3439,9 @@ function dzFill(server, key, sec, meta, doc) {
   $('#dz-list').innerHTML = Object.entries(bySrv).map(([srv, slugs]) => `${multiSrv() ? `<div class="dz-srv">${esc(srvName(srv))}</div>` : ''}${Object.entries(slugs)
     .sort((a, b) => Math.max(...b[1].map(x => x.mtime)) - Math.max(...a[1].map(x => x.mtime)))
     .map(([slug, xs]) => {
-      const n = xs.filter(x => x.sessions).length, open = (srv === server && dzSlug(key || '') === slug) || dz.q;
+      const n = xs.filter(x => x.sessions).length, fk = srv + '|' + slug, open = dz.q || (dz.open[fk] ?? (srv === server && dzSlug(key || '') === slug));
       const src = dzList.dirs.filter(d => d.server === srv)[xs[0].src];
-      return `<details class="dz-f"${open ? ' open' : ''}><summary title="${esc(src ? `${src.dir}${src.branch ? ` (${src.branch})` : ''}` : '')}"><span class="dz-fn">${esc(slug)}</span>${src && !src.configured ? '<span class="dz-wt" aria-label="워크트리 사본">▣</span>' : ''}<span class="badge${n ? ' dz-n' : ''}" title="읽힌 문서 ${n} / 전체 ${xs.length}">${n}/${xs.length}</span></summary>
+      return `<details class="dz-f" data-f="${esc(fk)}"${open ? ' open' : ''}><summary title="${esc(src ? `${src.dir}${src.branch ? ` (${src.branch})` : ''}` : '')}"><span class="dz-fn">${esc(slug)}</span>${src && !src.configured ? '<span class="dz-wt" aria-label="워크트리 사본">▣</span>' : ''}<span class="badge${n ? ' dz-n' : ''}" title="읽힌 문서 ${n} / 전체 ${xs.length}">${n}/${xs.length}</span></summary>
         ${dzChapters(xs).map(([chap, ys]) => `${chap === null ? '' : `<div class="dz-ch">${esc(chap || '그 밖의 파일')}</div>`}<ul>${ys.map(x => `<li><a class="dz-d${x.server === server && x.key === key ? ' on' : ''}${x.sessions ? '' : ' zero'}" href="${esc(dzHash(x.server, x.key))}" title="${esc(`${dzName(x.key)}\n읽기 ${x.reads} · 검색 ${x.searches} · 세션 ${x.sessions}`)}">
           <span>${x.kind === 'md' ? '' : x.kind === 'pdf' ? '▤ ' : '▧ '}${esc(dzTitle(x.key, x.title))}</span><span class="badge${x.sessions ? ' dz-n' : ''}">${x.sessions}</span></a></li>`).join('')}</ul>`).join('')}</details>`;
     }).join('')}`).join('') || '<div class="st">맞는 문서가 없습니다.</div>';
@@ -3513,6 +3516,13 @@ document.addEventListener('input', e => {
   const r = route();
   dzFill(r.server || dz.last?.[0], r.key || dz.last?.[1], r.sec, null, null);
 });
+
+// A folder opened or closed by hand stays so through redraws and reloads (not while the filter opens them all).
+document.addEventListener('toggle', e => {
+  const f = e.target;
+  if (!f.matches?.('details.dz-f') || dz.q || dz.open[f.dataset.f] === f.open) return;
+  dz.open[f.dataset.f] = f.open; dzSave();
+}, true);
 
 // Session detail: the design sections the session (and its subagents) read, per document.
 function designRefsBox(d) {
