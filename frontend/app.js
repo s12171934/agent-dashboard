@@ -211,7 +211,7 @@ function route() {
   if (h === 'projects') return { v: 'projects' };
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['agents', 'compare', 'talk', 'tests', 'hidden'].includes(h) ? h : 'agents' };
+  return { v: ['agents', 'compare', 'talk', 'tests', 'hidden', 'decide'].includes(h) ? h : 'agents' };
 }
 addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
@@ -310,6 +310,7 @@ async function renderView(navigated) {
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'hidden') renderHidden();
+  else if (r.v === 'decide') renderDecide();
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
   else if (r.v === 'session') {
@@ -335,16 +336,32 @@ function renderHeader() {
   { const n = testItems().filter(testLive).length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n; }
   $('#k-runs').textContent = state.orca.error ? '오류' : visibleRuns().filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
-  const dec = state.decisions || { available: false, pending: [] };
+  const dec = state.decisions || { available: false, pending: [] }, unread = (dec.inbox || []).filter(r => !r.read).length;
   $('#k-dec-wrap').hidden = !dec.available;
   $('#k-dec').textContent = dec.pending.length;
-  $('#k-dec-wrap').classList.toggle('on', dec.pending.length > 0);
+  $('#k-mail').textContent = ` · ${unread}`;  // unread 메일함 items, a value of its own beside the pending count
+  $('#k-mail').hidden = !unread;
+  $('#k-dec-l').textContent = '결정 대기' + (unread ? ' · 메일' : '');
+  $('#k-dec-wrap').classList.toggle('on', dec.pending.length > 0 || unread > 0);
+  $('#k-dec-wrap').classList.toggle('away', inboxMode().on);
+  $('#k-dec-wrap').title = inboxMode().on ? '메일함 모드 켜짐: 질문은 메일함에 쌓이고 에이전트는 권장안으로 진행합니다' : '';
+  $('#inbox-mode-btn').hidden = !inboxMode().ids.length;
+  $('#inbox-mode').checked = inboxMode().on;
 }
-// Header 「결정 대기」: the oldest question's session, or the agents list where unmatched ones are shown.
-$('#k-dec-wrap').onclick = () => {
-  const r = state?.decisions?.pending?.[0], s = r && state.all.find(x => x.decision?.id === r.id);
-  location.hash = s ? 's=' + encodeURIComponent(s.path) : 'agents';
-};
+// Header 「결정 대기」: the screen with every pending question and the 메일함.
+$('#k-dec-wrap').onclick = () => { location.hash = 'decide'; };
+
+// 메일함 mode, one switch over every server that is on and has it: on only when each of them is on.
+function inboxMode() {
+  const m = state?.decisions?.inbox_mode || {}, ids = Object.keys(m);
+  return { ids, on: ids.length > 0 && ids.every(id => m[id]), some: ids.some(id => m[id]) };
+}
+async function setInboxMode(on) {
+  const r = await api.inboxMode(on, inboxMode().ids);
+  if (r.status !== 200) toast(r.body?.error || `메일함 모드를 바꾸지 못했습니다 (${r.status})`);
+  refresh();
+}
+$('#inbox-mode').onchange = e => setInboxMode(e.target.checked);
 
 // Browser notification for each new 결정 대기 question; clicking it opens the question's session (or the agents list).
 // What is already pending when the page opens counts as seen, so a reload does not replay it, and an answered
@@ -374,19 +391,44 @@ function notifyDecisions() {
 if (window.Notification?.permission === 'default') document.addEventListener('click', () => Notification.requestPermission(), { once: true });
 
 // 결정 버튼 cards for the current screen: a session's own questions on its page; on the agents list, questions
-// whose session is not listed (hidden, outside the window, or asked by a script), so none is out of sight.
+// whose session is not listed (hidden; one with no session at all is closed by the server soon), so none is out of
+// sight; on the
+// 결정 대기 screen (#decide) every one, then the 메일함.
 function showDecisions() {
   const pending = state.decisions?.pending || [], r = route();
-  const sessOf = q => state.all.find(s => s.decision?.id === q.id);
+  const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
   let items = [];
   if (r.v === 'session') {
     const s = state.all.find(x => x.path === r.id);
     items = s ? pending.filter(q => q.session_id && q.session_id === s.id) : [];
   } else if (r.v === 'agents') items = pending.filter(q => !state.sessions.some(s => s.decision?.id === q.id));
-  decisions.show(items, pending, q => {
+  else if (r.v === 'decide') items = pending;
+  const owner = q => {
     const s = sessOf(q);
-    return s ? { name: nameOf(s), href: r.v === 'session' ? null : '#s=' + encodeURIComponent(s.path) } : { name: (q.agent || '에이전트') + ' · 세션 목록에 없음' };
-  });
+    return { ...s ? { name: nameOf(s), href: r.v === 'session' ? null : '#s=' + encodeURIComponent(s.path) } : { name: (q.agent || '에이전트') + ' · 세션 목록에 없음' }, badge: srvBadge(q) };
+  };
+  decisions.show(items, pending, owner);
+  if (r.v === 'decide') { decideHead(); inbox.show(state.decisions?.inbox || [], owner); }
+  else { $('#decide-head').hidden = true; inbox.hide(); }
+}
+
+// #decide: a heading with the 메일함 switch above the cards (#decide-head, outside #view like the cards, and
+// rebuilt on every refresh: it holds nothing being typed), and the 메일함 (#inbox) below them.
+function decideHead() {
+  const dec = state.decisions, m = inboxMode(), el = $('#decide-head');
+  el.hidden = false;
+  el.innerHTML = `<a class="back" href="#agents">← 에이전트</a>
+    <div class="sec-h"><h2>결정 대기 ${dec.pending.length}</h2>
+      <span>${m.on ? '메일함 모드: 새 질문은 메일함에 쌓이고, 에이전트는 권장안으로 진행합니다.' : '터미널 선택기와 같은 질문입니다. 여기서 답하면 터미널에 대신 입력합니다.'}</span>
+      ${m.ids.length ? `<button class="act big ib-mode${m.on ? ' on' : ''}" aria-pressed="${m.on}" title="켜면 질문을 기다리지 않고 메일함에 남긴 채 에이전트가 권장안으로 진행합니다. 서버에 저장되어 모든 기기에 같이 적용됩니다">
+        <ds-icon name="mail"></ds-icon> 메일함 모드 ${m.on ? '켜짐' : m.some ? '일부 켜짐' : '꺼짐'}</button>` : ''}</div>`;
+  const b = el.querySelector('.ib-mode');
+  if (b) b.onclick = () => { b.disabled = true; setInboxMode(!m.on); };
+}
+function renderDecide() {
+  const dec = state.decisions;
+  $('#view').innerHTML = dec.pending.length || dec.inbox?.length ? ''
+    : `<div class="empty">${dec.available ? '결정을 기다리는 질문도, 메일함에 남은 질문도 없습니다.' : '결정 버튼을 쓰는 메트릭 서버가 없습니다.'}</div>`;
 }
 
 // Server collector loops (state.health.loops: name -> {ok, error, at}). SSE pings keep 「실시간」 on even when a

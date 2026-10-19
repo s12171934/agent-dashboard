@@ -7,6 +7,10 @@ An answer from the card is typed into that picker by the server (through the ses
 in the terminal closes the card once the transcript has the result. With the server unreachable it steps aside just
 the same, so the question is never lost.
 
+With 메일함 mode on (the dashboard's switch, kept by the server) the server files the question in its 메일함 and
+answers {"deny": reason}: the hook then denies the call (PreToolUse permissionDecision "deny"), so no picker opens and
+Claude reads the reason — go on with the recommended option and write down the pick — in place of an answer.
+
   ~/.claude/settings.json → hooks.PreToolUse: [{"matcher": "AskUserQuestion",
       "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
 
@@ -28,9 +32,13 @@ def main():
                 "terminal": os.environ.get("ORCA_TERMINAL_HANDLE"), "questions": event["tool_input"]["questions"]}
         req = Request(URL + "/api/decision/ask", data=json.dumps(body).encode(),
                       headers={"Content-Type": "application/json"}, method="POST")
-        urlopen(req, timeout=3).close()
+        with urlopen(req, timeout=3) as res:
+            reason = json.load(res).get("deny")
     except Exception:
-        pass  # no dashboard: the terminal picker alone
+        return  # no dashboard: the terminal picker alone
+    if isinstance(reason, str) and reason:
+        json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                          "permissionDecisionReason": reason}}, sys.stdout, ensure_ascii=False)
 
 
 if __name__ == "__main__":

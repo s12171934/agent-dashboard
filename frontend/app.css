@@ -4,6 +4,7 @@
 header { background: var(--panel); border: 1px solid var(--line); position: sticky; top: var(--hdr-top); z-index: 20; margin: var(--hdr-top) max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left)); border-radius: 20px; }
 .hrow { display: flex; align-items: center; gap: 18px; padding: 10px 14px; flex-wrap: wrap; }
 .hrow h1 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.hrow h1 a { display: contents; color: inherit; text-decoration: none; }  /* the logo goes to the agents tab */
 .hrow h1 img { width: 28px; height: 28px; border-radius: 8px; box-shadow: var(--surface-shadow-sm); }
 .kpis-h { display: flex; gap: 18px; flex-wrap: wrap; }
 .stat { display: grid; grid-template-columns: auto auto; column-gap: 8px; align-items: center; justify-content: start; min-width: 0; }
@@ -348,7 +349,28 @@ ds-tooltip i.sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .badge.dec { background: var(--warn); border-color: var(--warn); color: #fff; }
 .stat.dec { cursor: pointer; }
 .stat.dec.on b { color: var(--warn); }
-#decisions { max-width: 960px; margin: 0 auto; padding: 14px 16px 0; }
+.stat.dec.away #k-dec-l { color: var(--accent); }
+.stat.dec b em { font-style: normal; } #k-mail { color: var(--accent); }
+/* 메일함 mode is a state of the whole server, not a view filter: lit solid on the bar while it is on */
+ds-dock:not([open]) > #inbox-mode-btn:has(input:checked) { color: var(--on-accent, #fff); background: var(--accent); }
+:is(#decisions, #decide-head, #inbox) { max-width: 960px; margin: 0 auto; padding: 14px 16px 0; }
+#decide-head .sec-h { align-items: center; margin-top: 0; }
+#decide-head .sec-h h2 { font-size: 17px; }
+.ib-mode { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.ib-mode.on { color: var(--accent); border-color: var(--accent); }
+#inbox .sec-h { margin-top: 4px; }
+#inbox .sec-h h2 { font-size: 17px; }
+.ib-card { border-color: var(--accent); }
+.ib-card.read { opacity: .7; }
+.ib-card.busy { opacity: .45; pointer-events: none; }
+.ib-went { font-size: 14px; line-height: 1.5; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--panel2); }
+.ib-went b { color: var(--accent); margin-right: 6px; }
+.ib-went .dc-hint { margin: 0; }
+.dc-foot { display: flex; gap: 10px; align-items: center; } .dc-foot .dc-del { margin: 10px 0 0 auto; flex: none; }
+.dc-del:hover { color: var(--bad); border-color: var(--bad); }
+.ib-card .dc-meta b { color: var(--accent); }
+.ib-card .dc-meta b.ib-new { color: var(--warn); }
+.ib-rec { font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 0 7px; margin-left: 8px; vertical-align: 2px; }
 .dc-card { background: var(--panel); border: 2px solid var(--warn); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
 .dc-card.done { opacity: .45; pointer-events: none; }
 .dc-meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -358,6 +380,7 @@ ds-tooltip i.sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .dc-q h3 { font-size: 17px; margin: 0 0 10px; white-space: pre-wrap; line-height: 1.4; }
 .dc-tag { display: inline-block; font-size: 12px; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 1px 9px; margin-bottom: 6px; }
 .dc-hint { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+.dc-q + .dc-hint { margin-top: 14px; }  /* the closing note under the last question's 직접 입력 */
 .dc-options { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 button.dc-opt { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 6px; min-height: 64px; padding: 14px 16px; border-radius: 12px;
   border: 2px solid var(--line); background: var(--panel2); transition: transform .08s, border-color .1s; }
@@ -488,6 +511,8 @@ header { border: 1px solid var(--surface-edge); }
 .family.nested { background: var(--surface-2); border-color: color-mix(in srgb, var(--muted) 35%, transparent); box-shadow: var(--surface-hi); }
 .tests-done { background: var(--surface-2); }
 .dc-card { border: 1.5px solid color-mix(in srgb, var(--warn) 70%, var(--surface-edge)); border-radius: 20px; }
+.ib-card { border-color: color-mix(in srgb, var(--accent) 60%, var(--surface-edge)); }
+.ib-went { background: var(--surface-2); }
 
 /* cards (ds card) by role and state */
 .card.coord, .card.solo, .family.nested .card.coord { background: var(--surface-sheen), var(--surface); }
@@ -541,8 +566,8 @@ ds-dock[open] #srv-btn .srv-dot { position: static; order: 2; box-shadow: none; 
 /* the dock (<ds-dock>) floats over the page: keep a gutter on its side so it never covers the end of a scroll */
 :root[data-dock="bottom"] main { padding-bottom: calc(var(--dock-pick, 38px) + 44px + var(--dock-bottom)); }
 :root[data-dock="top"] header { margin-bottom: calc(var(--dock-pick, 38px) + 24px); }
-:root[data-dock="left"] :is(main, #decisions) { padding-left: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-left)); }
-:root[data-dock="right"] :is(main, #decisions) { padding-right: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-right)); }
+:root[data-dock="left"] :is(main, #decisions, #decide-head, #inbox) { padding-left: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-left)); }
+:root[data-dock="right"] :is(main, #decisions, #decide-head, #inbox) { padding-right: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-right)); }
 
 /* projects (#projects): progress.json from the servers' --projects-dir. Stage colours are state tokens: --done
    finished, --run in progress, --bad failed, --idle not started. */
@@ -685,5 +710,5 @@ a.act { text-decoration: none; display: inline-block; }
   .stat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
   .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
   .conn, .health { margin-left: 0; white-space: normal; }
-  :is(main, #decisions) { padding-left: calc(var(--rail) + 12px); }
+  :is(main, #decisions, #decide-head, #inbox) { padding-left: calc(var(--rail) + 12px); }
 }

@@ -2,6 +2,7 @@
 .token
 prefs.json
 settled.json
+inbox.json
 plan-history.json
 test-history.json
 server.log

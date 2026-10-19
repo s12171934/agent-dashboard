@@ -20,7 +20,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | --- | --- | --- |
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `aplan`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버 | |
 | `exports/` | 공개 스키마 | |
 
@@ -129,13 +129,55 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 ```
 
 - 터미널에서 답하면 트랜스크립트에 그 호출의 결과가 생기고, 서버가 카드를 치운다. 터미널에서 Esc 로 취소하거나 세션이 끝나도 마찬가지다.
+- 세션에 연결되지 않은 카드(세션 id 가 없거나, 서버가 추적하는 Claude 세션 중에 그 세션이 없는 것 — 화면에 「세션 목록에 없음」으로 뜨던 것)는 닫힌 질문으로 보고 90초 뒤 치운다. 90초는 막 시작한 세션의 트랜스크립트를 스캔이 잡을 시간이다.
 - 대시보드에서 답하면 서버가 그 세션의 Orca 터미널에 키 입력(`orca terminal send`)으로 같은 답을 넣는다. 터미널은 훅이 넘긴 `ORCA_TERMINAL_HANDLE` 로 찾고, 없으면 대시보드가 세션에 연결해 둔 터미널을 쓴다.
 - 키를 보내기 전과 매 단계 뒤에 터미널 화면(`orca terminal read --screen`)을 읽는다. 이 질문의 선택기가 처음 상태로 떠 있을 때만 시작하고, 화면이 예상과 다르면 그 자리에서 멈춘다. 선택기에 Esc 는 보내지 않으므로 질문은 터미널에 남는다.
 - 대시보드에서 넣을 수 있는 답: 단일 선택, 여러 질문, 여러 개 고르기, 단일 선택의 「직접 입력」. 서버는 여러 개 고르기의 직접 입력(하나)도 받지만, 카드에는 아직 그 입력 칸이 없다.
-- 카드가 「— 터미널에서 답하세요」라고 알리는 경우: Orca 밖 세션이라 터미널을 못 찾을 때, 선택기가 화면에 없거나 터미널에서 이미 답하기 시작했을 때, 키 입력이 예상대로 반영되지 않았을 때. 줄바꿈이 든 직접 입력처럼 키로 넣을 수 없는 답도 거절한다.
+- 대시보드에서 답할 때 터미널에 선택기가 아예 없으면(이미 답했거나 취소했는데 트랜스크립트가 아직 따라오지 못한 것) 닫힌 질문으로 보고 카드를 치운다. 다른 질문의 선택기가 떠 있으면 화면을 잘못 읽었을 수도 있어서 카드를 남기고 아래처럼 알린다.
+- 카드가 「— 터미널에서 답하세요」라고 알리는 경우: Orca 밖 세션이라 터미널을 못 찾을 때, 선택기가 화면에 없거나 터미널에서 이미 답하기 시작했을 때, 키 입력이 예상대로 반영되지 않았을 때. 줄바꿈이 든 직접 입력처럼 키로 넣을 수 없는 답도 거절한다. 이렇게 오류가 난 카드에는 「카드 삭제」가 나타나 대시보드에서 치울 수 있다(터미널의 선택기는 그대로).
 - 키 입력 흉내라서 Claude Code 선택기의 화면 모양·키 조작이 바뀌면 깨질 수 있다(v2.1 에서 확인). 그때도 터미널 선택기는 그대로 쓸 수 있다.
-- 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 터미널 선택기만 뜬다.
+- 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 터미널 선택기만 뜬다. 메일함 모드가 켜져 있어도 마찬가지다.
 - 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`).
+
+### 결정 대기 화면 (`#decide`)
+
+헤더의 「결정 대기」를 누르면 들어간다. 모든 서버의 대기 중인 질문을 카드로 모아 보여 주고(세션 이름과 세션으로 가는 링크, 서버가 둘 이상이면 서버 배지, 대기 시간), 카드에서 바로 답하는 경로는 위와 같다. 그 아래에 메일함이 따로 보인다. 헤더 숫자는 대기 중인 질문 수이고, 안 읽은 메일함 항목이 있으면 그 수가 강조색 값으로 옆에 붙는다(「1 · 2 / 결정 대기 · 메일」).
+
+### 메일함 모드 — 자리를 비운 동안
+
+결정 대기 화면 위의 「메일함 모드」 버튼(또는 바의 메일 아이콘, 켜져 있으면 강조색으로 채워진다)으로 켜고 끈다. 전역 스위치 하나이고, 서버가 `prefs.json` 의 `decision_inbox` 에 보관하므로 모든 기기가 같은 상태를 보고 서버를 다시 띄워도 유지된다. 여러 서버를 켜 둔 페이지에서는 켜진 서버 모두에 같이 적용되고, 모두 켜져야 「켜짐」으로 보인다.
+
+- 켜져 있으면 훅이 질문을 등록할 때 서버가 카드를 띄우지 않고 메일함(`server/inbox.json`)에 쌓은 뒤 `{"deny": 사유}` 로 답한다. 훅은 이것을 PreToolUse `permissionDecision: "deny"` 로 내보내므로 터미널 선택기는 뜨지 않고, 에이전트는 사유를 답 대신 읽는다.
+- 사유: 사용자가 자리를 비워 질문을 메일함에 남겼으니 AskUserQuestion 을 다시 부르지 말고 각 질문의 권장 선택지(라벨에 `(Recommended)`·`(권장)`·`(추천)` 이 붙은 것, 없으면 첫 번째)나 가장 합리적인 판단으로 진행하라, 그리고 고른 답을 `[메일함 <항목 id>] 1) 답 / 2) 답` 형식의 한 줄로 남겨라. 서버가 고른 권장 선택지도 함께 적어 준다.
+- **에이전트가 진행한 선택을 아는 법:** 서버는 세션 트랜스크립트의 assistant 글에서 `[메일함 <id>] …` 줄을 찾아 그 항목의 「에이전트가 진행한 선택」으로 보여 준다. 그 줄이 아직 없으면(또는 에이전트가 규약을 따르지 않으면) 서버가 질문을 받을 때 정해 둔 권장 선택지를 「권장안으로 진행」으로 보여 준다 — 추정이라는 뜻이다.
+- 메일함 항목에서 다른 답을 고르고 「세션에 바꾸라고 알리기」를 누르면, 서버가 그 세션의 Orca 터미널에 `[대시보드 메일함 <id>] 앞서 X (으)로 진행했지만 사용자는 「질문」에 Y 를 골랐습니다. 반영하세요.` 한 줄을 보내고 Enter 를 누른다(`orca terminal send --enter`). 고르지 않은 질문은 메시지에서 빠진다. 에이전트가 진행한 답(남긴 줄이 없으면 권장안)과 같은 답이면 보내지 않고 「확인」을 누르라고 알린다. 터미널은 결정 버튼과 같은 방법으로 찾고, 못 찾으면 카드에 「세션에 직접 알려 주세요」라고 알린다. 보내고 나면 그 항목은 메일함에서 지워진다(세션 붙잡기도 풀린다). 보내지 못한 항목에는 「메일함에서 삭제」가 나타난다.
+- 「확인」은 읽음 처리만 한다(「안읽음으로」로 되돌릴 수 있다). 메일함은 최근 200건까지 두고, 읽은 항목은 14일 뒤 지운다.
+- 꺼져 있을 때는 위 결정 버튼 동작 그대로다.
+
+**메일함 항목이 있는 세션은 붙잡아 둔다.** 사용자가 나중에 다른 답을 고르면 그 세션에 후속 메시지를 보내야 하기 때문이다.
+
+- 서버의 세션 스캔은 `--hours` 와 상관없이 그 세션을 계속 읽는다. 그래서 메일함 카드가 「세션 목록에 없음」이 되지 않는다. 스캔이 트랜스크립트를 한 번 다 읽은 뒤에도 서버가 모르는 세션(세션 id 가 없거나 트랜스크립트가 없는 것)의 항목은 90초 뒤 지운다.
+- 세션이 Orca 오케스트레이션의 워커이면, 서버가 항목을 받을 때 `orca orchestration worker-retain --dispatch <id>` 로 그 워커 터미널을 붙잡아 둔다(Run 이 끝나도 놓아주지 않게).
+- 에이전트·코디네이터가 그 세션을 닫지 못하게 하는 Bash 가드 훅 `server/session-guard` 가 있다. 명령에 `orca` 가 들어 있으면 서버(`/api/decision/guard`)에 물어, 붙잡힌 세션을 닫는 명령이면 PreToolUse deny 로 막는다. 대상 명령은 `orca terminal close`(`--terminal` 이 없으면 자기 터미널, `--worktree … --all` 은 워크트리로 비교), `orca worktree rm --worktree …`, `orca orchestration worker-stop|worker-release|worker-abandon --dispatch …` 다. 워크트리 선택자는 넉넉하게 비교한다 — 잘못 막아도 사람이 대시보드에서 닫으면 된다. 서버에 닿지 않으면 비켜선다. deny 사유에서도 세션을 닫지 말라고 일러 둔다.
+- 사람은 지금처럼 대시보드의 「닫기」로 닫을 수 있다.
+- 붙잡는 기간은 항목이 메일함에 있는 동안이다(읽은 항목은 14일 뒤 지워진다).
+
+```json
+{"hooks": {"PreToolUse": [{"matcher": "Bash",
+  "hooks": [{"type": "command", "command": "<저장소>/server/session-guard", "timeout": 10}]}]}}
+```
+
+| 엔드포인트 | 요청 → 응답 |
+| --- | --- |
+| `POST /api/decision/ask` | 훅이 보냄. `{"session_id", "tool_use_id", "cwd", "terminal", "questions"}` → `{"id"}`. 메일함 모드면 `{"id", "inbox": true, "deny": 사유}` |
+| `POST /api/decision/answer` | `{"id", "answers"}` (질문 순서, 라벨이나 직접 입력, 여러 개 고르기는 라벨 목록) → 200 터미널 선택기에 넣음 · 400 답 누락·넣을 수 없는 답 · 409 닫힌 질문·터미널 사용 불가 · 410 `{"closed": true}` 터미널에 선택기가 없어 카드를 닫음 · 502 Orca 실패 |
+| `POST /api/decision/release` | `{"id"}` → `{"ok": true}` (예전 페이지 호환, 하는 일 없음) |
+| `POST /api/decision/dismiss` | `{"id"}` → 카드를 닫음(터미널 선택기는 그대로). 200 · 409 이미 닫힘 |
+| `GET /api/decision/mode` | `{"inbox": 켜짐 여부}` |
+| `POST /api/decision/mode` | `{"inbox": true\|false}` → `{"ok": true, "inbox"}` |
+| `POST /api/decision/inbox` | `{"id", "action": "read"\|"unread"\|"delete"\|"answer", "answers"}` — `answer` 는 질문 순서대로, 그대로 둘 질문은 `null`. 200 · 400 고른 답 없음·진행한 답과 같음 · 404 없는 항목 · 409 Orca 터미널 없음 · 502 Orca 실패 |
+| `POST /api/decision/guard` | `session-guard` 가 보냄. `{"command", "terminal", "cwd"}` → 메일함 항목이 있는 세션을 닫는 명령이면 `{"deny": 사유}`, 아니면 `{}` |
+| `GET /api/state` 의 `decisions` | `{"available", "pending": [카드], "inbox_mode", "inbox": [항목, 최신순]}`. 메일함 항목은 카드 필드에 `recommended`(질문마다 권장 라벨), `chosen`(에이전트가 남긴 줄 또는 `null`), `read` 가 붙는다 |
 
 ## aplan — 작업 계획 기록
 
@@ -214,6 +256,7 @@ aplan skip N [메모] / aplan fail N [메모]
 | --- | --- |
 | `external_plans` | 드라이버가 쓰는 외부 계획 파일 경로 목록 (`~` 사용 가능) |
 | `run_tc_progress` | run-tc 진행 파일 경로 목록 |
+| `decision_inbox` | 메일함 모드 켜짐 여부. 대시보드의 스위치가 쓴다 (위 「메일함 모드」) |
 
 ## 보안
 
@@ -236,4 +279,4 @@ aplan skip N [메모] / aplan fail N [메모]
 
 `server/` 아래에 쌓인다. 저장소 루트에 있던 것(구조 분리 전)은 `server/` 로 옮기면 그대로 이어진다.
 
-`prefs.json` · `settled.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `server.log` · `.token`
+`prefs.json` · `settled.json` · `inbox.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `server.log` · `.token`

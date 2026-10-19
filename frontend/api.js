@@ -85,7 +85,7 @@ const api = (() => {
   function merge(parts) {
     const out = { version: parts.map(([s, d]) => `${s.id}:${d.version}`).join(','), api: API_VERSION, sessions: [],
       orca: { runs: [], tasks: {}, workers: [], terminals: [], error: null, updated: null }, ext_plans: [],
-      tests: { files: [], run_tc: {}, history_n: 0, history_at: null }, decisions: { available: false, pending: [] } };
+      tests: { files: [], run_tc: {}, history_n: 0, history_at: null }, decisions: { available: false, pending: [], inbox: [], inbox_mode: {} } };
     const errors = [], next = { path: {}, run: {}, handle: {}, decision: {} };
     for (const [srv, d] of parts) {
       const id = srv.id, o = d.orca || {}, t = d.tests || {};
@@ -103,11 +103,15 @@ const api = (() => {
       out.tests.history_n += t.history_n || 0;
       out.decisions.available ||= !!d.decisions?.available;
       out.decisions.pending.push(...tag(d.decisions?.pending, id));
+      // 메일함: a server older than it sends no inbox_mode and is left out of the switch.
+      if (typeof d.decisions?.inbox_mode === 'boolean') out.decisions.inbox_mode[id] = d.decisions.inbox_mode;
+      out.decisions.inbox.push(...tag(d.decisions?.inbox, id));
       for (const s of d.sessions || []) { next.path[s.path] = id; if (s.orca_focus) next.handle[s.orca_focus] = id; if (s.decision) next.decision[s.decision.id] = id; }
       for (const r of o.runs || []) next.run[r.id] = id;
       for (const x of o.terminals || []) next.handle[x.handle] = id;
-      for (const q of d.decisions?.pending || []) next.decision[q.id] = id;
+      for (const q of [...d.decisions?.pending || [], ...d.decisions?.inbox || []]) next.decision[q.id] = id;
     }
+    out.decisions.inbox.sort((a, b) => b.created_at - a.created_at);
     out.tests.history_at = parts.map(([s, d]) => `${s.id}:${d.tests?.history_at ?? ''}`).join(',') || null;
     out.orca.error = errors.join(' · ') || null;
     out.health = mergeHealth(parts.map(([s, d]) => [s, d.health]));
@@ -203,7 +207,8 @@ const api = (() => {
       try { const r = await fetch('build.json', { cache: 'no-store' }); return r.ok ? (await r.json()).build : null; } catch { return null; }
     },
     // Full snapshot, merged over the servers that are on: {version, api, sessions[], orca{runs, tasks, workers,
-    // terminals, error, updated}, ext_plans[], tests, health{now, loops}, decisions{available, pending[]}}; each session
+    // terminals, error, updated}, ext_plans[], tests, health{now, loops}, decisions{available, pending[], inbox[] (newest
+    // first), inbox_mode{server id: on}}}; each session
     // carries `decision` (its pending question or null). A server that fails or speaks another API version is left out
     // and named in server_errors.
     state: async () => {
@@ -262,6 +267,17 @@ const api = (() => {
     decide: (id, answers) => post(ownerOf('decision', id), '/api/decision/answer', { id, answers }),
     // Let the question go to the terminal picker instead (the hook stops waiting). {status, body} as above.
     release: id => post(ownerOf('decision', id), '/api/decision/release', { id }),
+    // Take a card off the page after an error (the terminal picker stays). {status, body}: 200, 409 already closed.
+    dismiss: id => post(ownerOf('decision', id), '/api/decision/dismiss', { id }),
+    // A 메일함 item: action read | unread | delete, or answer (answers in question order, null for one left as the
+    // agent went; the server sends the session a follow-up message and drops the item). {status, body}: 200 done,
+    // 400 nothing picked or the same answer, 404 gone, 409 no Orca terminal for the session, 502 Orca failed.
+    inbox: (id, action, answers) => post(ownerOf('decision', id), '/api/decision/inbox', { id, action, answers }),
+    // 메일함 mode on or off on every server that is on and has it ({status, body} of the first failure, or 200).
+    inboxMode: async (on, ids) => {
+      const rs = await Promise.all(ids.map(id => post(byId(id), '/api/decision/mode', { inbox: on })));
+      return rs.find(r => r.status !== 200) || { status: 200, body: { ok: true } };
+    },
     // Bring an Orca terminal's tab (and the Orca window) forward: handle is a session's `orca_focus` or a driver
     // terminal. Resolves to {status, body}: 200 ok, 404 not a connected terminal, 502 Orca failed.
     focus: handle => post(ownerOf('handle', handle), '/api/orca/focus', { handle }),

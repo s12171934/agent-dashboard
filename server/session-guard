@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""session-guard — keep agents from closing a session that has a 메일함 item on the agent dashboard.
+
+A PreToolUse hook (matcher "Bash"). While 메일함 mode was on, a question was filed in the dashboard's 메일함 and the
+agent went on with the recommended option; if the user later picks another answer, the server sends that session a
+follow-up message through its Orca terminal. So that terminal has to stay: the hook hands each Bash command to the
+server, which says whether it would close such a session (`orca terminal close`, `orca worktree rm`, `orca
+orchestration worker-stop|worker-release|worker-abandon`), and denies the call when it would. A person can still
+close the session from the dashboard. With the server unreachable, or for any other command, it steps aside.
+
+  ~/.claude/settings.json → hooks.PreToolUse: [{"matcher": "Bash",
+      "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
+
+Environment: DASH_URL (default http://127.0.0.1:8787). ORCA_TERMINAL_HANDLE, set by Orca in its terminals, is the
+terminal a bare `orca terminal close` would close.
+"""
+import json
+import os
+import sys
+from urllib.request import Request, urlopen
+
+URL = os.environ.get("DASH_URL", "http://127.0.0.1:8787").rstrip("/")
+
+
+def main():
+    try:
+        event = json.load(sys.stdin)
+        command = event["tool_input"]["command"]
+        if "orca" not in command:
+            return  # most commands: no request at all
+        body = {"command": command, "cwd": event.get("cwd"), "terminal": os.environ.get("ORCA_TERMINAL_HANDLE")}
+        req = Request(URL + "/api/decision/guard", data=json.dumps(body).encode(),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(req, timeout=3) as res:
+            reason = json.load(res).get("deny")
+    except Exception:
+        return  # no dashboard (or an older one): nothing to guard
+    if isinstance(reason, str) and reason:
+        json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                          "permissionDecisionReason": reason}}, sys.stdout, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    main()
