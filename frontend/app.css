@@ -908,15 +908,33 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-fab-btn svg { width: 20px; height: 20px; }
 .dz-fab-btn.on, .dz-fab.open .dz-fab-btn { color: var(--accent); }
 .dz-fab-btn:focus-visible { outline: 2px solid var(--accent); }
+.dz-fab-menu { position: absolute; right: 0; bottom: calc(100% + 8px); display: grid; gap: 2px; min-width: 150px; padding: 6px; border: 1px solid var(--surface-edge); border-radius: 16px;
+  background: var(--surface-sheen), var(--surface-strong); -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
+  box-shadow: var(--surface-hi), var(--surface-shadow-float); }
+.dz-fab.down .dz-fab-menu { bottom: auto; top: calc(100% + 8px); }
+.dz-fab-menu[hidden] { display: none; }
+.dz-fb { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; border: 0; border-radius: 10px; background: none;
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; text-align: left; }
+.dz-fb svg { width: 18px; height: 18px; color: var(--muted); }
+.dz-fb:hover { background: var(--control-well); }
+.dz-fb:focus-visible { outline: 2px solid var(--accent); }
+.dz-mp { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 70px); }
+.dz-mp span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-mp svg { width: 16px; height: 16px; flex: none; }
+.dz-mp i { font-style: normal; color: var(--muted); }
+.dz-modal [data-fold] > summary { display: none; }
+.dz-modal .dz-pane { padding: 0; border: 0; background: none; box-shadow: none; }
+.dz-modal [data-dz-hide] { display: none; }
+@media (max-width: 900px) { #dz-pane-btn { display: none; } }
 .dz-modal { width: min(560px, calc(100vw - 16px)); max-width: none; max-height: min(82dvh, 760px); padding: 0; overflow: hidden; }
 .dz-modal[open] { display: flex; flex-direction: column; }
-.dz-mh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 10px; }
+.dz-mh { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px; }
+.dz-mh > :first-child { margin-right: auto; }
 .dz-mb { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 12px 12px; }
 .dz-modal .dz-side, .dz-modal .dz-pane { display: none; position: static; max-height: none; overflow: visible; }
 .dz-modal:is([data-panel="proj"], [data-panel="docs"]) .dz-side { display: grid; }
 .dz-modal[data-panel="proj"] .dz-side > :not(.dz-projbox), .dz-modal[data-panel="docs"] .dz-side > .dz-projbox { display: none; }
 .dz-modal[data-panel="readers"] .dz-pane { display: block; }
-.dz-modal [data-fold] > summary { cursor: default; }
 .dz-main { display: grid; gap: 14px; min-width: 0; }
 .dz .box { margin-bottom: 0; }
 .dz-doc a { color: var(--accent); }

@@ -310,6 +310,8 @@ async function renderView(navigated) {
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
   if (r.v !== 'designs') dzMounted = null;
+  $('#dz-pane-btn').hidden = r.v !== 'designs';
+  $('#dz-pane-chk').checked = dz.pane;
   if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
   else if (r.v === 'talk') await renderTalk();
@@ -3286,7 +3288,7 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
   s.onerror = () => { delete dzLibs[name]; fail(new Error(name + ' 을 불러오지 못했습니다')); };
   document.head.append(s);
 });
-let dz = { search: false, live: false, pane: true, q: '', last: null, lastIn: {}, fold: {} };  // adash.design: the toggles, the last document (overall and per project), the sidebar boxes left open or closed
+let dz = { pane: true, q: '', last: null, lastIn: {}, fold: {} };  // adash.design: the toggles, the last document (overall and per project), the sidebar boxes left open or closed
 try { Object.assign(dz, JSON.parse(localStorage.getItem('adash.design') || '{}')); } catch {}
 const dzSave = () => { try { localStorage.setItem('adash.design', JSON.stringify(dz)); } catch {} };
 let dzList = null, dzListV = null;  // api.designs(), dropped when a server's index or references change
@@ -3301,13 +3303,11 @@ const dzTitle = (key, title) => title || dzName(key);
 const dzChap = (ch, chapter) => ch ? `${String(ch).padStart(2, '0')} ${chapter || ''}`.trim() : '';
 const dzSlug = key => key.split('/').length > 2 ? key.split('/')[1] : '(폴더 바로 아래)';
 const dzNo = r => r.no ? '§' + r.no : cut(r.section || '문서 전체', 12);
-const dzLiveSet = () => new Set(state.sessions.filter(s => OPEN(status(s))).map(s => s.path));
-// a section's readers under the toggles: [{row, reads, searches}] where row is the server's per-session row
+// a section's readers (sessions that read it; a search hit alone does not count): the server's per-session rows
 function dzReaders(doc, sec) {
-  const live = dz.live ? dzLiveSet() : null;
-  return (doc.refs || []).filter(r => (sec === undefined || r.section === sec) && (!live || live.has(r.path)) && (r.reads || (dz.search && r.searches)));
+  return (doc.refs || []).filter(r => (sec === undefined || r.section === sec) && r.reads);
 }
-const dzCount = rows => ({ s: new Set(rows.map(r => r.session)).size, n: rows.reduce((a, r) => a + r.reads + (dz.search ? r.searches : 0), 0) });
+const dzCount = rows => ({ s: new Set(rows.map(r => r.session)).size, n: rows.reduce((a, r) => a + r.reads, 0) });
 
 async function renderDesigns() {
   const r = route(), ver = state.design?.version ?? '';
@@ -3342,9 +3342,6 @@ async function renderDesigns() {
     if (!same && dz.tocShut) { dz.tocShut = false; dzSave(); }
     dzMounted = mk;
     $('#view').innerHTML = `<div class="controls dz-ctl">
-        <label class="chk"><input type="checkbox" data-dz-opt="search"${dz.search ? ' checked' : ''}> 검색 적중 포함</label>
-        <label class="chk"><input type="checkbox" data-dz-opt="live"${dz.live ? ' checked' : ''}> 진행 중 세션만</label>
-        <label class="chk"><input type="checkbox" data-dz-opt="pane"${dz.pane ? ' checked' : ''}> 읽은 세션 보기</label>
         <span class="st" id="dz-sum"></span></div>
       ${!dzList.enabled ? dzNoSource() : `<div class="dz${meta ? dz.pane ? '' : ' no-pane' : ' empty-doc'}">
         <div class="dz-side" id="dz-side">
@@ -3356,11 +3353,13 @@ async function renderDesigns() {
         <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
           : '<div class="empty">왼쪽에서 설계 프로젝트와 문서를 고르세요. 숫자는 그 문서를 읽거나 검색한 세션 수입니다.</div>'}</div>
         ${meta && dz.pane ? '<aside class="box dz-pane" id="dz-pane"></aside>' : ''}
-        <div class="dz-fab" id="dz-fab"><button type="button" class="dz-fab-btn" data-dz-fab aria-haspopup="dialog" aria-label="설계 프로젝트·문서·읽은 세션 고르기"><ds-icon name="book"></ds-icon></button></div>
-        <dialog class="dialog dz-modal" id="dz-modal" aria-label="설계문서 고르기">
-          <div class="dz-mh"><span class="seg" role="tablist">
-            <button type="button" role="tab" data-dz-panel="proj">프로젝트</button><button type="button" role="tab" data-dz-panel="docs">문서 · 목차</button>${meta && dz.pane ? '<button type="button" role="tab" data-dz-panel="readers">읽은 세션</button>' : ''}</span>
-            <button type="button" class="tgl" data-dz-close aria-label="닫기">닫기</button></div>
+        <div class="dz-fab" id="dz-fab">
+          <div class="dz-fab-menu" id="dz-fab-menu" role="menu" hidden>
+            <button type="button" class="dz-fb" role="menuitem" data-dz-panel="docs"><ds-icon name="book"></ds-icon><span>문서 선택</span></button>
+            ${meta && dz.pane ? '<button type="button" class="dz-fb" role="menuitem" data-dz-panel="readers"><ds-icon name="users"></ds-icon><span>읽은 세션</span></button>' : ''}</div>
+          <button type="button" class="dz-fab-btn" data-dz-fab aria-haspopup="menu" aria-expanded="false" aria-controls="dz-fab-menu" aria-label="문서 선택 · 읽은 세션"><ds-icon name="book"></ds-icon></button></div>
+        <dialog class="dialog dz-modal" id="dz-modal" aria-label="설계문서">
+          <div class="dz-mh" id="dz-mh"></div>
           <div class="dz-mb" id="dz-mb"></div></dialog></div>`}`;
     if (meta) await dzArticle(doc);
     if (route().v !== 'designs' || dzMounted !== mk) return;
@@ -3381,23 +3380,25 @@ function dzFit() {
 addEventListener('resize', () => { if (route().v === 'designs') { dzFit(); dzPanelSet(dzPanel); } });
 
 // Narrow screens (≤900px) keep only the document on the page, and only the page scrolls. A small button right of the
-// floating bar opens a modal with the project list, the documents with their table of contents and the readers: the
-// sidebar and the readers box move into it while it is open and back into the grid when it closes.
-let dzTab = 'docs';  // the modal's last tab
+// floating bar offers 「문서 선택」 and 「읽은 세션」; each opens a modal. 「문서 선택」 shows the open project's documents
+// with their table of contents, and its head switches to the project list (picking a project comes back to its
+// documents). The sidebar and the readers box move into the modal while it is open and back into the grid after.
 function dzPanelSet(name) {
   const g = $('.dz'), fab = $('#dz-fab'), dlg = $('#dz-modal');
   if (!g || !fab || !dlg) return;
   dzPanel = innerWidth <= 900 && name && g.querySelector(name === 'readers' ? '#dz-pane' : `[data-fold="${name}"]`) ? name : null;
   const side = $('#dz-side'), pane = $('#dz-pane'), body = $('#dz-mb');
   if (dzPanel) {
-    dzTab = dzPanel;
     const fresh = !dlg.open || dlg.dataset.panel !== dzPanel;
     dlg.dataset.panel = dzPanel;
     if (side.parentNode !== body) body.append(side);
     if (pane && pane.parentNode !== body) body.append(pane);
     if (dzPanel !== 'readers') g.querySelector(`[data-fold="${dzPanel}"]`).open = true;
-    dlg.querySelectorAll('[data-dz-panel]').forEach(b => { b.classList.toggle('on', b.dataset.dzPanel === dzPanel); b.setAttribute('aria-selected', b.dataset.dzPanel === dzPanel); });
-    if (!dlg.open) { dlg.showModal(); dlg.querySelector('[data-dz-panel].on')?.focus({ focusVisible: false }); }
+    const slug = dz.last ? dzSlug(dz.last[1]) : '';
+    $('#dz-mh').innerHTML = (dzPanel === 'docs' ? `<button type="button" class="act dz-mp" data-dz-panel="proj" aria-label="설계 프로젝트 바꾸기"><ds-icon name="layers"></ds-icon><span>${esc(slug || '설계 프로젝트')}</span><i aria-hidden="true">▾</i></button>`
+      : dzPanel === 'proj' ? `<b>설계 프로젝트</b>${slug ? '<button type="button" class="tgl" data-dz-panel="docs">문서로</button>' : ''}`
+      : '<span></span>') + '<button type="button" class="tgl dz-mx" data-dz-close>닫기</button>';
+    if (!dlg.open) { dlg.showModal(); dlg.querySelector('.dz-mx').focus({ focusVisible: false }); }
     if (fresh) {  // a tab opens at the picked project or document
       const on = dzPanel === 'proj' ? $('#dz-projs .dz-d.on') : dzPanel === 'docs' ? $('#dz-list .dz-d.on') : null;
       body.scrollTop = on ? on.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 60 : 0;
@@ -3414,6 +3415,7 @@ function dzPanelSet(name) {
     const beside = innerWidth - d.right >= w + 14;
     fab.style.cssText = beside ? `left:${Math.round(d.right + 8)}px; top:${Math.round(d.top + (d.height - h) / 2)}px`
       : `left:${Math.round(Math.min(d.right, innerWidth - 8) - w)}px; top:${Math.round(d.top > innerHeight / 2 ? d.top - h - 8 : d.bottom + 8)}px`;
+    fab.classList.toggle('down', d.top < innerHeight / 2);  // the popover opens towards the middle of the screen
   } else fab.style.cssText = '';
 }
 
@@ -3576,19 +3578,22 @@ function dzPane(doc, sec, toc) {
   };
   const gone = [...new Set((doc.refs || []).map(r => r.section))].filter(x => x && !toc.some(s => s.id === x));
   return `<h3 class="dz-ph"><span>${one ? `「${esc(sec)}」 섹션을 읽은 세션` : '이 문서를 읽은 세션'} <span class="st">${rows.length}</span></span><button type="button" class="tgl" data-dz-hide aria-label="읽은 세션 숨기기">숨기기</button></h3>
-    ${rows.length ? `<ul class="dz-ss">${rows.slice(0, DZ_ROWS).map(item).join('')}</ul>${rows.length > DZ_ROWS ? `<div class="st">최근 ${DZ_ROWS}개만 보입니다 (전체 ${rows.length})</div>` : ''}` : `<div class="st">${dz.live ? '진행 중인 세션 중에는 없습니다.' : '읽은 세션이 없습니다.'}${dz.search ? '' : ' 검색 적중은 「검색 적중 포함」을 켜면 셉니다.'}</div>`}
+    ${rows.length ? `<ul class="dz-ss">${rows.slice(0, DZ_ROWS).map(item).join('')}</ul>${rows.length > DZ_ROWS ? `<div class="st">최근 ${DZ_ROWS}개만 보입니다 (전체 ${rows.length})</div>` : ''}` : '<div class="st">읽은 세션이 없습니다.</div>'}
     ${one ? `<button type="button" class="act" data-dz-sec="">문서 전체 보기</button>` : `<div class="st dz-hint">섹션 제목의 배지를 누르면 그 섹션을 읽은 세션만 봅니다. 누르면 세션 상세로 갑니다.</div>`}
     ${!one && gone.length ? `<h3>현재 목차에 없는 섹션</h3><ul class="dz-gone">${gone.map(g => `<li><button type="button" class="tgl" data-dz-sec="${esc(g)}">${esc(g)}</button></li>`).join('')}</ul>` : ''}`;
 }
 
 document.addEventListener('click', e => {
   if (route().v !== 'designs') return;
-  if (e.target.closest('[data-dz-fab]')) { dzPanelSet(dzTab); return; }
+  if (e.target.closest('[data-dz-fab]')) { dzMenu($('#dz-fab-menu').hidden); return; }
   const pb = e.target.closest('[data-dz-panel]');
-  if (pb) { dzPanelSet(pb.dataset.dzPanel); return; }
+  if (pb) { dzMenu(false); dzPanelSet(pb.dataset.dzPanel); return; }
+  dzMenu(false);
   if (e.target.closest('[data-dz-close]') || e.target.id === 'dz-modal') { dzPanelSet(null); return; }  // 닫기, or the backdrop
   if (dzPanel && e.target.closest('.dz [data-fold] > summary')) { e.preventDefault(); return; }  // a tab's box stays open
-  if (dzPanel && e.target.closest('.dz a[href^="#"]:not([data-dz-fold])')) dzPanel = null;   // picking closes it
+  // picking a document closes the modal; picking a project opens it and comes back to its documents
+  const pick = dzPanel && e.target.closest('.dz a[href^="#"]:not([data-dz-fold])');
+  if (pick) dzPanel = pick.closest('#dz-projs') ? 'docs' : null;
   const f = e.target.closest('[data-dz-fold]');
   if (f) { e.preventDefault(); dz.tocShut = !dz.tocShut; dzSave(); render(); return; }
   if (e.target.closest('[data-dz-hide]')) { dz.pane = false; dzSave(); render(); return; }
@@ -3603,13 +3608,18 @@ document.addEventListener('click', e => {
   history.replaceState(null, '', dzHash(server, key, sec));
   render();
 });
+// the button's popover: 「문서 선택」 · 「읽은 세션」
+function dzMenu(open) {
+  const m = $('#dz-fab-menu');
+  if (!m || m.hidden === !open) return;
+  m.hidden = !open;
+  $('#dz-fab .dz-fab-btn').setAttribute('aria-expanded', open);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') dzMenu(false); });
 // Esc closes the modal natively; put the boxes back
 document.addEventListener('close', e => { if (e.target.id === 'dz-modal' && dzPanel) dzPanelSet(null); }, true);
-document.addEventListener('change', e => {
-  const o = e.target.closest?.('[data-dz-opt]');
-  if (!o) return;
-  dz[o.dataset.dzOpt] = o.checked; dzSave(); render();
-});
+// 「읽은 세션 보기」 lives in the floating bar's filters, shown on this tab on a wide screen only
+$('#dz-pane-chk').onchange = e => { dz.pane = e.target.checked; dzSave(); render(); };
 document.addEventListener('input', e => {
   if (!e.target.classList?.contains('dz-q')) return;
   dz.q = e.target.value; dzSave();
