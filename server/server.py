@@ -2883,6 +2883,65 @@ HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 FENCE = re.compile(r"^\s*(```|~~~)")
 SECTION_NO = re.compile(r"^§?\s*(\d+(?:[.-]\d+)*)[.)]?(?=\s|$)")
 _toc_cache = {}  # abs path -> ((mtime, size), (toc, line count))
+_label_cache = {}  # abs path -> ((mtime, size), H1 title or [(chapter title, [ids])] of an index.html)
+NAV_SECTIONS = re.compile(r"\bconst\s+SECTIONS\s*=\s*\[(.*?)\]\s*;", re.S)
+NAV_GROUP = re.compile(r"""\btitle\s*:\s*(['"])(.*?)\1\s*,\s*ids\s*:\s*\[([^\]]*)\]""", re.S)
+NAV_ID = re.compile(r"""(['"])([^'"]+)\1""")
+
+
+def _by_stat(path, read):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    v = (st.st_mtime, st.st_size)
+    hit = _label_cache.get(path)
+    if hit and hit[0] == v:
+        return hit[1]
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            out = read(f)
+    except OSError:
+        return None
+    _label_cache[path] = (v, out)
+    return out
+
+
+def design_h1(path):
+    """The first `# ` heading of a Markdown file outside code fences, or None."""
+    def read(f):
+        fence = None
+        for n, line in enumerate(f):
+            if n > 400:
+                return None
+            m = FENCE.match(line)
+            if m:
+                fence = None if fence == m.group(1) else fence or m.group(1)
+            elif not fence:
+                h = HEADING.match(line.rstrip("\n"))
+                if h and len(h.group(1)) == 1:
+                    return h.group(2) or None
+        return None
+    return _by_stat(path, read)
+
+
+def design_nav(path):
+    """The reading order of a feature folder's index.html viewer: [(chapter title, [doc ids])], the ids being paths
+    without ".md" ("flows/A-teacher-settings"); [] when the page has no SECTIONS list."""
+    def read(f):
+        m = NAV_SECTIONS.search(f.read())
+        return [(g.group(2), [i.group(2) for i in NAV_ID.finditer(g.group(3))]) for g in NAV_GROUP.finditer(m.group(1))] if m else []
+    return _by_stat(path, read) or []
+
+
+def nav_title(doc_id, h1):
+    """The viewer's rule: a node's H1 starts with its own path or slug ("flows/R1-material R1 …"); the name is the rest."""
+    if not h1:
+        return None
+    for prefix in (doc_id + " ", doc_id.rsplit("/", 1)[-1] + " "):
+        if h1.startswith(prefix):
+            return h1[len(prefix):].strip() or h1
+    return h1
 
 
 def design_toc(path):
@@ -2954,11 +3013,49 @@ def scan_designs():
                 e["copies"].append({"src": i, "abs": p, "mtime": st.st_mtime, "size": st.st_size})
     for e in docs.values():
         e["copies"].sort(key=lambda c: (not sources[c["src"]]["configured"], -c["mtime"]))
+    label_designs(roots, sources, docs)
     design_bases.update(os.path.basename(r) for r, _ in roots)
     if sources != design["sources"] or docs != design["docs"]:
         design = {"version": design["version"] + 1, "sources": sources, "docs": docs}
         with lock:
             bump()
+
+
+def label_designs(roots, sources, docs):
+    """Names documents the way a feature folder's index.html does: the title from the H1 (without its path prefix), and,
+    for the documents its SECTIONS list holds, the chapter number and title and the reading order. The index.html is
+    taken from the copies the same way as a document (configured folder first, then the newest)."""
+    navs = {}
+    for i, (root, _) in enumerate(roots):
+        try:
+            slugs = [d for d in os.listdir(root) if os.path.isfile(os.path.join(root, d, "index.html"))]
+        except OSError:
+            continue
+        for slug in slugs:
+            p = os.path.join(root, slug, "index.html")
+            try:
+                mtime = os.path.getmtime(p)
+            except OSError:
+                continue
+            navs.setdefault((os.path.basename(root), slug), []).append((not sources[i]["configured"], -mtime, p))
+    chapters = {}
+    for (base, slug), ps in navs.items():
+        n = 0
+        for ch, (title, ids) in enumerate(design_nav(min(ps)[2]), 1):
+            for doc_id in ids:
+                n += 1
+                chapters.setdefault(f"{base}/{slug}/{doc_id}.md", {"ch": ch, "chapter": title, "order": n})
+    for key, e in docs.items():
+        e.update(chapters.get(key) or {})
+        if e["kind"] == "md":
+            parts = key.split("/", 2)
+            e["title"] = nav_title(os.path.splitext(parts[-1])[0], design_h1(e["copies"][0]["abs"]))
+
+
+def doc_label(key):
+    """{title, ch, chapter} of a document for the lists that name it (only the keys it has)."""
+    e = design["docs"].get(key) or {}
+    return {k: e[k] for k in ("title", "ch", "chapter") if e.get(k) is not None}
 
 
 def design_key(path):
@@ -3823,7 +3920,7 @@ def ticket_section_badges():
             rows = []
             for (doc, sid), (ss, n) in secs.items():
                 m = SECTION_NO.match(sid)
-                rows.append({"doc": doc, "section": sid, "no": m.group(1) if m else None, "sessions": len(ss), "count": n})
+                rows.append({"doc": doc, **{"doc_" + k: v for k, v in doc_label(doc).items()}, "section": sid, "no": m.group(1) if m else None, "sessions": len(ss), "count": n})
             out.setdefault(plan, {})[pkg] = sorted(rows, key=lambda x: (-x["count"], x["doc"], x["section"]))
     return out
 
@@ -3885,7 +3982,7 @@ def design_list():
     for key, e in sorted(d["docs"].items()):
         c = e["copies"][0]
         p = per.get(key)
-        docs.append({"key": key, "kind": e["kind"], "src": c["src"], "copies": len(e["copies"]), "mtime": c["mtime"],
+        docs.append({"key": key, **doc_label(key), "order": e.get("order"), "kind": e["kind"], "src": c["src"], "copies": len(e["copies"]), "mtime": c["mtime"],
                      "size": c["size"], "sessions": len(p["sessions"]) if p else 0, "reads": p["reads"] if p else 0,
                      "searches": p["searches"] if p else 0})
     known = set(d["docs"])
@@ -3920,7 +4017,7 @@ def design_doc(key):
         return {"error": "not found"}, 404
     c = e["copies"][0]
     src = design["sources"][c["src"]]
-    out = {"key": key, "kind": e["kind"], "mtime": c["mtime"], "size": c["size"], "source": src,
+    out = {"key": key, **doc_label(key), "kind": e["kind"], "mtime": c["mtime"], "size": c["size"], "source": src,
            "copies": [{**design["sources"][x["src"]], "mtime": x["mtime"]} for x in e["copies"]]}
     if e["kind"] == "md":
         if c["size"] > DESIGN_FILE_MAX:
@@ -4037,6 +4134,7 @@ def session_design_refs(sid):
         s = next((x for x in toc if x["id"] == row["section"]), None)
         row["no"] = s["no"] if s else (SECTION_NO.match(row["section"] or "") or [None, None])[1]
         row["start"] = s["start"] if s else None
+        row.update({"doc_" + k: v for k, v in doc_label(row["doc"]).items()})
         if row["lines"] and s:
             covered = sum(b - a + 1 for a, b in to_ranges(n for a, b in row["lines"] for n in range(a, b + 1)))
             row["cover"] = round(min(1.0, covered / max(1, s["end"] - s["start"] + 1)), 3)

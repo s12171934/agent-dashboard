@@ -270,7 +270,7 @@ aplan skip N [메모] / aplan fail N [메모]
 
 설계 폴더의 문서를 대시보드에서 읽고, 구현 세션이 문서의 어느 `##` 섹션을 읽었는지 세션 로그에서 찾아 문서·세션·티켓 화면에 보여 준다. 문서 원문과 참조 기록은 메트릭 서버에만 있다(배포되는 페이지에는 없다).
 
-**문서 색인.** `design_dirs`(또는 `--design-dir`)의 폴더마다, 그 폴더가 든 git 저장소의 다른 워크트리(`git worktree list`)에서 같은 상대 경로의 폴더도 함께 읽는다 — 기능 설계는 대개 머지 전까지 브랜치에만 있다. 외부 계획의 `design_root` 는 설정 폴더와 이름이 같은 조상 폴더(없으면 그 부모)를 같은 방식으로 더한다. 문서는 폴더 이름부터의 상대 경로(`feature-designs/<기능>/<파일>`)로 부르므로 워크트리마다 있는 사본이 한 문서가 된다. 보여 주는 사본은 설정 폴더의 것, 없으면 가장 최근에 고친 것이다. 5초마다 mtime 을 보고 바뀐 것만 다시 읽는다.
+**문서 색인.** `design_dirs`(또는 `--design-dir`)의 폴더마다, 그 폴더가 든 git 저장소의 다른 워크트리(`git worktree list`)에서 같은 상대 경로의 폴더도 함께 읽는다 — 기능 설계는 대개 머지 전까지 브랜치에만 있다. 외부 계획의 `design_root` 는 설정 폴더와 이름이 같은 조상 폴더(없으면 그 부모)를 같은 방식으로 더한다. 문서는 폴더 이름부터의 상대 경로(`feature-designs/<기능>/<파일>`)로 부르므로 워크트리마다 있는 사본이 한 문서가 된다. 보여 주는 사본은 설정 폴더의 것, 없으면 가장 최근에 고친 것이다. 문서 이름은 기능 폴더의 `index.html` 뷰어와 같게 붙인다: 제목은 첫 `# ` 제목에서 앞의 자기 경로·파일 이름(`flows/A-x `)을 뺀 것이고, `index.html` 의 `SECTIONS` 목록에 든 문서는 챕터 번호·제목과 읽는 순서도 갖는다(`index.html` 도 문서처럼 설정 폴더 → 최근 수정 사본 순으로 고른다). 5초마다 mtime 을 보고 바뀐 것만 다시 읽는다.
 
 **섹션.** `##` 제목 하나가 섹션 하나다(코드 블록 안은 제외). 제목 줄부터 다음 `##` 앞 줄까지이고, 첫 `##` 앞은 「머리말」(`##` 이 없으면 「본문」)이다. 섹션 번호는 제목 앞의 숫자(`5. 도메인 모델` → `5`)다.
 
@@ -295,20 +295,20 @@ aplan skip N [메모] / aplan fail N [메모]
 
 | 엔드포인트 | 응답 |
 | --- | --- |
-| `GET /api/designs` | `{"enabled", "version", "sources": [{"dir", "configured", "repo", "worktree", "branch", "head", "main"}], "docs": [{"key", "kind": "md"\|"image"\|"pdf", "src", "copies", "mtime", "size", "sessions", "reads", "searches"}], "gone": [사본이 없어진 문서 키], "plans": [{"project", "path", "design_root", "design_commit"}], "refs": 기록 수}` |
-| `GET /api/design?path=<문서 키>` | 문서 하나: `{"key", "kind", "mtime", "size", "source", "copies", "content", "toc": [{"id", "title", "no", "start", "end"}], "refs": [섹션·세션마다 {"section", "session", "title", "path", "kind", "parent", "reads", "searches", "lines", "cover", "first", "last", "exact", "commits", "ticket"}], "plans": [{"project", "design_commit", "head", "same", "same_file"}]}`. `same_file` 은 `design_commit` 과 HEAD 사이에 이 문서가 바뀌지 않았는지(`git diff --quiet`). 없는 키는 404 |
+| `GET /api/designs` | `{"enabled", "version", "sources": [{"dir", "configured", "repo", "worktree", "branch", "head", "main"}], "docs": [{"key", "title", "ch", "chapter", "order", "kind": "md"\|"image"\|"pdf", "src", "copies", "mtime", "size", "sessions", "reads", "searches"}], "gone": [사본이 없어진 문서 키], "plans": [{"project", "path", "design_root", "design_commit"}], "refs": 기록 수}` |
+| `GET /api/design?path=<문서 키>` | 문서 하나: `{"key", "title", "ch", "chapter", "kind", "mtime", "size", "source", "copies", "content", "toc": [{"id", "title", "no", "start", "end"}], "refs": [섹션·세션마다 {"section", "session", "title", "path", "kind", "parent", "reads", "searches", "lines", "cover", "first", "last", "exact", "commits", "ticket"}], "plans": [{"project", "design_commit", "head", "same", "same_file"}]}`. `same_file` 은 `design_commit` 과 HEAD 사이에 이 문서가 바뀌지 않았는지(`git diff --quiet`). 없는 키는 404 |
 | `GET /api/design/file?path=<문서 키>` | 그림·PDF 바이트. 실제 경로(realpath)가 그 설계 폴더 밖이면 404, 32MB 초과는 413. SVG 는 스크립트가 돌지 않게 CSP 를 붙인다 |
-| `GET /api/design/refs?session=<세션 id>` | 그 세션(과 서브에이전트)이 읽은 섹션: `{"refs": [{"doc", "section", "no", "start", "reads", "searches", "cover", "first", "last", "sub"}]}` |
+| `GET /api/design/refs?session=<세션 id>` | 그 세션(과 서브에이전트)이 읽은 섹션: `{"refs": [{"doc", "doc_title", "doc_ch", "doc_chapter", "section", "no", "start", "reads", "searches", "cover", "first", "last", "sub"}]}` |
 | `GET /api/session` | 기존 필드에 `design_refs`(위와 같은 목록)가 붙는다. `--hours` 밖 세션도 `design-refs.json` 에 있으면 그 로그를 읽어 주고 `archived: true` 를 붙인다 |
-| `GET /api/state` | `design: {"enabled", "version"}` (색인이나 참조가 바뀌면 version 이 바뀐다), `ext_plans[].design_refs`: `{티켓: [{"doc", "section", "no", "sessions", "count"}]}` (읽기만, 많이 읽은 순) |
+| `GET /api/state` | `design: {"enabled", "version"}` (색인이나 참조가 바뀌면 version 이 바뀐다), `ext_plans[].design_refs`: `{티켓: [{"doc", "doc_title", "doc_ch", "doc_chapter", "section", "no", "sessions", "count"}]}` (읽기만, 많이 읽은 순) |
 
 대시보드의 「설계문서」 탭(바의 책 아이콘)이 이것을 그린다. 켜진 메트릭 서버 중 설계 폴더를 색인하는 서버의 문서를 모두 모은다(여러 서버면 트리가 서버별로 나뉜다).
 
-- **왼쪽:** 기능 폴더별 문서 트리. 폴더에는 읽힌 문서 수/전체, 문서에는 읽거나 검색한 세션 수. 워크트리 사본에서 온 폴더는 ▣. 이름으로 거를 수 있다.
+- **왼쪽:** 기능 폴더별 문서 트리. 문서는 파일 이름 대신 제목으로 보이고, `index.html` 이 있는 폴더는 그 뷰어처럼 챕터(`01 개요 · 전제 · 용어`)로 묶어 읽는 순서대로 놓는다(목록에 없는 파일은 「그 밖의 파일」). 폴더에는 읽힌 문서 수/전체, 문서에는 읽거나 검색한 세션 수. 워크트리 사본에서 온 폴더는 ▣. 이름으로 거를 수 있다.
 - **가운데:** 문서. Markdown 은 `marked`, 다이어그램은 `mermaid` 로 그린다(jsDelivr 에서 버전을 고정하고 SRI 로 받으며, 탭을 처음 열 때 불러온다). 문서 안 HTML 은 글자로 보이고, 상대 링크는 설계 폴더 안 문서·그림으로 풀린다. 섹션 제목마다 「세션 N · M회」 배지(0 이면 흐리게). 위쪽에 사본의 저장소·워크트리·브랜치·HEAD 와, 그 문서를 가리키는 외부 계획의 `design_commit` 이 HEAD 와 같은지가 보인다. 그림과 PDF 는 그대로 보인다.
 - **오른쪽:** 배지를 누른 섹션(아니면 문서 전체)을 읽은 세션 목록 — read 비율·search 수·횟수·시각·티켓·지금 상태. 누르면 세션 상세로 간다. 폭 900px 이하에서는 오른쪽 대신 그 제목 바로 아래에 펼친다.
 - 「검색 적중 포함」(기본 꺼짐: 배지·목록이 읽기만 센다), 「진행 중 세션만」. 기기별 저장값: `adash.design` (두 토글, 거르기 글자, 마지막 문서).
-- 세션 상세에 「참고한 설계 섹션」 절(문서별 섹션, 누르면 탭의 그 섹션), 코디네이터 상세의 티켓 의존 그래프 노드에 그 티켓 세션들이 많이 읽은 섹션 번호(`§5 · §3 · §4 +N`, 문서마다 같은 번호면 파일 이름을 앞에 붙임, 전체는 툴팁).
+- 세션 상세에 「참고한 설계 섹션」 절(문서별 섹션, 누르면 탭의 그 섹션), 코디네이터 상세의 티켓 의존 그래프 노드에 그 티켓 세션들이 많이 읽은 섹션 번호(`§5 · §3 · §4 +N`, 문서마다 같은 번호면 문서 제목을 앞에 붙임, 전체는 툴팁).
 
 ## 설정 (`prefs.json`)
 

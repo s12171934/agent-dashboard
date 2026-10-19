@@ -3294,6 +3294,9 @@ const dzDocs = {};                  // server + '\n' + key -> api.design()
 let dzMounted = null;               // what the view was built for; live updates then redraw only the counts
 const dzHash = (server, key, sec) => '#dz=' + encodeURIComponent([server, key, sec || ''].join('|'));
 const dzName = key => key.split('/').slice(2).join('/') || key;  // without "feature-designs/<slug>/"
+// a document as its folder's index.html names it: the H1 without its path prefix, under "01 챕터" when the page lists it
+const dzTitle = (key, title) => title || dzName(key);
+const dzChap = (ch, chapter) => ch ? `${String(ch).padStart(2, '0')} ${chapter || ''}`.trim() : '';
 const dzSlug = key => key.split('/').length > 2 ? key.split('/')[1] : '(폴더 바로 아래)';
 const dzNo = r => r.no ? '§' + r.no : cut(r.section || '문서 전체', 12);
 const dzLiveSet = () => new Set(state.sessions.filter(s => OPEN(status(s))).map(s => s.path));
@@ -3332,7 +3335,7 @@ async function renderDesigns() {
         <label class="chk"><input type="checkbox" data-dz-opt="live"${dz.live ? ' checked' : ''}> 진행 중 세션만</label>
         <span class="st" id="dz-sum"></span></div>
       ${!dzList.enabled ? dzNoSource() : `<div class="dz${meta ? '' : ' empty-doc'}">
-        <details class="box dz-tree" id="dz-tree"${innerWidth > 900 || !meta ? ' open' : ''}><summary><b>설계문서</b> <span class="st">${meta ? esc(dzName(key)) : ''}</span></summary>
+        <details class="box dz-tree" id="dz-tree"${innerWidth > 900 || !meta ? ' open' : ''}><summary><b>설계문서</b> <span class="st">${meta ? esc(dzTitle(key, meta.title)) : ''}</span></summary>
           <input class="field dz-q" type="search" placeholder="문서 이름으로 거르기" value="${esc(dz.q)}" aria-label="문서 이름으로 거르기">
           <div id="dz-list"></div></details>
         <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
@@ -3413,9 +3416,19 @@ function dzHeadings(art, doc) {
   if (pre) art.insertAdjacentHTML('afterbegin', `<div class="dz-pre" data-sec="${esc(pre.id)}"><span class="st">${pre.id === '본문' ? '본문 (## 제목 없음)' : '머리말 (첫 ## 앞)'}</span></div>`);
 }
 
+// A folder's documents in its index.html's reading order, one group per chapter, the files it does not list last
+// (「그 밖의 파일」); a folder without such a page is one group with no heading (chapter null).
+function dzChapters(xs) {
+  if (!xs.some(x => x.ch)) return [[null, xs]];
+  const groups = new Map();
+  [...xs].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.key.localeCompare(b.key))
+    .forEach(x => { const c = dzChap(x.ch, x.chapter); groups.has(c) || groups.set(c, []); groups.get(c).push(x); });
+  return [...groups];
+}
+
 // Everything that moves with new references: the tree's counts, the header, the badges, the readers.
 function dzFill(server, key, sec, meta, doc) {
-  const docs = dzList.docs.filter(x => !dz.q || x.key.toLowerCase().includes(dz.q.toLowerCase()));
+  const q = dz.q.toLowerCase(), docs = dzList.docs.filter(x => !q || [x.key, x.title, x.chapter].some(t => t && t.toLowerCase().includes(q)));
   $('#dz-sum').textContent = `문서 ${dzList.docs.filter(x => x.kind === 'md').length} · 그림·PDF ${dzList.docs.filter(x => x.kind !== 'md').length} · 참조 ${dzList.refs}건`;
   // tree: server (when several) -> feature folder -> documents; folders with recent changes first
   const bySrv = {};
@@ -3426,13 +3439,14 @@ function dzFill(server, key, sec, meta, doc) {
       const n = xs.filter(x => x.sessions).length, open = (srv === server && dzSlug(key || '') === slug) || dz.q;
       const src = dzList.dirs.filter(d => d.server === srv)[xs[0].src];
       return `<details class="dz-f"${open ? ' open' : ''}><summary title="${esc(src ? `${src.dir}${src.branch ? ` (${src.branch})` : ''}` : '')}"><span class="dz-fn">${esc(slug)}</span>${src && !src.configured ? '<span class="dz-wt" aria-label="워크트리 사본">▣</span>' : ''}<span class="badge${n ? ' dz-n' : ''}" title="읽힌 문서 ${n} / 전체 ${xs.length}">${n}/${xs.length}</span></summary>
-        <ul>${xs.map(x => `<li><a class="dz-d${x.server === server && x.key === key ? ' on' : ''}${x.sessions ? '' : ' zero'}" href="${esc(dzHash(x.server, x.key))}" title="${esc(`${x.key}\n읽기 ${x.reads} · 검색 ${x.searches} · 세션 ${x.sessions}`)}">
-          <span>${x.kind === 'md' ? '' : x.kind === 'pdf' ? '▤ ' : '▧ '}${esc(dzName(x.key))}</span><span class="badge${x.sessions ? ' dz-n' : ''}">${x.sessions}</span></a></li>`).join('')}</ul></details>`;
+        ${dzChapters(xs).map(([chap, ys]) => `${chap === null ? '' : `<div class="dz-ch">${esc(chap || '그 밖의 파일')}</div>`}<ul>${ys.map(x => `<li><a class="dz-d${x.server === server && x.key === key ? ' on' : ''}${x.sessions ? '' : ' zero'}" href="${esc(dzHash(x.server, x.key))}" title="${esc(`${dzName(x.key)}\n읽기 ${x.reads} · 검색 ${x.searches} · 세션 ${x.sessions}`)}">
+          <span>${x.kind === 'md' ? '' : x.kind === 'pdf' ? '▤ ' : '▧ '}${esc(dzTitle(x.key, x.title))}</span><span class="badge${x.sessions ? ' dz-n' : ''}">${x.sessions}</span></a></li>`).join('')}</ul>`).join('')}</details>`;
     }).join('')}`).join('') || '<div class="st">맞는 문서가 없습니다.</div>';
   if (!meta || !doc || doc.error) return;
   // header: where the copy comes from, and the plans' design_commit against its HEAD
   const s = doc.source || {}, head = s.head ? s.head.slice(0, 7) : '';
-  $('#dz-head').innerHTML = `<div class="dz-title"><b>${esc(dzName(key))}</b>${srvBadge(doc)} <span class="st">${esc(dzSlug(key))}</span></div>
+  const chap = dzChap(doc.ch, doc.chapter);
+  $('#dz-head').innerHTML = `<div class="dz-title"><b title="${esc(dzName(key))}">${esc(dzTitle(key, doc.title))}</b>${srvBadge(doc)} <span class="st">${esc((chap ? chap + ' · ' : '') + dzSlug(key))}</span></div>
     <div class="dz-ver"><span title="${esc(s.dir || '')}">▣ ${esc(s.repo || '')}${s.worktree && s.worktree !== s.repo ? ' · ' + esc(s.worktree) : ''}${s.branch ? ` (${esc(s.branch)})` : ''}${head ? ` · HEAD <code>${head}</code>` : ''}</span>
       ${doc.copies?.length > 1 ? `<span class="st" title="${esc(doc.copies.map(c => `${c.worktree || c.dir} ${c.branch || ''}`).join('\n'))}">사본 ${doc.copies.length}곳 (설정 폴더 → 최근 수정 순으로 이것)</span>` : ''}
       ${(doc.plans || []).map(p => `<span class="dz-cm ${p.same ? 'ok' : 'diff'}">문서 버전 <code>design_commit ${esc((p.design_commit || '').slice(0, 7))}</code> · ${p.same ? '현재 HEAD 와 같음' : `HEAD 와 다름${p.same_file === true ? ' (이 문서는 같음)' : p.same_file === false ? ' (이 문서도 바뀜)' : ''}`}${p.project ? ` <span class="st">${esc(p.project)}</span>` : ''}</span>`).join('')}
@@ -3508,19 +3522,19 @@ function designRefsBox(d) {
   rows.forEach(x => (docs[x.doc] ||= []).push(x));
   const part = x => [x.reads ? `read${x.cover != null ? ' ' + Math.round(x.cover * 100) + '%' : ''}` : '', x.searches ? `search ${x.searches}` : '', `${x.reads + x.searches}회`].filter(Boolean).join(' · ');
   return `<details class="box" id="d-design" ${openState.design ?? true ? 'open' : ''}><summary><b>참고한 설계 섹션</b> <span class="st">문서 ${Object.keys(docs).length} · 섹션 ${rows.length}${rows.some(x => x.sub) ? ' · 서브에이전트 포함' : ''}</span></summary>
-    <div class="dz-rd">${Object.entries(docs).map(([doc, xs]) => `<div><a href="${esc(dzHash(d.server, doc))}"><b>${esc(dzName(doc))}</b></a> <span class="st">${esc(dzSlug(doc))}</span>
+    <div class="dz-rd">${Object.entries(docs).map(([doc, xs]) => `<div><a href="${esc(dzHash(d.server, doc))}" title="${esc(dzName(doc))}"><b>${esc(dzTitle(doc, xs[0].doc_title))}</b></a> <span class="st">${esc([dzChap(xs[0].doc_ch, xs[0].doc_chapter), dzSlug(doc)].filter(Boolean).join(' · '))}</span>
       <ul>${xs.map(x => `<li><a href="${esc(dzHash(d.server, doc, x.section))}">${esc(x.section || '문서 전체')}</a> <span class="st">— ${esc(part(x))}${x.sub ? ' · 서브에이전트' : ''}</span></li>`).join('')}</ul></div>`).join('')}</div></details>`;
 }
 
-// Ticket graph node: the sections its sessions read, most read first ("§5 · §9"); the files are in the tooltip, since a
+// Ticket graph node: the sections its sessions read, most read first ("§5 · §9"); the documents are in the tooltip, since a
 // box is too narrow for them.
 function ticketDesignBadge(p, n) {
   const rows = p.design_refs?.[n] || [];
   if (!rows.length) return '';
-  const tip = rows.map(x => `${dzName(x.doc)} — ${x.section} (세션 ${x.sessions} · ${x.count}회)`).join('\n');
-  // the same number from two documents gets the file's name in front (cut short), so "§2 · §2" never shows
+  const tip = rows.map(x => `${dzTitle(x.doc, x.doc_title)} — ${x.section} (세션 ${x.sessions} · ${x.count}회)`).join('\n');
+  // the same number from two documents gets the document's title in front (cut short), so "§2 · §2" never shows
   const top = rows.slice(0, 3), twice = top.filter(x => top.some(y => y !== x && dzNo(y) === dzNo(x)));
-  const lbl = x => (twice.includes(x) ? cut(x.doc.split('/').pop().replace(/\.md$/, ''), 8) : '') + dzNo(x);
+  const lbl = x => (twice.includes(x) ? cut(dzTitle(x.doc, x.doc_title), 8) : '') + dzNo(x);
   return `<div class="tg-d" title="${esc('읽은 설계 섹션\n' + tip)}">${top.map(x => esc(lbl(x))).join(' · ')}${rows.length > 3 ? ` <span>+${rows.length - 3}</span>` : ''}</div>`;
 }
 
