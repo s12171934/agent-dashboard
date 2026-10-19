@@ -1728,6 +1728,7 @@ function renderAgents() {
     if (famMin['wt:' + k]) { famMin['wt:' + k] = false; try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {} renderAgents(); }
     document.getElementById(wtId(k))?.scrollIntoView({ block: 'start' });
   });
+  wtMasonry();
   wtMark();
 }
 
@@ -1873,6 +1874,20 @@ function wtJump(path) {
   el.scrollIntoView({ block: 'center' });  // not smooth: a live re-render restores the scroll it saved and would cut a smooth one short
   wtFlash = { sel, until: Date.now() + 1800 };
   wtMark();
+}
+// Worktree tiles pack without holes: the grid's rows are 2px, and each tile spans as many as its section is tall (plus the
+// gap), so a later tile drops into the space under a shorter one beside it while keeping the reading order. Tiles
+// re-measure when their section changes height (fold, live update, custom elements upgrading, width change).
+const WT_ROW = 2, WT_GAP = 18;
+let wtRO = null;
+function wtMasonry() {
+  wtRO?.disconnect();
+  const secs = [...$('#view').querySelectorAll('.wt-tile > .wt-sec')];
+  if (!secs.length) return;
+  const fit = sec => { sec.parentElement.style.gridRowEnd = `span ${Math.max(1, Math.ceil((sec.getBoundingClientRect().height + WT_GAP) / WT_ROW))}`; };
+  secs.forEach(fit);
+  wtRO ||= new ResizeObserver(es => es.forEach(e => e.target.isConnected && fit(e.target)));
+  secs.forEach(sec => wtRO.observe(sec));
 }
 function wtMark() {
   if (!wtFlash || Date.now() > wtFlash.until) return (wtFlash = null);
