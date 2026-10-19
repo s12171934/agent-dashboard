@@ -3608,7 +3608,8 @@ class DesignReads:
         self.seen += 1
         if self.seen <= 8 or any(m in raw for m in self.marks):  # the opening lines name the session (title, brief)
             return True
-        if self.kind == "codex" and (b'"session_meta"' in raw or b'"turn_context"' in raw):
+        if self.kind == "codex" and (b'"session_meta"' in raw or b'"turn_context"' in raw
+                                     or not self.title and b'"role":"user"' in raw.replace(b" ", b"")):
             return True
         return b"Your task ID is" in raw or b'"ai-title"' in raw or any(b.encode() in raw for b in design_bases)
 
@@ -3684,6 +3685,8 @@ class DesignReads:
         elif typ == "response_item" and ptype == "message" and p.get("role") == "user":
             text = " ".join(c.get("text", "") for c in p.get("content") or [] if isinstance(c, dict))
             self.brief(text)
+            if not self.title and text.strip() and not text.lstrip().startswith(("#", "<")):
+                self.title = short(text, 80)  # as parse_codex names a session
 
 
 def plan_tickets():
@@ -3695,6 +3698,13 @@ def plan_tickets():
                 if isinstance(r, dict) and r.get("task_id"):
                     out[r["task_id"]] = (path, k)
     return out
+
+
+def row_key(tickets, task):
+    """The external plan's name for a task's session row ("S5#4 리뷰 codex"): the title of a Codex worker, whose first
+    message is its brief, and of any session with no title of its own."""
+    hit = tickets.get(task)
+    return hit and next((r.get("key") for r in hit[1].get("sessions") or [] if isinstance(r, dict) and r.get("task_id") == task), None)
 
 
 def design_commit_for(plan_path, doc):
@@ -3931,7 +3941,7 @@ def design_doc(key):
     for r in refs:
         m = metas.get(r["session"]) or metas.setdefault(r["session"], session_meta(r["session"], live))
         row = rows.setdefault((r["section"], r["session"]), {
-            "section": r["section"], "session": r["session"], "title": m.get("title") or r["session"][:8],
+            "section": r["section"], "session": r["session"], "title": (m.get("kind") == "codex" and row_key(tickets, m.get("task"))) or m.get("title") or row_key(tickets, m.get("task")) or r["session"][:8],
             "path": m.get("path"), "kind": m.get("kind"), "parent": m.get("parent"), "reads": 0, "searches": 0,
             "lines": [], "cover": None, "first": None, "last": None, "exact": False, "commits": set(),
             "ticket": r.get("ticket") or (tickets.get(m.get("task")) or (None, {}))[1].get("package")})

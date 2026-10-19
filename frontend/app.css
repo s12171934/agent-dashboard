@@ -865,6 +865,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-rd { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 10px 18px; margin-top: 8px; font-size: 12.5px; }
 .dz-rd a { color: var(--accent); }
 .dz-rd ul { margin: 4px 0 0; padding-left: 18px; }
+.dz-rd > div { min-width: 0; overflow-wrap: anywhere; }
 .tg-d { color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tg-d span { color: var(--muted); font-weight: 400; }
 @media (max-width: 900px) {
@@ -878,3 +879,4 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-doc .dz-inline h3 { margin-top: 0; }
 .dz-main { display: grid; gap: 14px; min-width: 0; }
 .dz .box { margin-bottom: 0; }
+.dz-doc a { color: var(--accent); }
