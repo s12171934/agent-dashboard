@@ -1532,12 +1532,23 @@ def attach_e2e_progress():
                     bump()
 
 
+def plan_owned_by(plan, sm):
+    """Whether sm is the plan's coordinator: the session the plan names, or, when the plan names none (its driver
+    found no coordinator.json), the session that opened the plan's scheduler terminal or runs in its coordinator one."""
+    if plan.get("coordinator_session"):
+        return plan["coordinator_session"] in (sm["id"], os.path.splitext(os.path.basename(sm["path"]))[0])
+    if sm["parent"]:
+        return False
+    return (plan.get("scheduler_terminal") in sm["made_terms"]
+            or bool(plan.get("coordinator_terminal")) and plan["coordinator_terminal"] == sm.get("own_handle"))
+
+
 def with_plan_terms(sm):
     """A plan's coordinator session owns the plan's scheduler and per-ticket driver terminals,
     so the UI nests those scripts (and their Runs and workers) under it."""
     extra = []
     for plan in ext_plans.values():
-        if plan.get("coordinator_session") not in (sm["id"], os.path.splitext(os.path.basename(sm["path"]))[0]):
+        if not plan_owned_by(plan, sm):
             continue
         extra += [plan.get("scheduler_terminal")] + [t.get("driver_terminal_handle") for t in plan["tickets"]]
         extra += plan.get("driver_history") or []
@@ -1547,6 +1558,15 @@ def with_plan_terms(sm):
     made += [h for h in dict.fromkeys(extra) if h and h not in made]
     sm["made_terms"] = made
     return sm
+
+
+def plan_with_owner(plan, summaries):
+    """The plan as the page gets it: a plan that names no coordinator names the one plan_owned_by inferred (the most
+    recently active, if several opened its scheduler), flagged coordinator_inferred, so the page nests it the same way."""
+    if plan.get("coordinator_session"):
+        return plan
+    owners = sorted((sm for sm in summaries if plan_owned_by(plan, sm)), key=lambda sm: sm["last_ts"] or "", reverse=True)
+    return {**plan, "coordinator_session": owners[0]["id"], "coordinator_inferred": True} if owners else plan
 
 
 # Settled dispatches outlive the tracked-run window: once a Run ages out, its workers leave orca_state,
@@ -2803,7 +2823,7 @@ class Handler(BaseHTTPRequestHandler):
                 "version": version, "api": API_VERSION,
                 "sessions": sorted(summaries, key=lambda s: s["last_ts"] or "", reverse=True),
                 "orca": lite_orca(orca_state),
-                "ext_plans": [ext_plans[p] for p in EXTERNAL_PLANS if p in ext_plans],
+                "ext_plans": [plan_with_owner(ext_plans[p], summaries) for p in EXTERNAL_PLANS if p in ext_plans],
                 "tests": test_progress,
                 "health": {"now": time.time(), "loops": health},
                 "decisions": decisions,
