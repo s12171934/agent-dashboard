@@ -1444,6 +1444,7 @@ function foldAll(open) {
     v.querySelectorAll('[data-toggle]').forEach(b => set(b.dataset.toggle, !open));
     v.querySelectorAll('[data-ttoggle]').forEach(b => set(b.dataset.ttoggle, open));
     v.querySelectorAll('[data-rtoggle]').forEach(b => set(b.dataset.rtoggle, open));
+    v.querySelectorAll('[data-wtoggle]').forEach(b => set('wt:' + b.dataset.wtoggle, !open));  // 「워크트리별」 sections
     v.querySelectorAll('[data-ftoggle]').forEach(b => set('drvfin:' + b.dataset.ftoggle, open));
     v.querySelectorAll('[data-dtoggle]').forEach(b => {
       const d = drivers().find(x => x.handle === b.dataset.dtoggle);
@@ -1738,7 +1739,7 @@ function wtSec({ key, items }) {
   const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
   const html = `<section class="wt-sec st-${famStatus(arr.map(m => ({ st: status(m) })))}" id="${wtId(key)}" data-wtkey="${esc(key)}">
     <div class="wt-h" title="${esc(p?.path || '')}"><span class="wt-proj">${esc(p?.project || '')}</span><h3>▣ ${esc(name)}</h3>${p?.branch && p.branch !== name ? `<span class="wt-br">⎇ ${esc(p.branch)}</span>` : ''}${srvBadge(arr[0])}
-      <span class="wt-sum"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
+      <span class="wt-cnt"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
       <span class="wt-pills">${WT_ST.filter(k => cnt[k]).map(k => `<ds-pill state="${k}">${ST_LABEL[k]} ${cnt[k]}</ds-pill>`).join('')}</span>
       <button class="tgl" data-wtoggle="${esc(key)}">${min ? '▸ 펼치기' : '▾ 최소화'}</button></div>
     ${min ? '' : grid(items, true)}</section>`;

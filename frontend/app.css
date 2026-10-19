@@ -715,11 +715,11 @@ a.act { text-decoration: none; display: inline-block; }
 /* 「워크트리별」 보기: one section per worktree holding the tree view's own blocks; stand-ins (.wt-proxy) mark sessions drawn elsewhere */
 .ag-controls { margin-bottom: 4px; }
 .wt-sec { min-width: 0; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
-.wt-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; margin-bottom: 10px; }
-.wt-h h3 { font-size: 14px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.wt-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; margin-bottom: 10px; line-height: 22px; }
+.wt-h h3 { font-size: 14px; line-height: 22px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .wt-proj, .wt-br { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
-.wt-sum { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; color: var(--muted); font-size: 12px; }
-.wt-sum b { color: var(--text); font-variant-numeric: tabular-nums; }
+.wt-cnt { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 10px; color: var(--muted); font-size: 12px; line-height: 22px; }
+.wt-cnt b { color: var(--text); font-variant-numeric: tabular-nums; }
 .wt-h .tgl { margin-left: auto; }
 .wt-pills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .wt-sec > .grid { margin-bottom: 14px; }
