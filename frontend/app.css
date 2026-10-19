@@ -808,12 +808,19 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 /* 설계문서: projects · documents · table of contents (left) · the document with a badge per section (middle) · the picked section's readers (right) */
 .dz { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr) minmax(240px, 320px); gap: 14px; align-items: start; }
 .dz.empty-doc { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); }
-.dz-side, .dz-pane { position: sticky; top: calc(var(--hdr-top) + 70px); max-height: calc(100vh - var(--hdr-top) - 90px); overflow: auto; }
+/* The page itself stays put; only the document scrolls (the sidebar and the readers scroll on their own). --dz-top is
+   where the grid starts, measured by the page; 96px is the view's room for the dock. A phone scrolls the page. */
+.dz { height: calc(100dvh - var(--dz-top, 120px) - 96px); align-items: stretch; }
+.dz-side, .dz-pane { min-height: 0; overflow: auto; }
+.dz-main { grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.dz-doc { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .dz-side { display: grid; gap: 10px; align-content: start; overscroll-behavior: contain; }
 .dz-box > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .dz-box > summary .st { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dz-box[open] > summary { margin-bottom: 6px; }
 .dz-projbox[open] #dz-projs { max-height: 30vh; overflow: auto; }
+/* the document list scrolls inside its box so the project box above stays in view (~150px: the two summaries and the filter) */
+#dz-list { position: relative; max-height: calc(100dvh - var(--dz-top, 120px) - 96px - 150px); overflow: auto; overscroll-behavior: contain; }
 .dz-ul { list-style: none; margin: 0 0 6px; padding: 0; }
 .dz-toc { list-style: none; margin: 2px 0 6px 10px; padding: 0 0 0 6px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 .dz-t { display: flex; gap: 6px; align-items: center; width: 100%; padding: 3px 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; min-height: 26px; }
@@ -839,7 +846,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-cm.diff { color: var(--warn); }
 .dz-doc { line-height: 1.65; word-break: break-word; overflow-x: auto; }
 .dz-doc h1 { font-size: 19px; margin: 4px 0 12px; }
-.dz-doc h2 { font-size: 16px; margin: 22px -6px 8px; padding: 4px 6px; border-radius: 8px; scroll-margin-top: 90px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.dz-doc h2 { font-size: 16px; margin: 22px -6px 8px; padding: 4px 6px; border-radius: 8px; scroll-margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 .dz-doc h2.on, .dz-pre.on { outline: 2px solid var(--accent); }
 .dz-doc h3 { font-size: 14px; margin: 16px 0 6px; }
 .dz-doc h4, .dz-doc h5, .dz-doc h6 { font-size: 13px; margin: 12px 0 4px; }
@@ -877,7 +884,10 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tg-d { color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tg-d span { color: var(--muted); font-weight: 400; }
 @media (max-width: 900px) {
-  .dz, .dz.empty-doc { grid-template-columns: minmax(0, 1fr); }
+  .dz, .dz.empty-doc { grid-template-columns: minmax(0, 1fr); height: auto; align-items: start; }
+  .dz-main { grid-template-rows: none; }
+  .dz-doc { overflow: visible; overflow-x: auto; }
+  .dz-doc h2 { scroll-margin-top: 90px; }
   .dz-side { position: static; max-height: none; overflow: visible; }
   #dz-list { max-height: 60vh; overflow: auto; }
   .dz-pane { display: none; }

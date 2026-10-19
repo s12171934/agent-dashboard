@@ -3358,11 +3358,19 @@ async function renderDesigns() {
     if (route().v !== 'designs' || dzMounted !== mk) return;
   }
   if (!dzList.enabled) return;
+  dzFit();
   const fresh = !$('#dz-list')?.children.length;
   dzFill(server, key, sec, meta, doc);
-  const on = fresh && $('#dz-list .dz-d.on'), side = $('#dz-side');  // a newly drawn list shows the open document
-  if (on && side.scrollHeight > side.clientHeight) side.scrollTop += on.getBoundingClientRect().top - side.getBoundingClientRect().top - 60;
+  const on = fresh && $('#dz-list .dz-d.on'), list = $('#dz-list');  // a newly drawn list shows the open document
+  if (on && list.scrollHeight > list.clientHeight) list.scrollTop = on.offsetTop - 40;
 }
+
+// On a wide screen the grid fills the window below the header and controls (see .dz in app.css).
+function dzFit() {
+  const g = $('.dz');
+  if (g) g.style.setProperty('--dz-top', Math.round(g.getBoundingClientRect().top + scrollY) + 'px');
+}
+addEventListener('resize', () => { if (route().v === 'designs') dzFit(); });
 
 // No server that is on indexes design documents: say, per server, why not.
 const DZ_SRC = { off: '설계 폴더 없이 떠 있음 (prefs.json 의 design_dirs 나 --design-dir)', old: '설계문서 기능이 없는 서버 버전 (새 코드로 다시 띄워야 함)', error: '연결할 수 없음' };
