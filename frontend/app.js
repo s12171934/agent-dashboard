@@ -1811,7 +1811,8 @@ function wtHtml(top, fams, up, srv) {
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
   const head = srv ? `<div class="sec-h srv-h">${srvTitle(srv)}<span>에이전트 ${n} · 워크트리 ${list.length}</span>${fold}</div>` : `<div class="sec-h"><h2>에이전트 ${n}</h2><span>워크트리 ${list.length}</span>${fold}</div>`;
   if (!list.length) return srv ? head + '<div class="empty srv-empty">표시할 에이전트가 없습니다.</div>' : '';
-  return head + list.map(x => x.html).join('');
+  // Same span grid as the driver tiles: a section takes 1–3 columns and small ones sit side by side, in sort order.
+  return head + `<div class="wt-wrap"><div class="wt-tiles">${list.map(x => `<div class="wt-tile s${x.span}">${x.html}</div>`).join('')}</div></div>`;
 }
 const WT_ST = ['stalled', 'wait', 'run', 'bg', 'idle', 'done'];
 function wtSec({ key, items }, drivers = []) {
@@ -1825,14 +1826,18 @@ function wtSec({ key, items }, drivers = []) {
   const arr = [...ss], min = famMin['wt:' + key], drvs = items.flatMap(it => it.list || [it]).filter(x => x.d);
   if (!arr.length && !drvs.length) return { n: 0 };
   items.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
+  // span: columns (1–3) the section takes in the worktree tile grid, from its widest row — a card row's length, an open
+  // driver's own tile span, 3 for an expanded coordinator family.
+  let span = 1;
+  const want = n => { span = Math.max(span, Math.min(3, n)); };
   const grid = (its, solo) => {
     let out = '', cells = [];
-    const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
+    const flush = () => { if (cells.length) { want(cells.length); out += `<div class="grid">${cells.join('')}</div>`; } cells = []; };
     for (const it of its) {
       if (it.list) { flush(); out += `<div class="family nested wt-ext st-${famStatus(it.list.map(x => ({ st: x.f ? x.f.st : x.d ? drvSt(x.d) : status(x.s) })))}"><div class="wt-px-row"><div class="grid">${it.pf.coord ? wtProxy(it.pf.coord)
         : `<div class="wt-proxy off"><span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(it.pf.handle))}</b><span class="wt-px-wt">추적 범위 밖</span></div>`}</div></div><div class="tree">${grid(it.list.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started)))}</div></div>`; }
-      else if (it.d) { flush(); out += cellsJoin([driverHtml(it.d, true)]); }
-      else if (it.f) { if (shut(it.f)) cells.push(miniFam(it.f)); else { flush(); out += famHtml(it.f, key); } }
+      else if (it.d) { flush(); const h = driverHtml(it.d, true); want(h.startsWith(TILE) ? +h.slice(TILE.length, h.indexOf('-->')) : 1); out += cellsJoin([h]); }
+      else if (it.f) { if (shut(it.f)) cells.push(miniFam(it.f)); else { flush(); want(3); out += famHtml(it.f, key); } }
       else cells.push(card(it.s, solo && it.s.role === 'solo' ? 'solo' : ''));
     }
     flush();
@@ -1843,13 +1848,14 @@ function wtSec({ key, items }, drivers = []) {
   const nc = arr.filter(s => s.role === 'coordinator').length, nw = arr.filter(s => s.role === 'worker').length, ns = arr.length - nc - nw;
   const cross = items.filter(it => it.list).reduce((a, it) => a + it.list.filter(x => !x.d).length, 0);
   const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
+  const body = min ? '' : drivers.map(d => ticketsHtml(d, filtering())).join('') + grid(items, true);
   const html = `<section class="wt-sec st-${famStatus(arr.map(m => ({ st: status(m) })))}" id="${wtId(key)}" data-wtkey="${esc(key)}">
     <div class="wt-h" title="${esc(p?.path || '')}"><span class="wt-proj">${esc(p?.project || '')}</span><h3>▣ ${esc(name)}</h3>${p?.branch && p.branch !== name ? `<span class="wt-br">⎇ ${esc(p.branch)}</span>` : ''}${srvBadge(arr[0])}
       <span class="wt-cnt"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${drvs.length ? `<span title="이 워크트리의 티켓을 맡은 스크립트 드라이버">드라이버 <b>${drvs.length}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
       <span class="wt-pills">${WT_ST.filter(k => cnt[k]).map(k => `<ds-pill state="${k}">${ST_LABEL[k]} ${cnt[k]}</ds-pill>`).join('')}</span>
       <button class="tgl" data-wtoggle="${esc(key)}">${min ? '▸ 펼치기' : '▾ 최소화'}</button></div>
-    ${min ? '' : drivers.map(d => ticketsHtml(d, filtering())).join('') + grid(items, true)}</section>`;
-  return { n: arr.length, html, r: Math.min(...items.map(it => it.r)), started: items.map(it => it.started).sort().pop() || '' };
+    ${body}</section>`;
+  return { n: arr.length, html, span: min ? 1 : span, r: Math.min(...items.map(it => it.r)), started: items.map(it => it.started).sort().pop() || '' };
 }
 // A relation link scrolls to its target card and marks it for a moment; a folded worktree is opened first, and a
 // target that is not on screen (filtered out, another tab) opens the session instead.
