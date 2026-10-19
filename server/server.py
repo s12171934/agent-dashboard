@@ -1956,7 +1956,7 @@ def picker_state(handle, card):
             cursor = n if m[1] else cursor
     if first is None:
         return {"kind": "other"}
-    text = compact("".join(body[:first]))
+    text = compact("".join(re.sub(r"^\s*│", "", ln) for ln in body[:first]))  # v2.1.3xx rules the question off with "│"
     qi = next((i for i, q in enumerate(card["questions"]) if compact(q["question"]) == text), None)
     if qi is None:
         return {"kind": "other"}
