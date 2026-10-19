@@ -723,7 +723,6 @@ a.act { text-decoration: none; display: inline-block; }
 .wt-pills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .wt-sec > .grid { margin-top: 4px; }
 .wt-sec > .wt-fam + .grid { margin-top: 12px; }
-.wt-up { min-width: 0; }
 .wt-rel { color: var(--accent); font-size: 12px; text-decoration: none; overflow-wrap: anywhere; }
 .wt-rel:hover { text-decoration: underline; }
 .wt-rel.off { color: var(--muted); }
@@ -731,3 +730,20 @@ a.act { text-decoration: none; display: inline-block; }
 .wt-away { color: var(--muted); font-size: 12px; margin: 8px 2px 0; overflow-wrap: anywhere; }
 .wt-away > b { color: var(--text); }
 .wt-flash { outline: 2px solid var(--accent); outline-offset: 2px; transition: outline-color .4s; }
+/* stand-in for a coordinator in another worktree: heads its workers here, links to the real card */
+.wt-proxy { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 100%; min-width: 0; width: fit-content; padding: 6px 10px;
+  border: 1px dashed color-mix(in srgb, var(--coord) 55%, var(--line)); border-left: 4px solid var(--coord); border-radius: var(--radius);
+  background: var(--surface-sheen), var(--surface); color: var(--text); text-decoration: none; font-size: 12px; }
+a.wt-proxy:hover { border-style: solid; }
+a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
+.wt-px-nm { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.wt-px-wt { color: var(--muted); overflow-wrap: anywhere; }
+.wt-px-go { color: var(--accent); }
+.wt-proxy.off { opacity: .8; }
+/* the stand-in sits in a row boxed like .tree, so its grid cell is exactly one agent card wide; the tree line starts at it */
+.wt-px-row { position: relative; margin-left: 16px; padding-left: 16px; border-left: 2px solid transparent; }
+.wt-px-row::after { content: ""; position: absolute; left: -2px; top: 50%; bottom: -8px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.wt-px-row .wt-proxy { width: auto; position: relative; }
+.wt-px-row .wt-proxy::before { content: ""; position: absolute; left: -22px; top: 50%; width: 18px; border-top: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.wt-ext > .tree { margin-top: 8px; }
+@media (max-width: 700px) { .wt-px-row { margin-left: 6px; padding-left: 12px; } .wt-px-row .wt-proxy::before { left: -18px; width: 14px; } }
