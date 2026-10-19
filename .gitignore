@@ -6,6 +6,7 @@ inbox.json
 plan-history.json
 test-history.json
 server.log
+decision.log
 pricing.json
 __pycache__/
 # legacy manual backups (history now lives in git)

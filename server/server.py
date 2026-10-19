@@ -1927,6 +1927,7 @@ def add_decision(body):
     card = {"id": rid, "session_id": str(body.get("session_id") or "") or None, "tool_use_id": body.get("tool_use_id"),
             "agent": os.path.basename(cwd.rstrip("/")) or "에이전트", "cwd": cwd, "created_at": time.time(),
             "questions": [{"question": q["question"], "header": q.get("header") or "", "multiSelect": bool(q.get("multiSelect")),
+                           "preview": any(o.get("preview") for o in q["options"]),
                            "options": [{"label": o["label"], "description": o.get("description") or ""} for o in q["options"]]}
                           for q in qs]}
     with lock:
@@ -1976,7 +1977,8 @@ def check_answers(card, answers):
             return "답하지 않은 질문이 있습니다"
         picks = list(dict.fromkeys(x.strip() for x in picks))
         typed = [x for x in picks if x not in labels]
-        if len(labels) + 1 > 9 or len(typed) > 1 or not all(TYPED.match(x) for x in typed):
+        # a picker with previews has no typed row
+        if len(labels) + 1 > 9 or len(typed) > (0 if q["preview"] else 1) or not all(TYPED.match(x) for x in typed):
             return "이 답은 대시보드에서 넣을 수 없습니다 — 터미널에서 답하세요"
         out.append(picks if q["multiSelect"] else picks[0])
     return out
@@ -1987,7 +1989,9 @@ def check_answers(card, answers):
 # options is "Type something"), and a footer ending in "Esc to cancel". Several questions end in a review page
 # ("Ready to submit your answers?"). Digit keys pick a single-choice option (and move on) or toggle a multiSelect
 # one; on the typed row the keys go into its input line; → leaves a multiSelect question (but moves the text cursor
-# on the typed row); Enter takes a single-choice typed row.
+# on the typed row); Enter takes a single-choice typed row. Options with a preview are drawn beside a preview box
+# ("❯ 1. 왼쪽      ┌───┐", checked against v2.1.303) with no typed row; there a digit only moves the cursor and
+# Enter picks.
 # Text sent in one write arrives as a paste, so each key goes on its own.
 PICK_ROW = re.compile(r"^\s*(❯)?\s*(\d)\.\s(?:\[(.)\]\s)?(.*)$")
 KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_ENTER = "\x1b[C", "\x1b[A", "\x1b[B", "\r"
@@ -2098,7 +2102,11 @@ def type_answers(handle, card, answers):
                 until(lambda s: on(qi)(s) and s["cursor"] == n, "직접 입력 칸에서 나오지 못했습니다")
             press(KEY_RIGHT)
         elif a in labels:
-            press(str(labels.index(a) + 1))
+            k = labels.index(a) + 1
+            press(str(k))
+            if q["preview"]:
+                until(lambda s: on(qi)(s) and s["cursor"] == k, "선택지로 가지 못했습니다")
+                press(KEY_ENTER)
         else:
             press(str(n + 1))
             until(lambda s: on(qi)(s) and s["cursor"] == n + 1, "직접 입력 칸으로 가지 못했습니다")
@@ -2123,36 +2131,65 @@ def decision_terminal(d):
     return next((h for h, s in focus_handles.items() if s == sid), None)
 
 
+DECISION_LOG = os.path.join(HERE, "decision.log")
+
+
+def log_decision_failure(rid, card, handle, error):
+    """One JSON line in decision.log per answer the page could not put in, with the screen the terminal shows
+    afterwards: the card reports only the error, and the picker that caused it is gone by the time anyone looks."""
+    entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "id": rid, "terminal": handle, "error": error,
+             "questions": [q["question"][:80] for q in card["questions"]] if card else None}
+    if handle:
+        try:
+            t = orca("terminal", "read", "--terminal", handle, "--screen", timeout=10)["terminal"]
+            entry["screen"] = (t["tail"] if isinstance(t["tail"], list) else str(t["tail"]).splitlines())[-40:]
+        except Exception as e:
+            entry["screen"] = f"(읽지 못함: {short(e, 160)})"
+    try:
+        with open(DECISION_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as e:
+        report_failure("decision", e)
+
+
 def answer_decision(rid, answers):
     """An answer from the page -> (http status, body). Types it into the session's terminal picker. 410 {closed}:
-    the terminal shows no picker, so the card is closed (PickerGone)."""
+    the terminal shows no picker, so the card is closed (PickerGone); that is logged too, with the screen."""
+    status, out, card, handle = answer_decision_once(rid, answers)
+    if status != 200:
+        log_decision_failure(rid, card, handle, out["error"])
+    return status, out
+
+
+def answer_decision_once(rid, answers):
+    """answer_decision's work -> (status, body, the card or None, the terminal handle or None)."""
     with decision_lock:
         d = decision_store.get(rid)
         if not d or d["state"] != "pending":
-            return 409, {"error": "이미 답했거나 닫힌 질문입니다"}
+            return 409, {"error": "이미 답했거나 닫힌 질문입니다"}, d and d["card"], None
         if d["busy"]:
-            return 409, {"error": "이 질문의 답을 터미널에 입력하는 중입니다"}
+            return 409, {"error": "이 질문의 답을 터미널에 입력하는 중입니다"}, d["card"], None
         answers = check_answers(d["card"], answers)
         if isinstance(answers, str):
-            return 400, {"error": answers}
+            return 400, {"error": answers}, d["card"], None
         handle = decision_terminal(d)
         if not handle:
-            return 409, {"error": "이 세션의 Orca 터미널을 찾지 못했습니다 — 터미널에서 답하세요"}
+            return 409, {"error": "이 세션의 Orca 터미널을 찾지 못했습니다 — 터미널에서 답하세요"}, d["card"], None
         d["busy"] = True
     try:
         type_answers(handle, d["card"], answers)
     except PickerGone as e:
         settle_decision(rid, "cancelled")
-        return 410, {"error": str(e), "closed": True}
+        return 410, {"error": str(e), "closed": True}, d["card"], handle
     except PickerError as e:
-        return 409, {"error": f"{e} — 터미널에서 답하세요"}
+        return 409, {"error": f"{e} — 터미널에서 답하세요"}, d["card"], handle
     except Exception as e:
-        return 502, {"error": f"터미널에 입력하지 못했습니다 ({short(e, 160)}) — 터미널에서 답하세요"}
+        return 502, {"error": f"터미널에 입력하지 못했습니다 ({short(e, 160)}) — 터미널에서 답하세요"}, d["card"], handle
     finally:
         with decision_lock:
             d["busy"] = False
     settle_decision(rid, "answered")
-    return 200, {"ok": True}
+    return 200, {"ok": True}, d["card"], handle
 
 
 def followup_text(card, answers):
