@@ -1728,7 +1728,6 @@ function renderAgents() {
     if (famMin['wt:' + k]) { famMin['wt:' + k] = false; try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {} renderAgents(); }
     document.getElementById(wtId(k))?.scrollIntoView({ block: 'start' });
   });
-  wtMasonry();
   wtMark();
 }
 
@@ -1812,7 +1811,8 @@ function wtHtml(top, fams, up, srv) {
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
   const head = srv ? `<div class="sec-h srv-h">${srvTitle(srv)}<span>에이전트 ${n} · 워크트리 ${list.length}</span>${fold}</div>` : `<div class="sec-h"><h2>에이전트 ${n}</h2><span>워크트리 ${list.length}</span>${fold}</div>`;
   if (!list.length) return srv ? head + '<div class="empty srv-empty">표시할 에이전트가 없습니다.</div>' : '';
-  // Same span grid as the driver tiles: a section takes 1–3 columns and small ones sit side by side, in sort order.
+  // Sections wrap in sort order and share each line equally (two on a line take half each, a lone one the full width);
+  // the span (1–3) sets how narrow a section may get, so a wide one starts a new line rather than squeeze.
   return head + `<div class="wt-wrap"><div class="wt-tiles">${list.map(x => `<div class="wt-tile s${x.span}">${x.html}</div>`).join('')}</div></div>`;
 }
 const WT_ST = ['stalled', 'wait', 'run', 'bg', 'idle', 'done'];
@@ -1874,20 +1874,6 @@ function wtJump(path) {
   el.scrollIntoView({ block: 'center' });  // not smooth: a live re-render restores the scroll it saved and would cut a smooth one short
   wtFlash = { sel, until: Date.now() + 1800 };
   wtMark();
-}
-// Worktree tiles pack without holes: the grid's rows are 2px, and each tile spans as many as its section is tall (plus the
-// gap), so a later tile drops into the space under a shorter one beside it while keeping the reading order. Tiles
-// re-measure when their section changes height (fold, live update, custom elements upgrading, width change).
-const WT_ROW = 2, WT_GAP = 18;
-let wtRO = null;
-function wtMasonry() {
-  wtRO?.disconnect();
-  const secs = [...$('#view').querySelectorAll('.wt-tile > .wt-sec')];
-  if (!secs.length) return;
-  const fit = sec => { sec.parentElement.style.gridRowEnd = `span ${Math.max(1, Math.ceil((sec.getBoundingClientRect().height + WT_GAP) / WT_ROW))}`; };
-  secs.forEach(fit);
-  wtRO ||= new ResizeObserver(es => es.forEach(e => e.target.isConnected && fit(e.target)));
-  secs.forEach(sec => wtRO.observe(sec));
 }
 function wtMark() {
   if (!wtFlash || Date.now() > wtFlash.until) return (wtFlash = null);
