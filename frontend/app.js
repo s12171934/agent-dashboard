@@ -3356,10 +3356,12 @@ async function renderDesigns() {
         <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
           : '<div class="empty">왼쪽에서 설계 프로젝트와 문서를 고르세요. 숫자는 그 문서를 읽거나 검색한 세션 수입니다.</div>'}</div>
         ${meta && dz.pane ? '<aside class="box dz-pane" id="dz-pane"></aside>' : ''}
-        <div class="dz-fab" id="dz-fab" role="toolbar" aria-label="설계문서 패널">
-          <button type="button" class="dz-fb" data-dz-panel="proj" aria-label="설계 프로젝트"><ds-icon name="layers"></ds-icon><span>프로젝트</span></button>
-          <button type="button" class="dz-fb" data-dz-panel="docs" aria-label="문서와 목차"><ds-icon name="book"></ds-icon><span>문서</span></button>
-          ${meta && dz.pane ? '<button type="button" class="dz-fb" data-dz-panel="readers" aria-label="읽은 세션"><ds-icon name="users"></ds-icon><span>세션</span></button>' : ''}</div></div>`}`;
+        <div class="dz-fab" id="dz-fab"><button type="button" class="dz-fab-btn" data-dz-fab aria-haspopup="dialog" aria-label="설계 프로젝트·문서·읽은 세션 고르기"><ds-icon name="book"></ds-icon></button></div>
+        <dialog class="dialog dz-modal" id="dz-modal" aria-label="설계문서 고르기">
+          <div class="dz-mh"><span class="seg" role="tablist">
+            <button type="button" role="tab" data-dz-panel="proj">프로젝트</button><button type="button" role="tab" data-dz-panel="docs">문서 · 목차</button>${meta && dz.pane ? '<button type="button" role="tab" data-dz-panel="readers">읽은 세션</button>' : ''}</span>
+            <button type="button" class="tgl" data-dz-close aria-label="닫기">닫기</button></div>
+          <div class="dz-mb" id="dz-mb"></div></dialog></div>`}`;
     if (meta) await dzArticle(doc);
     if (route().v !== 'designs' || dzMounted !== mk) return;
   }
@@ -3378,34 +3380,41 @@ function dzFit() {
 }
 addEventListener('resize', () => { if (route().v === 'designs') { dzFit(); dzPanelSet(dzPanel); } });
 
-// Narrow screens (≤900px) keep only the document on the page; the project list, the documents with their table of
-// contents and the readers open in the page itself, above the document, from a bar of buttons over the floating bar.
-// The page is the only thing that scrolls there.
-let dzPanelY = null;  // where the page was before a panel opened; closing it without a pick goes back there
-function dzPanelSet(name, user) {
-  const g = $('.dz'), fab = $('#dz-fab');
-  if (!g || !fab) return;
-  const was = g.dataset.panel || null;  // what the page shows now (the click handlers may set dzPanel before a render)
+// Narrow screens (≤900px) keep only the document on the page, and only the page scrolls. A small button right of the
+// floating bar opens a modal with the project list, the documents with their table of contents and the readers: the
+// sidebar and the readers box move into it while it is open and back into the grid when it closes.
+let dzTab = 'docs';  // the modal's last tab
+function dzPanelSet(name) {
+  const g = $('.dz'), fab = $('#dz-fab'), dlg = $('#dz-modal');
+  if (!g || !fab || !dlg) return;
   dzPanel = innerWidth <= 900 && name && g.querySelector(name === 'readers' ? '#dz-pane' : `[data-fold="${name}"]`) ? name : null;
-  if (dzPanel && !was) dzPanelY = scrollY;  // read before the panel goes in (scroll anchoring would move it)
-  g.dataset.panel = dzPanel || '';
-  fab.querySelectorAll('[data-dz-panel]').forEach(b => { b.classList.toggle('on', b.dataset.dzPanel === dzPanel); b.setAttribute('aria-pressed', b.dataset.dzPanel === dzPanel); });
-  if (dzPanel && dzPanel !== 'readers') g.querySelector(`[data-fold="${dzPanel}"]`).open = true;
-  // the bar of buttons: centred over the floating bar (under it when the bar is at the top)
+  const side = $('#dz-side'), pane = $('#dz-pane'), body = $('#dz-mb');
+  if (dzPanel) {
+    dzTab = dzPanel;
+    const fresh = !dlg.open || dlg.dataset.panel !== dzPanel;
+    dlg.dataset.panel = dzPanel;
+    if (side.parentNode !== body) body.append(side);
+    if (pane && pane.parentNode !== body) body.append(pane);
+    if (dzPanel !== 'readers') g.querySelector(`[data-fold="${dzPanel}"]`).open = true;
+    dlg.querySelectorAll('[data-dz-panel]').forEach(b => { b.classList.toggle('on', b.dataset.dzPanel === dzPanel); b.setAttribute('aria-selected', b.dataset.dzPanel === dzPanel); });
+    if (!dlg.open) { dlg.showModal(); dlg.querySelector('[data-dz-panel].on')?.focus({ focusVisible: false }); }
+    if (fresh) {  // a tab opens at the picked project or document
+      const on = dzPanel === 'proj' ? $('#dz-projs .dz-d.on') : dzPanel === 'docs' ? $('#dz-list .dz-d.on') : null;
+      body.scrollTop = on ? on.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 60 : 0;
+    }
+  } else {
+    if (side.parentNode !== g) g.prepend(side);
+    if (pane && pane.parentNode !== g) $('.dz-main').after(pane);
+    if (dlg.open) dlg.close();
+  }
+  fab.querySelector('.dz-fab-btn').classList.toggle('on', !!dzPanel);
+  // the button: right of the floating bar, level with it; over the bar's right end when there is no room beside it
   const d = document.querySelector('ds-dock')?.getBoundingClientRect(), w = fab.offsetWidth, h = fab.offsetHeight;
   if (d?.width) {
-    const left = Math.min(Math.max(8, d.left + d.width / 2 - w / 2), innerWidth - w - 8);
-    fab.style.cssText = `left:${Math.round(left)}px; top:${Math.round(d.top > innerHeight / 2 ? d.top - h - 8 : d.bottom + 8)}px`;
+    const beside = innerWidth - d.right >= w + 14;
+    fab.style.cssText = beside ? `left:${Math.round(d.right + 8)}px; top:${Math.round(d.top + (d.height - h) / 2)}px`
+      : `left:${Math.round(Math.min(d.right, innerWidth - 8) - w)}px; top:${Math.round(d.top > innerHeight / 2 ? d.top - h - 8 : d.bottom + 8)}px`;
   } else fab.style.cssText = '';
-  if (dzPanel === was) return;
-  // after render() has put its scroll position back: to the picked item in the panel, or back to where the page was
-  const to = dzPanel && (g.querySelector(dzPanel === 'proj' ? '#dz-projs .dz-d.on' : dzPanel === 'docs' ? '#dz-list .dz-d.on' : '#dz-pane') || g.querySelector(dzPanel === 'readers' ? '#dz-pane' : '#dz-side'));
-  const back = !dzPanel && user ? dzPanelY : null;
-  if (!dzPanel) dzPanelY = null;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (to) scrollTo(0, to.getBoundingClientRect().top + scrollY - (document.querySelector('header')?.getBoundingClientRect().bottom || 0) - (dzPanel === 'readers' ? 8 : 60));
-    else if (back !== null) scrollTo(0, back);
-  }));
 }
 
 // No server that is on indexes design documents: say, per server, why not.
@@ -3574,9 +3583,11 @@ function dzPane(doc, sec, toc) {
 
 document.addEventListener('click', e => {
   if (route().v !== 'designs') return;
+  if (e.target.closest('[data-dz-fab]')) { dzPanelSet(dzTab); return; }
   const pb = e.target.closest('[data-dz-panel]');
-  if (pb) { dzPanelSet(pb.dataset.dzPanel !== dzPanel ? pb.dataset.dzPanel : null, true); return; }
-  if (dzPanel && e.target.closest('.dz [data-fold] > summary')) { e.preventDefault(); return; }  // a panel stays open
+  if (pb) { dzPanelSet(pb.dataset.dzPanel); return; }
+  if (e.target.closest('[data-dz-close]') || e.target.id === 'dz-modal') { dzPanelSet(null); return; }  // 닫기, or the backdrop
+  if (dzPanel && e.target.closest('.dz [data-fold] > summary')) { e.preventDefault(); return; }  // a tab's box stays open
   if (dzPanel && e.target.closest('.dz a[href^="#"]:not([data-dz-fold])')) dzPanel = null;   // picking closes it
   const f = e.target.closest('[data-dz-fold]');
   if (f) { e.preventDefault(); dz.tocShut = !dz.tocShut; dzSave(); render(); return; }
@@ -3587,12 +3598,13 @@ document.addEventListener('click', e => {
   const r = route(), key = r.key || dz.last?.[1], server = r.server || dz.last?.[0], cur = r.sec || '';
   const toc = b.hasAttribute('data-dz-toc');  // the table of contents picks and goes there; a badge toggles
   const sec = !toc && b.dataset.dzSec === cur ? '' : b.dataset.dzSec;  // the open section again lets it go
-  if (toc) { dzScroll = sec; dzPanel = null; dzPanelY = null; }
+  if (toc) { dzScroll = sec; dzPanel = null; }
   else if (innerWidth <= 900 && sec && dz.pane) dzPanel = 'readers';  // a badge on a phone shows its readers
   history.replaceState(null, '', dzHash(server, key, sec));
   render();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && dzPanel) dzPanelSet(null, true); });
+// Esc closes the modal natively; put the boxes back
+document.addEventListener('close', e => { if (e.target.id === 'dz-modal' && dzPanel) dzPanelSet(null); }, true);
 document.addEventListener('change', e => {
   const o = e.target.closest?.('[data-dz-opt]');
   if (!o) return;
