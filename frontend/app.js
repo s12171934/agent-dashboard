@@ -988,7 +988,7 @@ function famHtml(f, wk) {
       }
       flush();
       if (away.length) out += `<div class="grid wt-away-grid">${away.map(wtProxy).join('')}</div>`;
-      return out + driversHtml(f);
+      return out + driversHtml(f, wk);
     })()}</div>` : ''}</div>`;
 }
 // Tickets inside a driver run, read from its task names ("S1#3 리뷰 codex" = ticket S1, checkbox 3, role).
@@ -1174,13 +1174,17 @@ const pdrvName = k => `${k.driver_terminal || k.package} 드라이버(생성 예
 // Coordinator family: scheduler first, then every ticket's driver in chain order — a real terminal at its first ticket's slot
 // (listing the tickets it drove), a dashed placeholder for a ticket whose driver does not exist yet.
 // Finished drivers (all their tickets verified) sink to the bottom, below the 생성 예정 placeholders.
-function driversHtml(f) {
-  const real = (f.drivers || []).slice().sort((a, b) => drvRank(a) - drvRank(b));
+function driversHtml(f, wk) {
+  // In 「워크트리별」 (wk), a driver whose ticket runs in another worktree is drawn there; here it leaves a stand-in.
+  const moved = wk ? famDrivers(f).filter(d => { const k = drvWtKey(d, f); return k && k !== wk; }) : [];
+  const gone = new Set(moved.map(d => d.handle)), shown = moved.filter(liveDrv);
+  const away = shown.length ? `<div class="grid wt-away-grid">${shown.map(d => drvProxy(d, f)).join('')}</div>` : '';
+  const real = (f.drivers || []).filter(d => !gone.has(d.handle)).sort((a, b) => drvRank(a) - drvRank(b));
   const plans = f.coord ? plansOf(f.coord) : [];
-  if (filtering()) return cellsJoin(real.filter(liveDrv).map(driverHtml));  // no scheduler, placeholders or finished drivers
-  if (!plans.length) return cellsJoin(real.map(driverHtml));
+  if (filtering()) return cellsJoin(real.filter(liveDrv).map(driverHtml)) + away;  // no scheduler, placeholders or finished drivers
+  if (!plans.length) return cellsJoin(real.map(driverHtml)) + away;
   const parts = [], later = [], finished = [];  // drivers not created yet come after live ones; finished drivers go last
-  const placed = new Set();
+  const placed = new Set(gone);
   for (const p of plans) {
     if (p.scheduler_terminal) {
       const t = termOwner(p.scheduler_terminal).t;
@@ -1207,7 +1211,39 @@ function driversHtml(f) {
     }
   }
   const rest = real.filter(d => !placed.has(d.handle)), over = d => !drvBusy(d) && d.workers.length && d.workers.every(w => status(w) === 'done');
-  return cellsJoin([...parts, ...rest.filter(d => !over(d)).map(driverHtml), ...later, ...finished, ...rest.filter(over).map(driverHtml)]);
+  return cellsJoin([...parts, ...rest.filter(d => !over(d)).map(driverHtml), ...later, ...finished, ...rest.filter(over).map(driverHtml)]) + away;
+}
+// Every script driver of a family with the plan tickets it drove, including a ticket's driver terminal no worker session
+// has started under yet (driversHtml draws that one from the plan alone).
+function famDrivers(f) {
+  const plans = f.coord ? plansOf(f.coord) : [], drove = h => plans.flatMap(p => p.tickets.filter(k => k.driver_terminal_handle === h).map(k => k.package));
+  const out = (f.drivers || []).map(d => ({ ...d, drove: drove(d.handle) }));
+  for (const p of plans) for (const k of p.tickets) {
+    const h = k.driver_terminal_handle;
+    if (h && !out.some(d => d.handle === h)) out.push({ handle: h, title: termOwner(h).title || k.driver_terminal || h, workers: [], runs: IX.runsByCoord[h] || [], drove: drove(h) });
+  }
+  return out.map(d => d.drove.length ? d : { ...d, drove: undefined });
+}
+// A script driver's worktree: that of the plan ticket it is driving (its first unverified one, else its last), else the one
+// its Orca terminal runs in. Ticket drivers used to open as panes of one tab in the plan's own worktree, so the plan wins.
+function drvPlace(h) {
+  const at = path => state.sessions.find(s => s.place?.path === path)?.place;
+  for (const p of state.ext_plans || []) {
+    const ks = (p.tickets || []).filter(k => k.driver_terminal_handle === h && k.worktree?.path);
+    if (!ks.length) continue;
+    const k = ks.find(o => !tkDone(o)) || ks[ks.length - 1], w = k.worktree;
+    return at(w.path) || { project: w.repo || k.repo, worktree: w.path.split('/').pop(), branch: w.branch, path: w.path };
+  }
+  const wp = termOwner(h).t?.worktreePath;
+  return wp ? at(wp) || { project: wp.split('/').slice(-2)[0], worktree: wp.split('/').pop(), branch: null, path: wp } : null;
+}
+// Its worktree key (wtKey for a session); with no known place it stays with the family's coordinator.
+const drvWtKey = (d, f) => { const p = drvPlace(d.handle), c = f.coord || f.members[0]; return p ? (multiSrv() ? (c?.server || '') + '|' : '') + placeKey(p) : c && wtKey(c); };
+const drvSt = d => ['stalled', 'wait', 'run', 'bg'].find(k => d.workers.some(w => status(w) === k)) || (drvBusy(d) ? 'run' : d.workers.length && d.workers.every(w => status(w) === 'done') ? 'done' : 'idle');
+// Stand-in for a driver drawn in its ticket's worktree; it scrolls to that section.
+function drvProxy(d, f) {
+  const p = drvPlace(d.handle);
+  return `<a class="wt-proxy wt-px-drv" href="#" data-wtgo="${esc(drvWtKey(d, f))}" title="${esc(placeLabel(p))} 구획으로 이동"><span class="badge subcoord">스크립트 드라이버</span><b class="wt-px-nm">⚙ ${esc(d.title)}</b>${d.drove ? `<span>맡은 티켓 <b>${d.drove.map(esc).join('·')}</b></span>` : ''}<ds-pill state="${drvSt(d)}">${ST_LABEL[drvSt(d)]}</ds-pill><span class="wt-px-wt">▣ ${esc(wtShort(p))}</span><span class="wt-px-go">구획으로 이동 ↗</span></a>`;
 }
 
 // ---------- E2E TC progress of a ticket (plan: tc_plan + e2e_progress; server attaches the progress file as k.e2e) ----------
@@ -1685,6 +1721,12 @@ function renderAgents() {
     { const sv = saveScroll(); renderAgents(); restoreScroll(sv); }
   });
   $('#view').querySelectorAll('[data-jump]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); wtJump(a.dataset.jump); });
+  $('#view').querySelectorAll('[data-wtgo]').forEach(a => a.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    const k = a.dataset.wtgo;
+    if (famMin['wt:' + k]) { famMin['wt:' + k] = false; try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {} renderAgents(); }
+    document.getElementById(wtId(k))?.scrollIntoView({ block: 'start' });
+  });
   wtMark();
 }
 
@@ -1728,14 +1770,27 @@ function wtHtml(top, fams, up, srv) {
     if (!pf) sec(k).items.push(it);
     else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);  // a sub-tree whose parent runs elsewhere
   }
+  // Script drivers move to their ticket's worktree, under a stand-in of the coordinator that opened them; their workers
+  // there are drawn inside the driver block.
+  const drvAt = new Map();  // moved driver handle -> its worktree key
+  for (const f of all) {
+    if (!f.coord || !inSrv(f.coord) || !liveFam(f)) continue;
+    for (const d of famDrivers(f)) {
+      const k = drvWtKey(d, f);
+      if (!k || k === wtKey(f.coord) || !liveDrv(d)) continue;
+      drvAt.set(d.handle, k);
+      addExt(k, f, { d, place: drvPlace(d.handle), r: drvRank(d), started: d.workers.map(w => w.started || '').sort().pop() || '' });
+    }
+  }
   // Coordinator-less families (their coordinator is outside the window) count as "elsewhere" for every worker.
   for (const s of top) {
     if (!inSrv(s) || up.head.has(s.path) || !liveSess(s)) continue;
+    if (s.viaHandle && drvAt.get(s.viaHandle) === wtKey(s)) continue;  // drawn in its driver's block
     const pf = up.get(s.path), k = wtKey(s), it = { s, r: sessRank(s), started: s.started || '' };
     if (!pf) sec(k).items.push(it);
     else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);
   }
-  const list = [...secs.values()].map(x => wtSec(x)).filter(x => x.n)
+  const list = [...secs.values()].map(x => wtSec(x)).filter(x => x.html)
     .sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
   const n = list.reduce((a, x) => a + x.n, 0);
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
@@ -1749,31 +1804,33 @@ function wtSec({ key, items }) {
   const ss = new Set();
   for (const it of items) for (const x of it.list || [it]) {
     if (x.s) ss.add(x.s);
+    else if (x.d) x.d.workers.filter(m => wtKey(m) === key && liveSess(m)).forEach(m => ss.add(m));
     else x.f.members.filter(m => wtKey(m) === key && (m === x.f.coord || liveSess(m))).forEach(m => ss.add(m));
   }
-  const arr = [...ss], min = famMin['wt:' + key];
-  if (!arr.length) return { n: 0 };
+  const arr = [...ss], min = famMin['wt:' + key], drvs = items.flatMap(it => it.list || [it]).filter(x => x.d);
+  if (!arr.length && !drvs.length) return { n: 0 };
   items.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
   const grid = (its, solo) => {
     let out = '', cells = [];
     const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
     for (const it of its) {
-      if (it.list) { flush(); out += `<div class="family nested wt-ext st-${famStatus(it.list.map(x => ({ st: x.f ? x.f.st : status(x.s) })))}"><div class="wt-px-row"><div class="grid">${it.pf.coord ? wtProxy(it.pf.coord)
+      if (it.list) { flush(); out += `<div class="family nested wt-ext st-${famStatus(it.list.map(x => ({ st: x.f ? x.f.st : x.d ? drvSt(x.d) : status(x.s) })))}"><div class="wt-px-row"><div class="grid">${it.pf.coord ? wtProxy(it.pf.coord)
         : `<div class="wt-proxy off"><span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(it.pf.handle))}</b><span class="wt-px-wt">추적 범위 밖</span></div>`}</div></div><div class="tree">${grid(it.list.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started)))}</div></div>`; }
+      else if (it.d) { flush(); out += cellsJoin([driverHtml(it.d)]); }
       else if (it.f) { if (shut(it.f)) cells.push(miniFam(it.f)); else { flush(); out += famHtml(it.f, key); } }
       else cells.push(card(it.s, solo && it.s.role === 'solo' ? 'solo' : ''));
     }
     flush();
     return out;
   };
-  const p = arr.find(s => s.place)?.place;
+  const p = arr.find(s => s.place)?.place || drvs[0]?.place;
   const cnt = {}; arr.forEach(s => { const st = status(s); cnt[st] = (cnt[st] || 0) + 1; });
   const nc = arr.filter(s => s.role === 'coordinator').length, nw = arr.filter(s => s.role === 'worker').length, ns = arr.length - nc - nw;
-  const cross = items.filter(it => it.list).reduce((a, it) => a + it.list.length, 0);
+  const cross = items.filter(it => it.list).reduce((a, it) => a + it.list.filter(x => !x.d).length, 0);
   const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
   const html = `<section class="wt-sec st-${famStatus(arr.map(m => ({ st: status(m) })))}" id="${wtId(key)}" data-wtkey="${esc(key)}">
     <div class="wt-h" title="${esc(p?.path || '')}"><span class="wt-proj">${esc(p?.project || '')}</span><h3>▣ ${esc(name)}</h3>${p?.branch && p.branch !== name ? `<span class="wt-br">⎇ ${esc(p.branch)}</span>` : ''}${srvBadge(arr[0])}
-      <span class="wt-cnt"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
+      <span class="wt-cnt"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${drvs.length ? `<span title="이 워크트리의 티켓을 맡은 스크립트 드라이버">드라이버 <b>${drvs.length}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
       <span class="wt-pills">${WT_ST.filter(k => cnt[k]).map(k => `<ds-pill state="${k}">${ST_LABEL[k]} ${cnt[k]}</ds-pill>`).join('')}</span>
       <button class="tgl" data-wtoggle="${esc(key)}">${min ? '▸ 펼치기' : '▾ 최소화'}</button></div>
     ${min ? '' : grid(items, true)}</section>`;

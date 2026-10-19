@@ -752,4 +752,5 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tree > .wt-away-grid > .wt-proxy::before { content: ""; position: absolute; left: -22px; top: 50%; width: 18px; border-top: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .wt-px-worker { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); border-left: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .wt-px-subcoord { border-color: color-mix(in srgb, var(--s-write) 55%, var(--line)); border-left-color: var(--s-write); }
+.wt-px-drv { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 @media (max-width: 700px) { .tree > .wt-away-grid > .wt-proxy::before { left: -18px; width: 14px; } }
