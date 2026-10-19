@@ -19,10 +19,20 @@ const decisions = (() => {
   const complete = c => c.r.questions.every((q, i) => answerOf(q, c.ans[i]) !== null);
   const SENT_HOLD = 8000;  // a sent card stays greyed this long while the next snapshot catches up
 
+  // An error also offers 「카드 삭제」 (dismiss): a question that cannot be answered from here stays only in the terminal.
   function setStatus(c, text, err) {
     const st = c.el.querySelector('.dc-status');
     st.textContent = text || '';
     st.classList.toggle('err', !!err);
+    c.el.querySelector('.dc-del').hidden = !err;
+  }
+
+  async function dismiss(c) {
+    c.el.classList.add('done');
+    const res = await api.dismiss(c.r.id).catch(() => ({ status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }));
+    if (res.status === 200 || res.status === 409) return;  // the card goes on the next refresh
+    c.el.classList.remove('done');
+    setStatus(c, res.body?.error || `삭제 실패 (${res.status})`, true);
   }
 
   async function send(c) {
@@ -70,7 +80,7 @@ const decisions = (() => {
       </div>`).join('')}
       <p class="dc-hint">터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.</p>
       ${needsSubmit(r) ? '<div class="dc-actions"><button class="dc-submit" disabled>답 보내기</button></div>' : ''}
-      <div class="dc-status"></div>`;
+      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden title="대시보드에서만 치웁니다. 터미널의 선택기는 그대로입니다">카드 삭제</button></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}), sentAt: 0 };
     el.querySelectorAll('.dc-q').forEach(qel => {
       const qi = +qel.dataset.qi, q = r.questions[qi];
@@ -99,6 +109,7 @@ const decisions = (() => {
     });
     const sub = el.querySelector('.dc-submit');
     if (sub) sub.onclick = () => send(c);
+    el.querySelector('.dc-del').onclick = () => dismiss(c);
     return c;
   }
 
@@ -138,7 +149,8 @@ const decisions = (() => {
 // the recommended option (or its own call) and was asked to write its pick down; the server shows that line once the
 // transcript has it (r.chosen), else the recommended options it worked out (r.recommended). 「확인」 marks an item
 // read. Picking other answers and 「세션에 바꾸라고 알리기」 has the server send the session a follow-up message
-// (api.inbox); an item can be answered again later. Cards are built once per item, like the 결정 버튼 cards.
+// (api.inbox) and drop the item; an item whose send failed can be deleted. Cards are built once per item, like the
+// 결정 버튼 cards.
 const inbox = (() => {
   const box = document.getElementById('inbox');
   box.innerHTML = '<div class="sec-h"><h2></h2><span>자리를 비운 동안 들어온 질문입니다. 에이전트는 이미 진행했습니다.</span></div><div class="ib-list"></div>';
@@ -151,6 +163,7 @@ const inbox = (() => {
     const st = c.el.querySelector('.dc-status');
     st.textContent = text || '';
     st.classList.toggle('err', !!err);
+    c.el.querySelector('.dc-del').hidden = !err;
   }
 
   async function act(c, action) {
@@ -159,19 +172,16 @@ const inbox = (() => {
     let res;
     try { res = await api.inbox(c.r.id, action, action === 'answer' ? c.r.questions.map((q, i) => answerOf(q, c.ans[i])) : undefined); }
     catch { res = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
+    if (res.status === 200 && (action === 'answer' || action === 'delete')) {  // gone from the 메일함: the next refresh drops the card
+      if (action === 'answer') document.getElementById('toast')?.show?.('세션에 바꾸라는 메시지를 보내고 메일함에서 지웠습니다');
+      return;
+    }
     c.el.classList.remove('busy');
     if (res.status !== 200) return setStatus(c, res.body?.error || `전송 실패 (${res.status})`, true);
-    if (action === 'answer') {
-      c.ans = c.r.questions.map(q => q.multiSelect ? new Set() : {});
-      c.el.querySelectorAll('.dc-other input').forEach(i => i.value = '');
-      sync(c);
-      setStatus(c, '세션에 바꾸라는 메시지를 보냈습니다');
-    } else {  // shown at once; the next snapshot says the same
-      setStatus(c, '');
-      c.r = { ...c.r, read: action === 'read' };
-      c.el.classList.toggle('read', c.r.read);
-      c.el.querySelector('.ib-read').textContent = c.r.read ? '안읽음으로' : '확인';
-    }
+    setStatus(c, '');  // read / unread: shown at once; the next snapshot says the same
+    c.r = { ...c.r, read: action === 'read' };
+    c.el.classList.toggle('read', c.r.read);
+    c.el.querySelector('.ib-read').textContent = c.r.read ? '안읽음으로' : '확인';
   }
 
   function sync(c) {
@@ -199,9 +209,8 @@ const inbox = (() => {
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
         ${q.multiSelect ? '' : '<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"></form>'}
       </div>`).join('')}
-      <p class="ib-follow"></p>
       <div class="dc-actions"><button class="dc-submit" disabled>세션에 바꾸라고 알리기</button><button class="dc-release ib-read"></button></div>
-      <div class="dc-status"></div>`;
+      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden>메일함에서 삭제</button></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}) };
     el.querySelectorAll('.dc-q').forEach(qel => {
       const qi = +qel.dataset.qi, q = r.questions[qi];
@@ -223,6 +232,7 @@ const inbox = (() => {
     });
     el.querySelector('.dc-submit').onclick = () => act(c, 'answer');
     el.querySelector('.ib-read').onclick = () => act(c, c.r.read ? 'unread' : 'read');
+    el.querySelector('.dc-del').onclick = () => act(c, 'delete');
     return c;
   }
 
@@ -234,8 +244,6 @@ const inbox = (() => {
     c.el.querySelector('.ib-went').innerHTML = r.chosen
       ? `<b>에이전트가 진행한 선택</b> ${esc(r.chosen)}`
       : `<b>권장안으로 진행</b> ${esc((r.recommended || []).join(' / '))} <span class="dc-hint">(에이전트가 아직 기록하지 않아 서버가 고른 권장안)</span>`;
-    const f = r.followup;
-    c.el.querySelector('.ib-follow').innerHTML = f ? `<b>보낸 후속 메시지</b> · ${since(f.at)}<br>${esc(f.text)}` : '';
     c.el.querySelector('.ib-read').textContent = r.read ? '안읽음으로' : '확인';
   }
 

@@ -339,7 +339,9 @@ function renderHeader() {
   const dec = state.decisions || { available: false, pending: [] }, unread = (dec.inbox || []).filter(r => !r.read).length;
   $('#k-dec-wrap').hidden = !dec.available;
   $('#k-dec').textContent = dec.pending.length;
-  $('#k-dec-l').textContent = '결정 대기' + (unread ? ` · 메일 ${unread}` : '');
+  $('#k-mail').textContent = ` · ${unread}`;  // unread 메일함 items, a value of its own beside the pending count
+  $('#k-mail').hidden = !unread;
+  $('#k-dec-l').textContent = '결정 대기' + (unread ? ' · 메일' : '');
   $('#k-dec-wrap').classList.toggle('on', dec.pending.length > 0 || unread > 0);
   $('#k-dec-wrap').classList.toggle('away', inboxMode().on);
   $('#k-dec-wrap').title = inboxMode().on ? '메일함 모드 켜짐: 질문은 메일함에 쌓이고 에이전트는 권장안으로 진행합니다' : '';

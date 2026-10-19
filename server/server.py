@@ -1933,7 +1933,7 @@ def add_decision(body):
         away = bool(prefs.get("decision_inbox"))
     with decision_lock:
         if away:
-            card.update(recommended=[recommended(q) for q in card["questions"]], chosen=None, read=False, followup=None)
+            card.update(recommended=[recommended(q) for q in card["questions"]], chosen=None, read=False)
             inbox_store[rid] = {"card": card, "terminal": term}
             save_inbox()
             threading.Thread(target=retain_worker, args=(term,), daemon=True).start()
@@ -2164,14 +2164,18 @@ def followup_text(card, answers):
 
 
 def inbox_answer(rid, action, answers):
-    """read | unread | answer from the page -> (http status, body). answer: answers in question order, null for a
-    question left as it went; sends followup_text to the session's Orca terminal and marks the item read."""
+    """read | unread | delete | answer from the page -> (http status, body). answer: answers in question order, null
+    for a question left as it went; sends followup_text to the session's Orca terminal and, once sent, drops the
+    item (its session is no longer held). delete: drops it unsent (the page offers it after an error)."""
     with decision_lock:
         d = inbox_store.get(rid)
         if not d:
             return 404, {"error": "메일함에 없는 항목입니다"}
-        if action != "answer":
+        if action == "delete":
+            del inbox_store[rid]
+        elif action != "answer":
             d["card"]["read"] = action == "read"
+        if action != "answer":
             save_inbox()
             publish_decisions()
             return 200, {"ok": True}
@@ -2193,10 +2197,10 @@ def inbox_answer(rid, action, answers):
     except Exception as e:
         return 502, {"error": f"터미널에 보내지 못했습니다 ({short(e, 160)}) — 세션에 직접 알려 주세요"}
     with decision_lock:
-        d["card"].update(read=True, followup={"answers": answers, "text": text, "at": time.time()})
+        inbox_store.pop(rid, None)
         save_inbox()
         publish_decisions()
-    return 200, {"ok": True}
+    return 200, {"ok": True, "text": text}
 
 
 def worker_rows(fresh=False):
@@ -3007,7 +3011,8 @@ class Handler(BaseHTTPRequestHandler):
         {id, inbox, deny} (add_decision). answer {id, answers} from the page: types them into the session's terminal
         picker (answer_decision); 200 done, 400 an answer missing or one the picker cannot take, 409 no longer open or
         the terminal not usable, 502 Orca failed. release {id}: the old page's 「터미널에서 답하기」; the picker is
-        already open, so nothing to do. mode {inbox: bool}: 메일함 mode on or off. inbox {id, action read|unread|answer,
+        already open, so nothing to do. dismiss {id}: take a card off the page (the terminal picker stays); the page
+        offers it after an error. mode {inbox: bool}: 메일함 mode on or off. inbox {id, action read|unread|delete|answer,
         answers}: a 메일함 item (inbox_answer). guard {command, terminal, cwd} from session-guard -> {deny} when the
         command would close a session with a 메일함 item (guard_command), else {}."""
         try:
@@ -3027,7 +3032,7 @@ class Handler(BaseHTTPRequestHandler):
             rid = body["id"]
             assert isinstance(rid, str) and DECISION_ID.match(rid)
             assert action != "answer" or isinstance(body["answers"], list)
-            assert action != "inbox" or body["action"] in ("read", "unread", "answer")
+            assert action != "inbox" or body["action"] in ("read", "unread", "delete", "answer")
             assert action != "inbox" or body["action"] != "answer" or isinstance(body["answers"], list)
         except (ValueError, KeyError, AssertionError, TypeError):
             return self.send_json({"error": "bad request"}, 400)
@@ -3037,11 +3042,15 @@ class Handler(BaseHTTPRequestHandler):
         if action == "inbox":
             status, out = inbox_answer(rid, body["action"], body.get("answers") or [])
             return self.send_json(out, status)
+        if action == "dismiss":
+            if not settle_decision(rid, "cancelled"):
+                return self.send_json({"error": "이미 답했거나 닫힌 질문입니다"}, 409)
+            return self.send_json({"ok": True})
         self.send_json({"ok": True})
 
 
 DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/mode",
-                  "/api/decision/inbox", "/api/decision/guard")
+                  "/api/decision/inbox", "/api/decision/guard", "/api/decision/dismiss")
 
 
 class Server(ThreadingHTTPServer):

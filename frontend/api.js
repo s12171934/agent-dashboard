@@ -267,9 +267,11 @@ const api = (() => {
     decide: (id, answers) => post(ownerOf('decision', id), '/api/decision/answer', { id, answers }),
     // Let the question go to the terminal picker instead (the hook stops waiting). {status, body} as above.
     release: id => post(ownerOf('decision', id), '/api/decision/release', { id }),
-    // A 메일함 item: action read | unread, or answer (answers in question order, null for one left as the agent went;
-    // the server sends the session a follow-up message). {status, body}: 200 done, 400 nothing picked, 404 gone,
-    // 409 no Orca terminal for the session, 502 Orca failed.
+    // Take a card off the page after an error (the terminal picker stays). {status, body}: 200, 409 already closed.
+    dismiss: id => post(ownerOf('decision', id), '/api/decision/dismiss', { id }),
+    // A 메일함 item: action read | unread | delete, or answer (answers in question order, null for one left as the
+    // agent went; the server sends the session a follow-up message and drops the item). {status, body}: 200 done,
+    // 400 nothing picked or the same answer, 404 gone, 409 no Orca terminal for the session, 502 Orca failed.
     inbox: (id, action, answers) => post(ownerOf('decision', id), '/api/decision/inbox', { id, action, answers }),
     // 메일함 mode on or off on every server that is on and has it ({status, body} of the first failure, or 200).
     inboxMode: async (on, ids) => {

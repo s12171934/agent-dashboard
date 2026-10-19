@@ -26,7 +26,7 @@
 <body>
 <header>
   <div class="hrow">
-    <h1><img src="icons/icon.svg" alt="">Agent Dashboard</h1>
+    <h1><a href="#agents" title="에이전트 탭으로"><img src="icons/icon.svg" alt="">Agent Dashboard</a></h1>
     <div class="kpis-h">
       <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
       <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
@@ -35,7 +35,7 @@
       <div class="stat"><i class="gi"><ds-icon name="hash"></ds-icon></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
       <div class="stat"><i class="gi"><ds-icon name="repeat"></ds-icon></i><b id="k-turns">–</b><span>총 턴</span></div>
       <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
-      <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b id="k-dec">0</b><span id="k-dec-l">결정 대기</span></div>
+      <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b><em id="k-dec">0</em><em id="k-mail" hidden></em></b><span id="k-dec-l">결정 대기</span></div>
     </div>
     <div class="conn" id="conn"><i></i><span>연결 중</span></div>
     <div class="health" id="health" hidden></div>
