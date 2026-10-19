@@ -268,7 +268,7 @@ aplan skip N [메모] / aplan fail N [메모]
 
 | 키 | 뜻 |
 | --- | --- |
-| `external_plans` | 드라이버가 쓰는 외부 계획 파일 경로 목록 (`~` 사용 가능) |
+| `external_plans` | 드라이버가 쓰는 외부 계획 파일 경로 목록 (`~` 사용 가능). 착수 뒤 검증이 더한 체크박스(`fix_source`)의 사유는 세션의 `fix_reason`, 리뷰(`integration-review`·`pr-review`·`completion-review`)와 더한 체크박스의 차수는 `round` 로 쓴다. 없으면 계획 옆 티켓 상태 `<package>.json` 이 가리키는 착수 시트의 `- 추가 사유:` 줄(그것도 없으면 `fix_findings` 의 지적 수)과 제목의 「N라운드」·「N차」에서 읽는다 |
 | `run_tc_progress` | run-tc 진행 파일 경로 목록 |
 | `decision_inbox` | 메일함 모드 켜짐 여부. 대시보드의 스위치가 쓴다 (위 「메일함 모드」) |
 
