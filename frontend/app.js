@@ -1180,9 +1180,9 @@ function driversHtml(f, wk) {
   const gone = new Set(moved.map(d => d.handle)), shown = moved.filter(liveDrv);
   const away = shown.length ? `<div class="grid wt-away-grid">${shown.map(d => drvProxy(d, f)).join('')}</div>` : '';
   const real = (f.drivers || []).filter(d => !gone.has(d.handle)).sort((a, b) => drvRank(a) - drvRank(b));
-  const plans = f.coord ? plansOf(f.coord) : [];
-  if (filtering()) return cellsJoin(real.filter(liveDrv).map(driverHtml)) + away;  // no scheduler, placeholders or finished drivers
-  if (!plans.length) return cellsJoin(real.map(driverHtml)) + away;
+  const plans = f.coord ? plansOf(f.coord) : [], dh = d => driverHtml(d, wk);
+  if (filtering()) return cellsJoin(real.filter(liveDrv).map(dh)) + away;  // no scheduler, placeholders or finished drivers
+  if (!plans.length) return cellsJoin(real.map(dh)) + away;
   const parts = [], later = [], finished = [];  // drivers not created yet come after live ones; finished drivers go last
   const placed = new Set(gone);
   for (const p of plans) {
@@ -1200,10 +1200,10 @@ function driversHtml(f, wk) {
         const drove = p.tickets.filter(o => o.driver_terminal_handle === h).map(o => o.package);
         // A driver whose every ticket is verified has finished: it sinks below the not-yet-created placeholders.
         const fin = p.tickets.filter(o => o.driver_terminal_handle === h).every(tkDone);
-        if (d) { (fin ? finished : parts).push(driverHtml({ ...d, drove })); continue; }
+        if (d) { (fin ? finished : parts).push(dh({ ...d, drove })); continue; }
       }
       if (h) {  // terminal exists but no worker session has started under it yet
-        (p.tickets.filter(o => o.driver_terminal_handle === h).every(tkDone) ? finished : parts).push(driverHtml({ handle: h, title: termOwner(h).title || x.k.driver_terminal || h, workers: [], runs: IX.runsByCoord[h] || [], drove: [x.k.package] }));
+        (p.tickets.filter(o => o.driver_terminal_handle === h).every(tkDone) ? finished : parts).push(dh({ handle: h, title: termOwner(h).title || x.k.driver_terminal || h, workers: [], runs: IX.runsByCoord[h] || [], drove: [x.k.package] }));
         continue;
       }
       if (x.st === 'done') continue;
@@ -1211,7 +1211,7 @@ function driversHtml(f, wk) {
     }
   }
   const rest = real.filter(d => !placed.has(d.handle)), over = d => !drvBusy(d) && d.workers.length && d.workers.every(w => status(w) === 'done');
-  return cellsJoin([...parts, ...rest.filter(d => !over(d)).map(driverHtml), ...later, ...finished, ...rest.filter(over).map(driverHtml)]) + away;
+  return cellsJoin([...parts, ...rest.filter(d => !over(d)).map(dh), ...later, ...finished, ...rest.filter(over).map(dh)]) + away;
 }
 // Every script driver of a family with the plan tickets it drove, including a ticket's driver terminal no worker session
 // has started under yet (driversHtml draws that one from the plan alone).
@@ -1470,7 +1470,8 @@ const cellsJoin = parts => {
   flush();
   return out;
 };
-function driverHtml(d) {
+// wk (「워크트리별」): its checkbox plan (ticketsHtml) sits right under the worktree header instead of inside the block.
+function driverHtml(d, wk) {
   const owner = families().fams.find(f => (f.drivers || []).some(x => x.handle === d.handle))?.coord;
   if (!drvOpen(d)) return driverMini(d, owner);
   const ws = byRank(d.workers, sessRank), wp = workerPlan(null, [d.handle]), c = coordLeft(null, [d.handle]);
@@ -1489,13 +1490,13 @@ function driverHtml(d) {
     ${e2eDriverHtml(d)}
     ${open ? (() => {
       // Running and attention-needing workers stay in view; finished ones fold behind a toggle.
-      if (filtering()) return ticketsHtml(d, true) + `<div class="grid">${ws.filter(liveSess).map(w => card(w)).join('')}</div>`;
+      if (filtering()) return (wk ? '' : ticketsHtml(d, true)) + `<div class="grid">${ws.filter(liveSess).map(w => card(w)).join('')}</div>`;
       const act = ws.filter(w => !['done', 'idle'].includes(status(w)));
-      const tk = ticketsHtml(d);
+      const tk = wk ? '' : ticketsHtml(d), hasTk = wk ? !!ticketsOf(d) : !!tk;
       const showFin = !!famMin['drvfin:' + d.handle], fin = ws.filter(w => ['done', 'idle'].includes(status(w)));
       // Ticket progress always sits above the worker cards, with or without 「실행 중만」.
       return tk + (act.length ? `<div class="grid">${act.map(w => card(w)).join('')}</div>` : '<div class="st" style="margin-top:6px">이 드라이버에서 진행 중인 워커 없음</div>')
-        + (tk ? '' : (fin.length ? `<button class="tgl fin-tgl" data-ftoggle="${esc(d.handle)}">${showFin ? '▾' : '▸'} 완료·유휴 워커 ${fin.length}</button>${showFin ? `<div class="grid">${fin.map(w => card(w)).join('')}</div>` : ''}` : ''));
+        + (hasTk ? '' : (fin.length ? `<button class="tgl fin-tgl" data-ftoggle="${esc(d.handle)}">${showFin ? '▾' : '▸'} 완료·유휴 워커 ${fin.length}</button>${showFin ? `<div class="grid">${fin.map(w => card(w)).join('')}</div>` : ''}` : ''));
     })() : ''}</div>`;
 }
 
@@ -1773,10 +1774,12 @@ function wtHtml(top, fams, up, srv) {
   // Script drivers move to their ticket's worktree, under a stand-in of the coordinator that opened them; their workers
   // there are drawn inside the driver block.
   const drvAt = new Map();  // moved driver handle -> its worktree key
+  const tkAt = new Map();  // worktree key -> every driver drawn there, for the checkbox plan under its header
   for (const f of all) {
     if (!f.coord || !inSrv(f.coord) || !liveFam(f)) continue;
     for (const d of famDrivers(f)) {
       const k = drvWtKey(d, f);
+      if (k && liveDrv(d)) (tkAt.get(k) || tkAt.set(k, []).get(k)).push(d);
       if (!k || k === wtKey(f.coord) || !liveDrv(d)) continue;
       drvAt.set(d.handle, k);
       addExt(k, f, { d, place: drvPlace(d.handle), r: drvRank(d), started: d.workers.map(w => w.started || '').sort().pop() || '' });
@@ -1790,7 +1793,7 @@ function wtHtml(top, fams, up, srv) {
     if (!pf) sec(k).items.push(it);
     else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);
   }
-  const list = [...secs.values()].map(x => wtSec(x)).filter(x => x.html)
+  const list = [...secs.values()].map(x => wtSec(x, tkAt.get(x.key))).filter(x => x.html)
     .sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
   const n = list.reduce((a, x) => a + x.n, 0);
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
@@ -1799,7 +1802,7 @@ function wtHtml(top, fams, up, srv) {
   return head + list.map(x => x.html).join('');
 }
 const WT_ST = ['stalled', 'wait', 'run', 'bg', 'idle', 'done'];
-function wtSec({ key, items }) {
+function wtSec({ key, items }, drivers = []) {
   // Sessions drawn here, for the header: family members in this worktree that pass the filters, plus their coordinators.
   const ss = new Set();
   for (const it of items) for (const x of it.list || [it]) {
@@ -1816,7 +1819,7 @@ function wtSec({ key, items }) {
     for (const it of its) {
       if (it.list) { flush(); out += `<div class="family nested wt-ext st-${famStatus(it.list.map(x => ({ st: x.f ? x.f.st : x.d ? drvSt(x.d) : status(x.s) })))}"><div class="wt-px-row"><div class="grid">${it.pf.coord ? wtProxy(it.pf.coord)
         : `<div class="wt-proxy off"><span class="badge coord">코디네이터</span><b class="wt-px-nm">${esc(ownerName(it.pf.handle))}</b><span class="wt-px-wt">추적 범위 밖</span></div>`}</div></div><div class="tree">${grid(it.list.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started)))}</div></div>`; }
-      else if (it.d) { flush(); out += cellsJoin([driverHtml(it.d)]); }
+      else if (it.d) { flush(); out += cellsJoin([driverHtml(it.d, true)]); }
       else if (it.f) { if (shut(it.f)) cells.push(miniFam(it.f)); else { flush(); out += famHtml(it.f, key); } }
       else cells.push(card(it.s, solo && it.s.role === 'solo' ? 'solo' : ''));
     }
@@ -1833,7 +1836,7 @@ function wtSec({ key, items }) {
       <span class="wt-cnt"><span>에이전트 <b>${arr.length}</b></span>${nc ? `<span>코디네이터 <b>${nc}</b></span>` : ''}${nw ? `<span>워커 <b>${nw}</b></span>` : ''}${ns ? `<span>단독 <b>${ns}</b></span>` : ''}${drvs.length ? `<span title="이 워크트리의 티켓을 맡은 스크립트 드라이버">드라이버 <b>${drvs.length}</b></span>` : ''}${cross ? `<span title="코디네이터가 다른 워크트리에 있는 워커">다른 워크트리 코디네이터 소속 <b>${cross}</b></span>` : ''}</span>
       <span class="wt-pills">${WT_ST.filter(k => cnt[k]).map(k => `<ds-pill state="${k}">${ST_LABEL[k]} ${cnt[k]}</ds-pill>`).join('')}</span>
       <button class="tgl" data-wtoggle="${esc(key)}">${min ? '▸ 펼치기' : '▾ 최소화'}</button></div>
-    ${min ? '' : grid(items, true)}</section>`;
+    ${min ? '' : drivers.map(d => ticketsHtml(d, filtering())).join('') + grid(items, true)}</section>`;
   return { n: arr.length, html, r: Math.min(...items.map(it => it.r)), started: items.map(it => it.started).sort().pop() || '' };
 }
 // A relation link scrolls to its target card and marks it for a moment; a folded worktree is opened first, and a
