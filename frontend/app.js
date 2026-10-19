@@ -3293,7 +3293,7 @@ let dzList = null, dzListV = null;  // api.designs(), dropped when a server's in
 const dzDocs = {};                  // server + '\n' + key -> api.design()
 let dzMounted = null;               // what the view was built for; live updates then redraw only the counts
 let dzScroll = null;                // a section to bring into view once the document is drawn
-let dzSheet = null;                 // narrow screens: the sidebar box or the readers shown as a sheet ('proj'|'docs'|'readers')
+let dzPanel = null;                 // narrow screens: the sidebar box or the readers shown in the page ('proj'|'docs'|'readers')
 const dzHash = (server, key, sec) => '#dz=' + encodeURIComponent([server, key, sec || ''].join('|'));
 const dzName = key => key.split('/').slice(2).join('/') || key;  // without "feature-designs/<slug>/"
 // a document as its folder's index.html names it: the H1 without its path prefix, under "01 챕터" when the page lists it
@@ -3356,16 +3356,15 @@ async function renderDesigns() {
         <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
           : '<div class="empty">왼쪽에서 설계 프로젝트와 문서를 고르세요. 숫자는 그 문서를 읽거나 검색한 세션 수입니다.</div>'}</div>
         ${meta && dz.pane ? '<aside class="box dz-pane" id="dz-pane"></aside>' : ''}
-        <div class="dz-scrim" data-dz-sheet=""></div>
         <div class="dz-fab" id="dz-fab" role="toolbar" aria-label="설계문서 패널">
-          <button type="button" class="dz-fb" data-dz-sheet="proj" aria-label="설계 프로젝트"><ds-icon name="layers"></ds-icon><span>프로젝트</span></button>
-          <button type="button" class="dz-fb" data-dz-sheet="docs" aria-label="문서와 목차"><ds-icon name="book"></ds-icon><span>문서</span></button>
-          ${meta && dz.pane ? '<button type="button" class="dz-fb" data-dz-sheet="readers" aria-label="읽은 세션"><ds-icon name="users"></ds-icon><span>세션</span></button>' : ''}</div></div>`}`;
+          <button type="button" class="dz-fb" data-dz-panel="proj" aria-label="설계 프로젝트"><ds-icon name="layers"></ds-icon><span>프로젝트</span></button>
+          <button type="button" class="dz-fb" data-dz-panel="docs" aria-label="문서와 목차"><ds-icon name="book"></ds-icon><span>문서</span></button>
+          ${meta && dz.pane ? '<button type="button" class="dz-fb" data-dz-panel="readers" aria-label="읽은 세션"><ds-icon name="users"></ds-icon><span>세션</span></button>' : ''}</div></div>`}`;
     if (meta) await dzArticle(doc);
     if (route().v !== 'designs' || dzMounted !== mk) return;
   }
   if (!dzList.enabled) return;
-  dzFit(); dzSheetSet(dzSheet);
+  dzFit(); dzPanelSet(dzPanel);
   const fresh = !$('#dz-list')?.children.length;
   dzFill(server, key, sec, meta, doc);
   const on = fresh && $('#dz-list .dz-d.on'), list = $('#dz-list');  // a newly drawn list shows the open document
@@ -3377,35 +3376,36 @@ function dzFit() {
   const g = $('.dz');
   if (g) g.style.setProperty('--dz-top', Math.round(g.getBoundingClientRect().top + scrollY) + 'px');
 }
-addEventListener('resize', () => { if (route().v === 'designs') { dzFit(); dzSheetSet(dzSheet); } });
+addEventListener('resize', () => { if (route().v === 'designs') { dzFit(); dzPanelSet(dzPanel); } });
 
 // Narrow screens (≤900px) keep only the document on the page; the project list, the documents with their table of
-// contents and the readers open as a sheet from buttons beside the floating bar (above it when there is no room).
-function dzSheetSet(name) {
+// contents and the readers open in the page itself, above the document, from a bar of buttons over the floating bar.
+// The page is the only thing that scrolls there.
+let dzPanelY = null;  // where the page was before a panel opened; closing it without a pick goes back there
+function dzPanelSet(name, user) {
   const g = $('.dz'), fab = $('#dz-fab');
   if (!g || !fab) return;
-  dzSheet = innerWidth <= 900 && name && g.querySelector(name === 'readers' ? '#dz-pane' : `[data-fold="${name}"]`) ? name : null;
-  g.dataset.sheet = dzSheet || '';
-  fab.querySelectorAll('[data-dz-sheet]').forEach(b => b.classList.toggle('on', b.dataset.dzSheet === dzSheet));
-  const opening = dzSheet && g.dataset.shown !== dzSheet;
-  g.dataset.shown = dzSheet || '';
-  if (dzSheet && dzSheet !== 'readers') g.querySelector(`[data-fold="${dzSheet}"]`).open = true;
-  fab.classList.remove('row');
-  const dock = document.querySelector('ds-dock'), d = dock?.getBoundingClientRect(), w = fab.offsetWidth, h = fab.offsetHeight;
-  if (!d || !d.width) { fab.style.cssText = ''; return; }
-  const right = innerWidth - d.right, left = d.left, beside = right >= w + 12 || left >= w + 12;
-  fab.classList.toggle('row', !beside);  // no room beside the bar: a row above it, at the right
-  fab.style.cssText = right >= w + 12 ? `left:${d.right + 6}px; top:${d.bottom - h}px`
-    : left >= w + 12 ? `left:${d.left - w - 6}px; top:${d.bottom - h}px`
-    : `right:12px; top:${d.top - fab.offsetHeight - 8}px`;
-  // the sheet sits above the bar and the buttons, so neither covers its end
-  const bottom = Math.round(innerHeight - Math.min(d.top, fab.getBoundingClientRect().top) + 8), hdr = document.querySelector('header')?.getBoundingClientRect();
-  g.style.setProperty('--dz-sheet-bottom', bottom + 'px');
-  g.style.setProperty('--dz-sheet-max', Math.max(200, innerHeight - bottom - Math.max(8, (hdr?.bottom || 0) + 8)) + 'px');
-  if (opening && dzSheet !== 'readers') {  // a sheet opens at the picked project or document
-    const side = $('#dz-side'), on = side.querySelector(dzSheet === 'proj' ? '#dz-projs .dz-d.on' : '#dz-list .dz-d.on');
-    side.scrollTop = on ? on.getBoundingClientRect().top - side.getBoundingClientRect().top + side.scrollTop - 80 : 0;
-  }
+  const was = g.dataset.panel || null;  // what the page shows now (the click handlers may set dzPanel before a render)
+  dzPanel = innerWidth <= 900 && name && g.querySelector(name === 'readers' ? '#dz-pane' : `[data-fold="${name}"]`) ? name : null;
+  if (dzPanel && !was) dzPanelY = scrollY;  // read before the panel goes in (scroll anchoring would move it)
+  g.dataset.panel = dzPanel || '';
+  fab.querySelectorAll('[data-dz-panel]').forEach(b => { b.classList.toggle('on', b.dataset.dzPanel === dzPanel); b.setAttribute('aria-pressed', b.dataset.dzPanel === dzPanel); });
+  if (dzPanel && dzPanel !== 'readers') g.querySelector(`[data-fold="${dzPanel}"]`).open = true;
+  // the bar of buttons: centred over the floating bar (under it when the bar is at the top)
+  const d = document.querySelector('ds-dock')?.getBoundingClientRect(), w = fab.offsetWidth, h = fab.offsetHeight;
+  if (d?.width) {
+    const left = Math.min(Math.max(8, d.left + d.width / 2 - w / 2), innerWidth - w - 8);
+    fab.style.cssText = `left:${Math.round(left)}px; top:${Math.round(d.top > innerHeight / 2 ? d.top - h - 8 : d.bottom + 8)}px`;
+  } else fab.style.cssText = '';
+  if (dzPanel === was) return;
+  // after render() has put its scroll position back: to the picked item in the panel, or back to where the page was
+  const to = dzPanel && (g.querySelector(dzPanel === 'proj' ? '#dz-projs .dz-d.on' : dzPanel === 'docs' ? '#dz-list .dz-d.on' : '#dz-pane') || g.querySelector(dzPanel === 'readers' ? '#dz-pane' : '#dz-side'));
+  const back = !dzPanel && user ? dzPanelY : null;
+  if (!dzPanel) dzPanelY = null;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (to) scrollTo(0, to.getBoundingClientRect().top + scrollY - (document.querySelector('header')?.getBoundingClientRect().bottom || 0) - (dzPanel === 'readers' ? 8 : 60));
+    else if (back !== null) scrollTo(0, back);
+  }));
 }
 
 // No server that is on indexes design documents: say, per server, why not.
@@ -3574,10 +3574,10 @@ function dzPane(doc, sec, toc) {
 
 document.addEventListener('click', e => {
   if (route().v !== 'designs') return;
-  const sh = e.target.closest('[data-dz-sheet]');
-  if (sh) { dzSheetSet(sh.dataset.dzSheet && sh.dataset.dzSheet !== dzSheet ? sh.dataset.dzSheet : null); return; }
-  if (dzSheet && e.target.closest('.dz [data-fold] > summary')) { e.preventDefault(); return; }  // a sheet stays open
-  if (dzSheet && e.target.closest('.dz a[href^="#"]:not([data-dz-fold])')) dzSheet = null;   // picking closes it
+  const pb = e.target.closest('[data-dz-panel]');
+  if (pb) { dzPanelSet(pb.dataset.dzPanel !== dzPanel ? pb.dataset.dzPanel : null, true); return; }
+  if (dzPanel && e.target.closest('.dz [data-fold] > summary')) { e.preventDefault(); return; }  // a panel stays open
+  if (dzPanel && e.target.closest('.dz a[href^="#"]:not([data-dz-fold])')) dzPanel = null;   // picking closes it
   const f = e.target.closest('[data-dz-fold]');
   if (f) { e.preventDefault(); dz.tocShut = !dz.tocShut; dzSave(); render(); return; }
   if (e.target.closest('[data-dz-hide]')) { dz.pane = false; dzSave(); render(); return; }
@@ -3587,12 +3587,12 @@ document.addEventListener('click', e => {
   const r = route(), key = r.key || dz.last?.[1], server = r.server || dz.last?.[0], cur = r.sec || '';
   const toc = b.hasAttribute('data-dz-toc');  // the table of contents picks and goes there; a badge toggles
   const sec = !toc && b.dataset.dzSec === cur ? '' : b.dataset.dzSec;  // the open section again lets it go
-  if (toc) { dzScroll = sec; dzSheet = null; }
-  else if (innerWidth <= 900 && sec && dz.pane) dzSheet = 'readers';  // a badge on a phone shows its readers
+  if (toc) { dzScroll = sec; dzPanel = null; dzPanelY = null; }
+  else if (innerWidth <= 900 && sec && dz.pane) dzPanel = 'readers';  // a badge on a phone shows its readers
   history.replaceState(null, '', dzHash(server, key, sec));
   render();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && dzSheet) dzSheetSet(null); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && dzPanel) dzPanelSet(null, true); });
 document.addEventListener('change', e => {
   const o = e.target.closest?.('[data-dz-opt]');
   if (!o) return;
