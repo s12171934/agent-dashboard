@@ -495,6 +495,26 @@ function planBox(d) {
     ${prev.length ? `<details id="d-prevplans" style="margin-top:8px" ${openState.prevplans ? 'open' : ''}><summary class="st">이전 지시의 계획 ${prev.length}건</summary>${prev.map(q => `<div style="margin-top:10px"><div class="st" style="margin-bottom:6px">${hhmm(q.ts)} · ${esc(cut(q.prompt || '', 100))}</div>${stepList(q, true)}</div>`).join('')}</details>` : ''}</div>`;
 }
 
+// The vault notes this session created (their `agent/<tool>-<session id>` tag), newest first. Each opens in Obsidian;
+// a note a project step links to (or that is a step) names that step, and the step opens in the 프로젝트 tab.
+function vaultBox(d) {
+  const ns = d.vault_notes;
+  if (!d.vault_on || !ns) return '';
+  if (!ns.length) return `<div class="box"><h3>볼트 문서</h3><div class="st">이 세션이 만든 볼트 노트가 없습니다. 노트 프론트매터의 <code>agent/${esc(d.kind)}-${esc(d.id)}</code> 태그로 찾습니다.</div></div>`;
+  const linked = ns.filter(n => n.steps.length).length;
+  return `<details class="box" id="d-vault" ${(openState.vault ?? ns.length <= 8) ? 'open' : ''}><summary><b>볼트 문서 ${ns.length}</b> <span class="st">이 세션이 만든 노트${linked ? ` · 프로젝트 스텝에 연결 ${linked}` : ''}</span></summary>
+    <ul class="vn-list">${ns.map(n => `<li><a class="vn-title" href="${pjObsidian(n.abs)}" title="Obsidian 에서 열기">${esc(n.title)}</a>
+      <span class="st vn-path">${esc(n.path)} · 수정 ${esc(new Date(n.mtime * 1000).toLocaleString('ko-KR', { hour12: false }))}${n.created ? ` · 생성 ${esc(n.created)}` : ''}</span>
+      ${n.steps.length ? `<span class="vn-steps">${n.steps.map(x => `<button type="button" class="vn-step" data-vstep="${esc(JSON.stringify([d.server, x.project, x.path, x.no]))}" title="프로젝트 탭에서 이 스텝 열기"><i class="pj-sdot ${x.status}"></i>${esc(x.project)} · ${esc(x.no + '. ' + x.stage)} · ${esc(x.title)}</button>`).join('')}</span>` : ''}</li>`).join('')}</ul></details>`;
+}
+
+// The 프로젝트 tab, 프로젝트별, with the project folded open and the step's note in the split.
+function openStep(server, name, path, no) {
+  const k = `${server}:${name}`;
+  pj.view = 'flow'; pjSave(); pjOpen = k; pjNote = { key: k, path }; pjScrollTo = no;
+  location.hash = 'projects';
+}
+
 function stepList(p, ended) {
   return `<ol class="steps">${p.steps.map((x, i) => { const st = ended && (x.st === 'run' || x.st === 'todo') ? 'miss' : x.st; return `<li class="${st}"><span class="ic">${st === 'miss' ? '?' : STEP_IC[x.st] || i + 1}</span>
     <span class="tx">${esc(x.t)}${x.note ? `<span class="nt">${esc(x.note)}</span>` : ''}</span>
@@ -2655,6 +2675,7 @@ function renderSession(navigated) {
     ${extPlansHtml(plansOf(d), true)}
     ${planBox(d)}
     ${designRefsBox(d)}
+    ${vaultBox(d)}
     <div class="kpis">
       <div class="kpi"><span>턴</span><b>${d.turns}</b></div>
       <div class="kpi" title="${ctxTitle(d)}"><span>현재 컨텍스트</span><b class="${ctxLvl(d)}">${fmt(d.ctx_now)}</b>${d.ctx_window ? `<small> / ${fmt(d.ctx_window)}</small>` : ''}</div>
@@ -2688,7 +2709,8 @@ function renderSession(navigated) {
           <span class="${l.error ? 'err' : ''}"><b class="r">${window.innerWidth <= 700 ? esc(l.role) + ' ' : ''}</b>${esc(l.text)}${l.detail ? ' <span class="st">' + esc(l.detail) + '</span>' : ''}${l.size ? ' <span class="st">(' + fmt(l.size) + '자)</span>' : ''}</span></div>`).join('')}</div></div>
     </div>`;
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
-  for (const k of ['kids', 'subs', 'prevplans', 'design']) { const el = $('#d-' + k); if (el) el.ontoggle = () => openState[k] = el.open; }
+  for (const k of ['kids', 'subs', 'prevplans', 'design', 'vault']) { const el = $('#d-' + k); if (el) el.ontoggle = () => openState[k] = el.open; }
+  $('#view').querySelectorAll('[data-vstep]').forEach(b => b.onclick = () => openStep(...JSON.parse(b.dataset.vstep)));
   $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
     if (e.target.closest('a')) return;
     famMin[b.dataset.ttoggle] = !b.closest('.tk').classList.contains('open');

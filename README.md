@@ -59,6 +59,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
 | 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
+| 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
 
 ## 실행
 
@@ -76,6 +77,7 @@ tailscale serve --bg 8787                                                  # 다
 | `--runs` | `8` | 추적할 최근 Orca Run 의 최소 개수 |
 | `--host` | `127.0.0.1` | 바인드 주소. 여러 번 줄 수 있다 |
 | `--origin` | 없음 | CORS 를 허용할 페이지 출처. 하위 도메인(Pages 프리뷰 배포)도 포함하므로, 다른 서비스가 사는 도메인이면 그 하위 도메인들도 허용된다. 여러 번 줄 수 있다 |
+| `--vault` | `~/Obsidian/obsidian` | Obsidian 볼트. 노트를 만든 세션(`agent/` 태그)으로 묶어 세션 상세에 보여 준다. 폴더가 없으면 꺼진다 |
 | `--projects-dir` | 없음 (기능 꺼짐) | 프로젝트 폴더들을 담은 폴더. 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 본다. 여러 번 줄 수 있다 |
 | `--design-dir` | 없음 | 설계문서 폴더. `prefs.json` 의 `design_dirs` 에 더해진다. 여러 번 줄 수 있다. 둘 다 없고 외부 계획에 `design_root` 도 없으면 「설계문서」 기능이 꺼진다 |
 | `--design-days` | `14` | `--hours` 밖의 세션 로그에서 설계문서 참조를 찾는 기간(일). 한 번 읽은 로그는 바뀌기 전까지 다시 읽지 않는다 |
@@ -212,6 +214,15 @@ aplan skip N [메모] / aplan fail N [메모]
 
 - 호출한 세션은 `CLAUDE_CODE_SESSION_ID` · `CODEX_THREAD_ID` · Orca 터미널 핸들 순으로 식별한다.
 - 기록은 출력만 하는 명령이다. 실패해도 에이전트의 본 작업을 멈추지 않는다.
+
+## 세션이 만든 볼트 문서
+
+볼트 노트 규칙은 모든 노트의 프론트매터 `tags` 에 그 노트를 처음 만든 세션 태그 `agent/<도구>-<세션 ID>`(`claude`·`codex`)를 하나 단다. 서버는 5초마다 `--vault` 아래 `.md` 를 훑어(점으로 시작하는 폴더 제외, mtime 이 바뀐 파일만 앞 8KB 를 다시 읽음) 이 태그로 세션별 노트 목록을 만든다.
+
+- `GET /api/session` 응답에 `vault_on`(기능 켜짐)과 `vault_notes` 가 붙는다 — `[{"path"(볼트 기준), "abs", "title", "created", "updated", "mtime", "steps": [{"project", "dir", "path", "title", "status", "no", "stage"}]}]`, 최근 수정 순.
+- `steps` 는 그 노트가 속한 프로젝트 스텝이다: 노트가 스텝 노트 자신이거나, 스텝 노트 본문이 `[[링크]]` 로 가리키는 같은 프로젝트 폴더 안 노트면 그 스텝. `_index.md`, `rules/` 아래 노트, 다른 스텝 노트로의 링크는 소속으로 치지 않는다. `--projects-dir` 의 프로젝트만 본다.
+- 세션 상세의 「볼트 문서」 상자가 이를 그린다. 제목은 Obsidian 에서 열리고, 스텝 칩을 누르면 「프로젝트」 탭에서 그 프로젝트를 펼쳐 스텝 노트를 연다.
+- 서브에이전트는 부모 세션 ID 로 태그를 다므로 부모 세션 쪽에 나온다.
 
 ## 프로젝트 진행 API
 
