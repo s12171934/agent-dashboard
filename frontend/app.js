@@ -1066,7 +1066,41 @@ function ticketsHtml(d, activeOnly) {
       ${sheetOpen ? `<div class="tk-body">${onlySheet.map(k => `<div class="cbr"><span class="cbn">${esc(k.pkg)}</span>${k.key ? `<span class="tk-key">${esc(k.key)}</span>` : ''}${k.tasks.map(chip).join('')}</div>`).join('')}</div>` : ''}</div>` : ''}</div>`;
 }
 // ---------- external driver plans: a roster written ahead of time by a driver script (server: ext_plans) ----------
-const XP_KIND = { sheet: '착수 시트', impl: '구현', 'review-codex': '리뷰 codex', 'review-claude': '리뷰 claude', judge: '판정', driver: '드라이버', extra: '추가 태스크' };
+const XP_KIND = { sheet: '착수 시트', impl: '구현', 'review-codex': '리뷰 codex', 'review-claude': '리뷰 claude', judge: '판정', driver: '드라이버', extra: '추가 태스크',
+  'contract-check': '실서버 대조', 'integration-review': '통합 리뷰', audit: '감사' };
+// Per-session tags: how an impl's verify box is checked, why a box was added after start, whose server a contract check reads.
+const XP_SCENE = { storybook: '스토리북', 'real-screen': '실화면' }, XP_FIX = { 'integration-review': '통합 리뷰 지적', scene: '화면 불일치' };
+const xpTags = x => [x.verify_scene && `<span class="badge" title="verify 확인 방식">verify ${esc(XP_SCENE[x.verify_scene] || x.verify_scene)}</span>`,
+  x.fix_source && `<span class="badge" title="착수 뒤 더해진 체크박스">수정: ${esc(XP_FIX[x.fix_source] || x.fix_source)}</span>`,
+  x.producer && `<span class="badge" title="대조할 생산자 티켓">생산자 ${esc(x.producer)}</span>`].filter(Boolean).join('');
+// Worktrees the driver will make (ticket.worktree, filled before start) and its auxiliary ones (plan.extra_worktrees).
+const XP_WT = { planned: ['pending', '생성 예정'], created: ['done', '생성됨'], removed: ['blocked', '제거됨'], undecided: ['blocked', '미정'] };
+const wtChip = st => { const [cls, lbl] = XP_WT[st] || ['pending', st || '상태 미상']; return `<span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(lbl)}</span>`; };
+function wtHtml(k) {
+  const w = k.worktree;
+  if (!w) return '';
+  const tr = w.trigger || {}, pre = tr.predecessors || [];
+  const trig = [tr.chain_previous ? `체인 앞 ${tr.chain_previous}` : '체인 첫 워크트리', pre.length ? `선행 ${pre.join('·')} 검증` : ''].filter(Boolean).join(' · ');
+  return `<div class="cbr xp xp-wt" title="${esc([tr.rule, w.path, w.orca_worktree_id].filter(Boolean).join('\n'))}"><span class="xp-kind">워크트리</span>${wtChip(w.status)}<b>${esc(w.branch || '')}</b>
+    <span class="xp-deps">← ${esc(w.base_ref || '')} · 트리거: ${esc(trig)}${w.path ? ' · ' + esc(w.path) : ''}</span></div>`;
+}
+const XP_XWT = { 'e2e-sibling-link': 'E2E 형제 링크', 'ta-verify-branch': 'TA 검증 브랜치', 'contract-check-stack': '대조 스택', 'scene-stack': '화면 스택' };
+function xwtHtml(p) {
+  const xs = p.extra_worktrees || [];
+  if (!xs.length) return '';
+  const id = 'xwt:' + p.path, open = famMin[id] ?? false;
+  const detail = x => [x.target && '대상 ' + x.target, x.links && Object.entries(x.links).map(([r, pk]) => `${r}→${pk}`).join(', '),
+    x.compose_project, x.ports && Object.entries(x.ports).map(([n, v]) => `${n} ${v}`).join(' '),
+    x.repo && x.repo + (x.base_ref ? ' ← ' + x.base_ref : ' (베이스 미정)'), x.path].filter(Boolean).join(' · ');
+  const rows = xs.map(x => `<div class="cbr xp xp-wt" title="${esc([x.purpose, x.note].filter(Boolean).join('\n'))}"><span class="xp-kind">${esc(XP_XWT[x.kind] || x.kind)}</span><span class="xp-key">${esc(x.owner || '')}</span>${wtChip(x.status)}
+    <span class="xp-deps">${esc(x.purpose || '')}${detail(x) ? ' · ' + esc(detail(x)) : ''}</span></div>`).join('');
+  const c = st => xs.filter(x => x.status === st).length;
+  return `<div class="xp-repo ${open ? 'open' : ''}"><div class="xp-repo-h" data-rtoggle="${esc(id)}" data-open="${open ? 1 : 0}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>보조 워크트리</b><span>${xs.length}개 · 생성 예정 ${c('planned')} · 생성됨 ${c('created')}${c('undecided') ? ` · <span class="xp-why hold">미정 ${c('undecided')}</span>` : ''}</span></div>
+    ${open ? `<div class="tks">${rows}</div>` : ''}</div>`;
+}
+// One repository's worktree chain in creation order (chain_position), created ones in bold.
+const wtChain = items => { const ks = items.map(t => t.k).filter(k => k.worktree).sort((a, b) => (a.chain_position ?? 0) - (b.chain_position ?? 0));
+  return ks.length ? ` · 워크트리 체인 ${ks.map(k => k.worktree.status === 'created' ? `<b>${esc(k.package)}</b>` : esc(k.package)).join(' → ')}` : ''; };
 const XP_TICKET = { verified: '검증 완료', closed: '1차 종결', running: '실행 중', ready: '준비됨', started: '착수', blocked: '선행 대기', planned: '계획됨',
   rebase_pending: '리베이스 대기', box_waiting: '체크박스 차례 대기', box_deferred: '체크박스 이월' };
 // verified, or closed (first round wrapped up; deferred checkboxes move to a later batch)
@@ -1286,7 +1320,7 @@ function extPlansHtml(plans, inSession) {
   const line = r => {
     const tip = esc(r.t ? 'Orca 태스크 ' + r.t.status : '계획 파일 상태 ' + r.x.status), inner = `<i>${WP_IC[r.st] || '·'}</i>${esc(r.label)}`;
     const chip = r.w ? `<a class="tkc ${XP_CHIP[r.st]}" href="#s=${encodeURIComponent(r.w.path)}" title="${tip}">${inner}</a>` : `<span class="tkc ${XP_CHIP[r.st]}" title="${tip}">${inner}</span>`;
-    return `<div class="cbr xp ${r.drv ? 'xp-drv' : ''}" title="${esc(r.x.title || '')}"><span class="xp-kind">${esc(XP_KIND[r.x.kind] || r.x.kind)}</span><span class="xp-key">${esc(r.x.key)}</span>
+    return `<div class="cbr xp ${r.drv ? 'xp-drv' : ''}" title="${esc(r.x.title || '')}"><span class="xp-kind">${esc(XP_KIND[r.x.kind] || r.x.kind)}</span><span class="xp-key">${esc(r.x.key)}</span>${xpTags(r.x)}
       ${r.drv ? '<span class="st">세션 없음(드라이버)</span>' : modelChip(r.w?.model || r.x.model)}${chip}
       ${(r.x.deps || []).length ? `<span class="xp-deps">선행: ${r.x.deps.map(esc).join(', ')}</span>` : ''}</div>`;
   };
@@ -1307,20 +1341,20 @@ function extPlansHtml(plans, inSession) {
         <div class="tk-h" data-ttoggle="${esc(id)}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>⚙ ${x.st === 'wait' ? esc(pdrvName(k)) : `${esc(k.driver_terminal || k.package)} 드라이버(스크립트)`}</b>${k.jira ? `<span class="tk-key">${esc(k.jira)}</span>` : ''}
           <span>${esc(k.repo || '')} ${x.pos}/${x.len}</span>${x.why ? `<span class="xp-why ${x.why.k}">${esc(x.why.t)}</span>` : ''}<span title="${esc(k.driver_terminal_handle || '')}">${termNote(k.driver_terminal_handle)}${shared.length ? ` · 공유: ${shared.map(esc).join('·')}` : ''}</span>${k.run_id ? `<a href="#r=${esc(k.run_id)}" style="color:var(--accent)">Run</a>` : ''}<span>${esc(XP_TICKET[k.status] || k.status)}</span><span>체크박스 <b>${k.boxes_done ?? 0}/${k.boxes_total ?? 0}</b></span><span>${cnt(n)}</span>
           <span class="tk-bar">${pbar({ steps: rows.filter(r => !r.drv).map(r => r.st === 'spawned' && r.w && status(r.w) !== 'run' ? (status(r.w) === 'stalled' ? 'fail' : 'wait') : r.st) })}</span></div>
-        ${e2eHtml(k)}
+        ${wtHtml(k)}${e2eHtml(k)}
         ${open ? `<div class="tk-body">${rows.map(line).join('')}</div>` : ''}</div>`;
     };
     // A repository folds as a whole; it starts open while any of its tickets is not verified yet.
     const body = byRepo(tickets, t => t.k.repo).map(g => {
       const id = 'repo:' + p.path + ':' + g.repo, open = famMin[id] ?? g.items.some(t => !tkDone(t.k));
-      return `<div class="xp-repo ${open ? 'open' : ''}"><div class="xp-repo-h" data-rtoggle="${esc(id)}" data-open="${open ? 1 : 0}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(g.repo)}</b><span>${repoLine(g.items.map(t => t.x))}</span></div>
+      return `<div class="xp-repo ${open ? 'open' : ''}"><div class="xp-repo-h" data-rtoggle="${esc(id)}" data-open="${open ? 1 : 0}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(g.repo)}</b><span>${repoLine(g.items.map(t => t.x))}${wtChain(g.items)}</span></div>
         ${open ? `<div class="tks">${g.items.map(ticketHtml).join('')}</div>` : ''}</div>`;
     }).join('');
-    const sub = `티켓 ${tickets.length} · ${cnt(all)}${p.generated_at ? ` · 계획 갱신 ${esc(ago(p.generated_at))}` : ''}`;
+    const sub = `티켓 ${tickets.length} · ${cnt(all)}${p.generated_at ? ` · 계획 갱신 ${esc(ago(p.generated_at))}` : ''}${p.design_commit ? ` · <span title="${esc(p.design_root || '')}">설계 ${esc(p.design_commit.slice(0, 7))}</span>` : ''}`;
     const sched = p.scheduler_terminal ? `<div class="drv-h" title="${esc(p.scheduler_terminal)}"><b>⚙ ${esc(termOwner(p.scheduler_terminal).title || 'scheduler')}</b><span class="badge">스케줄러(스크립트)</span><span>${termNote(p.scheduler_terminal)}</span><span>아래 티켓 드라이버를 순서대로 띄움</span></div>` : '';
-    const title = `${esc(p.project || '')} 워커 계획 (드라이버 사전 계획)`;
-    return inSession ? `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${sched}<div class="tks">${body}</div></div>`
-      : `<div class="sec-h"><h2>${title}</h2><span>${sub}</span></div>${sched}<div class="tks">${body}</div>`;
+    const title = `${esc(p.project || '')} 워커 계획 (${p.driver ? esc(p.driver) + ' ' : ''}드라이버 사전 계획)`;
+    return inSession ? `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${sched}<div class="tks">${body}${xwtHtml(p)}</div></div>`
+      : `<div class="sec-h"><h2>${title}</h2><span>${sub}</span></div>${sched}<div class="tks">${body}${xwtHtml(p)}</div>`;
   }).join('');
 }
 

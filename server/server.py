@@ -1343,16 +1343,16 @@ def ext_plan_loop():
 
 
 def read_ext_plan(path, mtime):
-    entry = {"path": path, "project": None, "generated_at": None, "tickets": [], "error": None}
+    entry = {"path": path, "project": None, "generated_at": None, "tickets": [], "extra_worktrees": [], "error": None}
     if mtime is None:
         entry["error"] = "파일 없음"
     else:
         try:
             with open(path) as f:
                 data = json.load(f)
-            entry.update({k: data.get(k) for k in ("project", "generated_at", "coordinator_session",
-                                                   "coordinator_terminal", "scheduler_terminal")},
-                         tickets=data.get("tickets") or [])
+            entry.update({k: data.get(k) for k in ("project", "driver", "generated_at", "design_root", "design_commit",
+                                                   "coordinator_session", "coordinator_terminal", "scheduler_terminal")},
+                         tickets=data.get("tickets") or [], extra_worktrees=data.get("extra_worktrees") or [])
         except (OSError, ValueError) as e:
             entry["error"] = short(e, 200)
         # A re-driven ticket gets a new driver terminal and the plan forgets the old one; its earlier

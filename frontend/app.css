@@ -129,6 +129,8 @@ a.tkc:hover { border-color: var(--accent); }
 .drv.xp-pdrv .drv-h { margin: 0; } .drv.xp-pdrv .drv-h > b { color: var(--muted); font-weight: 600; }
 .drv.xp-sched { padding: 6px 12px; } .drv.xp-sched .drv-h { margin: 0; }
 .xp-why { color: var(--warn); } .xp-why.hold { color: var(--bad); }
+.xp-wt { font-size: 12px; } .xp-wt > b { flex: none; }
+.xp .badge { flex: none; }
 .m.est b.est-over { color: var(--bad); } .m.est b.est-pause { color: var(--warn); }
 .acts .act.idle-w { min-width: 5.4em; text-align: center; }  /* 유휴로 / 자동 상태 share one width */
 .act[data-act="hide"]:hover { color: var(--bad); border-color: var(--bad); }
