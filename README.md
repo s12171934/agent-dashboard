@@ -1,7 +1,7 @@
 ---
 title: agent-dashboard
 created: 2026-10-16
-updated: 2026-10-18
+updated: 2026-10-19
 tags: [domain/인공지능, area/ai에이전트, agent/claude-1b219bef-b3db-4ef6-8088-81f7f0d19120]
 source: ai
 ---
@@ -56,6 +56,8 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 테스트 진행 | `/private/tmp/agent-test-progress/*.json` |
 | 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문. 터미널 선택기와 같은 질문이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
+| 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
+| 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 
 ## 실행
 
@@ -74,6 +76,8 @@ tailscale serve --bg 8787                                                  # 다
 | `--host` | `127.0.0.1` | 바인드 주소. 여러 번 줄 수 있다 |
 | `--origin` | 없음 | CORS 를 허용할 페이지 출처. 하위 도메인(Pages 프리뷰 배포)도 포함하므로, 다른 서비스가 사는 도메인이면 그 하위 도메인들도 허용된다. 여러 번 줄 수 있다 |
 | `--projects-dir` | 없음 (기능 꺼짐) | 프로젝트 폴더들을 담은 폴더. 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 본다. 여러 번 줄 수 있다 |
+| `--design-dir` | 없음 | 설계문서 폴더. `prefs.json` 의 `design_dirs` 에 더해진다. 여러 번 줄 수 있다. 둘 다 없고 외부 계획에 `design_root` 도 없으면 「설계문서」 기능이 꺼진다 |
+| `--design-days` | `14` | `--hours` 밖의 세션 로그에서 설계문서 참조를 찾는 기간(일). 한 번 읽은 로그는 바뀌기 전까지 다시 읽지 않는다 |
 
 ## 상시 실행 (launchd)
 
@@ -262,6 +266,51 @@ aplan skip N [메모] / aplan fail N [메모]
 
 스키마에 근거가 없어 서버가 정한 것: 단계 상태 6가지와 그 우선순위(`empty` 추가, `done`·`failed` 가 섞인 채 끝난 단계는 `failed`, 일부만 끝나고 진행 중인 step 이 없는 단계도 `active`), `failed` step 을 진행률 분자에 넣지 않음, 계획 날짜를 기간에 포함, 현재 단계 고르는 법(앞 단계가 `scheduling` 으로 남아 있어도 뒤 단계가 진행 중이면 그쪽 — 단계가 순서대로만 진행되지 않는 실제 파일이 있어서), `endDate` < `date` 는 검사하지 않음.
 
+## 설계문서 — 문서 보기와 세션의 섹션 참조
+
+설계 폴더의 문서를 대시보드에서 읽고, 구현 세션이 문서의 어느 `##` 섹션을 읽었는지 세션 로그에서 찾아 문서·세션·티켓 화면에 보여 준다. 문서 원문과 참조 기록은 메트릭 서버에만 있다(배포되는 페이지에는 없다).
+
+**문서 색인.** `design_dirs`(또는 `--design-dir`)의 폴더마다, 그 폴더가 든 git 저장소의 다른 워크트리(`git worktree list`)에서 같은 상대 경로의 폴더도 함께 읽는다 — 기능 설계는 대개 머지 전까지 브랜치에만 있다. 외부 계획의 `design_root` 는 설정 폴더와 이름이 같은 조상 폴더(없으면 그 부모)를 같은 방식으로 더한다. 문서는 폴더 이름부터의 상대 경로(`feature-designs/<기능>/<파일>`)로 부르므로 워크트리마다 있는 사본이 한 문서가 된다. 보여 주는 사본은 설정 폴더의 것, 없으면 가장 최근에 고친 것이다. 문서 이름은 기능 폴더의 `index.html` 뷰어와 같게 붙인다: 제목은 첫 `# ` 제목에서 앞의 자기 경로·파일 이름(`flows/A-x `)을 뺀 것이고, `index.html` 의 `SECTIONS` 목록에 든 문서는 챕터 번호·제목과 읽는 순서도 갖는다(`index.html` 도 문서처럼 설정 폴더 → 최근 수정 사본 순으로 고른다). 5초마다 mtime 을 보고 바뀐 것만 다시 읽는다.
+
+**섹션.** `##` 제목 하나가 섹션 하나다(코드 블록 안은 제외). 제목 줄부터 다음 `##` 앞 줄까지이고, 첫 `##` 앞은 「머리말」(`##` 이 없으면 「본문」)이다. 섹션 번호는 제목 앞의 숫자(`5. 도메인 모델` → `5`)다.
+
+**참조 추적.** 서버가 세션 로그를 읽을 때 설계 폴더를 가리키는 도구 호출을 잡아, 그 결과가 오면 읽은 줄 범위를 섹션에 대응시킨다. 한 호출이 섹션 여럿에 걸치면 섹션마다 하나씩 기록하고, 섹션에서 읽은 줄의 비율을 `cover` 로 둔다.
+
+| 도구 | 읽는 값 | 종류 | 정확도 |
+| --- | --- | --- | --- |
+| Claude `Read` | `file_path`, 결과의 줄번호(`offset`·`limit` 이 정한 범위, 잘린 결과는 마지막 줄까지) | read | 정확 |
+| Claude `Grep` | 결과의 `파일:줄` (줄번호 없는 모드는 같은 패턴을 그 파일에 다시 돌림) | search | 정확 / 재실행 |
+| 셸 (Claude `Bash`, Codex `exec_command`·`shell`, Codex `exec` 스크립트 안의 `cmd`) | `sed -n a,bp` · `head` · `tail` · `cat` · `nl` · `awk 'NR>=a && NR<=b'` 와 뒤에 붙은 `sed -n`·`head`·`tail` 필터, `grep`·`rg` 결과의 `파일:줄`. `NAME=값` 변수와 `cd` 는 따라간다 | read / search | 근사 |
+
+- 섹션 고정: 결과(Read 의 본문, 읽기 하나뿐인 셸 명령의 출력)에 든 `##` 제목 줄을 먼저 쓰고, 없으면 줄번호를 지금의 목차에 맞춘다. 문서가 읽은 뒤 고쳐져도 제목이 남아 있으면 맞는 섹션에 붙는다. 지금 목차에 없는 제목은 옛 제목 그대로 남아 「현재 목차에 없는 섹션」에 나온다.
+- 경로: 워크트리마다 다른 절대 경로를 문서 키로 바꾼다. 경로 안에 설정 폴더 이름(`/feature-designs/`)이 있으면 된다.
+- 잡지 않는 것: `grep '^## '` 같은 목차 조회, 반복문 변수(`for f in …; do sed … "$D/$f"`)·풀지 못한 변수·명령 치환, `python3`·`node` 같은 스크립트 안의 읽기, `git show <커밋>:<경로>`, 여러 파일을 이은 파이프, 서브에이전트에 넘긴 지시(서브에이전트 자신의 로그는 따로 잡힌다). 세션마다 그 수를 `design-refs.json` 의 `sessions.<id>.stats` 에 센다.
+- 실측(2026-10-19, 한 사용자의 지난 14일 로그: 설계 폴더를 읽은 세션 962개, 문서 447개, 참조 63,750건, 처음부터 쌓는 데 약 30초):
+  - `Read` 199회 중 192회 기록(나머지 7회는 색인하지 않는 `.html`). 46회를 결과 줄번호와 대조해 읽은 줄이 모두 섹션에 배정됐다.
+  - 읽기 하나뿐인 셸 명령 669회의 출력 첫 줄을 파일과 대조: 499회는 그 줄 그대로, 123회는 읽은 뒤 문서가 고쳐져 줄이 옮겨졌거나 내용이 바뀜, 32회는 출력이 잘려 비교 불가, 15회는 확인한 예가 모두 문서 수정 탓이었다. 해석 자체가 틀린 예는 찾지 못했다.
+  - 섹션 고정: 출력에 `##` 제목이 든 셸 읽기 278회 중 85회(31%)는 줄번호만으로 정했다면 다른 섹션에 붙었을 것을 제목으로 바로잡았다(Read 는 44회 중 18회).
+  - 설계 경로가 든 셸 호출 7,627회(Claude) · 2,076회(Codex) 중 참조를 남긴 것은 5,070회 · 1,444회. 나머지는 대부분 읽기가 아닌 명령(`ls`·`wc`·`git`·쓰기)이고, 따라가지 못한 것은 765회(풀지 못한 변수 193 · `python3`/`node` 스크립트 208 · `sed` 편집 스크립트 120 · 파이프 뒤 필터 45 · 반복문 30 · `git show` 15 · 그 밖), 목차 조회로 뺀 것은 1,047회다.
+  - 티켓: 참조를 남긴 세션 962개 중 152개에 티켓이 붙었고, 제목에 패키지 이름이 있는 80개는 모두 그 티켓과 같았다. 서브에이전트 로그 26개도 따로 잡혔다.
+- 기록 `{session, ticket, doc, section, kind, cover, lines, hits, tool, exact, commit, ts, call}` 은 `server/design-refs.json` 에 남는다(세션이 `--hours` 밖으로 나가도). `ticket` 은 외부 계획의 티켓 세션 행(`task_id`)과 세션 브리프의 태스크 ID 로 붙이고, 서브에이전트는 부모의 것을 쓴다. `commit` 은 그 티켓 계획의 `design_root` 아래 문서일 때 `design_commit` 이다.
+
+| 엔드포인트 | 응답 |
+| --- | --- |
+| `GET /api/designs` | `{"enabled", "version", "sources": [{"dir", "configured", "repo", "worktree", "branch", "head", "main"}], "docs": [{"key", "title", "ch", "chapter", "order", "kind": "md"\|"image"\|"pdf", "src", "copies", "mtime", "size", "sessions", "reads", "searches"}], "gone": [사본이 없어진 문서 키], "plans": [{"project", "path", "design_root", "design_commit"}], "refs": 기록 수}` |
+| `GET /api/design?path=<문서 키>` | 문서 하나: `{"key", "title", "ch", "chapter", "kind", "mtime", "size", "source", "copies", "content", "toc": [{"id", "title", "no", "start", "end"}], "refs": [섹션·세션마다 {"section", "session", "title", "path", "kind", "parent", "reads", "searches", "lines", "cover", "first", "last", "exact", "commits", "ticket"}], "plans": [{"project", "design_commit", "head", "same", "same_file"}]}`. `same_file` 은 `design_commit` 과 HEAD 사이에 이 문서가 바뀌지 않았는지(`git diff --quiet`). 없는 키는 404 |
+| `GET /api/design/file?path=<문서 키>` | 그림·PDF 바이트. 실제 경로(realpath)가 그 설계 폴더 밖이면 404, 32MB 초과는 413. SVG 는 스크립트가 돌지 않게 CSP 를 붙인다 |
+| `GET /api/design/refs?session=<세션 id>` | 그 세션(과 서브에이전트)이 읽은 섹션: `{"refs": [{"doc", "doc_title", "doc_ch", "doc_chapter", "section", "no", "start", "reads", "searches", "cover", "first", "last", "sub"}]}` |
+| `GET /api/session` | 기존 필드에 `design_refs`(위와 같은 목록)가 붙는다. `--hours` 밖 세션도 `design-refs.json` 에 있으면 그 로그를 읽어 주고 `archived: true` 를 붙인다 |
+| `GET /api/state` | `design: {"enabled", "version"}` (색인이나 참조가 바뀌면 version 이 바뀐다), `ext_plans[].design_refs`: `{티켓: [{"doc", "doc_title", "doc_ch", "doc_chapter", "section", "no", "sessions", "count"}]}` (읽기만, 많이 읽은 순) |
+
+대시보드의 「설계문서」 탭(바의 책 아이콘)이 이것을 그린다. 켜진 메트릭 서버 중 설계 폴더를 색인하는 서버의 문서를 모두 모은다(여러 서버면 트리가 서버별로 나뉜다).
+
+- **배치:** 넓은 화면에서는 페이지가 움직이지 않고 문서 본문만 스크롤된다. 위 요약 줄, 왼쪽 상자, 문서 머리, 오른쪽 목록은 제자리에 있고, 문서 목록과 오른쪽 목록은 각자 안에서 스크롤된다. 폭 900px 이하에서는 페이지 전체만 스크롤된다: 페이지에는 문서만 두고, 상자 안 스크롤을 없애려고 표와 코드는 줄을 바꿔 보인다. 플로팅 바 오른쪽의 작은 책 버튼(옆에 자리가 없으면 바 오른쪽 끝 위)을 누르면 「문서 선택」·「읽은 세션」 팝오버가 뜬다. 「문서 선택」은 지금 프로젝트의 문서와 목차를 보여 주는 모달을 열고, 모달 머리의 프로젝트 이름을 누르면 프로젝트 목록으로 바뀐다. 프로젝트를 고르면 그 프로젝트의 문서가 열리고 모달은 그 문서·목차 목록으로 돌아온다. 문서·목차를 고르면 닫힌다(「닫기」·바깥·Esc 로도). 「읽은 세션」은 그 목록만 모달로 연다. 섹션 배지를 누르면 그 섹션의 읽은 세션 모달이 열린다.
+- **왼쪽:** 두 상자다. 「설계 프로젝트」는 기능 폴더 목록(읽힌 문서 수/전체, 워크트리 사본에서 온 폴더는 ▣)으로, 고르면 그 폴더에서 마지막으로 본 문서(없으면 읽는 순서의 첫 문서)가 열리고 상자는 접혀 고른 이름만 남는다. 「문서」는 고른 프로젝트의 문서로, 파일 이름 대신 제목으로 보이고 `index.html` 이 있는 폴더는 그 뷰어처럼 챕터(`01 개요 · 전제 · 용어`)로 묶어 읽는 순서대로 놓는다(그 목록에 없는 파일은 보이지 않는다). 문서마다 읽거나 검색한 세션 수가 붙고, 열린 문서 아래에 목차가 아코디언으로 펼쳐진다(섹션마다 읽은 세션 수, 누르면 그 섹션으로 스크롤하고 오른쪽이 그 섹션을 읽은 세션이 된다. 열린 문서를 다시 누르면 접힌다). 거르기 칸은 모든 프로젝트의 제목·챕터·파일 이름을 찾는다. 넓은 화면에서 「문서」 상자를 열고 닫은 것은 기억한다.
+- **가운데:** 문서. Markdown 은 `marked`, 다이어그램은 `mermaid` 로 그린다(jsDelivr 에서 버전을 고정하고 SRI 로 받으며, 탭을 처음 열 때 불러온다). 문서 안 HTML 은 글자로 보이고, 상대 링크는 설계 폴더 안 문서·그림으로 풀린다. 섹션 제목마다 「세션 N · M회」 배지(0 이면 흐리게). 위쪽에 사본의 저장소·워크트리·브랜치·HEAD 와, 그 문서를 가리키는 외부 계획의 `design_commit` 이 HEAD 와 같은지가 보인다. 그림과 PDF 는 그대로 보인다.
+- **오른쪽:** 배지를 누른 섹션(아니면 문서 전체)을 읽은 세션 목록 — read 비율·search 수·횟수·시각·티켓·지금 상태. 누르면 세션 상세로 간다. 목록 머리의 「숨기기」나 플로팅 바 필터의 「읽은 세션 보기」(설계문서 탭, 넓은 화면에서만 보인다)를 끄면 이 목록을 감추고 문서를 넓게 보며(기억한다), 섹션 배지를 누르면 다시 보인다.
+- 배지·목록은 읽기만 센다(검색 적중은 세지 않고, 목록의 search 수로만 보인다). 기기별 저장값: `adash.design` (읽은 세션 보기, 거르기 글자, 마지막 문서와 프로젝트별 마지막 문서, 상자 열림).
+- 세션 상세에 「참고한 설계 섹션」 절(문서별 섹션, 누르면 탭의 그 섹션), 코디네이터 상세의 티켓 의존 그래프 노드에 그 티켓 세션들이 많이 읽은 섹션 번호(`§5 · §3 · §4 +N`, 문서마다 같은 번호면 문서 제목을 앞에 붙임, 전체는 툴팁).
+
 ## 설정 (`prefs.json`)
 
 `server/prefs.json` 은 화면 설정(숨김·유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
@@ -271,6 +320,7 @@ aplan skip N [메모] / aplan fail N [메모]
 | `external_plans` | 드라이버가 쓰는 외부 계획 파일 경로 목록 (`~` 사용 가능). 착수 뒤 검증이 더한 체크박스(`fix_source`)의 사유는 세션의 `fix_reason`, 리뷰(`integration-review`·`pr-review`·`completion-review`)와 더한 체크박스의 차수는 `round` 로 쓴다. 없으면 계획 옆 티켓 상태 `<package>.json` 이 가리키는 착수 시트의 `- 추가 사유:` 줄(그것도 없으면 `fix_findings` 의 지적 수)과 제목의 「N라운드」·「N차」에서 읽는다 |
 | `run_tc_progress` | run-tc 진행 파일 경로 목록 |
 | `decision_inbox` | 메일함 모드 켜짐 여부. 대시보드의 스위치가 쓴다 (위 「메일함 모드」) |
+| `design_dirs` | 설계문서 폴더 경로 목록 (`~` 사용 가능, 예: `["~/repo/<저장소>/feature-designs"]`). 아래 「설계문서」 |
 
 ## 보안
 
@@ -293,4 +343,4 @@ aplan skip N [메모] / aplan fail N [메모]
 
 `server/` 아래에 쌓인다. 저장소 루트에 있던 것(구조 분리 전)은 `server/` 로 옮기면 그대로 이어진다.
 
-`prefs.json` · `settled.json` · `inbox.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `server.log` · `.token`
+`prefs.json` · `settled.json` · `inbox.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `design-refs.json` · `server.log` · `.token`
