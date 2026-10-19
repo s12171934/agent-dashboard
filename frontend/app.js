@@ -1793,8 +1793,20 @@ function wtHtml(top, fams, up, srv) {
     if (!pf) sec(k).items.push(it);
     else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);
   }
-  const list = [...secs.values()].map(x => wtSec(x, tkAt.get(x.key))).filter(x => x.html)
-    .sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
+  // Worktrees under a coordinator come first, grouped by their top coordinator: its own worktree, then the ones its
+  // workers and drivers run in. Worktrees with only solo sessions follow. Inside a group (and among the solo ones) by state.
+  const rootOf = f => { for (let n = 0; f.coord && up.get(f.coord.path) && n < 8; n++) f = up.get(f.coord.path); return f.key; };
+  const byState = (a, b) => a.r - b.r || b.started.localeCompare(a.started);
+  const list = [...secs.values()].map(x => {
+    const own = x.items.find(it => it.f && !up.get(it.f.coord.path)), ext = x.items.find(it => it.list);
+    return { ...wtSec(x, tkAt.get(x.key)), root: own ? rootOf(own.f) : ext ? rootOf(ext.pf) : null, head: !!own };
+  }).filter(x => x.html);
+  const groups = new Map();
+  for (const x of list) if (x.root) (groups.get(x.root) || groups.set(x.root, []).get(x.root)).push(x);
+  const lead = xs => xs.find(x => x.head) || xs.slice().sort(byState)[0];
+  const ordered = [...groups.values()].sort((a, b) => byState(lead(a), lead(b)))
+    .flatMap(xs => xs.sort((a, b) => b.head - a.head || byState(a, b)));
+  list.splice(0, list.length, ...ordered, ...list.filter(x => !x.root).sort(byState));
   const n = list.reduce((a, x) => a + x.n, 0);
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
   const head = srv ? `<div class="sec-h srv-h">${srvTitle(srv)}<span>에이전트 ${n} · 워크트리 ${list.length}</span>${fold}</div>` : `<div class="sec-h"><h2>에이전트 ${n}</h2><span>워크트리 ${list.length}</span>${fold}</div>`;
