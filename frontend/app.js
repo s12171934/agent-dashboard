@@ -211,6 +211,8 @@ function families() {
 function route() {
   const h = decodeURIComponent(location.hash.slice(1) || 'agents');
   if (h === 'projects') return { v: 'projects' };
+  if (h === 'designs') return { v: 'designs' };
+  if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
   return { v: ['agents', 'compare', 'talk', 'tests', 'hidden', 'decide'].includes(h) ? h : 'agents' };
@@ -307,6 +309,7 @@ async function renderView(navigated) {
   if (r.v !== 'talk') talkMounted = false;
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
+  if (r.v !== 'designs') dzMounted = null;
   if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
   else if (r.v === 'talk') await renderTalk();
@@ -314,6 +317,7 @@ async function renderView(navigated) {
   else if (r.v === 'hidden') renderHidden();
   else if (r.v === 'decide') renderDecide();
   else if (r.v === 'projects') await renderProjects();
+  else if (r.v === 'designs') await renderDesigns();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
   else if (r.v === 'session') {
     detail = await api.session(r.id);
@@ -436,7 +440,8 @@ function renderDecide() {
 // Server collector loops (state.health.loops: name -> {ok, error, at}). SSE pings keep 「실시간」 on even when a
 // collector has stopped, so a loop whose last clean pass is older than its limit is called out here, as is a
 // failure in the last 10 minutes. A refresh that failed in the page itself is shown the same way.
-const LOOPS = { scan: ['세션 로그', 60], orca: ['Orca', 300], ext_plan: ['외부 계획', 60], history: ['지난 기록', 1800], decision: ['결정 버튼', 30] };
+const LOOPS = { scan: ['세션 로그', 60], orca: ['Orca', 300], ext_plan: ['외부 계획', 60], history: ['지난 기록', 1800], decision: ['결정 버튼', 30],
+  design: ['설계문서', 60], design_backfill: ['설계문서 지난 로그', 3600] };
 let refreshError = null;
 function renderHealth() {
   const h = state?.health, el = $('#health');
@@ -1432,7 +1437,7 @@ function ticketGraph(p) {
     const tip = `${n}${k.jira ? ' · ' + k.jira : ''} · ${x.st === 'wait' ? x.why.t : XP_TICKET[k.status] || lbl} · 체크박스 ${bd}/${bt}\n선행: ${preds(n).join(', ') || '없음'}`;
     return `<div class="tg-n ${cls}" style="grid-column:${c + 2};grid-row:${l.row + r};--o:${c * 2 + 1}" data-n="${esc(n)}" data-id="${esc('ext:' + p.path + ':' + n)}" data-repo="${esc('repo:' + p.path + ':' + l.repo)}" title="${esc(tip)}">
       <div class="tg-k"><i>${TK_IC[cls] || '·'}</i>${esc(n)}<span>${bd}/${bt}</span></div><div class="tg-bar"><i style="width:${bt ? Math.round(bd / bt * 100) : x.st === 'done' ? 100 : 0}%"></i></div>
-      <div class="tg-s">${esc(k.jira || '')} · ${esc(x.st === 'wait' ? TKP[x.why.k][1] : lbl)}</div>${preds(n).length ? `<div class="tg-p">← ${preds(n).map(esc).join(', ')}</div>` : ''}</div>`; };
+      <div class="tg-s">${esc(k.jira || '')} · ${esc(x.st === 'wait' ? TKP[x.why.k][1] : lbl)}</div>${ticketDesignBadge(p, n)}${preds(n).length ? `<div class="tg-p">← ${preds(n).map(esc).join(', ')}</div>` : ''}</div>`; };
   const c = k => all.filter(x => x.st === k).length;
   return `<div class="tg-box"><div class="tg-leg"><b>티켓 의존 그래프</b><span>완료 <b>${c('done')}/${all.length}</b> · 실행 <b style="color:var(--run)">${c('run')}</b> · 대기 ${c('wait')} · 체크박스 ${sum(all, 'boxes_done')}/${sum(all, 'boxes_total')}</span>
       <span><i class="tg-l chain"></i>같은 저장소 체인</span><span><i class="tg-l pred"></i>다른 티켓 선행</span><span class="st">간접 선행은 생략 · 올리면 앞뒤 의존 강조, 누르면 아래 행으로</span></div>
@@ -2369,6 +2374,7 @@ function renderSession(navigated) {
     ${workerPlanBox(d)}
     ${extPlansHtml(plansOf(d), true)}
     ${planBox(d)}
+    ${designRefsBox(d)}
     <div class="kpis">
       <div class="kpi"><span>턴</span><b>${d.turns}</b></div>
       <div class="kpi" title="${ctxTitle(d)}"><span>현재 컨텍스트</span><b class="${ctxLvl(d)}">${fmt(d.ctx_now)}</b>${d.ctx_window ? `<small> / ${fmt(d.ctx_window)}</small>` : ''}</div>
@@ -2402,7 +2408,7 @@ function renderSession(navigated) {
           <span class="${l.error ? 'err' : ''}"><b class="r">${window.innerWidth <= 700 ? esc(l.role) + ' ' : ''}</b>${esc(l.text)}${l.detail ? ' <span class="st">' + esc(l.detail) + '</span>' : ''}${l.size ? ' <span class="st">(' + fmt(l.size) + '자)</span>' : ''}</span></div>`).join('')}</div></div>
     </div>`;
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
-  for (const k of ['kids', 'subs', 'prevplans']) { const el = $('#d-' + k); if (el) el.ontoggle = () => openState[k] = el.open; }
+  for (const k of ['kids', 'subs', 'prevplans', 'design']) { const el = $('#d-' + k); if (el) el.ontoggle = () => openState[k] = el.open; }
   $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
     if (e.target.closest('a')) return;
     famMin[b.dataset.ttoggle] = !b.closest('.tk').classList.contains('open');
@@ -3259,6 +3265,264 @@ addEventListener('wheel', e => {
   e.preventDefault();
   el.scrollLeft = Math.max(0, Math.min(max, el.scrollLeft + dy));
 }, { passive: false });
+
+// ---------- 설계문서 ----------
+// Design documents from the metric servers that index a design folder (server: prefs design_dirs / --design-dir), and
+// which `## ` sections the sessions read (the servers take that from the session logs). Left: the documents by feature
+// folder with how many sessions read each. Middle: the document, rendered with marked and mermaid (pinned on a CDN,
+// loaded the first time the tab opens), a 「세션 N · M회」 badge on every section. Right: the sessions that read the
+// picked section (on narrow screens the same list opens under the heading). A session opens its detail.
+// #dz=<server>|<document key>|<section> names what is open; the section is changed in place (no history entry).
+const DZ_LIBS = {
+  marked: ['https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js', 'sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR'],
+  mermaid: ['https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js', 'sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I'],
+};
+const dzLibs = {};
+const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
+  const s = document.createElement('script');
+  [s.src, s.integrity] = DZ_LIBS[name];
+  s.crossOrigin = 'anonymous';
+  s.onload = () => ok(window[name]);
+  s.onerror = () => { delete dzLibs[name]; fail(new Error(name + ' 을 불러오지 못했습니다')); };
+  document.head.append(s);
+});
+let dz = { search: false, live: false, q: '', last: null };  // adash.design: the toggles and the last document
+try { Object.assign(dz, JSON.parse(localStorage.getItem('adash.design') || '{}')); } catch {}
+const dzSave = () => { try { localStorage.setItem('adash.design', JSON.stringify(dz)); } catch {} };
+let dzList = null, dzListV = null;  // api.designs(), dropped when a server's index or references change
+const dzDocs = {};                  // server + '\n' + key -> api.design()
+let dzMounted = null;               // what the view was built for; live updates then redraw only the counts
+const dzHash = (server, key, sec) => '#dz=' + encodeURIComponent([server, key, sec || ''].join('|'));
+const dzName = key => key.split('/').slice(2).join('/') || key;  // without "feature-designs/<slug>/"
+const dzSlug = key => key.split('/').length > 2 ? key.split('/')[1] : '(폴더 바로 아래)';
+const dzNo = r => r.no ? '§' + r.no : cut(r.section || '문서 전체', 12);
+const dzLiveSet = () => new Set(state.sessions.filter(s => OPEN(status(s))).map(s => s.path));
+// a section's readers under the toggles: [{row, reads, searches}] where row is the server's per-session row
+function dzReaders(doc, sec) {
+  const live = dz.live ? dzLiveSet() : null;
+  return (doc.refs || []).filter(r => (sec === undefined || r.section === sec) && (!live || live.has(r.path)) && (r.reads || (dz.search && r.searches)));
+}
+const dzCount = rows => ({ s: new Set(rows.map(r => r.session)).size, n: rows.reduce((a, r) => a + r.reads + (dz.search ? r.searches : 0), 0) });
+
+async function renderDesigns() {
+  const r = route(), ver = state.design?.version ?? '';
+  if (!dzList || dzListV !== ver) {
+    dzListV = ver;
+    try { dzList = await api.designs(); } catch { dzList = null; }
+    dzList ||= { enabled: false, sources: [], dirs: [], docs: [], plans: [] };
+    for (const k of Object.keys(dzDocs)) delete dzDocs[k];
+    if (route().v !== 'designs') return;
+  }
+  let { server, key, sec } = r;
+  if (!key && dz.last) [server, key] = dz.last;
+  const meta = key && dzList.docs.find(x => x.server === server && x.key === key);
+  if (meta && (dz.last?.[0] !== server || dz.last?.[1] !== key)) { dz.last = [server, key]; dzSave(); }
+  const ck = meta ? server + '\n' + key : '';
+  let doc = ck && dzDocs[ck];
+  if (meta && !doc) {
+    try { doc = dzDocs[ck] = await api.design(server, key); } catch (e) { doc = { error: String(e.message || e) }; }
+    doc ||= { error: '문서를 찾을 수 없습니다.' };
+    if (route().v !== 'designs') return;
+  }
+  const mk = [ck, doc?.mtime, multiSrv()].join('\n');
+  if (dzMounted !== mk || !$('#dz-tree')) {
+    dzMounted = mk;
+    $('#view').innerHTML = `<div class="controls dz-ctl">
+        <label class="chk"><input type="checkbox" data-dz-opt="search"${dz.search ? ' checked' : ''}> 검색 적중 포함</label>
+        <label class="chk"><input type="checkbox" data-dz-opt="live"${dz.live ? ' checked' : ''}> 진행 중 세션만</label>
+        <span class="st" id="dz-sum"></span></div>
+      ${!dzList.enabled ? dzNoSource() : `<div class="dz${meta ? '' : ' empty-doc'}">
+        <details class="box dz-tree" id="dz-tree"${innerWidth > 900 || !meta ? ' open' : ''}><summary><b>설계문서</b> <span class="st">${meta ? esc(dzName(key)) : ''}</span></summary>
+          <input class="field dz-q" type="search" placeholder="문서 이름으로 거르기" value="${esc(dz.q)}" aria-label="문서 이름으로 거르기">
+          <div id="dz-list"></div></details>
+        <div class="dz-main">${meta ? `<div class="box dz-head" id="dz-head"></div><article class="box dz-doc" id="dz-doc"></article>`
+          : '<div class="empty">왼쪽에서 문서를 고르세요. 숫자는 그 문서를 읽거나 검색한 세션 수입니다.</div>'}</div>
+        ${meta ? '<aside class="box dz-pane" id="dz-pane"></aside>' : ''}</div>`}`;
+    if (meta) await dzArticle(doc);
+    if (route().v !== 'designs' || dzMounted !== mk) return;
+  }
+  if (!dzList.enabled) return;
+  dzFill(server, key, sec, meta, doc);
+}
+
+// No server that is on indexes design documents: say, per server, why not.
+const DZ_SRC = { off: '설계 폴더 없이 떠 있음 (prefs.json 의 design_dirs 나 --design-dir)', old: '설계문서 기능이 없는 서버 버전 (새 코드로 다시 띄워야 함)', error: '연결할 수 없음' };
+function dzNoSource() {
+  const rows = (dzList.sources || []).map(x => `<li><b>${esc(srvName(x.server))}</b> <span class="st">${esc(api.server(x.server)?.url || '')}</span> — ${DZ_SRC[x.state] || x.state}</li>`).join('');
+  return `<div class="empty">설계문서를 색인하는 메트릭 서버가 없습니다.${rows ? `<ul class="pj-src">${rows}</ul>` : '<br><small>켜진 메트릭 서버가 없습니다.</small>'}</div>`;
+}
+
+// The document body into #dz-doc: Markdown (raw HTML shown as text, links and pictures resolved inside the design
+// folder), a picture, or a PDF.
+async function dzArticle(doc) {
+  const art = $('#dz-doc');
+  if (doc.error) { art.innerHTML = `<div class="empty">${esc(doc.error)}</div>`; return; }
+  const file = k => api.designFile(doc.server, k);
+  if (doc.kind === 'image') { art.innerHTML = `<img class="dz-img" src="${esc(file(doc.key))}" alt="${esc(dzName(doc.key))}">`; return; }
+  if (doc.kind === 'pdf') { art.innerHTML = `<iframe class="dz-pdf" src="${esc(file(doc.key))}" title="${esc(dzName(doc.key))}"></iframe>`; return; }
+  art.innerHTML = '<div class="st pj-wait">불러오는 중…</div>';
+  let marked;
+  try { marked = await dzLib('marked'); } catch (e) { art.innerHTML = `<div class="empty">${esc(e.message)}</div><pre class="dz-raw">${esc(doc.content)}</pre>`; return; }
+  if (!art.isConnected) return;
+  const dir = doc.key.replace(/[^/]*$/, ''), keys = new Set(dzList.docs.filter(x => x.server === doc.server).map(x => x.key));
+  const resolve = href => {  // a relative link inside the design folder -> its document key
+    const parts = (dir + href.split(/[?#]/)[0]).split('/'), out = [];
+    for (const p of parts) { if (p === '..') out.pop(); else if (p && p !== '.') out.push(p); }
+    try { return decodeURIComponent(out.join('/')); } catch { return out.join('/'); }
+  };
+  const ext = h => /^(https?:|mailto:)/i.test(h);
+  const renderer = {
+    html: ({ text }) => esc(text),
+    code: ({ text, lang }) => lang === 'mermaid' ? `<pre class="mermaid">${esc(text)}</pre>` : `<pre><code>${esc(text)}</code></pre>`,
+    link({ href, title, tokens }) {
+      const label = this.parser.parseInline(tokens), t = title ? ` title="${esc(title)}"` : '';
+      if (ext(href)) return `<a href="${esc(href)}"${t} target="_blank" rel="noreferrer">${label}</a>`;
+      if (/^#/.test(href)) return `<span${t}>${label}</span>`;
+      const k = resolve(href);
+      if (keys.has(k)) return k.endsWith('.md') ? `<a href="${esc(dzHash(doc.server, k))}"${t}>${label}</a>` : `<a href="${esc(file(k))}"${t} target="_blank" rel="noreferrer">${label}</a>`;
+      return `<span class="dz-dead" title="${esc(href)} — 설계 폴더 밖이거나 없음">${label}</span>`;
+    },
+    image({ href, text }) {
+      const k = ext(href) ? null : resolve(href);
+      return ext(href) || keys.has(k) ? `<img src="${esc(ext(href) ? href : file(k))}" alt="${esc(text)}" loading="lazy">` : `<span class="dz-dead">[그림: ${esc(text || href)}]</span>`;
+    },
+  };
+  art.innerHTML = new marked.Marked({ gfm: true, renderer }).parse(doc.content.replace(/^---\n[\s\S]*?\n---\n/, ''));
+  dzHeadings(art, doc);
+  const charts = art.querySelectorAll('pre.mermaid');
+  if (!charts.length) return;
+  try {
+    const mermaid = await dzLib('mermaid');
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'default' });
+    await mermaid.run({ nodes: charts, suppressErrors: true });
+  } catch (e) { charts.forEach(c => c.classList.add('dz-raw')); }
+}
+
+// Tie the rendered <h2>s to the server's table of contents (same order; titles compared without Markdown marks), and
+// put the preamble's place at the top.
+const dzNorm = t => String(t).replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*_~]/g, '').replace(/\s+/g, ' ').trim();
+function dzHeadings(art, doc) {
+  const toc = doc.toc || [], hs = [...art.querySelectorAll('h2')];
+  let i = 0;
+  for (const h of hs) {
+    const t = dzNorm(h.textContent), j = toc.findIndex((s, k) => k >= i && dzNorm(s.title) === t);
+    if (j < 0) continue;
+    h.dataset.sec = toc[j].id; i = j + 1;
+  }
+  const pre = toc.find(s => s.start === 1 && !s.no && (s.id === '머리말' || s.id === '본문'));
+  if (pre) art.insertAdjacentHTML('afterbegin', `<div class="dz-pre" data-sec="${esc(pre.id)}"><span class="st">${pre.id === '본문' ? '본문 (## 제목 없음)' : '머리말 (첫 ## 앞)'}</span></div>`);
+}
+
+// Everything that moves with new references: the tree's counts, the header, the badges, the readers.
+function dzFill(server, key, sec, meta, doc) {
+  const docs = dzList.docs.filter(x => !dz.q || x.key.toLowerCase().includes(dz.q.toLowerCase()));
+  $('#dz-sum').textContent = `문서 ${dzList.docs.filter(x => x.kind === 'md').length} · 그림·PDF ${dzList.docs.filter(x => x.kind !== 'md').length} · 참조 ${dzList.refs}건`;
+  // tree: server (when several) -> feature folder -> documents; folders with recent changes first
+  const bySrv = {};
+  for (const x of docs) ((bySrv[x.server] ||= {})[dzSlug(x.key)] ||= []).push(x);
+  $('#dz-list').innerHTML = Object.entries(bySrv).map(([srv, slugs]) => `${multiSrv() ? `<div class="dz-srv">${esc(srvName(srv))}</div>` : ''}${Object.entries(slugs)
+    .sort((a, b) => Math.max(...b[1].map(x => x.mtime)) - Math.max(...a[1].map(x => x.mtime)))
+    .map(([slug, xs]) => {
+      const n = xs.filter(x => x.sessions).length, open = (srv === server && dzSlug(key || '') === slug) || dz.q;
+      const src = dzList.dirs.filter(d => d.server === srv)[xs[0].src];
+      return `<details class="dz-f"${open ? ' open' : ''}><summary title="${esc(src ? `${src.dir}${src.branch ? ` (${src.branch})` : ''}` : '')}"><span class="dz-fn">${esc(slug)}</span>${src && !src.configured ? '<span class="dz-wt" aria-label="워크트리 사본">▣</span>' : ''}<span class="badge${n ? ' dz-n' : ''}" title="읽힌 문서 ${n} / 전체 ${xs.length}">${n}/${xs.length}</span></summary>
+        <ul>${xs.map(x => `<li><a class="dz-d${x.server === server && x.key === key ? ' on' : ''}${x.sessions ? '' : ' zero'}" href="${esc(dzHash(x.server, x.key))}" title="${esc(`${x.key}\n읽기 ${x.reads} · 검색 ${x.searches} · 세션 ${x.sessions}`)}">
+          <span>${x.kind === 'md' ? '' : x.kind === 'pdf' ? '▤ ' : '▧ '}${esc(dzName(x.key))}</span><span class="badge${x.sessions ? ' dz-n' : ''}">${x.sessions}</span></a></li>`).join('')}</ul></details>`;
+    }).join('')}`).join('') || '<div class="st">맞는 문서가 없습니다.</div>';
+  if (!meta || !doc || doc.error) return;
+  // header: where the copy comes from, and the plans' design_commit against its HEAD
+  const s = doc.source || {}, head = s.head ? s.head.slice(0, 7) : '';
+  $('#dz-head').innerHTML = `<div class="dz-title"><b>${esc(dzName(key))}</b>${srvBadge(doc)} <span class="st">${esc(dzSlug(key))}</span></div>
+    <div class="dz-ver"><span title="${esc(s.dir || '')}">▣ ${esc(s.repo || '')}${s.worktree && s.worktree !== s.repo ? ' · ' + esc(s.worktree) : ''}${s.branch ? ` (${esc(s.branch)})` : ''}${head ? ` · HEAD <code>${head}</code>` : ''}</span>
+      ${doc.copies?.length > 1 ? `<span class="st" title="${esc(doc.copies.map(c => `${c.worktree || c.dir} ${c.branch || ''}`).join('\n'))}">사본 ${doc.copies.length}곳 (설정 폴더 → 최근 수정 순으로 이것)</span>` : ''}
+      ${(doc.plans || []).map(p => `<span class="dz-cm ${p.same ? 'ok' : 'diff'}">문서 버전 <code>design_commit ${esc((p.design_commit || '').slice(0, 7))}</code> · ${p.same ? '현재 HEAD 와 같음' : `HEAD 와 다름${p.same_file === true ? ' (이 문서는 같음)' : p.same_file === false ? ' (이 문서도 바뀜)' : ''}`}${p.project ? ` <span class="st">${esc(p.project)}</span>` : ''}</span>`).join('')}
+      <span class="st">수정 ${esc(new Date(doc.mtime * 1000).toLocaleString('ko-KR', { hour12: false }))}</span></div>`;
+  // badges on every section
+  const art = $('#dz-doc'), toc = doc.toc || [];
+  art.querySelectorAll('.dz-b, .dz-inline').forEach(x => x.remove());
+  art.querySelectorAll('[data-sec]').forEach(h => {
+    const c = dzCount(dzReaders(doc, h.dataset.sec));
+    h.classList.toggle('on', h.dataset.sec === sec);
+    h.insertAdjacentHTML('beforeend', ` <button type="button" class="badge dz-b${c.s ? '' : ' zero'}" data-dz-sec="${esc(h.dataset.sec)}" aria-label="${esc(h.dataset.sec)} 섹션을 읽은 세션 보기">세션 ${c.s} · ${c.n}회</button>`);
+  });
+  const pane = dzPane(doc, sec, toc);
+  $('#dz-pane').innerHTML = pane;
+  const at = sec && [...art.querySelectorAll('[data-sec]')].find(h => h.dataset.sec === sec);
+  if (at) at.insertAdjacentHTML('afterend', `<div class="dz-inline">${pane}</div>`);
+}
+
+// The readers of a section (or of the whole document) as session rows; the sections a session read that the current
+// table of contents no longer has are listed at the end of the document view.
+const DZ_ROWS = 40;  // readers listed at most, newest first
+function dzPane(doc, sec, toc) {
+  const one = sec !== undefined && sec !== '' && (toc.some(s => s.id === sec) || (doc.refs || []).some(r => r.section === sec));
+  const rows = one ? dzReaders(doc, sec) : Object.values(dzReaders(doc).reduce((o, r) => {
+    const x = o[r.session] ||= { ...r, reads: 0, searches: 0, cover: null, secs: new Set() };
+    x.reads += r.reads; x.searches += r.searches; x.secs.add(r.section);
+    if (r.last > x.last) x.last = r.last;
+    return o;
+  }, {}));
+  rows.sort((a, b) => (b.last || '').localeCompare(a.last || ''));
+  const live = new Map(state.sessions.map(s => [s.path, s]));
+  const item = r => {
+    const s = live.get(r.path), tk = r.ticket ? `<span class="badge">티켓 ${esc(r.ticket)}</span>` : '';
+    const kinds = [r.reads ? `<span class="chip" style="--c: var(--accent)">read${r.cover != null ? ' ' + Math.round(r.cover * 100) + '%' : ''}</span>` : '',
+      r.searches ? `<span class="chip" style="--c: var(--s-write)">search ${r.searches}</span>` : ''].join('');
+    return `<li><a class="dz-s" href="${r.path ? '#s=' + encodeURIComponent(r.path) : '#'}" title="${esc(`${r.session}${r.lines?.length ? '\n읽은 줄 ' + r.lines.map(([a, b]) => a === b ? a : a + '–' + b).join(', ') : ''}${r.exact ? '' : '\n(셸 명령에서 근사)'}`)}">
+      <span class="dz-st"><b>${esc(r.title || r.session.slice(0, 8))}</b>${tk}${s ? pill(status(s), s) : ''}${r.parent ? '<span class="badge">서브에이전트</span>' : ''}</span>
+      <span class="dz-k">${kinds}<span class="st">${r.reads + r.searches}회${r.secs ? ` · 섹션 ${r.secs.size}` : ''} · ${esc(ago(r.last))}</span></span></a></li>`;
+  };
+  const gone = [...new Set((doc.refs || []).map(r => r.section))].filter(x => x && !toc.some(s => s.id === x));
+  return `<h3>${one ? `「${esc(sec)}」 섹션을 읽은 세션` : '이 문서를 읽은 세션'} <span class="st">${rows.length}</span></h3>
+    ${rows.length ? `<ul class="dz-ss">${rows.slice(0, DZ_ROWS).map(item).join('')}</ul>${rows.length > DZ_ROWS ? `<div class="st">최근 ${DZ_ROWS}개만 보입니다 (전체 ${rows.length})</div>` : ''}` : `<div class="st">${dz.live ? '진행 중인 세션 중에는 없습니다.' : '읽은 세션이 없습니다.'}${dz.search ? '' : ' 검색 적중은 「검색 적중 포함」을 켜면 셉니다.'}</div>`}
+    ${one ? `<button type="button" class="act" data-dz-sec="">문서 전체 보기</button>` : `<div class="st dz-hint">섹션 제목의 배지를 누르면 그 섹션을 읽은 세션만 봅니다. 누르면 세션 상세로 갑니다.</div>`}
+    ${!one && gone.length ? `<h3>현재 목차에 없는 섹션</h3><ul class="dz-gone">${gone.map(g => `<li><button type="button" class="tgl" data-dz-sec="${esc(g)}">${esc(g)}</button></li>`).join('')}</ul>` : ''}`;
+}
+
+document.addEventListener('click', e => {
+  if (route().v !== 'designs') return;
+  const b = e.target.closest('[data-dz-sec]');
+  if (!b) return;
+  const r = route(), key = r.key || dz.last?.[1], server = r.server || dz.last?.[0], cur = r.sec || '';
+  const sec = b.dataset.dzSec === cur ? '' : b.dataset.dzSec;  // the open section again lets it go
+  history.replaceState(null, '', dzHash(server, key, sec));
+  render();
+});
+document.addEventListener('change', e => {
+  const o = e.target.closest?.('[data-dz-opt]');
+  if (!o) return;
+  dz[o.dataset.dzOpt] = o.checked; dzSave(); render();
+});
+document.addEventListener('input', e => {
+  if (!e.target.classList?.contains('dz-q')) return;
+  dz.q = e.target.value; dzSave();
+  const r = route();
+  dzFill(r.server || dz.last?.[0], r.key || dz.last?.[1], r.sec, null, null);
+});
+
+// Session detail: the design sections the session (and its subagents) read, per document.
+function designRefsBox(d) {
+  const rows = d.design_refs || [];
+  if (!rows.length) return '';
+  const docs = {};
+  rows.forEach(x => (docs[x.doc] ||= []).push(x));
+  const part = x => [x.reads ? `read${x.cover != null ? ' ' + Math.round(x.cover * 100) + '%' : ''}` : '', x.searches ? `search ${x.searches}` : '', `${x.reads + x.searches}회`].filter(Boolean).join(' · ');
+  return `<details class="box" id="d-design" ${openState.design ?? true ? 'open' : ''}><summary><b>참고한 설계 섹션</b> <span class="st">문서 ${Object.keys(docs).length} · 섹션 ${rows.length}${rows.some(x => x.sub) ? ' · 서브에이전트 포함' : ''}</span></summary>
+    <div class="dz-rd">${Object.entries(docs).map(([doc, xs]) => `<div><a href="${esc(dzHash(d.server, doc))}"><b>${esc(dzName(doc))}</b></a> <span class="st">${esc(dzSlug(doc))}</span>
+      <ul>${xs.map(x => `<li><a href="${esc(dzHash(d.server, doc, x.section))}">${esc(x.section || '문서 전체')}</a> <span class="st">— ${esc(part(x))}${x.sub ? ' · 서브에이전트' : ''}</span></li>`).join('')}</ul></div>`).join('')}</div></details>`;
+}
+
+// Ticket graph node: the sections its sessions read, most read first ("§5 · §9"); the files are in the tooltip, since a
+// box is too narrow for them.
+function ticketDesignBadge(p, n) {
+  const rows = p.design_refs?.[n] || [];
+  if (!rows.length) return '';
+  const tip = rows.map(x => `${dzName(x.doc)} — ${x.section} (세션 ${x.sessions} · ${x.count}회)`).join('\n');
+  // the same number from two documents gets the file's name in front (cut short), so "§2 · §2" never shows
+  const top = rows.slice(0, 3), twice = top.filter(x => top.some(y => y !== x && dzNo(y) === dzNo(x)));
+  const lbl = x => (twice.includes(x) ? cut(x.doc.split('/').pop().replace(/\.md$/, ''), 8) : '') + dzNo(x);
+  return `<div class="tg-d" title="${esc('읽은 설계 섹션\n' + tip)}">${top.map(x => esc(lbl(x))).join(' · ')}${rows.length > 3 ? ` <span>+${rows.length - 3}</span>` : ''}</div>`;
+}
 
 function connect() {
   const last = {};

@@ -40,7 +40,10 @@ const api = (() => {
   // Which server sent what, rebuilt from every merged snapshot: requests about it go back there.
   let owner = { path: {}, run: {}, handle: {}, decision: {} };
   const jobOwner = {};
-  const ownerOf = (kind, key) => byId(owner[kind][key]) || enabled()[0];
+  // Sessions the 「설계문서」 tab lists may be outside every server's live window (not in any snapshot): their server
+  // is remembered from the document that listed them.
+  const refOwner = {};
+  const ownerOf = (kind, key) => byId(owner[kind][key]) || (kind === 'path' && byId(refOwner[key])) || enabled()[0];
 
   const getJson = async (srv, path) => {
     const res = await fetch(srv.url + path);
@@ -115,6 +118,8 @@ const api = (() => {
     out.tests.history_at = parts.map(([s, d]) => `${s.id}:${d.tests?.history_at ?? ''}`).join(',') || null;
     out.orca.error = errors.join(' · ') || null;
     out.health = mergeHealth(parts.map(([s, d]) => [s, d.health]));
+    // design documents: whether any server indexes them, and a version string that changes when a server's index does
+    out.design = { enabled: parts.some(([, d]) => d.design?.enabled), version: parts.map(([s, d]) => `${s.id}:${d.design?.version ?? ''}`).join(',') };
     owner = next;
     return out;
   }
@@ -319,6 +324,33 @@ const api = (() => {
       const srv = byId(server);
       return srv && getJson(srv, `/api/project/note?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`);
     },
+    // Design documents from the servers that index them (prefs design_dirs or --design-dir): {enabled, sources[{server,
+    // state ok|off|old|error}], dirs[{server, dir, configured, repo, worktree, branch, head, main}], docs[{server, key,
+    // kind md|image|pdf, src (index into that server's dirs), copies, mtime, size, sessions, reads, searches}],
+    // plans[{server, project, path, design_root, design_commit}], refs (references kept)}.
+    designs: async () => {
+      const sources = [], parts = [];
+      await Promise.all(enabled().map(async srv => {
+        try {
+          const d = await getJson(srv, '/api/designs');
+          sources.push({ server: srv.id, state: !d ? 'old' : d.enabled ? 'ok' : 'off' });
+          if (d?.enabled) parts.push([srv, d]);
+        } catch { sources.push({ server: srv.id, state: 'error' }); }
+      }));
+      return { enabled: parts.length > 0, sources, dirs: parts.flatMap(([s, d]) => tag(d.sources, s.id)),
+        docs: parts.flatMap(([s, d]) => tag(d.docs, s.id)), plans: parts.flatMap(([s, d]) => tag(d.plans, s.id)),
+        refs: parts.reduce((n, [, d]) => n + (d.refs || 0), 0) };
+    },
+    // One document: {key, kind, mtime, size, source{dir, repo, worktree, branch, head}, copies[], content (Markdown),
+    // toc[{id, title, no, start, end}], refs[{section, session, title, path, kind, parent, reads, searches, lines,
+    // cover, first, last, exact, commits, ticket}], plans[{project, design_commit, head, same, same_file}]}. null when unknown.
+    design: async (server, key) => {
+      const srv = byId(server), d = srv && await getJson(srv, '/api/design?path=' + encodeURIComponent(key));
+      for (const r of d?.refs || []) if (r.path) refOwner[r.path] = server;
+      return d && { ...d, server };
+    },
+    // The address of a picture or PDF in a design folder (for <img>, <iframe>).
+    designFile: (server, key) => (byId(server)?.url || '') + '/api/design/file?path=' + encodeURIComponent(key),
     // Version streams: each server sends its state version whenever it changes (version gets "<server>:<version>"),
     // and the page refetches state(). change fires when a server's connection opens or drops; projects when a server's
     // project progress changes ("<server>:<version>").

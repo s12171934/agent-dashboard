@@ -2801,6 +2801,7 @@ except (OSError, ValueError):
 for _k in ("refs", "sessions", "scanned"):
     design_refs.setdefault(_k, {})
 design_refs_dirty = False
+design_rev = 0  # bumped with every reference added, so the page knows when to refetch a document's counts
 
 
 def git_in(cwd, *args):
@@ -3663,7 +3664,9 @@ def add_design_refs(src, cid, tool, reads, ts):
                         "ts": ts, "call": cid}
     if not new:
         return
+    global design_rev
     with refs_lock:
+        design_rev += 1
         design_refs["refs"].update(new)
         meta = design_refs["sessions"].setdefault(src.id, {})
         meta.update({k: v for k, v in (("path", src.path), ("kind", src.kind), ("title", src.title), ("parent", src.parent),
@@ -4106,7 +4109,7 @@ class Handler(BaseHTTPRequestHandler):
                 "orca": lite_orca(orca_state),
                 "ext_plans": [{**plan_with_owner(ext_plans[p], summaries), "design_refs": design_ticket_refs.get(p) or {}}
                               for p in EXTERNAL_PLANS if p in ext_plans],
-                "design": {"enabled": bool(DESIGN_DIRS), "version": design["version"]},
+                "design": {"enabled": bool(DESIGN_DIRS or design["sources"]), "version": f'{design["version"]}.{design_rev}'},
                 "tests": test_progress,
                 "health": {"now": time.time(), "loops": health},
                 "decisions": decisions,
@@ -4261,8 +4264,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", body[1])
             self.send_header("Content-Length", str(len(body[0])))
             self.send_header("Cache-Control", "no-cache")
-            # an SVG opened on its own must not run its scripts on this origin
-            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+            if body[1] == "image/svg+xml":  # an SVG opened on its own must not run its scripts on this origin
+                self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body[0])

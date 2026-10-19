@@ -804,3 +804,77 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
   .tg-n { order: var(--o); flex: 1 1 130px; }
   .tg-p { display: block; }
 }
+
+/* 설계문서: documents (left) · the document with a badge per section (middle) · the picked section's readers (right) */
+.dz { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr) minmax(240px, 320px); gap: 14px; align-items: start; }
+.dz.empty-doc { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); }
+.dz-tree, .dz-pane { position: sticky; top: calc(var(--hdr-top) + 70px); max-height: calc(100vh - var(--hdr-top) - 90px); overflow: auto; }
+.dz-tree > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.dz-tree > summary .st { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-q { width: 100%; margin: 8px 0; }
+.dz-srv { font-size: 11px; font-weight: 700; color: var(--muted); margin: 10px 0 4px; }
+.dz-f { margin: 2px 0; }
+.dz-f > summary { cursor: pointer; display: flex; gap: 6px; align-items: center; padding: 3px 2px; font-size: 12.5px; font-weight: 600; }
+.dz-fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-f ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 12px; }
+.dz-d { display: flex; gap: 6px; align-items: center; padding: 3px 6px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 12px; min-height: 26px; }
+.dz-d > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-d:hover { background: var(--control-well); }
+.dz-d.on { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
+.dz-d.zero { color: var(--muted); }
+.badge.dz-n { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); }
+.dz-head { display: grid; gap: 6px; }
+.dz-title { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 15px; word-break: break-all; }
+.dz-ver { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 12px; align-items: center; }
+.dz-ver code { font-size: 11.5px; }
+.dz-cm.ok { color: var(--ok); }
+.dz-cm.diff { color: var(--warn); }
+.dz-doc { line-height: 1.65; word-break: break-word; overflow-x: auto; }
+.dz-doc h1 { font-size: 19px; margin: 4px 0 12px; }
+.dz-doc h2 { font-size: 16px; margin: 22px -6px 8px; padding: 4px 6px; border-radius: 8px; scroll-margin-top: 90px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.dz-doc h2.on, .dz-pre.on { outline: 2px solid var(--accent); }
+.dz-doc h3 { font-size: 14px; margin: 16px 0 6px; }
+.dz-doc h4, .dz-doc h5, .dz-doc h6 { font-size: 13px; margin: 12px 0 4px; }
+.dz-doc p { margin: 6px 0; }
+.dz-doc ul, .dz-doc ol { margin: 6px 0; padding-left: 22px; }
+.dz-doc blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.dz-doc code { background: var(--control-well); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+.dz-doc pre { background: var(--control-well); padding: 10px; border-radius: 8px; overflow: auto; }
+.dz-doc pre code { background: none; padding: 0; }
+.dz-doc pre.mermaid { background: none; text-align: center; }
+.dz-doc table { display: block; overflow-x: auto; margin: 8px 0; }
+.dz-doc img { max-width: 100%; height: auto; border-radius: 6px; background: var(--panel2); }
+.dz-doc hr { border: 0; border-top: 1px solid var(--line); }
+.dz-doc .dz-raw { white-space: pre-wrap; }
+.dz-dead { color: var(--muted); text-decoration: underline dotted; }
+.dz-pre { display: flex; gap: 8px; align-items: center; padding: 2px 6px; margin: 0 -6px 6px; border-radius: 8px; }
+.badge.dz-b { cursor: pointer; font-size: 11px; font-weight: 600; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); min-height: 22px; }
+.badge.dz-b.zero { color: var(--muted); border-color: color-mix(in srgb, var(--muted) 30%, transparent); opacity: .65; font-weight: 400; }
+.badge.dz-b:focus-visible { outline: 2px solid var(--accent); }
+.dz-img { display: block; max-width: 100%; margin: 0 auto; }
+.dz-pdf { width: 100%; height: 75vh; border: 0; border-radius: 8px; background: var(--panel2); }
+.dz-ss { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.dz-s { display: grid; gap: 4px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); text-decoration: none; font-size: 12px; }
+.dz-s:hover { border-color: var(--accent); }
+.dz-st { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 0; }
+.dz-st b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.dz-k { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 11px; }
+.dz-gone { list-style: none; padding: 0; margin: 0; }
+.dz-hint { margin-top: 6px; }
+.dz-inline { display: none; margin: 4px 0 14px; padding: 10px; border: 1px dashed var(--accent); border-radius: 10px; }
+.dz-rd { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 10px 18px; margin-top: 8px; font-size: 12.5px; }
+.dz-rd a { color: var(--accent); }
+.dz-rd ul { margin: 4px 0 0; padding-left: 18px; }
+.tg-d { color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-d span { color: var(--muted); font-weight: 400; }
+@media (max-width: 900px) {
+  .dz, .dz.empty-doc { grid-template-columns: minmax(0, 1fr); }
+  .dz-tree { position: static; max-height: 50vh; }
+  .dz-pane { display: none; }
+  .dz-inline { display: block; }
+}
+.dz-wt { color: var(--muted); font-size: 11px; font-weight: 400; }
+.dz-doc .dz-inline ul.dz-ss, .dz-doc .dz-inline ul.dz-gone { padding: 0; }
+.dz-doc .dz-inline h3 { margin-top: 0; }
+.dz-main { display: grid; gap: 14px; min-width: 0; }
+.dz .box { margin-bottom: 0; }
