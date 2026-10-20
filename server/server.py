@@ -1298,7 +1298,7 @@ def orca_all(key, *args):
 EXTERNAL_PLANS = [os.path.expanduser(p) for p in prefs.get("external_plans") or []]
 ext_plans = {}  # path -> {"path", "project", "generated_at", "tickets", "error"}
 SUPERSEDED_RUN = re.compile(r"-(run_[0-9a-f]+)\.superseded\.json$")
-# path -> {"coordinator_session", "driver_history"}, persisted across restarts
+# path -> {"coordinator_session", "driver_history", "owner"}, persisted across restarts (owner: see plan_owners)
 PLAN_HISTORY_PATH = os.path.join(HERE, "plan-history.json")
 try:
     with open(PLAN_HISTORY_PATH) as _f:
@@ -1392,7 +1392,7 @@ def read_ext_plan(path, mtime):
         entry["driver_history"] = list(dict.fromkeys(hist + [t.get("driver_terminal_handle") for t in entry["tickets"]
                                                              if t.get("driver_terminal_handle")]))
         if not entry["error"] and entry["driver_history"] != (plan_history.get(path) or {}).get("driver_history"):
-            plan_history[path] = {"coordinator_session": entry.get("coordinator_session"),
+            plan_history[path] = {**(plan_history.get(path) or {}), "coordinator_session": entry.get("coordinator_session"),
                                   "driver_history": entry["driver_history"]}
             save_json(PLAN_HISTORY_PATH, plan_history)
     return entry
@@ -1621,23 +1621,55 @@ def attach_box_notes():
                         bump()
 
 
-def plan_owned_by(plan, sm):
-    """Whether sm is the plan's coordinator: the session the plan names, or, when the plan names none (its driver
-    found no coordinator.json), the session that opened the plan's scheduler terminal or runs in its coordinator one."""
+def resolve_plan_owner(path, plan, summaries):
+    """(owner session id, None) or (None, why) for an external plan. The plan's own claim comes first — the session
+    it names, else the one running in its coordinator terminal, else the one that opened or runs in its scheduler
+    terminal — and whichever session that is, its coordinators are followed up to the top: a scheduler relaunched
+    from a worker's terminal still belongs to that worker's coordinator. A resolved owner is remembered in
+    plan_history, so a plan whose trail goes cold (relaunched with nohup, a reused terminal) keeps its owner."""
+    top = [sm for sm in summaries if not sm["parent"]]
+    by_handle = {sm["own_handle"]: sm for sm in sorted(top, key=lambda sm: sm["last_ts"] or "") if sm.get("own_handle")}
+    by_id = {}
+    for sm in top:
+        by_id[sm["id"]] = by_id[os.path.splitext(os.path.basename(sm["path"]))[0]] = sm
+
+    def ascend(sm):
+        seen = {sm["id"]}
+        while sm["role"] == "worker" and sm.get("coord_handle") in by_handle and by_handle[sm["coord_handle"]]["id"] not in seen:
+            sm = by_handle[sm["coord_handle"]]
+            seen.add(sm["id"])
+        return sm
+
+    sched = plan.get("scheduler_terminal")
+    found = (by_id.get(plan.get("coordinator_session") or "")
+             or by_handle.get(plan.get("coordinator_terminal") or "")
+             or next((sm for sm in sorted(top, key=lambda sm: sm["last_ts"] or "", reverse=True) if sched and sched in sm["made_terms"]), None)
+             or by_handle.get(sched or ""))
+    remembered = (plan_history.get(path) or {}).get("owner")
+    if found:
+        owner = ascend(found)["id"]
+        if owner != remembered:
+            plan_history[path] = {**(plan_history.get(path) or {}), "owner": owner}
+            save_json(PLAN_HISTORY_PATH, plan_history)
+        return owner, None
+    if remembered in by_id:
+        return remembered, None
     if plan.get("coordinator_session"):
-        return plan["coordinator_session"] in (sm["id"], os.path.splitext(os.path.basename(sm["path"]))[0])
-    if sm["parent"]:
-        return False
-    return (plan.get("scheduler_terminal") in sm["made_terms"]
-            or bool(plan.get("coordinator_terminal")) and plan["coordinator_terminal"] == sm.get("own_handle"))
+        return None, f"계획이 적은 코디네이터 세션 {plan['coordinator_session'][:8]} 을 찾지 못함"
+    if sched:
+        return None, f"스케줄러 터미널 {sched[:13]} 을 연 세션도, 그 안에서 도는 세션도 없음 (coordinator.json 없음)"
+    return None, "계획에 코디네이터·스케줄러가 없음 (coordinator.json 없음)"
+
+
+plan_owners = {}  # plan path -> (owner session id or None, why not), as the last /api/state resolved them
 
 
 def with_plan_terms(sm):
     """A plan's coordinator session owns the plan's scheduler and per-ticket driver terminals,
     so the UI nests those scripts (and their Runs and workers) under it."""
     extra = []
-    for plan in ext_plans.values():
-        if not plan_owned_by(plan, sm):
+    for path, plan in ext_plans.items():
+        if (plan_owners.get(path) or (None,))[0] != sm["id"]:
             continue
         extra += [plan.get("scheduler_terminal")] + [t.get("driver_terminal_handle") for t in plan["tickets"]]
         extra += plan.get("driver_history") or []
@@ -1649,13 +1681,13 @@ def with_plan_terms(sm):
     return sm
 
 
-def plan_with_owner(plan, summaries):
-    """The plan as the page gets it: a plan that names no coordinator names the one plan_owned_by inferred (the most
-    recently active, if several opened its scheduler), flagged coordinator_inferred, so the page nests it the same way."""
-    if plan.get("coordinator_session"):
-        return plan
-    owners = sorted((sm for sm in summaries if plan_owned_by(plan, sm)), key=lambda sm: sm["last_ts"] or "", reverse=True)
-    return {**plan, "coordinator_session": owners[0]["id"], "coordinator_inferred": True} if owners else plan
+def plan_with_owner(path, plan):
+    """The plan as the page gets it, naming the owner resolve_plan_owner found (flagged coordinator_inferred when the
+    plan itself named another or none) or, without one, why not (owner_problem), so an unowned plan says so."""
+    owner, why = plan_owners.get(path) or (None, None)
+    if not owner:
+        return {**plan, "owner_problem": why}
+    return plan if owner == plan.get("coordinator_session") else {**plan, "coordinator_session": owner, "coordinator_inferred": True}
 
 
 # Settled dispatches outlive the tracked-run window: once a Run ages out, its workers leave orca_state,
@@ -4269,7 +4301,11 @@ class Handler(BaseHTTPRequestHandler):
                 if sm["task_id"] in settled:
                     sm.update(state="done", live=False, state_reason="Orca: dispatch " + settled[sm["task_id"]])
                 sm["decision"] = waiting.get(sm["id"]) if sm["kind"] == "claude" else None
-                summaries.append(apply_prefs(with_plan_terms(sm)))
+                summaries.append(sm)
+            # Owners first (from the sessions' own terminals), then each owner takes its plans' scripts.
+            plan_owners.clear()
+            plan_owners.update({p: resolve_plan_owner(p, plan, summaries) for p, plan in ext_plans.items()})
+            summaries = [apply_prefs(with_plan_terms(sm)) for sm in summaries]
             focus = focus_targets(summaries)
             terms = {t["handle"] for t in orca_state.get("terminals", []) if t.get("connected")}
             trees = {}
@@ -4285,7 +4321,7 @@ class Handler(BaseHTTPRequestHandler):
                 "version": version, "api": API_VERSION,
                 "sessions": sorted(summaries, key=lambda s: s["last_ts"] or "", reverse=True),
                 "orca": lite_orca(orca_state),
-                "ext_plans": [{**plan_with_owner(ext_plans[p], summaries), "design_refs": design_ticket_refs.get(p) or {}}
+                "ext_plans": [{**plan_with_owner(p, ext_plans[p]), "design_refs": design_ticket_refs.get(p) or {}}
                               for p in EXTERNAL_PLANS if p in ext_plans],
                 "design": {"enabled": bool(DESIGN_DIRS or design["sources"]), "version": f'{design["version"]}.{design_rev}'},
                 "tests": test_progress,

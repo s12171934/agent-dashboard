@@ -1404,7 +1404,7 @@ function extPlansHtml(plans, inSession) {
     const sched = p.scheduler_terminal ? `<div class="drv-h" title="${esc(p.scheduler_terminal)}"><b>⚙ ${esc(termOwner(p.scheduler_terminal).title || 'scheduler')}</b><span class="badge">스케줄러(스크립트)</span><span>${termNote(p.scheduler_terminal)}</span><span>아래 티켓 드라이버를 순서대로 띄움</span></div>` : '';
     const title = `${esc(p.project || '')} 워커 계획 (${p.driver ? esc(p.driver) + ' ' : ''}드라이버 사전 계획)`;
     return inSession ? `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${ticketGraph(p)}${sched}<div class="tks">${body}${xwtHtml(p)}</div></div>`
-      : `<div class="sec-h"><h2>${title}</h2><span>${sub}</span></div>${sched}<div class="tks">${body}${xwtHtml(p)}</div>`;
+      : `<div class="sec-h"><h2>${title}</h2><span>${sub}</span></div>${p.owner_problem ? `<div class="pline"><span class="tstale" title="${esc(p.path || '')}">⚠ 코디네이터 밑에 묶지 못함 — ${esc(p.owner_problem)}</span></div>` : ''}${sched}<div class="tks">${body}${xwtHtml(p)}</div>`;
   }).join('');
 }
 
