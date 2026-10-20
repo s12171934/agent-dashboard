@@ -930,9 +930,6 @@ def build_plans(events, prompts):
         op, plan = ev.get("op"), plans[-1] if plans else None
         # A plan made after the latest instruction is revised in place; a newer instruction starts a new plan.
         fresh = plan is None or (prompt_ts and (plan["ts"] or "") < prompt_ts)
-        # …unless a `set` names a step the plan has already started: that is a revision of the same work.
-        if fresh and plan and op == "set" and {x["t"] for x in plan["steps"] if x["st"] != "todo"} & set(ev.get("steps", [])):
-            fresh = False
         if op == "set" or (op == "add" and fresh):
             old = {} if fresh or op == "add" else {x["t"]: x for x in plan["steps"]}
             steps = [dict(old.get(t) or {"t": t, "st": "todo", "ts0": None, "ts1": None, "note": None}) for t in ev.get("steps", [])]
