@@ -1810,6 +1810,43 @@ function wtShip(t) {
   const tip = [t.ship.error, t.ship.task_id && `태스크 ${t.ship.task_id}`, t.ship.at && hhmm(t.ship.at)].filter(Boolean).join(' · ');
   return `<span class="tkc ${cls}" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${lbl}</span>`;
 }
+// QA driver progress: the stage track of a ticket (exports/state-contract.md of qa-ticket-driver), the set's automations.
+const QA_ST = { selected: '선별', worktree: '워크트리', analysis: '분석', implementing: '구현', reviewing: '검토', committed: '커밋 완료',
+  approved: '반출 승인', delivered: '반출', cleaned: '정리' };
+function qaTrack(q) {
+  if (!q) return '';
+  const keys = Object.keys(QA_ST), cur = keys.indexOf(q.stage);
+  const nodes = keys.map((k, i) => `<i class="qa-n${i < cur ? ' done' : i === cur ? (q.blocked ? ' bad' : ' cur') : ''}" title="${QA_ST[k]}${q.at?.[k] ? ' · ' + esc(clockAt(q.at[k])) : ''}">${i + 1}</i>`).join('<b></b>');
+  return `<div class="qa-track" title="${q.stage_no}/${keys.length} ${QA_ST[q.stage]}">${nodes}<span class="qa-lbl">${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}</span>
+    ${q.round > 1 ? `<span class="rv-flag warn" title="재오픈으로 다시 기동">${q.round}회차</span>` : ''}
+    ${q.blocked ? `<span class="rv-flag bad" title="${esc(q.blocked_reason || '')}">막힘${q.blocked_reason ? ' · ' + esc(cut(q.blocked_reason, 40)) : ''}</span>` : ''}
+    ${q.ignored ? '<span class="rv-flag">제외</span>' : ''}
+    ${q.prs.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">PR ${i + 1}</a>`).join(' ')}</div>`;
+}
+const clockAt = ts => { if (!ts) return ''; const d = new Date(ts); return isNaN(d) ? String(ts) : d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); };
+// Coordinator and workers: the session whose Orca terminal is that handle, else the bare handle (terminal closed).
+function qaAgents(q) {
+  if (!q) return '';
+  const chip = (h, lbl) => { const s = h && state.all?.find(x => x.orca_focus === h);
+    return s ? `<a class="tkc ${OPEN(status(s)) ? 'run' : 'pending'}" href="#s=${encodeURIComponent(s.path)}" title="${esc(nameOf(s))}"><i>${OPEN(status(s)) ? '●' : '○'}</i>${lbl}</a>`
+      : h ? `<span class="tkc pending" title="터미널이 닫혔거나 세션을 찾지 못함 (${esc(h)})"><i>○</i>${lbl}</span>` : ''; };
+  return chip(q.coordinator, '코디네이터') + (q.workers || []).map(w => chip(w.handle, '워커 ' + w.name)).join('');
+}
+function qaAutoHtml(s) {
+  const autos = s.automations || [];
+  const RUN = { completed: ['done', '실행'], skipped_precheck: ['pending', '건너뜀'], failed: ['fail', '실패'], running: ['run', '실행 중'] };
+  const box = autos.map(a => `<div class="qa-auto">
+      <span class="tkc ${a.enabled ? 'run' : 'pending'}"><i>${a.enabled ? '●' : '○'}</i>${a.enabled ? '켜짐' : '꺼짐'}</span>
+      <b>${esc(a.name || a.id)}</b><span class="st">${esc(a.rrule || '')}${a.next && a.enabled ? ' · 다음 ' + esc(clockAt(a.next)) : ''}${a.last ? ' · 마지막 ' + esc(clockAt(a.last)) : ''}</span>
+      <span class="qa-runs">${(a.runs || []).slice(0, 8).map(r => { const [c, l] = RUN[r.status] || ['pending', r.status]; return `<i class="qa-run ${c}" title="${esc(l)} · ${esc(clockAt(r.at))}${r.error ? ' · ' + esc(r.error) : ''}"></i>`; }).join('')}</span>
+      <span class="rv-acts"><button class="act big" data-qa-auto="${a.enabled ? 'disable' : 'enable'}" data-id="${esc(a.id)}" data-epic="${esc(s.epic)}" data-srv="${esc(s.server)}">${a.enabled ? '끄기' : '켜기'}</button>
+        <button class="act big" data-qa-auto="run" data-id="${esc(a.id)}" data-epic="${esc(s.epic)}" data-srv="${esc(s.server)}" title="스케줄을 기다리지 않고 한 회차 실행 (precheck 가 할 일이 없으면 건너뜀)">지금 실행</button></span>
+    </div>`).join('');
+  const qs = s.tickets.map(t => t.qa).filter(Boolean);
+  const counts = Object.keys(QA_ST).map(k => [k, qs.filter(q => q.stage === k).length]).filter(([, n]) => n);
+  const sum = qs.length ? `<div class="rv-jsum">진행 ${Object.keys(QA_ST).length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
+  return (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
+}
 function wtRepo(t, r) {
   const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
   const pr = r.pr ? ` <a href="${esc(r.pr.url)}" target="_blank" rel="noopener" title="PR ${esc(r.pr.state || '')}">#${r.pr.number}</a>` : '';
@@ -1837,13 +1874,16 @@ function wtTicket(t, set) {
     </div>
     <div class="rv-meta">
       ${t.step ? `<a href="${obsLink(t.step)}" title="${esc(t.step.split('/').pop())}">스텝 ${esc(t.step_status || '')}</a>` : '<span class="st">스텝 노트 없음</span>'}${notes ? ' · ' + notes : ''}
-      ${wtTest(t.test)}${wtShip(t)}
+      ${wtTest(t.test)}${wtShip(t)}${qaAgents(t.qa)}
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
       ${t.repos.length ? `<span class="rv-acts">
-        ${jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
+        ${set.driver && t.qa?.stage === 'committed' ? `<button class="act big accent" data-qa-tk="approve" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)">반출 승인</button>` : ''}
+        ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
+        ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
         <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
         <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' ? 0 : 1}"${t.step ? '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : ''}
     </div>
+    ${qaTrack(t.qa)}
     ${t.repos.map(r => wtRepo(t, r)).join('')}
   </div>`;
 }
@@ -1872,13 +1912,30 @@ async function renderWorktrees() {
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 리뷰 후 변경 ${n('changed')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
+      ${qaAutoHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   }).join('');
   $('#wt-body').innerHTML = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
   if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
 }
+async function qaClick(b) {
+  const { qaAuto, qaTk, epic, srv, id, key } = b.dataset, txt = b.textContent;
+  if (qaTk === 'approve' && !confirm(`${key} 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
+  b.disabled = true; b.textContent = '처리 중…';
+  let r = qaAuto ? await api.qaAutomation(srv, epic, id, qaAuto) : await api.qaTicket(srv, epic, key, qaTk);
+  if (qaTk === 'cleanup_check' && r.status === 200) {
+    const out = r.body.output || '';
+    if (r.body.code === 3) alert(`정리를 멈춥니다:\n\n${out}`);
+    else if (confirm(`${key} 워크트리를 정리합니다:\n\n${out}\n\n진행할까요?`)) { b.textContent = '정리 중…'; r = await api.qaTicket(srv, epic, key, 'cleanup'); }
+  }
+  if (r.status !== 200) alert(r.body.error || r.body.output || `실패 (${r.status})`);
+  else if (qaTk === 'approve') toast(r.body.output || '승인을 전달했습니다');
+  b.disabled = false; b.textContent = txt;
+}
 async function wtClick(e) {
+  const q = e.target.closest('button[data-qa-auto], button[data-qa-tk]');
+  if (q && !q.disabled) return qaClick(q);
   const b = e.target.closest('button[data-wt-open], button[data-wt-mark], button[data-wt-ship]');
   if (!b || b.disabled) return;
   if (b.dataset.wtShip && !confirm(`${b.dataset.wtShip} 을(를) PR 로 올리고 머지합니다.\nOrca 워커가 머지 뒤 Jira 「개발 완료」 전이, 스텝 노트 기록, 워크트리·브랜치 정리까지 합니다. 진행할까요?`)) return;

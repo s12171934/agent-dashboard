@@ -325,9 +325,18 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 - **Jira 상태:** 티켓 머리의 칩과 묶음 머리의 상태별 수로 보인다. 시작 전·진행 중·개발 완료·QA 준비 완료·QA 완료로 나누는데, 개발 완료·QA 준비 완료는 Jira 범주가 진행 중과 같은 `indeterminate` 라 이름으로 가른다(모르는 이름은 범주로: `new` → 시작 전, `done` → QA 완료, 나머지 → 진행 중). 개발 완료는 테두리만, QA 준비 완료는 채운 칩이다. 위쪽 거르기 단추 줄 하나에 리뷰 상태와 Jira 상태가 구분선을 두고 함께 있고, 하나만 고른다(`adash.wt` 에 저장).
 - **상태:** 워크트리 없음 → `none`, 기록 없음 → `pending`(리뷰 대기), 기록한 sha 가 모든 저장소의 지금 HEAD 와 같으면 `done`, 하나라도 다르면 `changed`(리뷰 후 변경 — 저장소 줄에도 표시). `changed` 는 파일에 쓰지 않고 매번 계산한다.
 
+**QA 드라이버 진행·제어.** 묶음에 `watch`(상태 디렉터리)가 있으면 [qa-ticket-driver](https://github.com/s12171934/qa-ticket-driver) 스킬의 상태 계약(`exports/state-contract.md`)대로 티켓마다 단계를 읽어 9단계 트랙(선별 → 워크트리 → 분석 → 구현 → 검토 → 커밋 완료 → 반출 승인 → 반출 → 정리)으로 보인다. 옛 워처의 상태 디렉터리(`claimed/ handoffs/ ready/ blocked/`)도 같은 규칙으로 읽힌다.
+- 티켓 줄: 단계 트랙(단계마다 진입 시각 툴팁), 회차(재오픈), 막힘과 그 사유, 반출된 PR 링크, 코디네이터·워커 칩(그 Orca 터미널의 세션으로 이동, 닫혔으면 흐리게). 드라이버 묶음(`watch` 아래 `tickets/` 가 있음)이면 저장소 줄은 티켓 워크트리의 채워진 서브모듈에서 만든다.
+- 묶음 머리: 단계별 티켓 수, 그리고 이름·프롬프트·precheck 에 에픽 키가 든 Orca 자동화마다 켜짐/꺼짐 · 스케줄 · 다음/마지막 실행 · 최근 실행 8회 점과 「켜기/끄기」·「지금 실행」(1분마다 갱신).
+- 「반출 승인」(드라이버 묶음의 `committed` 티켓): `qa-driver approve` — `approved/<키>.md` 를 남기고 코디네이터 터미널에 알린다(닫혔으면 그 워크트리에 반출용 코디네이터를 새로 띄운다). 옛 워처 묶음은 대신 「PR 후 머지」를 쓴다.
+- 「워크트리 정리」(`committed`·`approved`·`delivered`): 먼저 `qa-driver cleanup --dry-run` 결과를 보여 주고 확인을 받은 뒤 지운다. 커밋하지 않은 변경이나 push 되지 않은 커밋이 있으면 멈춘다(강제 정리는 화면에 없다).
+- 제어는 스킬의 CLI(`prefs.json` `qa_driver`, 기본 `~/.claude/skills/qa-ticket-driver/bin/qa-driver`)를 부른다. 규칙은 스킬 한 곳에 있다.
+
 | 엔드포인트 | 응답 |
 | --- | --- |
-| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}]}]}], "updated", "jira"}` |
+| `POST /api/qa/automation` | `{"epic", "id", "action": "enable"\|"disable"\|"run"}` — 그 묶음이 나열한 자동화만. 502 Orca 실패 |
+| `POST /api/qa/ticket` | `{"epic", "key", "action": "approve"\|"cleanup_check"\|"cleanup"}` → `{"ok", "code", "output"}`. `code` 3 = 정리가 멈출 상황, 그 밖의 실패는 502 |
+| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "watch", "driver", "stages", "automations": [{"id", "name", "enabled", "rrule", "next", "last", "runs": [{"status", "at", "error", "trigger"}]}], "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "qa": null\|{"stage", "stage_no", "blocked", "blocked_reason", "ignored", "round", "coordinator", "workers", "worktree", "at", "prs", "handoffs", "done", "driver"}, "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}]}]}], "updated", "jira"}` |
 | `POST /api/review/open` | `{"key"}` → 위 「VS Code 로 열기」. 403 루프백 밖, 409 워크트리 없음 |
 | `POST /api/review/mark` | `{"key", "done": true\|false}` → 리뷰 기록·취소. 409 스텝 노트 없음 |
 | `POST /api/review/ship` | `{"key"}` → 위 「PR 후 머지」, 202 시작함(워커 기동은 뒤에서). 409 `ship_prompt`·`ship_place` 없음, 진행 중 아님, 이미 반출 중 |
@@ -349,6 +358,8 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 | `review_bases` | PR 이 없을 때 비교할 베이스 브랜치, 저장소(메인 체크아웃 폴더 이름)별 `{"<저장소>": "<브랜치>"}`. 없으면 `main` |
 | `ship_prompt` | 「PR 후 머지」 워커에 줄 프롬프트 템플릿의 경로 (`~` 사용 가능). 없으면 버튼이 409 |
 | `ship_agent` · `ship_model` | 그 워커의 Orca 에이전트와 모델. 기본 `claude` · `opus` |
+| `qa_sets[].watch` | 그 묶음의 qa-ticket-driver 상태 디렉터리 (예: `~/.qa-driver/<에픽 소문자>`, 옛 워처면 `~/.qa-watch/<에픽 소문자>`). 없으면 진행 트랙·제어가 꺼진다 |
+| `qa_driver` | qa-ticket-driver CLI 경로. 기본 `~/.claude/skills/qa-ticket-driver/bin/qa-driver` |
 | `review_first` | 티켓 안에서 먼저 놓을 저장소 목록 (예: 앱들이 쓰는 공용 라이브러리). 기본은 없음 |
 
 ## 보안

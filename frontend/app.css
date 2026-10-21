@@ -952,7 +952,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .rv-head a, .rv-meta a, .rv-repo a { color: var(--accent); text-decoration: none; }
 .rv-sum { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rv-meta { margin-top: 4px; font-size: 12px; }
-.rv-acts { margin-left: auto; display: inline-flex; gap: 6px; }
+.rv-acts { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .rv-acts .act[disabled] { opacity: .5; cursor: not-allowed; }
 .rv-repo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 5px 0 0 6px; margin-top: 5px; border-top: 1px dashed var(--line); font-size: 12px; }
 .rv-rn { font-weight: 600; min-width: 150px; }
@@ -970,3 +970,18 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .seg-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--line); }
 .rv-jsum { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
 @media (max-width: 700px) { .rv-acts { margin-left: 0; } .rv-rn { min-width: 0; } }
+
+/* QA driver: a ticket's stage track (like the project stages) and the set's automations */
+.qa-track { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin-top: 6px; font-size: 11px; }
+.qa-track > b { width: 10px; height: 2px; background: var(--line); }
+.qa-n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-style: normal; font-size: 10px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); }
+.qa-n.done { background: var(--done); border-color: var(--done); color: var(--on-accent); }
+.qa-n.cur { border-color: var(--run); color: var(--run); font-weight: 700; box-shadow: 0 0 0 2px color-mix(in srgb, var(--run) 25%, transparent); }
+.qa-n.bad { border-color: var(--bad); color: var(--bad); font-weight: 700; }
+.qa-lbl { margin: 0 8px 0 10px; font-weight: 600; font-size: 12px; }
+.qa-track a { color: var(--accent); text-decoration: none; margin-left: 6px; }
+.qa-autos { display: grid; gap: 6px; margin-bottom: 8px; }
+.qa-auto { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; }
+.qa-runs { display: inline-flex; gap: 3px; }
+.qa-run { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.qa-run.done { background: var(--done); } .qa-run.fail { background: var(--bad); } .qa-run.run { background: var(--run); }
