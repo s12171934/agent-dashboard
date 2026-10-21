@@ -321,6 +321,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 - **저장소 줄:** 브랜치, 비교 베이스, 베이스보다 앞선 커밋 수·바뀐 파일 수·추가/삭제 줄, 뒤처진 커밋 수, 미커밋 파일 수. 베이스는 ① 그 브랜치 PR 의 base(`gh pr list --head`, 10분마다) ② `review_bases` 의 저장소별 값 ③ `main` 순이고, 로컬의 `origin/<베이스>`(없으면 `<베이스>`)와 비교한다. fetch 는 하지 않는다. git 수치는 30초마다, HEAD·베이스가 그대로면 캐시를 쓴다.
 - **VS Code 로 열기:** 티켓의 워크트리 전부를 담은 `/private/tmp/agent-dashboard-review/<키>.code-workspace` 를 만들어 `open -a "Visual Studio Code"` 로 연다(`review_first` 저장소가 먼저). 요청의 Host 가 루프백이고 `X-Forwarded-For` 가 없을 때만 된다 — 이 맥에서 연 페이지만. tailnet 기기(`tailscale serve` 경유)는 403 이고 버튼이 꺼져 보인다.
 - **리뷰 기록:** 「리뷰 완료」는 스텝 노트 frontmatter 에 `review: done`, `review_sha:` (저장소별 지금 HEAD 9자리), `review_at:` 을 쓴다. 「리뷰 취소」는 세 필드를 지운다. 노트의 `updated` 는 건드리지 않는다(상태 표시이지 내용 수정이 아니다). 커밋은 하지 않는다.
+- **Jira 상태:** 티켓 머리의 칩과 묶음 머리의 상태별 수로 보인다. 시작 전·진행 중·개발 완료·QA 준비 완료·QA 완료로 나누는데, 개발 완료·QA 준비 완료는 Jira 범주가 진행 중과 같은 `indeterminate` 라 이름으로 가른다(모르는 이름은 범주로: `new` → 시작 전, `done` → QA 완료, 나머지 → 진행 중). 개발 완료는 테두리만, QA 준비 완료는 채운 칩이다. 위쪽 두 번째 단추 줄로 Jira 상태만 골라 볼 수 있다(리뷰 상태 거르기와 함께 적용, `adash.wt` 에 저장).
 - **상태:** 워크트리 없음 → `none`, 기록 없음 → `pending`(리뷰 대기), 기록한 sha 가 모든 저장소의 지금 HEAD 와 같으면 `done`, 하나라도 다르면 `changed`(리뷰 후 변경 — 저장소 줄에도 표시). `changed` 는 파일에 쓰지 않고 매번 계산한다.
 
 | 엔드포인트 | 응답 |

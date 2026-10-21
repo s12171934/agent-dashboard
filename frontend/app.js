@@ -1781,10 +1781,17 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // is recorded in the step note's frontmatter and reads 「리뷰 후 변경」 once a worktree's HEAD moves past it. Opening VS Code
 // goes to the set's server and works only when that server is this device's loopback (set.local).
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
-const wtf = (() => { try { return { f: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '' }; } })();
+const wtf = (() => { try { return { f: 'all', j: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', j: 'all', q: '' }; } })();
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'pending', 'done', 'none'];
 const WT_FILTERS = { all: '전체', changed: '리뷰 후 변경', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
+// Jira status → stage. 개발 완료 and QA 준비 완료 share Jira's 'indeterminate' category with 진행 중, so they go by name;
+// an unknown name falls back to its category.
+const WT_JIRA = { todo: '시작 전', prog: '진행 중', dev: '개발 완료', ready: 'QA 준비 완료', qa: 'QA 완료' };
+const jiraStage = t => {
+  const n = (t.status || '').replace(/\s/g, '');
+  return /QA준비/.test(n) ? 'ready' : /개발완료/.test(n) ? 'dev' : /QA완료/.test(n) || t.cat === 'done' ? 'qa' : t.cat === 'new' ? 'todo' : 'prog';
+};
 const obsLink = p => 'obsidian://open?path=' + encodeURIComponent(p);
 const BASE_SRC = { PR: 'PR 의 base', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
 function wtTest(x) {
@@ -1815,8 +1822,8 @@ function wtTicket(t, set) {
     <div class="rv-head">
       <span class="tkc ${cls}"><i>${TK_IC[cls]}</i>${lbl}${t.review_at && t.review !== 'pending' ? ' · ' + esc(t.review_at) : ''}</span>
       <a href="${esc(wtData.jira)}/browse/${esc(t.key)}" target="_blank" rel="noopener"><b>${esc(t.key)}</b></a>
-      <span class="rv-sum" title="${esc(t.summary || '')}">${esc(t.summary || '')}</span>
-      <span class="st">Jira ${esc(t.status || '?')}${t.assignee ? ' · ' + esc(t.assignee) : ''}</span>
+      <span class="rv-js j-${jiraStage(t)}" title="Jira 상태">${esc(t.status || '?')}</span>
+      <span class="rv-sum" title="${esc(t.summary || '')}">${esc(t.summary || '')}</span>${t.assignee ? `<span class="st">${esc(t.assignee)}</span>` : ''}
     </div>
     <div class="rv-meta">
       ${t.step ? `<a href="${obsLink(t.step)}" title="${esc(t.step.split('/').pop())}">스텝 ${esc(t.step_status || '')}</a>` : '<span class="st">스텝 노트 없음</span>'}${notes ? ' · ' + notes : ''}
@@ -1835,22 +1842,26 @@ async function renderWorktrees() {
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
         <div class="seg" id="wt-f">${Object.entries(WT_FILTERS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
+        <div class="seg" id="wt-j" title="Jira 상태">${Object.entries({ all: 'Jira 전체', ...WT_JIRA }).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
         <input type="search" id="wt-q" class="field" placeholder="키·제목·브랜치 검색" value="${esc(wtf.q)}">
       </div><div id="wt-body"></div>`;
     $('#wt-f').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.f = b.dataset.k; save(); renderWorktrees(); });
+    $('#wt-j').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.j = b.dataset.k; save(); renderWorktrees(); });
     $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
     $('#wt-body').onclick = wtClick;
     wtMounted = true;
   }
   $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
+  $('#wt-j').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.j));
   const q = wtf.q.trim().toLowerCase();
-  const hit = t => (wtf.f === 'all' || t.review === wtf.f)
+  const hit = t => (wtf.f === 'all' || t.review === wtf.f) && (wtf.j === 'all' || jiraStage(t) === wtf.j)
     && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q)));
   const num = k => +k.split('-').pop();
   const body = wtData.sets.map(s => {
-    const n = k => s.tickets.filter(t => t.review === k).length;
+    const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
     const ts = s.tickets.filter(hit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 리뷰 후 변경 ${n('changed')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
+      <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
