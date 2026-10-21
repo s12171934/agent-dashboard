@@ -4192,7 +4192,7 @@ REVIEW_BASES = prefs.get("review_bases") or {}
 REVIEW_FIRST = prefs.get("review_first") or []
 JIRA_SITE = (prefs.get("jira_site") or "").rstrip("/")  # https://<site>.atlassian.net
 REVIEW_EVERY, JIRA_EVERY, PR_EVERY = 30, 300, 600
-REVIEW_WS_DIR = "/private/tmp/agent-dashboard-review"  # generated .code-workspace files
+VSCODE_CLI = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
 WT_KEY = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?![0-9])")
 review_state = {"sets": [], "updated": None}
 review_kick = threading.Event()  # a review mark wakes the loop so the page shows it at once
@@ -5144,14 +5144,14 @@ class Handler(BaseHTTPRequestHandler):
             host = (self.headers.get("Host") or "").lower().rsplit(":", 1)[0].strip("[]")
             if host not in ("127.0.0.1", "localhost", "::1") or self.headers.get("X-Forwarded-For"):
                 return self.send_json({"error": "VS Code 열기는 이 맥에서 연 화면에서만 됩니다"}, 403)
-            os.makedirs(REVIEW_WS_DIR, exist_ok=True)
-            ws = os.path.join(REVIEW_WS_DIR, f"{key}.code-workspace")
-            save_json(ws, {"folders": [{"path": r["path"], "name": f'{r["repo"]} · {r["branch"]} (vs {r["base_ref"] or r["base"]})'}
-                                       for r in t["repos"]]})
-            r = subprocess.run(["open", "-a", "Visual Studio Code", ws], capture_output=True, text=True, timeout=15)
-            if r.returncode:
-                return self.send_json({"error": "VS Code 를 열지 못함: " + short(r.stderr, 200)}, 502)
-            return self.send_json({"ok": True})
+            # Each worktree as itself, one window per repo: a generated .code-workspace held the folders under a
+            # /tmp file and renamed them, so the window read as somewhere other than the worktree.
+            for rp in t["repos"]:
+                cmd = [VSCODE_CLI, "-n", rp["path"]] if os.path.exists(VSCODE_CLI) else ["open", "-n", "-a", "Visual Studio Code", rp["path"]]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                if r.returncode:
+                    return self.send_json({"error": f'VS Code 로 {rp["repo"]} 를 열지 못함: ' + short(r.stderr, 200)}, 502)
+            return self.send_json({"ok": True, "opened": [rp["path"] for rp in t["repos"]]})
         if not t["step"]:
             return self.send_json({"error": "볼트에 이 티켓의 스텝 노트가 없습니다"}, 409)
         shas = {}
