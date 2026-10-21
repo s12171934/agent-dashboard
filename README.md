@@ -320,15 +320,17 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 - **티켓에 붙는 것:** 폴더 이름에 그 키가 든 Orca 워크트리(메인·보관 제외), 파일 이름에 키가 든 스텝 노트(`<project>/progress.json` 의 step 경로)와 같은 프로젝트 폴더의 다른 노트, 키가 든 최근 테스트 실행, 그 워크트리에서 도는 에이전트.
 - **저장소 줄:** 브랜치, 비교 베이스, 베이스보다 앞선 커밋 수·바뀐 파일 수·추가/삭제 줄, 뒤처진 커밋 수, 미커밋 파일 수. 베이스는 ① 그 브랜치 PR 의 base(`gh pr list --head`, 10분마다) ② `review_bases` 의 저장소별 값 ③ `main` 순이고, 로컬의 `origin/<베이스>`(없으면 `<베이스>`)와 비교한다. fetch 는 하지 않는다. git 수치는 30초마다, HEAD·베이스가 그대로면 캐시를 쓴다.
 - **VS Code 로 열기:** 티켓의 워크트리 전부를 담은 `/private/tmp/agent-dashboard-review/<키>.code-workspace` 를 만들어 `open -a "Visual Studio Code"` 로 연다(`review_first` 저장소가 먼저). 요청의 Host 가 루프백이고 `X-Forwarded-For` 가 없을 때만 된다 — 이 맥에서 연 페이지만. tailnet 기기(`tailscale serve` 경유)는 403 이고 버튼이 꺼져 보인다.
+- **PR 후 머지:** Jira 「진행 중」 이고 워크트리가 있는 티켓에 버튼이 보인다. 확인 창을 거쳐 서버가 `ship_prompt` 템플릿의 `{{key}}`·`{{summary}}`·`{{jira_url}}`·`{{jira_status}}`·`{{assignee}}`·`{{epic}}`·`{{project}}`·`{{vault}}`·`{{step_note}}`·`{{notes}}`·`{{repos}}`(저장소마다 워크트리·브랜치·베이스·PR·앞선/뒤처진 커밋 한 줄, `review_first` 가 먼저)를 채워 `orca orchestration worker-start --spec` 으로 감독 워커를 띄운다. 워커 자리는 묶음의 `ship_place`(티켓 워크트리 밖 — 워커가 마지막에 그 워크트리들을 지울 수 있게), 에이전트·모델은 `ship_agent`·`ship_model`(기본 `claude`·`opus`), 탭과 태스크 이름은 `<키> 반출`. Run 은 묶음마다 목표가 `<에픽> 티켓 반출 (대시보드)` 인 것 하나를 찾아 재사용하고, 없으면 만든다. 그 Run 을 지켜보는 코디네이터가 없으므로 무엇을 하고 언제 멈출지는 프롬프트가 정한다. 티켓 줄에 그 태스크 상태(반출 시작 중·대기·중·완료·실패, 시작 실패 사유는 툴팁)가 칩으로 보이고, 끝나지 않은 태스크가 있으면 버튼이 꺼진다. 루프백 제한은 없다 — 이 맥에 창을 띄우는 일이 아니다.
 - **리뷰 기록:** 「리뷰 완료」는 스텝 노트 frontmatter 에 `review: done`, `review_sha:` (저장소별 지금 HEAD 9자리), `review_at:` 을 쓴다. 「리뷰 취소」는 세 필드를 지운다. 노트의 `updated` 는 건드리지 않는다(상태 표시이지 내용 수정이 아니다). 커밋은 하지 않는다.
 - **Jira 상태:** 티켓 머리의 칩과 묶음 머리의 상태별 수로 보인다. 시작 전·진행 중·개발 완료·QA 준비 완료·QA 완료로 나누는데, 개발 완료·QA 준비 완료는 Jira 범주가 진행 중과 같은 `indeterminate` 라 이름으로 가른다(모르는 이름은 범주로: `new` → 시작 전, `done` → QA 완료, 나머지 → 진행 중). 개발 완료는 테두리만, QA 준비 완료는 채운 칩이다. 위쪽 거르기 단추 줄 하나에 리뷰 상태와 Jira 상태가 구분선을 두고 함께 있고, 하나만 고른다(`adash.wt` 에 저장).
 - **상태:** 워크트리 없음 → `none`, 기록 없음 → `pending`(리뷰 대기), 기록한 sha 가 모든 저장소의 지금 HEAD 와 같으면 `done`, 하나라도 다르면 `changed`(리뷰 후 변경 — 저장소 줄에도 표시). `changed` 는 파일에 쓰지 않고 매번 계산한다.
 
 | 엔드포인트 | 응답 |
 | --- | --- |
-| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "summary", "status", "cat", "assignee", "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}]}]}], "updated", "jira"}` |
+| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}]}]}], "updated", "jira"}` |
 | `POST /api/review/open` | `{"key"}` → 위 「VS Code 로 열기」. 403 루프백 밖, 409 워크트리 없음 |
 | `POST /api/review/mark` | `{"key", "done": true\|false}` → 리뷰 기록·취소. 409 스텝 노트 없음 |
+| `POST /api/review/ship` | `{"key"}` → 위 「PR 후 머지」, 202 시작함(워커 기동은 뒤에서). 409 `ship_prompt`·`ship_place` 없음, 진행 중 아님, 이미 반출 중 |
 | `GET /api/state` | `reviews_at` — 묶음이 다시 모일 때마다 바뀐다 |
 
 ## 설정 (`prefs.json`)
@@ -341,10 +343,12 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 | `run_tc_progress` | run-tc 진행 파일 경로 목록 |
 | `decision_inbox` | 메일함 모드 켜짐 여부. 대시보드의 스위치가 쓴다 (위 「메일함 모드」) |
 | `design_dirs` | 설계문서 폴더 경로 목록 (`~` 사용 가능, 예: `["~/repo/<저장소>/feature-designs"]`). 아래 「설계문서」 |
-| `qa_sets` | 워크트리 리뷰 묶음 목록 `[{"epic": "<에픽 키>", "project": "<볼트 기준 프로젝트 폴더>"}]`. 위 「워크트리 리뷰」 |
+| `qa_sets` | 워크트리 리뷰 묶음 목록 `[{"epic": "<에픽 키>", "project": "<볼트 기준 프로젝트 폴더>", "ship_place": "<「PR 후 머지」 워커를 띄울 Orca 워크트리 경로>"}]`. 위 「워크트리 리뷰」 |
 | `jira_email` | Jira REST 인증에 쓰는 토큰 주인의 계정 이메일 |
 | `jira_site` | Jira 주소 (`https://<사이트>.atlassian.net`). 없으면 묶음을 모으지 않고 오류로 보인다 |
 | `review_bases` | PR 이 없을 때 비교할 베이스 브랜치, 저장소(메인 체크아웃 폴더 이름)별 `{"<저장소>": "<브랜치>"}`. 없으면 `main` |
+| `ship_prompt` | 「PR 후 머지」 워커에 줄 프롬프트 템플릿의 경로 (`~` 사용 가능). 없으면 버튼이 409 |
+| `ship_agent` · `ship_model` | 그 워커의 Orca 에이전트와 모델. 기본 `claude` · `opus` |
 | `review_first` | 티켓 안에서 먼저 놓을 저장소 목록 (예: 앱들이 쓰는 공용 라이브러리). 기본은 없음 |
 
 ## 보안

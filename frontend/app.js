@@ -1800,6 +1800,16 @@ function wtTest(x) {
   const cls = live ? 'run' : bad ? 'fail' : 'done';
   return `<span class="tkc ${cls}" title="${esc([x.label, x.detail].filter(Boolean).join(' · '))}"><i>${TK_IC[cls]}</i>${esc((x.kind || '테스트').toUpperCase())} ${live ? '실행 중' : bad ? '실패' : '통과'} · ${ago(x.finished_at || x.updated_at || x.started_at)}</span>`;
 }
+// 「PR 후 머지」: the server hands a 진행 중 ticket to a supervised Orca worker (Task title "<key> 반출").
+const WT_SHIP = { launching: ['run', '반출 시작 중'], pending: ['run', '반출 대기'], dispatched: ['run', '반출 중'], blocked: ['wait', '반출 막힘'],
+  completed: ['done', '반출 완료'], failed: ['fail', '반출 실패'], cancelled: ['pending', '반출 취소'], launch_failed: ['fail', '반출 시작 실패'] };
+const shipOpen = t => t.ship && !['completed', 'failed', 'cancelled', 'launch_failed'].includes(t.ship.status);
+function wtShip(t) {
+  if (!t.ship) return '';
+  const [cls, lbl] = WT_SHIP[t.ship.status] || ['pending', '반출 ' + t.ship.status];
+  const tip = [t.ship.error, t.ship.task_id && `태스크 ${t.ship.task_id}`, t.ship.at && hhmm(t.ship.at)].filter(Boolean).join(' · ');
+  return `<span class="tkc ${cls}" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${lbl}</span>`;
+}
 function wtRepo(t, r) {
   const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
   const pr = r.pr ? ` <a href="${esc(r.pr.url)}" target="_blank" rel="noopener" title="PR ${esc(r.pr.state || '')}">#${r.pr.number}</a>` : '';
@@ -1827,9 +1837,10 @@ function wtTicket(t, set) {
     </div>
     <div class="rv-meta">
       ${t.step ? `<a href="${obsLink(t.step)}" title="${esc(t.step.split('/').pop())}">스텝 ${esc(t.step_status || '')}</a>` : '<span class="st">스텝 노트 없음</span>'}${notes ? ' · ' + notes : ''}
-      ${wtTest(t.test)}
+      ${wtTest(t.test)}${wtShip(t)}
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
       ${t.repos.length ? `<span class="rv-acts">
+        ${jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
         <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
         <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' ? 0 : 1}"${t.step ? '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : ''}
     </div>
@@ -1868,12 +1879,14 @@ async function renderWorktrees() {
   if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
 }
 async function wtClick(e) {
-  const b = e.target.closest('button[data-wt-open], button[data-wt-mark]');
+  const b = e.target.closest('button[data-wt-open], button[data-wt-mark], button[data-wt-ship]');
   if (!b || b.disabled) return;
+  if (b.dataset.wtShip && !confirm(`${b.dataset.wtShip} 을(를) PR 로 올리고 머지합니다.\nOrca 워커가 머지 뒤 Jira 「개발 완료」 전이, 스텝 노트 기록, 워크트리·브랜치 정리까지 합니다. 진행할까요?`)) return;
   const txt = b.textContent;
-  b.disabled = true; b.textContent = b.dataset.wtOpen ? '여는 중…' : '기록 중…';
-  const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen) : await api.reviewMark(b.dataset.srv, b.dataset.wtMark, b.dataset.done === '1');
-  if (st !== 200) alert(body.error || `실패 (${st})`);
+  b.disabled = true; b.textContent = b.dataset.wtOpen ? '여는 중…' : b.dataset.wtShip ? '시작 중…' : '기록 중…';
+  const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen)
+    : b.dataset.wtShip ? await api.reviewShip(b.dataset.srv, b.dataset.wtShip) : await api.reviewMark(b.dataset.srv, b.dataset.wtMark, b.dataset.done === '1');
+  if (st !== 200 && st !== 202) alert(body.error || `실패 (${st})`);
   b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
 }
 
