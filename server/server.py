@@ -4336,6 +4336,138 @@ def wt_repo(w, worktrees):
     return os.path.basename(main["path"]) if main else os.path.basename(os.path.dirname(w["path"]))
 
 
+# ---- QA driver: a set's `watch` is the qa-ticket-driver state directory (or an older watcher's) ----
+# Stages follow the skill's exports/state-contract.md; the page draws them as a track per ticket. Control goes through
+# the skill's CLI (prefs.json "qa_driver", default the installed skill) so the rules live in one place; the set's
+# Orca automations are the ones whose prompt or precheck names the epic.
+QA_DRIVER = os.path.expanduser(prefs.get("qa_driver") or "~/.claude/skills/qa-ticket-driver/bin/qa-driver")
+QA_STAGES = ["selected", "worktree", "analysis", "implementing", "reviewing", "committed", "approved", "delivered", "cleaned"]
+QA_AUTOMATION_EVERY = 60
+qa_auto_cache = {"at": 0, "list": [], "runs": {}}
+
+
+def qa_signal(watch, kind, key):
+    """Signal files of a ticket in one kind: <KEY>.md or <KEY>-<name>.md (an older watcher's .roundN copies excluded)."""
+    try:
+        names = os.listdir(os.path.join(watch, kind))
+    except OSError:
+        return []
+    pat = re.compile(rf"^{re.escape(key)}(?:-[^.]+)?(?:\.md)?$")
+    return sorted(f for f in names if pat.match(f))
+
+
+def qa_ticket(watch, key):
+    """{stage, blocked, ignored, round, coordinator, workers, worktree, at{stage: iso}, prs} or None if never claimed."""
+    p = lambda *a: os.path.join(watch, *a)
+    try:
+        claims = [l.rstrip("\n").split("\t") for l in open(p("claimed", key), encoding="utf-8") if l.strip()]
+    except OSError:
+        return None
+    try:
+        with open(p("tickets", f"{key}.json"), encoding="utf-8") as f:
+            rec = json.load(f)
+    except (OSError, ValueError):
+        rec = {}
+    mt = lambda f: datetime.fromtimestamp(os.path.getmtime(f), timezone.utc).isoformat() if os.path.exists(f) else None
+    hand = [f for f in qa_signal(watch, "handoffs", key) if not f.endswith("-deliver.md")]
+    done = qa_signal(watch, "done", key)
+    has = lambda kind: f"{key}.md" in qa_signal(watch, kind, key)
+    if os.path.exists(p("cleaned", key)):
+        stage = "cleaned"
+    elif has("delivered"):
+        stage = "delivered"
+    elif has("approved"):
+        stage = "approved"
+    elif has("ready"):
+        stage = "committed"
+    elif hand and done and len(done) >= len(hand):
+        stage = "reviewing"
+    elif hand:
+        stage = "implementing"
+    elif rec.get("coordinator") or (not rec.get("driver") and claims):
+        stage = "analysis"
+    else:
+        stage = "worktree" if rec.get("worktree") else "selected"
+    blocked = qa_signal(watch, "blocked", key)
+    reason = None
+    if blocked:
+        try:
+            reason = (open(p("blocked", blocked[0]), encoding="utf-8").read().split("\n") + [""] * 3)[2].strip() or None
+        except OSError:
+            pass
+    prs = []
+    if has("delivered"):
+        try:
+            prs = re.findall(r"https://\S+/pull/\d+", open(p("delivered", f"{key}.md"), encoding="utf-8").read())
+        except OSError:
+            pass
+    first = lambda kind, names: min((mt(p(kind, n)) for n in names), default=None)
+    at = {"selected": claims[-1][0] if claims else None, "worktree": (rec.get("worktree") or {}).get("created_at"),
+          "analysis": (rec.get("coordinator") or {}).get("at") or (claims[-1][0] if claims else None),
+          "implementing": first("handoffs", hand), "reviewing": max((mt(p("done", n)) for n in done), default=None),
+          "committed": mt(p("ready", f"{key}.md")), "approved": mt(p("approved", f"{key}.md")),
+          "delivered": mt(p("delivered", f"{key}.md")), "cleaned": mt(p("cleaned", key))}
+    coord = (rec.get("coordinator") or {}).get("handle") or (claims[-1][2] if claims and len(claims[-1]) > 2 else None)
+    return {"stage": stage, "stage_no": QA_STAGES.index(stage) + 1, "blocked": bool(blocked), "blocked_reason": reason,
+            "ignored": os.path.exists(p("ignored", key)), "round": len(claims), "coordinator": coord,
+            "workers": [{"name": n, **w} for n, w in (rec.get("workers") or {}).items()],
+            "worktree": (rec.get("worktree") or {}).get("path"), "at": at, "prs": prs,
+            "handoffs": len(hand), "done": len(done), "driver": bool(rec.get("driver"))}
+
+
+def driver_worktree_repos(wt):
+    """(path, branch, repo) of the populated submodules of a driver ticket worktree that sit on a branch; the
+    worktree itself when it has no submodules."""
+    out = []
+    for line in (git_at(wt, "config", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$") or "").splitlines():
+        sub = line.split()[-1]
+        path = os.path.join(wt, sub)
+        if os.path.exists(os.path.join(path, ".git")):
+            br = git_at(path, "branch", "--show-current")
+            if br:
+                out.append((path, br, os.path.basename(sub)))
+    if not out and not os.path.isfile(os.path.join(wt, ".gitmodules")):
+        out.append((wt, git_at(wt, "branch", "--show-current") or "", os.path.basename(wt)))
+    return out
+
+
+def qa_automations(epics):
+    """epic -> [{id, name, enabled, rrule, next, last, runs[{status, at, error}]}], refreshed every minute."""
+    now_ = time.time()
+    if now_ - qa_auto_cache["at"] > QA_AUTOMATION_EVERY:
+        try:
+            res = orca("automations", "list", timeout=20)
+            qa_auto_cache["list"] = res.get("automations", res) if isinstance(res, dict) else res
+        except Exception as e:
+            report_failure("qa automations", e)
+        for a in qa_auto_cache["list"]:
+            try:
+                rs = orca("automations", "runs", "--id", a["id"], timeout=20)
+                rs = rs.get("runs", rs) if isinstance(rs, dict) else rs
+                qa_auto_cache["runs"][a["id"]] = [{"status": r.get("status"), "at": r.get("startedAt") or r.get("createdAt"),
+                                                   "error": r.get("error"), "trigger": r.get("trigger")} for r in rs[:8]]
+            except Exception:
+                pass
+        qa_auto_cache["at"] = now_
+    out = {}
+    for e in epics:
+        hit = re.compile(rf"(?<![A-Za-z0-9]){re.escape(e)}(?![0-9])")
+        out[e] = [{"id": a["id"], "name": a.get("name"), "enabled": a.get("enabled"), "rrule": a.get("rrule"),
+                   "next": a.get("nextRunAt"), "last": a.get("lastRunAt"), "runs": qa_auto_cache["runs"].get(a["id"], [])}
+                  for a in qa_auto_cache["list"]
+                  if hit.search(" ".join([a.get("name") or "", a.get("prompt") or "", (a.get("precheck") or {}).get("command") or ""]))]
+    return out
+
+
+def qa_cli(epic, watch, *args, timeout=600):
+    """Run the qa-driver CLI for a set: -> (exit code, stdout + stderr)."""
+    if not os.path.isfile(QA_DRIVER):
+        return 127, f"qa-driver 가 없다: {QA_DRIVER} (prefs.json qa_driver)"
+    r = subprocess.run([sys.executable, QA_DRIVER, "--home", os.path.dirname(watch), *args[:1], epic, *args[1:]],
+                       capture_output=True, text=True, timeout=timeout)
+    return r.returncode, (r.stdout + ("\n" if r.stdout and r.stderr else "") + r.stderr).strip()
+
+
 def review_pass(jira, prs, stats):
     worktrees = orca("worktree", "list", timeout=20).get("worktrees") or []
     by_key = {}
@@ -4363,13 +4495,19 @@ def review_pass(jira, prs, stats):
             ships = ship_tasks(epic) if SHIP_PROMPT else {}
         except Exception as e:
             ships, err = {}, (err + " · " if err else "") + "반출 Run: " + short(repr(e), 120)
+        watch = os.path.expanduser(qs.get("watch") or "")
+        driver = bool(watch) and os.path.isdir(os.path.join(watch, "tickets"))
         tickets = []
         for c in children:
             key = c["key"]
             repos = []
-            for w in by_key.get(key, []):
-                path, branch = w["path"], (w.get("branch") or "").removeprefix("refs/heads/")
-                repo = wt_repo(w, worktrees)
+            qa = qa_ticket(watch, key) if watch else None
+            if driver and qa and qa["worktree"] and os.path.isdir(qa["worktree"]):
+                places = [(path, br, repo, None, None) for path, br, repo in driver_worktree_repos(qa["worktree"])]
+            else:
+                places = [(w["path"], (w.get("branch") or "").removeprefix("refs/heads/"), wt_repo(w, worktrees),
+                           w.get("displayName"), w.get("comment")) for w in by_key.get(key, [])]
+            for path, branch, repo, wname, wcomment in places:
                 head = git_at(path, "rev-parse", "HEAD")
                 pk = (path, branch)
                 if now - prs.get(pk, (0,))[0] > PR_EVERY:
@@ -4396,8 +4534,8 @@ def review_pass(jira, prs, stats):
                     stats[sk] = {"behind": int(lr[0]), "ahead": int(lr[1]), "files": num(r"(\d+) files? changed"),
                                  "ins": num(r"(\d+) insertions?"), "dels": num(r"(\d+) deletions?")}
                 porcelain = git_at(path, "status", "--porcelain")
-                repos.append({"repo": repo, "path": path, "branch": branch, "name": w.get("displayName"),
-                              "comment": w.get("comment") or None, "head": head, "base": base, "base_ref": base_ref,
+                repos.append({"repo": repo, "path": path, "branch": branch, "name": wname,
+                              "comment": wcomment or None, "head": head, "base": base, "base_ref": base_ref,
                               "base_src": base_src, "pr": pr, "dirty": len(porcelain.splitlines()) if porcelain else 0,
                               **(stats.get(sk) or {})})
             repos.sort(key=lambda r: (r["repo"] not in REVIEW_FIRST, r["repo"]))
@@ -4414,12 +4552,16 @@ def review_pass(jira, prs, stats):
             tickets.append({**c, "repos": repos, "review": review, "review_at": fm.get("review_at"),
                             "review_sha": fm.get("review_sha") or {}, "step": n.get("step"),
                             "step_status": fm.get("status"), "notes": n.get("notes") or [], "test": ticket_test(key),
-                            "ship": ship_state(ships.get(key), ship_launch.get(key))})
+                            "ship": ship_state(ships.get(key), ship_launch.get(key)), "qa": qa})
         # Worktrees named after a key the epic does not list (another QA, or a key typo) stay visible too.
         listed = {c["key"] for c in children}
         stray = sorted(k for k in by_key if k.startswith(epic.split("-")[0] + "-") and k not in listed)
         sets.append({"epic": epic, "summary": epic_summary, "project": project, "error": err,
-                     "tickets": tickets, "stray": stray})
+                     "tickets": tickets, "stray": stray, "watch": watch or None, "driver": driver,
+                     "stages": QA_STAGES})
+    autos = qa_automations([s["epic"] for s in sets])
+    for s in sets:
+        s["automations"] = autos.get(s["epic"], [])
     with lock:
         review_state.update(sets=sets, updated=datetime.now(timezone.utc).isoformat())
         bump()
@@ -4879,7 +5021,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         # JSON only: a cross-site form cannot send this content type without a CORS preflight, which authorized()
         # already limits to --origin.
-        if url.path not in ("/api/pref", "/api/orca/focus", "/api/orca/close", *REVIEW_POSTS, *DECISION_POSTS) or not self.headers.get("Content-Type", "").startswith("application/json"):
+        if url.path not in ("/api/pref", "/api/orca/focus", "/api/orca/close", *REVIEW_POSTS, *QA_POSTS, *DECISION_POSTS) or not self.headers.get("Content-Type", "").startswith("application/json"):
             return self.send_json({"error": "bad request"}, 400)
         if url.path in DECISION_POSTS:
             return self.decision_post(url.path.rsplit("/", 1)[1])
@@ -4887,6 +5029,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.orca_terminal(url.path.rsplit("/", 1)[1])
         if url.path in REVIEW_POSTS:
             return self.review_action(url.path.rsplit("/", 1)[1])
+        if url.path in QA_POSTS:
+            return self.qa_action(url.path.rsplit("/", 1)[1])
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             action, paths = body["action"], body["paths"]
@@ -4911,6 +5055,51 @@ class Handler(BaseHTTPRequestHandler):
             bump()
         self.send_json({"ok": True})
 
+
+    def qa_action(self, what):
+        """automation {"epic", "id", "action": enable|disable|run}: an Orca automation that names the epic (the set
+        lists them). ticket {"epic", "key", "action": approve|cleanup_check|cleanup}: the qa-driver CLI on the set's
+        state directory — approve records push/PR approval and tells the coordinator; cleanup_check is cleanup's dry run
+        (exit 3 = it would stop: uncommitted or unpushed work), cleanup removes the worktree."""
+        try:
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
+            epic, action = body["epic"], body["action"]
+            assert isinstance(epic, str) and WT_KEY.fullmatch(epic) and isinstance(action, str)
+        except (ValueError, KeyError, AssertionError, TypeError):
+            return self.send_json({"error": "bad request"}, 400)
+        with lock:
+            st = next((json.loads(json.dumps(x)) for x in review_state["sets"] if x["epic"] == epic), None)
+        if not st:
+            return self.send_json({"error": "없는 QA 묶음입니다"}, 404)
+        if what == "automation":
+            aid = body.get("id")
+            if action not in ("enable", "disable", "run") or aid not in {a["id"] for a in st.get("automations") or []}:
+                return self.send_json({"error": "이 묶음의 자동화가 아니거나 모르는 동작입니다"}, 400)
+            try:
+                if action == "run":
+                    orca("automations", "run", aid, timeout=60)
+                else:
+                    orca("automations", "edit", aid, "--enabled" if action == "enable" else "--disabled", timeout=30)
+            except Exception as e:
+                return self.send_json({"error": "Orca: " + short(str(e), 300)}, 502)
+            qa_auto_cache["at"] = 0  # show the new state on the next pass
+            review_kick.set()
+            return self.send_json({"ok": True})
+        key = body.get("key")
+        if not (isinstance(key, str) and any(t["key"] == key for t in st["tickets"])):
+            return self.send_json({"error": "묶음에 없는 티켓입니다"}, 404)
+        if not st.get("watch"):
+            return self.send_json({"error": "이 묶음에는 상태 디렉터리(watch)가 없습니다"}, 409)
+        args = {"approve": ("approve", key, "--by", "대시보드"), "cleanup_check": ("cleanup", key, "--dry-run"),
+                "cleanup": ("cleanup", key)}.get(action)
+        if not args:
+            return self.send_json({"error": "모르는 동작입니다"}, 400)
+        try:
+            code, out = qa_cli(epic, st["watch"], *args)
+        except subprocess.TimeoutExpired:
+            return self.send_json({"error": "qa-driver 가 제한 시간 안에 끝나지 않았습니다"}, 504)
+        review_kick.set()
+        return self.send_json({"ok": code == 0, "code": code, "output": out}, 200 if code in (0, 3) else 502)
 
     def review_action(self, action):
         """{"key"} -> open: one VS Code window holding every worktree of the ticket. Only for a request addressed to
@@ -5070,6 +5259,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 REVIEW_POSTS = ("/api/review/open", "/api/review/mark", "/api/review/ship")
+QA_POSTS = ("/api/qa/automation", "/api/qa/ticket")
 DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/mode",
                   "/api/decision/inbox", "/api/decision/guard", "/api/decision/dismiss")
 
