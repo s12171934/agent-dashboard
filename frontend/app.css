@@ -132,6 +132,9 @@ a.tkc:hover { border-color: var(--accent); }
 .drv.xp-pdrv .drv-h { margin: 0; } .drv.xp-pdrv .drv-h > b { color: var(--muted); font-weight: 600; }
 .drv.xp-sched { padding: 6px 12px; } .drv.xp-sched .drv-h { margin: 0; }
 .xp-why { color: var(--warn); } .xp-why.hold { color: var(--bad); }
+.c-added { align-items: flex-start; }
+.c-added .badge { flex: none; }
+.c-added .xp-why { font-size: 11.5px; line-height: 1.45; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .xp-wt { font-size: 12px; } .xp-wt > b { flex: none; }
 .xp .badge { flex: none; }
 .m.est b.est-over { color: var(--bad); } .m.est b.est-pause { color: var(--warn); }

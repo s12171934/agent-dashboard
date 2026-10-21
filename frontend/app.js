@@ -95,7 +95,16 @@ function index() {
   const byId = Object.fromEntries(state.sessions.map(s => [s.id, s]));
   const subsOf = {};
   state.sessions.filter(s => s.parent).forEach(s => (subsOf[s.parent] ||= []).push(s));
-  return { tasks, runOf, runsByCoord, byId, subsOf };
+  // Boxes a driver added after start (fix_source): task id -> plan row, so the worker's card can say why it was made.
+  // Matched like extPlanRow: task_id, else the newest task of that title in the ticket's own run.
+  const addedBy = {};
+  for (const p of state.ext_plans || []) for (const k of p.tickets || []) for (const x of k.sessions || []) {
+    if (!x.fix_source) continue;
+    const t = (x.task_id && tasks[x.task_id]) || (k.run_id ? (o.tasks[k.run_id] || []).filter(c => !c.plan_row && c.task_title === x.key)
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0] : null);
+    if (t) addedBy[t.id] = x;
+  }
+  return { tasks, runOf, runsByCoord, byId, subsOf, addedBy };
 }
 let IX = null;
 const nameOf = s => (s.role === 'worker' && IX.tasks[s.task_id]?.display_name) || s.title;
@@ -889,6 +898,11 @@ const chipRow = (label, counts, color, nm = x => x) => {
   return `<div class="chips"><b>${label}</b>${e.length ? e.map(([n, c]) => `<span class="chip" style="--c:var(${color})">${esc(nm(n))} <i>${c}</i></span>`).join('') : '<span class="st">없음</span>'}</div>`;
 };
 
+// A worker made for a box the driver added after start: what added it and why (same as its 외부 워커 계획 row).
+const addedHtml = s => { const x = s.role === 'worker' && (s.task_ids || [s.task_id]).map(id => IX.addedBy[id]).find(Boolean);
+  if (!x) return '';
+  const why = xpReason(x) || '기록 없음';
+  return `<div class="c-top c-added" title="추가 사유: ${esc(why)}"><span class="badge">추가: ${esc(XP_FIX[x.fix_source] || x.fix_source)}${xpRound(x) ? ` ${xpRound(x)}차` : ''}</span><span class="xp-why">사유: ${esc(why)}</span></div>`; };
 function card(s, cls) {
   const a = agg(s), win = s.ctx_window, pct = win ? Math.min(100, s.ctx_now / win * 100) : 0;
   const own = status(s), st = subBg(s, a, own), la = s.last_action;
@@ -899,6 +913,7 @@ function card(s, cls) {
     <div class="c-top">${pill(st, s)}${actBtns(s)}</div>
     <div class="now" title="${esc(la?.text || '')}">${la ? `<b>${st === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[la.role] || '')} · ${esc(la.text)}` : ''}</div>
     <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span>${srvBadge(s)}${t ? `<span class="badge" style="color:${STATUS_COLOR(t.status)};border-color:currentColor">태스크 ${esc(t.status)}</span>` : ''}</div>
+    ${addedHtml(s)}
     <div class="c-metrics">
       <div class="m"><span>턴</span><b>${fmt(a.turns)}</b></div>
       <div class="m" title="${ctxTitle(s)}"><span>컨텍스트</span><b class="${ctxLvl(s)}">${fmt(s.ctx_now)}</b></div>
