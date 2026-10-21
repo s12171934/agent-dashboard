@@ -1781,7 +1781,7 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // is recorded in the step note's frontmatter and reads 「리뷰 후 변경」 once a worktree's HEAD moves past it. Opening VS Code
 // goes to the set's server and works only when that server is this device's loopback (set.local).
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
-const wtf = (() => { try { return { f: 'all', j: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', j: 'all', q: '' }; } })();
+const wtf = (() => { try { return { f: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '' }; } })();
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'pending', 'done', 'none'];
 const WT_FILTERS = { all: '전체', changed: '리뷰 후 변경', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
@@ -1841,20 +1841,18 @@ async function renderWorktrees() {
   const save = () => { try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} };
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
-        <div class="seg" id="wt-f">${Object.entries(WT_FILTERS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
-        <div class="seg" id="wt-j" title="Jira 상태">${Object.entries({ all: 'Jira 전체', ...WT_JIRA }).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
+        <div class="seg" id="wt-f">${Object.entries(WT_FILTERS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}<span class="seg-sep"></span>${Object.entries(WT_JIRA).map(([k, l]) => `<button data-k="j:${k}" title="Jira 상태">${l}</button>`).join('')}</div>
         <input type="search" id="wt-q" class="field" placeholder="키·제목·브랜치 검색" value="${esc(wtf.q)}">
       </div><div id="wt-body"></div>`;
     $('#wt-f').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.f = b.dataset.k; save(); renderWorktrees(); });
-    $('#wt-j').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.j = b.dataset.k; save(); renderWorktrees(); });
     $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
     $('#wt-body').onclick = wtClick;
     wtMounted = true;
   }
   $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
-  $('#wt-j').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.j));
   const q = wtf.q.trim().toLowerCase();
-  const hit = t => (wtf.f === 'all' || t.review === wtf.f) && (wtf.j === 'all' || jiraStage(t) === wtf.j)
+  if (!(wtf.f in WT_FILTERS || wtf.f.slice(2) in WT_JIRA)) wtf.f = 'all';
+  const hit = t => (wtf.f === 'all' || t.review === wtf.f || 'j:' + jiraStage(t) === wtf.f)
     && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q)));
   const num = k => +k.split('-').pop();
   const body = wtData.sets.map(s => {
