@@ -224,7 +224,7 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['agents', 'compare', 'talk', 'tests', 'hidden', 'decide'].includes(h) ? h : 'agents' };
+  return { v: ['agents', 'compare', 'talk', 'tests', 'worktrees', 'hidden', 'decide'].includes(h) ? h : 'agents' };
 }
 addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
@@ -318,6 +318,7 @@ async function renderView(navigated) {
   if (r.v !== 'talk') talkMounted = false;
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
+  if (r.v !== 'worktrees') wtMounted = false;
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
@@ -325,6 +326,7 @@ async function renderView(navigated) {
   else if (r.v === 'compare') renderCompare();
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
+  else if (r.v === 'worktrees') await renderWorktrees();
   else if (r.v === 'hidden') renderHidden();
   else if (r.v === 'decide') renderDecide();
   else if (r.v === 'projects') await renderProjects();
@@ -1774,6 +1776,98 @@ function agentsHtml(fv, sv, srv) {
   return h;
 }
 const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv.name)}</h2><span class="sp-msg ${cls}" title="${esc(srv.url)}">${esc(st)}</span>`; };
+// ---------- 워크트리: a QA set's tickets with their worktrees, reviewed ticket by ticket in VS Code ----------
+// Each server joins its QA sets' Jira children, Orca worktrees, vault step notes and test runs (/api/reviews). A review
+// is recorded in the step note's frontmatter and reads 「리뷰 후 변경」 once a worktree's HEAD moves past it. Opening VS Code
+// goes to the set's server and works only when that server is this device's loopback (set.local).
+let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
+const wtf = (() => { try { return { f: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '' }; } })();
+const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
+const WT_ORDER = ['changed', 'pending', 'done', 'none'];
+const WT_FILTERS = { all: '전체', changed: '리뷰 후 변경', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
+const obsLink = p => 'obsidian://open?path=' + encodeURIComponent(p);
+const BASE_SRC = { PR: 'PR 의 base', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
+function wtTest(x) {
+  if (!x) return '';
+  const live = x.phase !== 'done' && x.phase !== 'failed', bad = x.phase === 'failed' || x.failed > 0 || /[1-9]\d* failures?/.test(x.detail || '');
+  const cls = live ? 'run' : bad ? 'fail' : 'done';
+  return `<span class="tkc ${cls}" title="${esc([x.label, x.detail].filter(Boolean).join(' · '))}"><i>${TK_IC[cls]}</i>${esc((x.kind || '테스트').toUpperCase())} ${live ? '실행 중' : bad ? '실패' : '통과'} · ${ago(x.finished_at || x.updated_at || x.started_at)}</span>`;
+}
+function wtRepo(t, r) {
+  const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
+  const pr = r.pr ? ` <a href="${esc(r.pr.url)}" target="_blank" rel="noopener" title="PR ${esc(r.pr.state || '')}">#${r.pr.number}</a>` : '';
+  const diff = r.ahead != null ? `<span><b>+${r.ahead}</b> 커밋 · <b>${r.files}</b> 파일 <span class="rv-ins">+${r.ins}</span> <span class="rv-del">−${r.dels}</span></span>` : '<span class="st">비교 불가 (베이스 없음)</span>';
+  return `<div class="rv-repo">
+    <span class="rv-rn" title="${esc(r.path)}">${esc(r.repo)}</span>
+    <span class="st" title="${esc(r.name || '')}${r.comment ? ' · ' + esc(r.comment) : ''}">${esc(cut(r.branch, 44))}</span>
+    <span class="st" title="베이스: ${esc(BASE_SRC[r.base_src] || r.base_src)}${r.base_ref ? '' : ' · 로컬에 브랜치 없음'}">vs ${esc(r.base_ref || r.base)}${pr}</span>
+    ${diff}${r.behind ? `<span class="st" title="베이스에 있고 이 브랜치에 없는 커밋">뒤처짐 ${r.behind}</span>` : ''}
+    ${r.dirty ? `<span class="rv-flag warn" title="커밋하지 않은 변경 (git status)">미커밋 ${r.dirty}</span>` : ''}
+    ${moved ? `<span class="rv-flag bad" title="리뷰 때 ${esc(rs)} → 지금 ${esc(r.head.slice(0, 9))}">리뷰 후 변경</span>` : ''}
+  </div>`;
+}
+function wtTicket(t, set) {
+  const [cls, lbl] = WT_REVIEW[t.review];
+  const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
+  const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
+  const markLbl = t.review === 'done' ? '리뷰 취소' : t.review === 'changed' ? '다시 리뷰 완료' : '리뷰 완료';
+  return `<div class="rv-tk ${t.review}">
+    <div class="rv-head">
+      <span class="tkc ${cls}"><i>${TK_IC[cls]}</i>${lbl}${t.review_at && t.review !== 'pending' ? ' · ' + esc(t.review_at) : ''}</span>
+      <a href="${esc(wtData.jira)}/browse/${esc(t.key)}" target="_blank" rel="noopener"><b>${esc(t.key)}</b></a>
+      <span class="rv-sum" title="${esc(t.summary || '')}">${esc(t.summary || '')}</span>
+      <span class="st">Jira ${esc(t.status || '?')}${t.assignee ? ' · ' + esc(t.assignee) : ''}</span>
+    </div>
+    <div class="rv-meta">
+      ${t.step ? `<a href="${obsLink(t.step)}" title="${esc(t.step.split('/').pop())}">스텝 ${esc(t.step_status || '')}</a>` : '<span class="st">스텝 노트 없음</span>'}${notes ? ' · ' + notes : ''}
+      ${wtTest(t.test)}
+      ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
+      ${t.repos.length ? `<span class="rv-acts">
+        <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
+        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' ? 0 : 1}"${t.step ? '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : ''}
+    </div>
+    ${t.repos.map(r => wtRepo(t, r)).join('')}
+  </div>`;
+}
+async function renderWorktrees() {
+  if (wtData.at !== state.reviews_at) { try { const r = await api.reviews(); wtData = { at: state.reviews_at, sets: r?.sets || [], jira: r?.jira || '' }; } catch { wtData.at = undefined; } }
+  const save = () => { try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} };
+  if (!wtMounted) {
+    $('#view').innerHTML = `<div class="controls">
+        <div class="seg" id="wt-f">${Object.entries(WT_FILTERS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
+        <input type="search" id="wt-q" class="field" placeholder="키·제목·브랜치 검색" value="${esc(wtf.q)}">
+      </div><div id="wt-body"></div>`;
+    $('#wt-f').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.f = b.dataset.k; save(); renderWorktrees(); });
+    $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
+    $('#wt-body').onclick = wtClick;
+    wtMounted = true;
+  }
+  $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
+  const q = wtf.q.trim().toLowerCase();
+  const hit = t => (wtf.f === 'all' || t.review === wtf.f)
+    && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q)));
+  const num = k => +k.split('-').pop();
+  const body = wtData.sets.map(s => {
+    const n = k => s.tickets.filter(t => t.review === k).length;
+    const ts = s.tickets.filter(hit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
+    return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 리뷰 후 변경 ${n('changed')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
+      ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
+      ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
+      <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
+  }).join('');
+  $('#wt-body').innerHTML = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
+  if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
+}
+async function wtClick(e) {
+  const b = e.target.closest('button[data-wt-open], button[data-wt-mark]');
+  if (!b || b.disabled) return;
+  const txt = b.textContent;
+  b.disabled = true; b.textContent = b.dataset.wtOpen ? '여는 중…' : '기록 중…';
+  const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen) : await api.reviewMark(b.dataset.srv, b.dataset.wtMark, b.dataset.done === '1');
+  if (st !== 200) alert(body.error || `실패 (${st})`);
+  b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
+}
+
 function renderAgents() {
   const { fams, solos } = families();
   const fv = fams.filter(liveFam), sv = solos.filter(liveSess);

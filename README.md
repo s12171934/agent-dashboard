@@ -1,7 +1,7 @@
 ---
 title: agent-dashboard
 created: 2026-10-16
-updated: 2026-10-19
+updated: 2026-10-21
 tags: [domain/인공지능, area/ai에이전트, agent/claude-1b219bef-b3db-4ef6-8088-81f7f0d19120]
 source: ai
 ---
@@ -57,6 +57,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문. 터미널 선택기와 같은 질문이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
+| 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 
 ## 실행
@@ -311,6 +312,24 @@ aplan skip N [메모] / aplan fail N [메모]
 - 배지·목록은 읽기만 센다(검색 적중은 세지 않고, 목록의 search 수로만 보인다). 기기별 저장값: `adash.design` (읽은 세션 보기, 거르기 글자, 마지막 문서와 프로젝트별 마지막 문서, 상자 열림).
 - 세션 상세에 「참고한 설계 섹션」 절(문서별 섹션, 누르면 탭의 그 섹션), 코디네이터 상세의 티켓 의존 그래프 노드에 그 티켓 세션들이 많이 읽은 섹션 번호(`§5 · §3 · §4 +N`, 문서마다 같은 번호면 문서 제목을 앞에 붙임, 전체는 툴팁).
 
+## 워크트리 리뷰 — QA 티켓별 워크트리를 VS Code 로 열어 리뷰
+
+QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모아 보여 주고, 한 번에 VS Code 로 열어 리뷰한 뒤 리뷰 결과를 볼트 스텝 노트에 남긴다. 「워크트리 리뷰」 탭(바의 겹친 판 아이콘)이 그린다.
+
+- **묶음:** `qa_sets` 의 `{"epic", "project"}` 하나가 묶음이다. 티켓 = Jira `parent = <epic>` 의 이슈(5분마다, `jira_site`·`jira_email` + 환경 변수 `ATLASSIAN_API_TOKEN`. launchd 는 `~/.zshrc` 를 읽지 않으므로 없으면 대화형 zsh 에 한 번 물어 얻는다).
+- **티켓에 붙는 것:** 폴더 이름에 그 키가 든 Orca 워크트리(메인·보관 제외), 파일 이름에 키가 든 스텝 노트(`<project>/progress.json` 의 step 경로)와 같은 프로젝트 폴더의 다른 노트, 키가 든 최근 테스트 실행, 그 워크트리에서 도는 에이전트.
+- **저장소 줄:** 브랜치, 비교 베이스, 베이스보다 앞선 커밋 수·바뀐 파일 수·추가/삭제 줄, 뒤처진 커밋 수, 미커밋 파일 수. 베이스는 ① 그 브랜치 PR 의 base(`gh pr list --head`, 10분마다) ② `review_bases` 의 저장소별 값 ③ `main` 순이고, 로컬의 `origin/<베이스>`(없으면 `<베이스>`)와 비교한다. fetch 는 하지 않는다. git 수치는 30초마다, HEAD·베이스가 그대로면 캐시를 쓴다.
+- **VS Code 로 열기:** 티켓의 워크트리 전부를 담은 `/private/tmp/agent-dashboard-review/<키>.code-workspace` 를 만들어 `open -a "Visual Studio Code"` 로 연다(`review_first` 저장소가 먼저). 요청의 Host 가 루프백이고 `X-Forwarded-For` 가 없을 때만 된다 — 이 맥에서 연 페이지만. tailnet 기기(`tailscale serve` 경유)는 403 이고 버튼이 꺼져 보인다.
+- **리뷰 기록:** 「리뷰 완료」는 스텝 노트 frontmatter 에 `review: done`, `review_sha:` (저장소별 지금 HEAD 9자리), `review_at:` 을 쓴다. 「리뷰 취소」는 세 필드를 지운다. 노트의 `updated` 는 건드리지 않는다(상태 표시이지 내용 수정이 아니다). 커밋은 하지 않는다.
+- **상태:** 워크트리 없음 → `none`, 기록 없음 → `pending`(리뷰 대기), 기록한 sha 가 모든 저장소의 지금 HEAD 와 같으면 `done`, 하나라도 다르면 `changed`(리뷰 후 변경 — 저장소 줄에도 표시). `changed` 는 파일에 쓰지 않고 매번 계산한다.
+
+| 엔드포인트 | 응답 |
+| --- | --- |
+| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "summary", "status", "cat", "assignee", "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}]}]}], "updated", "jira"}` |
+| `POST /api/review/open` | `{"key"}` → 위 「VS Code 로 열기」. 403 루프백 밖, 409 워크트리 없음 |
+| `POST /api/review/mark` | `{"key", "done": true\|false}` → 리뷰 기록·취소. 409 스텝 노트 없음 |
+| `GET /api/state` | `reviews_at` — 묶음이 다시 모일 때마다 바뀐다 |
+
 ## 설정 (`prefs.json`)
 
 `server/prefs.json` 은 화면 설정(숨김·유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
@@ -321,6 +340,11 @@ aplan skip N [메모] / aplan fail N [메모]
 | `run_tc_progress` | run-tc 진행 파일 경로 목록 |
 | `decision_inbox` | 메일함 모드 켜짐 여부. 대시보드의 스위치가 쓴다 (위 「메일함 모드」) |
 | `design_dirs` | 설계문서 폴더 경로 목록 (`~` 사용 가능, 예: `["~/repo/<저장소>/feature-designs"]`). 아래 「설계문서」 |
+| `qa_sets` | 워크트리 리뷰 묶음 목록 `[{"epic": "<에픽 키>", "project": "<볼트 기준 프로젝트 폴더>"}]`. 위 「워크트리 리뷰」 |
+| `jira_email` | Jira REST 인증에 쓰는 토큰 주인의 계정 이메일 |
+| `jira_site` | Jira 주소 (`https://<사이트>.atlassian.net`). 없으면 묶음을 모으지 않고 오류로 보인다 |
+| `review_bases` | PR 이 없을 때 비교할 베이스 브랜치, 저장소(메인 체크아웃 폴더 이름)별 `{"<저장소>": "<브랜치>"}`. 없으면 `main` |
+| `review_first` | 티켓 안에서 먼저 놓을 저장소 목록 (예: 앱들이 쓰는 공용 라이브러리). 기본은 없음 |
 
 ## 보안
 
