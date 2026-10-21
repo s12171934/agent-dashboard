@@ -1867,6 +1867,34 @@ function qaAutoHtml(s) {
   const sum = qs.length ? `<div class="rv-jsum">진행 ${Object.keys(QA_ST).length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
   return (qs.length ? qaLegend() : '') + (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
 }
+// The set's watcher itself: an older watcher (not qa-driver) can hand its automation to qa-driver; coordinators of
+// tickets that are past 진행 중 can be closed together; once every ticket is QA 완료 the QA can be ended (retire).
+const qaFinished = (t, set) => { const q = t.qa; if (!q?.live?.length || !['dev', 'ready', 'qa'].includes(jiraStage(t)) && !['delivered', 'cleaned'].includes(q.stage)) return false;
+  return !q.live.some(h => { const s = state.all?.find(x => x.orca_focus === h); return s && OPEN(status(s)); }); };
+function qaLegacyHtml(s) {
+  if (!s.watch) return '';
+  const d = `data-epic="${esc(s.epic)}" data-srv="${esc(s.server)}"`;
+  if (s.retired) return `<div class="qa-legacy end"><span class="tkc done"><i>✓</i>QA 종료됨</span><span class="st">자동화를 끄고 공용 코디네이션 워크트리를 지웠습니다. 상태 디렉터리는 남아 있습니다.</span></div>`;
+  const fin = s.tickets.filter(t => qaFinished(t, s)), live = s.tickets.reduce((n, t) => n + (t.qa?.live?.length || 0), 0);
+  const old = !s.adopted && (s.automations || []).length;
+  const parts = [
+    old ? `<span class="rv-flag warn" title="이 묶음의 자동화가 qa-driver 가 아닌 옛 워처를 부릅니다">옛 워처</span>` : '',
+    s.coord_worktree ? `<span class="st" title="${esc(s.coord_worktree)}">공용 코디네이션 워크트리 ${esc(s.coord_worktree.split('/').pop())}</span>` : '',
+    `<span class="st">열린 에이전트 터미널 ${live}</span>`,
+    `<span class="rv-acts">${fin.length ? `<button class="act big" data-qa-set="close_finished" data-keys="${esc(fin.map(t => t.key).join(','))}" ${d} title="${esc(fin.map(t => t.key).join(', '))}\nJira 가 개발 완료 이후이거나 반출이 끝났고, 터미널의 세션이 쉬고 있는 티켓">끝난 코디네이터 닫기 (${fin.length})</button>` : ''}
+      ${old ? `<button class="act big" data-qa-set="adopt_check" ${d} title="자동화의 precheck·prompt 를 qa-driver 로 바꿉니다. 남은 티켓부터 새 흐름(티켓마다 워크트리·코디네이터)으로 처리합니다">드라이버로 이관</button>` : ''}
+      ${s.finished ? `<button class="act big accent" data-qa-set="retire_check" ${d} title="자동화를 끄고, 공용 코디네이션 워크트리의 터미널을 닫고 워크트리를 지웁니다">QA 종료 처리</button>` : ''}</span>`];
+  return `<div class="qa-legacy${s.finished ? ' end' : ''}">${s.finished ? '<b>모든 티켓이 QA 완료입니다.</b>' : ''}${parts.join('')}</div>`;
+}
+function qaMore(t, set) {
+  const q = t.qa; if (!q) return '';
+  const d = `data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}"`, live = q.live?.length;
+  const items = [
+    !live && !q.ignored && !['delivered', 'cleaned'].includes(q.stage) ? `<button class="act big" data-qa-tk="restart" ${d} title="기록된 브리프로 코디네이터를 새 터미널에 다시 띄웁니다">코디네이터 재기동</button>` : '',
+    live ? `<button class="act big" data-qa-tk="close" ${d} title="${esc(q.live.join('\n'))}">터미널 닫기 (${live})</button>` : '',
+    `<button class="act big" data-qa-tk="${q.ignored ? 'unignore' : 'ignore'}" ${d} title="${q.ignored ? '다시 드라이버가 처리합니다' : '드라이버가 이 티켓을 더는 고르지 않습니다'}">${q.ignored ? '제외 해제' : '드라이버에서 제외'}</button>`].join('');
+  return `<details class="qa-more"><summary class="act big" title="코디네이터·제외 제어">⋯</summary><div>${items}</div></details>`;
+}
 function wtRepo(t, r) {
   const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
   const pr = r.pr ? ` <a href="${esc(r.pr.url)}" target="_blank" rel="noopener" title="PR ${esc(r.pr.state || '')}">#${r.pr.number}</a>` : '';
@@ -1899,9 +1927,10 @@ function wtTicket(t, set) {
       ${t.repos.length ? `<span class="rv-acts">
         ${set.driver && t.qa?.stage === 'committed' ? `<button class="act big accent" data-qa-tk="approve" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)">반출 승인</button>` : ''}
         ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
+        ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
         <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
-        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' ? 0 : 1}"${t.step ? '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : ''}
+        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' ? 0 : 1}"${t.step ? '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : ''}
     </div>
     ${qaTrack(t.qa)}
     ${t.repos.map(r => wtRepo(t, r)).join('')}
@@ -1932,7 +1961,7 @@ async function renderWorktrees() {
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 리뷰 후 변경 ${n('changed')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
-      ${qaAutoHtml(s)}
+      ${qaAutoHtml(s)}${qaLegacyHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   }).join('');
@@ -1941,7 +1970,11 @@ async function renderWorktrees() {
   if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
 }
 async function qaClick(b) {
-  const { qaAuto, qaTk, epic, srv, id, key } = b.dataset, txt = b.textContent;
+  const { qaAuto, qaTk, qaSet, epic, srv, id, key } = b.dataset, txt = b.textContent;
+  if (qaSet) return qaSetClick(b);
+  if (qaTk === 'restart' && !confirm(`${key} 코디네이터를 기록된 브리프로 새 터미널에 다시 띄웁니다. 진행할까요?`)) return;
+  if (qaTk === 'close' && !confirm(`${key} 의 열린 터미널(코디네이터·워커)을 닫습니다. 진행할까요?`)) return;
+  if (qaTk === 'ignore' && !confirm(`${key} 를 드라이버에서 제외합니다. 이후 회차가 이 티켓을 고르지 않습니다. 진행할까요?`)) return;
   if (qaTk === 'approve' && !confirm(`${key} 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
   b.disabled = true; b.textContent = '처리 중…';
   let r = qaAuto ? await api.qaAutomation(srv, epic, id, qaAuto) : await api.qaTicket(srv, epic, key, qaTk);
@@ -1952,10 +1985,46 @@ async function qaClick(b) {
   }
   if (r.status !== 200) alert(r.body.error || r.body.output || `실패 (${r.status})`);
   else if (qaTk === 'approve') toast(r.body.output || '승인을 전달했습니다');
+  else if (qaTk && qaTk !== 'cleanup_check') toast(cut(r.body.output || '처리했습니다', 200));
   b.disabled = false; b.textContent = txt;
 }
+async function qaSetClick(b) {
+  const { qaSet, epic, srv, keys } = b.dataset, txt = b.textContent, call = (a, extra) => api.qaTicket(srv, epic, undefined, a, extra);
+  const done = r => { if (r.status !== 200 || r.body.ok === false) alert(r.body.error || r.body.output || `실패 (${r.status})`); else toast(cut(r.body.output || '처리했습니다', 200)); };
+  const busy = l => { b.disabled = true; b.textContent = l; }, idle = () => { b.disabled = false; b.textContent = txt; };
+  if (qaSet === 'close_finished') {
+    const ks = keys.split(',');
+    if (!confirm(`끝난 티켓 ${ks.length}개의 코디네이터·워커 터미널을 닫습니다:\n\n${ks.join(', ')}\n\n진행할까요?`)) return;
+    busy('닫는 중…'); done(await call('close_finished', { keys: ks })); return idle();
+  }
+  if (qaSet === 'retire_check') {
+    busy('확인 중…'); const r = await call('retire_check');
+    if (r.status !== 200) { done(r); return idle(); }
+    const out = r.body.output || '';
+    if (r.body.code === 3) { alert(`QA 종료를 멈춥니다:\n\n${out}`); return idle(); }
+    if (confirm(`${epic} QA 를 종료합니다:\n\n${out}\n\n진행할까요?`)) { busy('종료 중…'); done(await call('retire')); }
+    return idle();
+  }
+  if (qaSet === 'adopt_check') {
+    busy('확인 중…'); const r = await call('adopt_check');
+    let info; try { info = JSON.parse(r.body.output || ''); } catch { info = null; }
+    if (r.status !== 200 || !info) { done(r); return idle(); }
+    const set = {}, hint = { JIRA_SITE: wtData.jira, ...info.hints };
+    for (const k of info.missing || []) {
+      const v = prompt(`${epic} 상태 디렉터리 config.env 에 없는 값: ${k}${hint[k] ? `\n(추정값: ${hint[k]})` : ''}`, hint[k] || '');
+      if (v == null) return idle();
+      if (v.trim()) set[k] = v.trim();
+    }
+    const auto = (info.automations || []).filter(a => !a.adopted);
+    if (!auto.length) { alert('이관할 자동화가 없습니다'); return idle(); }
+    if (!confirm(`자동화 ${auto.map(a => `「${a.name}」`).join(', ')} 의 precheck·prompt 를 qa-driver 로 바꿉니다.\n${Object.keys(set).length ? `config.env 에 추가: ${Object.entries(set).map(([k, v]) => `${k}=${v}`).join(', ')}\n` : ''}이미 처리 중인 티켓은 그대로 두고, 이후 회차부터 티켓마다 워크트리·코디네이터를 띄웁니다. 진행할까요?`)) return idle();
+    busy('이관 중…');
+    for (const [i, a] of auto.entries()) done(await call('adopt', { set: i ? {} : set, automation: a.id }));
+    return idle();
+  }
+}
 async function wtClick(e) {
-  const q = e.target.closest('button[data-qa-auto], button[data-qa-tk]');
+  const q = e.target.closest('button[data-qa-auto], button[data-qa-tk], button[data-qa-set]');
   if (q && !q.disabled) return qaClick(q);
   const b = e.target.closest('button[data-wt-open], button[data-wt-mark], button[data-wt-ship]');
   if (!b || b.disabled) return;
