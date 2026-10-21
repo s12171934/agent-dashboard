@@ -1066,7 +1066,9 @@ function ticketsHtml(d, activeOnly) {
   const onlySheet = activeOnly ? [] : list.filter(k => !k.cbTotal && !k.active).sort(natural);
   const chip = t => {
     const st = taskState(t), w = estIndex().sess[t.id], role = roleOf(t) || '태스크';
-    const lbl = `<i>${TK_IC[st] || '·'}</i>${esc(role)}`, tip = `${esc(taskName(t))} · ${esc(t.plan_row ? '계획: ' + planRowLabel(t.plan_row) : t.status)}${w ? ' · ' + esc(modelName(w.model)) : ''}`;
+    // A box added after start gets an 「추가」 mark; its source, round and reason go in the tooltip.
+    const x = IX.addedBy[t.id], add = x && `추가: ${XP_FIX[x.fix_source] || x.fix_source}${xpRound(x) ? ` ${xpRound(x)}차` : ''}\n사유: ${xpReason(x) || '기록 없음'}`;
+    const lbl = `<i>${TK_IC[st] || '·'}</i>${x ? '<small class="tk-add">추가</small>' : ''}${esc(role)}`, tip = `${esc(taskName(t))} · ${esc(t.plan_row ? '계획: ' + planRowLabel(t.plan_row) : t.status)}${w ? ' · ' + esc(modelName(w.model)) : ''}${add ? '\n' + esc(add) : ''}`;
     return w ? `<a class="tkc ${st}" href="#s=${encodeURIComponent(w.path)}" title="${tip}">${lbl}</a>` : `<span class="tkc ${st}" title="${tip}">${lbl}</span>`;
   };
   const row = k => {
