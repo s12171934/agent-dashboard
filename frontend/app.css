@@ -994,4 +994,11 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .qa-auto { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; }
 .qa-runs { display: inline-flex; gap: 3px; }
 .qa-run { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.qa-legacy { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 8px; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 12px; }
+.qa-legacy.end { border-style: solid; border-color: var(--done); }
+.qa-more { position: relative; }
+.qa-more > summary { list-style: none; }
+.qa-more > summary::-webkit-details-marker { display: none; }
+.qa-more > div { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: grid; gap: 4px; min-width: 150px; padding: 6px; border: 1px solid var(--surface-edge); border-radius: 12px;
+  background: var(--surface-sheen), var(--surface-strong); box-shadow: var(--surface-hi), var(--surface-shadow-float); }
 .qa-run.done { background: var(--done); } .qa-run.fail { background: var(--bad); } .qa-run.run { background: var(--run); }

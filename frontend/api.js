@@ -269,7 +269,7 @@ const api = (() => {
     // lists. ticket: action approve (push/PR approval → the coordinator) | cleanup_check (dry run; body.code 3 = it would
     // stop) | cleanup. Resolve to {status, body{ok, code, output}}.
     qaAutomation: (server, epic, id, action) => post(byId(server), '/api/qa/automation', { epic, id, action }),
-    qaTicket: (server, epic, key, action) => post(byId(server), '/api/qa/ticket', { epic, key, action }),
+    qaTicket: (server, epic, key, action, extra) => post(byId(server), '/api/qa/ticket', { epic, key, action, ...extra }),
     // One run with the raw task fields the snapshot leaves out (spec, result) and full worker rows. null when not tracked.
     run: async id => { const srv = ownerOf('run', id); return srv && getJson(srv, '/api/run?id=' + encodeURIComponent(id)); },
     // Messages between sessions from Orca's orchestration inbox, newest first: {messages[{id, run_id, type, subject,

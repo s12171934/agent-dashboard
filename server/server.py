@@ -4412,7 +4412,26 @@ def qa_ticket(watch, key):
             "ignored": os.path.exists(p("ignored", key)), "round": len(claims), "coordinator": coord,
             "workers": [{"name": n, **w} for n, w in (rec.get("workers") or {}).items()],
             "worktree": (rec.get("worktree") or {}).get("path"), "at": at, "prs": prs,
-            "handoffs": len(hand), "done": len(done), "driver": bool(rec.get("driver"))}
+            "handoffs": len(hand), "done": len(done), "driver": bool(rec.get("driver")),
+            "handles": list(dict.fromkeys(h for h in [c[2] for c in claims if len(c) > 2] + [coord]
+                                          + [w.get("handle") for w in (rec.get("workers") or {}).values()] if h))}
+
+
+def qa_config(watch):
+    """KEY=value lines of a state directory's config.env (the dashboard needs only a few)."""
+    out = {}
+    try:
+        for line in open(os.path.join(watch, "config.env"), encoding="utf-8"):
+            k, sep, v = line.strip().partition("=")
+            if sep and not k.startswith("#"):
+                try:
+                    vv = shlex.split(v, comments=True)
+                except ValueError:
+                    vv = []
+                out[k.strip()] = vv[0] if vv else ""
+    except OSError:
+        pass
+    return out
 
 
 def driver_worktree_repos(wt):
@@ -4453,6 +4472,7 @@ def qa_automations(epics):
     for e in epics:
         hit = re.compile(rf"(?<![A-Za-z0-9]){re.escape(e)}(?![0-9])")
         out[e] = [{"id": a["id"], "name": a.get("name"), "enabled": a.get("enabled"), "rrule": a.get("rrule"),
+                   "driver": "qa-driver" in (a.get("prompt") or ""),
                    "next": a.get("nextRunAt"), "last": a.get("lastRunAt"), "runs": qa_auto_cache["runs"].get(a["id"], [])}
                   for a in qa_auto_cache["list"]
                   if hit.search(" ".join([a.get("name") or "", a.get("prompt") or "", (a.get("precheck") or {}).get("command") or ""]))]
@@ -4556,12 +4576,22 @@ def review_pass(jira, prs, stats):
         # Worktrees named after a key the epic does not list (another QA, or a key typo) stay visible too.
         listed = {c["key"] for c in children}
         stray = sorted(k for k in by_key if k.startswith(epic.split("-")[0] + "-") and k not in listed)
+        cfg = qa_config(watch) if watch else {}
+        coord = cfg.get("QA_COORD_WORKTREE")
         sets.append({"epic": epic, "summary": epic_summary, "project": project, "error": err,
                      "tickets": tickets, "stray": stray, "watch": watch or None, "driver": driver,
+                     "coord_worktree": coord if coord and os.path.isdir(coord) else None,
+                     "retired": bool(watch) and os.path.exists(os.path.join(watch, "retired")),
+                     "finished": bool(children) and all(jira_stage(c) == "qa" for c in children),
                      "stages": QA_STAGES})
     autos = qa_automations([s["epic"] for s in sets])
+    live = {x["handle"] for x in orca_state.get("terminals") or [] if x.get("connected")}
     for s in sets:
         s["automations"] = autos.get(s["epic"], [])
+        s["adopted"] = any(a["driver"] for a in s["automations"])
+        for t in s["tickets"]:
+            if t.get("qa"):
+                t["qa"]["live"] = [h for h in t["qa"]["handles"] if h in live]
     with lock:
         review_state.update(sets=sets, updated=datetime.now(timezone.utc).isoformat())
         bump()
@@ -5058,9 +5088,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def qa_action(self, what):
         """automation {"epic", "id", "action": enable|disable|run}: an Orca automation that names the epic (the set
-        lists them). ticket {"epic", "key", "action": approve|cleanup_check|cleanup}: the qa-driver CLI on the set's
-        state directory — approve records push/PR approval and tells the coordinator; cleanup_check is cleanup's dry run
-        (exit 3 = it would stop: uncommitted or unpushed work), cleanup removes the worktree."""
+        lists them). ticket {"epic", "action", ...}: the qa-driver CLI on the set's state directory. Per ticket ("key"):
+        approve records push/PR approval and tells the coordinator; cleanup_check is cleanup's dry run (exit 3 = it would
+        stop: uncommitted or unpushed work) and cleanup removes the worktree; restart starts the coordinator again; close
+        closes its live terminals; ignore / unignore. Per set: close_finished {"keys"}; retire_check / retire (end of QA:
+        automations off, shared coordination worktree removed; exit 3 = it would stop); adopt_check / adopt {"set":
+        {KEY: value}, "automation"} hands an older watcher's automation to qa-driver."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             epic, action = body["epic"], body["action"]
@@ -5085,13 +5118,31 @@ class Handler(BaseHTTPRequestHandler):
             qa_auto_cache["at"] = 0  # show the new state on the next pass
             review_kick.set()
             return self.send_json({"ok": True})
-        key = body.get("key")
-        if not (isinstance(key, str) and any(t["key"] == key for t in st["tickets"])):
-            return self.send_json({"error": "묶음에 없는 티켓입니다"}, 404)
         if not st.get("watch"):
             return self.send_json({"error": "이 묶음에는 상태 디렉터리(watch)가 없습니다"}, 409)
-        args = {"approve": ("approve", key, "--by", "대시보드"), "cleanup_check": ("cleanup", key, "--dry-run"),
-                "cleanup": ("cleanup", key)}.get(action)
+        keys = {t["key"] for t in st["tickets"]}
+        if action in ("close_finished", "retire_check", "retire", "adopt_check", "adopt"):  # the whole set
+            if action == "close_finished":
+                ks = body.get("keys")
+                if not (isinstance(ks, list) and ks and all(isinstance(k, str) and k in keys for k in ks)):
+                    return self.send_json({"error": "닫을 티켓 목록이 잘못됐습니다"}, 400)
+                args = ("close", *ks)
+            elif action == "adopt":
+                kv, aid = body.get("set") or {}, body.get("automation")
+                if not (isinstance(kv, dict) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9_]*", k)
+                        and isinstance(v, str) and "\n" not in v for k, v in kv.items())
+                        and (aid is None or aid in {a["id"] for a in st.get("automations") or []})):
+                    return self.send_json({"error": "이관 설정 값이 잘못됐습니다"}, 400)
+                args = ("adopt", *[x for k, v in kv.items() for x in ("--set", f"{k}={v}")], *(("--automation", aid) if aid else ()))
+            else:
+                args = {"retire_check": ("retire", "--dry-run"), "retire": ("retire",), "adopt_check": ("adopt", "--check")}[action]
+        else:
+            key = body.get("key")
+            if not (isinstance(key, str) and key in keys):
+                return self.send_json({"error": "묶음에 없는 티켓입니다"}, 404)
+            args = {"approve": ("approve", key, "--by", "대시보드"), "cleanup_check": ("cleanup", key, "--dry-run"),
+                    "cleanup": ("cleanup", key), "restart": ("restart", key), "close": ("close", key),
+                    "ignore": ("ignore", key), "unignore": ("ignore", key, "--undo")}.get(action)
         if not args:
             return self.send_json({"error": "모르는 동작입니다"}, 400)
         try:
