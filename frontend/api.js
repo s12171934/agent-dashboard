@@ -116,6 +116,7 @@ const api = (() => {
     }
     out.decisions.inbox.sort((a, b) => b.created_at - a.created_at);
     out.tests.history_at = parts.map(([s, d]) => `${s.id}:${d.tests?.history_at ?? ''}`).join(',') || null;
+    out.reviews_at = parts.map(([s, d]) => `${s.id}:${d.reviews_at ?? ''}`).join(',') || null;
     out.orca.error = errors.join(' · ') || null;
     out.health = mergeHealth(parts.map(([s, d]) => [s, d.health]));
     // design documents: whether any server indexes them, and a version string that changes when a server's index does
@@ -249,6 +250,20 @@ const api = (() => {
       const runs = (await fromAll('/api/tests')).flatMap(([s, d]) => tag(d.runs, s.id));
       return { runs: runs.sort((a, b) => (b.finished_at || '').localeCompare(a.finished_at || '')) };
     },
+    // QA sets for the 워크트리 tab, over the servers that are on: {sets[{server, local, epic, summary, project, error,
+    // stray[], tickets[{key, summary, status, cat, assignee, review none|pending|done|changed, review_at,
+    // review_sha{repo: sha}, step, step_status, notes[], test, repos[{repo, path, branch, name, comment, head, base,
+    // base_ref, base_src PR|설정|기본, pr, dirty, ahead, behind, files, ins, dels}]}]}], jira}. local: the server is this
+    // device's loopback, the only place 「VS Code 로 열기」 can work. state.reviews_at changes when any server's sets do.
+    reviews: async () => {
+      const parts = await fromAll('/api/reviews'), loop = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/;
+      return { sets: parts.flatMap(([s, d]) => (d.sets || []).map(x => ({ ...x, server: s.id, local: loop.test(s.url) }))),
+               jira: parts.map(([, d]) => d.jira).find(Boolean) || '' };
+    },
+    // Open every worktree of a ticket in one VS Code window on that server's Mac, or record / clear its review in the
+    // vault step note. Resolve to {status, body}: 403 open from anywhere but that Mac's loopback, 409 no worktree / note.
+    reviewOpen: (server, key) => post(byId(server), '/api/review/open', { key }),
+    reviewMark: (server, key, done) => post(byId(server), '/api/review/mark', { key, done }),
     // One run with the raw task fields the snapshot leaves out (spec, result) and full worker rows. null when not tracked.
     run: async id => { const srv = ownerOf('run', id); return srv && getJson(srv, '/api/run?id=' + encodeURIComponent(id)); },
     // Messages between sessions from Orca's orchestration inbox, newest first: {messages[{id, run_id, type, subject,

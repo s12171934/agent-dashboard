@@ -28,7 +28,7 @@ import traceback
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 HOME = os.path.expanduser("~")
@@ -4179,6 +4179,264 @@ def session_design_refs(sid):
     return sorted(rows.values(), key=lambda x: (x["doc"], x["start"] or 0))
 
 
+# ---- Review: a QA set's tickets → their Orca worktrees, reviewed ticket by ticket in VS Code ----
+# prefs.json "qa_sets": [{"epic": "<epic key>", "project": "<vault-relative project folder>"}]. The epic's children
+# (Jira `parent = epic`, read only) are the set's tickets. Each ticket pulls in the Orca worktrees whose folder name
+# carries its key, the vault step note whose file name does (the project's progress.json lists them) and its latest
+# test run. A review is recorded in that step note's frontmatter (review / review_sha / review_at); 「리뷰 후 변경」 is
+# not stored but derived from review_sha against the worktrees' HEADs now.
+QA_SETS = prefs.get("qa_sets") or []
+# Branch a worktree is compared with when it has no open PR, per repo (the main checkout's folder name); else main.
+REVIEW_BASES = prefs.get("review_bases") or {}
+# Repos listed first inside a ticket and in its VS Code window (e.g. a shared library the apps build on).
+REVIEW_FIRST = prefs.get("review_first") or []
+JIRA_SITE = (prefs.get("jira_site") or "").rstrip("/")  # https://<site>.atlassian.net
+REVIEW_EVERY, JIRA_EVERY, PR_EVERY = 30, 300, 600
+REVIEW_WS_DIR = "/private/tmp/agent-dashboard-review"  # generated .code-workspace files
+WT_KEY = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?![0-9])")
+review_state = {"sets": [], "updated": None}
+review_kick = threading.Event()  # a review mark wakes the loop so the page shows it at once
+_jira_token = None
+
+
+def jira_token():
+    """ATLASSIAN_API_TOKEN; launchd does not read ~/.zshrc where it is exported, so ask an interactive zsh once."""
+    global _jira_token
+    if _jira_token is None:
+        t = os.environ.get("ATLASSIAN_API_TOKEN") or ""
+        if not t:
+            try:
+                out = subprocess.run(["/bin/zsh", "-ic", "print -r -- $ATLASSIAN_API_TOKEN"], capture_output=True,
+                                     text=True, timeout=15).stdout.strip().splitlines()
+                t = out[-1].strip() if out else ""
+            except (OSError, subprocess.SubprocessError):
+                t = ""
+        _jira_token = t
+    return _jira_token
+
+
+def jira_get(path, query):
+    email, token = prefs.get("jira_email"), jira_token()
+    if not (JIRA_SITE and email and token):
+        raise RuntimeError("Jira 설정 없음 (prefs.json jira_site · jira_email, ATLASSIAN_API_TOKEN)")
+    auth = base64.b64encode(f"{email}:{token}".encode()).decode()
+    req = Request(f"{JIRA_SITE}/rest/api/3/{path}?{urlencode(query)}",
+                  headers={"Authorization": "Basic " + auth, "Accept": "application/json"})
+    with urlopen(req, timeout=20) as r:
+        return json.load(r)
+
+
+def jira_epic(epic):
+    """-> (epic summary, [{key, summary, status, cat, assignee}]) for an epic's children."""
+    summary = jira_get(f"issue/{epic}", {"fields": "summary"})["fields"].get("summary")
+    out, nxt = [], None
+    while True:
+        q = {"jql": f"parent = {epic} ORDER BY key", "fields": "summary,status,assignee", "maxResults": "100"}
+        if nxt:
+            q["nextPageToken"] = nxt
+        d = jira_get("search/jql", q)
+        for i in d.get("issues") or []:
+            f, st = i["fields"], i["fields"].get("status") or {}
+            out.append({"key": i["key"], "summary": f.get("summary"), "status": st.get("name"),
+                        "cat": (st.get("statusCategory") or {}).get("key"),
+                        "assignee": (f.get("assignee") or {}).get("displayName")})
+        nxt = d.get("nextPageToken")
+        if not nxt or d.get("isLast", True):
+            return summary, out
+
+
+def git_at(path, *args, timeout=10):
+    try:
+        r = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def note_review(path):
+    """Step note frontmatter: {status, review, review_sha {repo: sha}, review_at}."""
+    out = {"status": None, "review": None, "review_sha": {}, "review_at": None}
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read(8192)
+    except OSError:
+        return out
+    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    sub = False
+    for ln in (m.group(1).split("\n") if m else []):
+        if sub and ln[:1] in (" ", "\t") and ":" in ln:
+            k, v = ln.strip().split(":", 1)
+            out["review_sha"][k.strip()] = v.strip().strip("'\"")
+            continue
+        sub = False
+        k, _, v = ln.partition(":")
+        if k == "review_sha":
+            sub = True
+        elif k in ("status", "review", "review_at"):
+            out[k] = v.strip() or None
+    return out
+
+
+def write_review(path, shas):
+    """Replace the review fields of a step note's frontmatter; shas None clears them. The note's `updated` stays:
+    a review mark is state, not a change to what the note says."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        raise ValueError("frontmatter 없음")
+    keep, skip = [], False
+    for ln in m.group(1).split("\n"):
+        if skip and ln[:1] in (" ", "\t"):
+            continue
+        skip = bool(re.match(r"(review|review_sha|review_at):", ln))
+        if not skip:
+            keep.append(ln)
+    if shas is not None:
+        # quoted: an all-digit short sha would otherwise read back as a YAML number
+        keep += ["review: done", "review_sha:", *[f'  {r}: "{s}"' for r, s in sorted(shas.items())],
+                 f"review_at: {datetime.now().date().isoformat()}"]
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("---\n" + "\n".join(keep) + "\n---\n" + text[m.end():])
+    os.replace(tmp, path)
+
+
+def project_notes(project, prefix):
+    """key -> {step: abs path, notes: [abs paths of the ticket's other notes]} for a vault project folder. Note names
+    carry the project's own key first ("PRJ-1 7.52 QA-12 …"), so only keys with the set's prefix count."""
+    pdir = os.path.join(VAULT, project)
+    key_of = lambda p: next((k for k in WT_KEY.findall(os.path.basename(p)) if k.startswith(prefix)), None)
+    with open(os.path.join(pdir, "progress.json"), encoding="utf-8") as f:
+        prog = json.load(f)
+    out = {}
+    for st in prog.get("stages") or []:
+        for s in st.get("steps") or []:
+            k = key_of(s.get("path") or "")
+            if k:
+                out.setdefault(k, {"step": os.path.join(pdir, s["path"]), "notes": []})
+    for p in glob.glob(os.path.join(pdir, "**", "*.md"), recursive=True):
+        k = key_of(p)
+        if k in out and p != out[k]["step"]:
+            out[k]["notes"].append(p)
+    return out
+
+
+def ticket_test(key):
+    """Latest kept or live test run that names the ticket in its key, label or owner."""
+    runs = [r for r in list(test_history.values()) + list(test_progress.get("files") or [])
+            if any(key in str(r.get(f) or "") for f in ("key", "label", "owner"))]
+    runs.sort(key=lambda r: str(r.get("finished_at") or r.get("updated_at") or r.get("started_at") or ""))
+    return {k: runs[-1].get(k) for k in ("label", "kind", "phase", "detail", "passed", "failed", "pending",
+                                          "started_at", "finished_at", "updated_at")} if runs else None
+
+
+def wt_repo(w, worktrees):
+    main = next((x for x in worktrees if x.get("repoId") == w.get("repoId") and x.get("isMainWorktree")), None)
+    return os.path.basename(main["path"]) if main else os.path.basename(os.path.dirname(w["path"]))
+
+
+def review_pass(jira, prs, stats):
+    worktrees = orca("worktree", "list", timeout=20).get("worktrees") or []
+    by_key = {}
+    for w in worktrees:
+        m = WT_KEY.search(os.path.basename(w.get("path") or ""))
+        if m and not w.get("isMainWorktree") and not w.get("isArchived") and os.path.isdir(w["path"]):
+            by_key.setdefault(m.group(1), []).append(w)
+    now = time.time()
+    sets = []
+    for qs in QA_SETS:
+        epic, project = qs.get("epic"), qs.get("project")
+        err = None
+        if now - jira.get(epic, (0,))[0] > JIRA_EVERY:
+            try:
+                jira[epic] = (now, *jira_epic(epic))
+            except Exception as e:  # keep the last list; say why it is old
+                err = "Jira: " + short(repr(e), 160)
+                jira[epic] = (now, *(jira.get(epic, (0, None, []))[1:]))
+        _, epic_summary, children = jira.get(epic, (0, None, []))
+        try:
+            notes = project_notes(project, epic.split("-")[0] + "-") if project else {}
+        except (OSError, ValueError) as e:
+            notes, err = {}, (err + " · " if err else "") + "progress.json: " + short(repr(e), 120)
+        tickets = []
+        for c in children:
+            key = c["key"]
+            repos = []
+            for w in by_key.get(key, []):
+                path, branch = w["path"], (w.get("branch") or "").removeprefix("refs/heads/")
+                repo = wt_repo(w, worktrees)
+                head = git_at(path, "rev-parse", "HEAD")
+                pk = (path, branch)
+                if now - prs.get(pk, (0,))[0] > PR_EVERY:
+                    try:
+                        r = subprocess.run(["gh", "pr", "list", "--head", branch, "--state", "all", "--limit", "1",
+                                            "--json", "number,url,state,baseRefName"], cwd=path,
+                                           capture_output=True, text=True, timeout=20)
+                        lst = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+                        prs[pk] = (now, lst[0] if lst else None)
+                    except (OSError, ValueError, subprocess.SubprocessError):
+                        prs[pk] = (now, None)
+                pr = prs[pk][1]
+                if pr and pr.get("baseRefName"):
+                    base, base_src = pr["baseRefName"], "PR"
+                else:
+                    base, base_src = REVIEW_BASES.get(repo, "main"), "설정" if repo in REVIEW_BASES else "기본"
+                base_ref = next((r for r in (f"origin/{base}", base) if git_at(path, "rev-parse", "--verify", "--quiet", r)), None)
+                base_sha = base_ref and git_at(path, "rev-parse", base_ref)
+                sk = (path, head, base_sha)
+                if head and base_sha and sk not in stats:
+                    lr = (git_at(path, "rev-list", "--left-right", "--count", f"{base_sha}...{head}") or "0\t0").split()
+                    ss = git_at(path, "diff", "--shortstat", f"{base_sha}...{head}") or ""
+                    num = lambda pat: int((re.search(pat, ss) or [0, 0])[1])
+                    stats[sk] = {"behind": int(lr[0]), "ahead": int(lr[1]), "files": num(r"(\d+) files? changed"),
+                                 "ins": num(r"(\d+) insertions?"), "dels": num(r"(\d+) deletions?")}
+                porcelain = git_at(path, "status", "--porcelain")
+                repos.append({"repo": repo, "path": path, "branch": branch, "name": w.get("displayName"),
+                              "comment": w.get("comment") or None, "head": head, "base": base, "base_ref": base_ref,
+                              "base_src": base_src, "pr": pr, "dirty": len(porcelain.splitlines()) if porcelain else 0,
+                              **(stats.get(sk) or {})})
+            repos.sort(key=lambda r: (r["repo"] not in REVIEW_FIRST, r["repo"]))
+            n = notes.get(key) or {}
+            fm = note_review(n["step"]) if n.get("step") else {}
+            if not repos:
+                review = "none"
+            elif fm.get("review") != "done":
+                review = "pending"
+            else:
+                rs = fm.get("review_sha") or {}
+                same = all(r["head"] and rs.get(r["repo"]) and r["head"].startswith(rs[r["repo"]]) for r in repos)
+                review = "done" if same else "changed"
+            tickets.append({**c, "repos": repos, "review": review, "review_at": fm.get("review_at"),
+                            "review_sha": fm.get("review_sha") or {}, "step": n.get("step"),
+                            "step_status": fm.get("status"), "notes": n.get("notes") or [], "test": ticket_test(key)})
+        # Worktrees named after a key the epic does not list (another QA, or a key typo) stay visible too.
+        listed = {c["key"] for c in children}
+        stray = sorted(k for k in by_key if k.startswith(epic.split("-")[0] + "-") and k not in listed)
+        sets.append({"epic": epic, "summary": epic_summary, "project": project, "error": err,
+                     "tickets": tickets, "stray": stray})
+    with lock:
+        review_state.update(sets=sets, updated=datetime.now(timezone.utc).isoformat())
+        bump()
+
+
+def review_loop():
+    jira, prs, stats = {}, {}, {}
+    while True:
+        if QA_SETS:
+            try:
+                review_pass(jira, prs, stats)
+                loop_ok("review")
+            except Exception as e:
+                loop_failed("review", e)
+        review_kick.wait(REVIEW_EVERY)
+        review_kick.clear()
+
+
+def review_ticket(key):
+    return next((t for s in review_state["sets"] for t in s["tickets"] if t["key"] == key), None)
+
+
 # ---- HTTP ----
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
 # with the one it was built for and says so instead of rendering garbage.
@@ -4325,6 +4583,7 @@ class Handler(BaseHTTPRequestHandler):
                               for p in EXTERNAL_PLANS if p in ext_plans],
                 "design": {"enabled": bool(DESIGN_DIRS or design["sources"]), "version": f'{design["version"]}.{design_rev}'},
                 "tests": test_progress,
+                "reviews_at": review_state["updated"],
                 "health": {"now": time.time(), "loops": health},
                 "decisions": decisions,
             })
@@ -4413,6 +4672,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_body(body)
         elif url.path == "/api/history":
             self.send_json(history_payload())
+        elif url.path == "/api/reviews":
+            with lock:
+                body = self.encode({"sets": review_state["sets"], "updated": review_state["updated"], "jira": JIRA_SITE})
+            self.send_body(body)
         elif url.path == "/api/run":
             rid = parse_qs(url.query).get("id", [""])[0]
             with lock:
@@ -4517,12 +4780,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         # JSON only: a cross-site form cannot send this content type without a CORS preflight, which authorized()
         # already limits to --origin.
-        if url.path not in ("/api/pref", "/api/orca/focus", "/api/orca/close", *DECISION_POSTS) or not self.headers.get("Content-Type", "").startswith("application/json"):
+        if url.path not in ("/api/pref", "/api/orca/focus", "/api/orca/close", *REVIEW_POSTS, *DECISION_POSTS) or not self.headers.get("Content-Type", "").startswith("application/json"):
             return self.send_json({"error": "bad request"}, 400)
         if url.path in DECISION_POSTS:
             return self.decision_post(url.path.rsplit("/", 1)[1])
         if url.path in ("/api/orca/focus", "/api/orca/close"):
             return self.orca_terminal(url.path.rsplit("/", 1)[1])
+        if url.path in REVIEW_POSTS:
+            return self.review_action(url.path.rsplit("/", 1)[1])
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             action, paths = body["action"], body["paths"]
@@ -4547,6 +4812,60 @@ class Handler(BaseHTTPRequestHandler):
             bump()
         self.send_json({"ok": True})
 
+
+    def review_action(self, action):
+        """{"key"} -> open: one VS Code window holding every worktree of the ticket. Only for a request addressed to
+        this Mac's loopback (the page open on this Mac): it starts an app here, and a tailnet device reaches the server
+        through `tailscale serve`, whose requests carry the ts.net Host and X-Forwarded-For. mark {"key", "done"}:
+        record or clear the review in the ticket's vault step note, with each worktree's HEAD now."""
+        try:
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
+            key = body["key"]
+            assert isinstance(key, str) and WT_KEY.fullmatch(key)
+            done = body.get("done", True)
+            assert isinstance(done, bool)
+        except (ValueError, KeyError, AssertionError, TypeError):
+            return self.send_json({"error": "bad request"}, 400)
+        with lock:
+            t = review_ticket(key)
+            t = t and json.loads(json.dumps(t))
+        if not t:
+            return self.send_json({"error": "묶음에 없는 티켓입니다"}, 404)
+        if not t["repos"]:
+            return self.send_json({"error": "이 티켓의 워크트리가 없습니다"}, 409)
+        if action == "open":
+            host = (self.headers.get("Host") or "").lower().rsplit(":", 1)[0].strip("[]")
+            if host not in ("127.0.0.1", "localhost", "::1") or self.headers.get("X-Forwarded-For"):
+                return self.send_json({"error": "VS Code 열기는 이 맥에서 연 화면에서만 됩니다"}, 403)
+            os.makedirs(REVIEW_WS_DIR, exist_ok=True)
+            ws = os.path.join(REVIEW_WS_DIR, f"{key}.code-workspace")
+            save_json(ws, {"folders": [{"path": r["path"], "name": f'{r["repo"]} · {r["branch"]} (vs {r["base_ref"] or r["base"]})'}
+                                       for r in t["repos"]]})
+            r = subprocess.run(["open", "-a", "Visual Studio Code", ws], capture_output=True, text=True, timeout=15)
+            if r.returncode:
+                return self.send_json({"error": "VS Code 를 열지 못함: " + short(r.stderr, 200)}, 502)
+            return self.send_json({"ok": True})
+        if not t["step"]:
+            return self.send_json({"error": "볼트에 이 티켓의 스텝 노트가 없습니다"}, 409)
+        shas = {}
+        for r in t["repos"]:
+            head = git_at(r["path"], "rev-parse", "--short=9", "HEAD")
+            if not head:
+                return self.send_json({"error": f'{r["repo"]} HEAD 를 읽지 못함'}, 502)
+            shas[r["repo"]] = head
+        try:
+            write_review(t["step"], shas if done else None)
+        except (OSError, ValueError) as e:
+            return self.send_json({"error": "스텝 노트 기록 실패: " + short(repr(e), 200)}, 500)
+        with lock:  # show it now; the next pass (woken here) recomputes it from the note anyway
+            live = review_ticket(key)
+            if live:
+                live.update(review="done" if done else "pending", review_sha=shas if done else {},
+                            review_at=datetime.now().date().isoformat() if done else None)
+                review_state["updated"] = datetime.now(timezone.utc).isoformat()
+                bump()
+        review_kick.set()
+        self.send_json({"ok": True, "review_sha": shas if done else {}})
 
     def orca_terminal(self, action):
         """{"handle"} -> focus: `orca terminal switch` and raise the Orca window, for any connected terminal the
@@ -4632,6 +4951,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"ok": True})
 
 
+REVIEW_POSTS = ("/api/review/open", "/api/review/mark")
 DECISION_POSTS = ("/api/decision/ask", "/api/decision/answer", "/api/decision/release", "/api/decision/mode",
                   "/api/decision/inbox", "/api/decision/guard", "/api/decision/dismiss")
 
@@ -4676,6 +4996,7 @@ def main():
     threading.Thread(target=ext_plan_loop, daemon=True).start()
     threading.Thread(target=history_loop, daemon=True).start()
     threading.Thread(target=decision_loop, daemon=True).start()
+    threading.Thread(target=review_loop, daemon=True).start()
     if PROJECTS_DIRS:
         threading.Thread(target=projects_loop, daemon=True).start()
     if DESIGN_DIRS or EXTERNAL_PLANS:  # an external plan's design_root is a design folder too

@@ -942,3 +942,22 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-main { display: grid; gap: 14px; min-width: 0; }
 .dz .box { margin-bottom: 0; }
 .dz-doc a { color: var(--accent); }
+
+/* 워크트리 리뷰 tab: QA tickets with their worktrees */
+.rv-list { display: grid; gap: 8px; }
+.rv-tk { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 0; }
+.rv-tk.changed { border-left-color: var(--bad); } .rv-tk.pending { border-left-color: var(--warn); } .rv-tk.done { border-left-color: var(--done); }
+.rv-tk.none { opacity: .7; }
+.rv-head, .rv-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.rv-head a, .rv-meta a, .rv-repo a { color: var(--accent); text-decoration: none; }
+.rv-sum { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-meta { margin-top: 4px; font-size: 12px; }
+.rv-acts { margin-left: auto; display: inline-flex; gap: 6px; }
+.rv-acts .act[disabled] { opacity: .5; cursor: not-allowed; }
+.rv-repo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 5px 0 0 6px; margin-top: 5px; border-top: 1px dashed var(--line); font-size: 12px; }
+.rv-rn { font-weight: 600; min-width: 150px; }
+.rv-ins { color: var(--done); } .rv-del { color: var(--bad); }
+.rv-flag { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid; }
+.rv-flag.warn { color: var(--warn); } .rv-flag.bad { color: var(--bad); }
+.rv-err { color: var(--bad); font-size: 12px; margin-bottom: 8px; }
+@media (max-width: 700px) { .rv-acts { margin-left: 0; } .rv-rn { min-width: 0; } }
