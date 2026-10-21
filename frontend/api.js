@@ -264,6 +264,7 @@ const api = (() => {
     // vault step note. Resolve to {status, body}: 403 open from anywhere but that Mac's loopback, 409 no worktree / note.
     reviewOpen: (server, key) => post(byId(server), '/api/review/open', { key }),
     reviewMark: (server, key, done) => post(byId(server), '/api/review/mark', { key, done }),
+    reviewShip: (server, key) => post(byId(server), '/api/review/ship', { key }),
     // One run with the raw task fields the snapshot leaves out (spec, result) and full worker rows. null when not tracked.
     run: async id => { const srv = ownerOf('run', id); return srv && getJson(srv, '/api/run?id=' + encodeURIComponent(id)); },
     // Messages between sessions from Orca's orchestration inbox, newest first: {messages[{id, run_id, type, subject,
