@@ -1813,11 +1813,31 @@ function wtShip(t) {
 // QA driver progress: the stage track of a ticket (exports/state-contract.md of qa-ticket-driver), the set's automations.
 const QA_ST = { selected: '선별', worktree: '워크트리', analysis: '분석', implementing: '구현', reviewing: '검토', committed: '커밋 완료',
   approved: '반출 승인', delivered: '반출', cleaned: '정리' };
+// What each stage means, and who moves the ticket on to the next one (user: the driver waits for a person).
+const QA_DESC = {
+  selected: ['드라이버가 QA 에픽에서 이 티켓을 처리 대상으로 골랐다 (신규·재오픈)', '드라이버가 워크트리를 만든다'],
+  worktree: ['이 티켓 전용 Orca 워크트리를 만들었다', '드라이버가 코디네이터를 띄운다'],
+  analysis: ['코디네이터가 원인을 코드로 짚어 기록하는 중', '코디네이터가 저장소별 워커에게 구현을 넘긴다'],
+  implementing: ['저장소별 워커가 구현하는 중', '워커가 모두 끝내면 검토로 넘어간다'],
+  reviewing: ['워커가 모두 끝냈고 코디네이터가 결과를 검토하는 중', '검토를 통과하면 커밋한다'],
+  committed: ['검토를 통과해 커밋까지 끝났다 — 반출 승인을 기다린다', '사용자가 반출을 승인한다', true],
+  approved: ['사용자가 반출을 승인했다', '코디네이터가 PR 을 올려 넘긴다'],
+  delivered: ['PR 을 올려 넘겼다', '워크트리·브랜치를 정리한다'],
+  cleaned: ['워크트리와 브랜치를 정리했다 — 끝', ''],
+};
+const qaTip = (k, i, at) => `${i + 1}. ${QA_ST[k]} — ${QA_DESC[k][0]}${at ? '\n들어간 시각 ' + clockAt(at) : ''}`;
+function qaLegend() {
+  const open = (() => { try { return localStorage.getItem('adash.qalegend') === '1'; } catch { return false; } })();
+  return `<details class="qa-legend"${open ? ' open' : ''}><summary>QA 드라이버 9단계란?</summary><ol>${Object.keys(QA_ST).map(k =>
+    `<li><b>${QA_ST[k]}</b> — ${esc(QA_DESC[k][0])}${QA_DESC[k][1] ? `<span class="st"> → 다음: ${esc(QA_DESC[k][1])}</span>` : ''}</li>`).join('')}</ol>
+    <div class="st">막힘: 그 단계에서 멈춰 사람의 판단을 기다린다 (빨간 번호, 사유는 마우스). N회차: 재오픈으로 다시 기동한 횟수. 제외: 드라이버가 처리하지 않는 티켓.</div></details>`;
+}
 function qaTrack(q) {
   if (!q) return '';
-  const keys = Object.keys(QA_ST), cur = keys.indexOf(q.stage);
-  const nodes = keys.map((k, i) => `<i class="qa-n${i < cur ? ' done' : i === cur ? (q.blocked ? ' bad' : ' cur') : ''}" title="${QA_ST[k]}${q.at?.[k] ? ' · ' + esc(clockAt(q.at[k])) : ''}">${i + 1}</i>`).join('<b></b>');
-  return `<div class="qa-track" title="${q.stage_no}/${keys.length} ${QA_ST[q.stage]}">${nodes}<span class="qa-lbl">${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}</span>
+  const keys = Object.keys(QA_ST), cur = keys.indexOf(q.stage), [, next, user] = QA_DESC[q.stage] || [];
+  const nodes = keys.map((k, i) => `<span class="qa-step${i < cur ? ' done' : i === cur ? (q.blocked ? ' bad' : ' cur') : ''}" title="${esc(qaTip(k, i, q.at?.[k]))}"><i class="qa-n">${i + 1}</i><small>${QA_ST[k]}</small></span>`).join('<b></b>');
+  const nextTxt = q.blocked ? '막힘 — 사람이 판단해야 다음으로 간다' : next ? '다음: ' + next : '';
+  return `<div class="qa-track"><span class="qa-steps">${nodes}</span><span class="qa-lbl">${q.stage_no}/${keys.length} ${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}${nextTxt ? `<span class="qa-next${user && !q.blocked ? ' user' : ''}">${esc(nextTxt)}</span>` : ''}</span>
     ${q.round > 1 ? `<span class="rv-flag warn" title="재오픈으로 다시 기동">${q.round}회차</span>` : ''}
     ${q.blocked ? `<span class="rv-flag bad" title="${esc(q.blocked_reason || '')}">막힘${q.blocked_reason ? ' · ' + esc(cut(q.blocked_reason, 40)) : ''}</span>` : ''}
     ${q.ignored ? '<span class="rv-flag">제외</span>' : ''}
@@ -1845,7 +1865,7 @@ function qaAutoHtml(s) {
   const qs = s.tickets.map(t => t.qa).filter(Boolean);
   const counts = Object.keys(QA_ST).map(k => [k, qs.filter(q => q.stage === k).length]).filter(([, n]) => n);
   const sum = qs.length ? `<div class="rv-jsum">진행 ${Object.keys(QA_ST).length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
-  return (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
+  return (qs.length ? qaLegend() : '') + (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
 }
 function wtRepo(t, r) {
   const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
@@ -1917,6 +1937,7 @@ async function renderWorktrees() {
       <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   }).join('');
   $('#wt-body').innerHTML = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
+  $('#wt-body').querySelectorAll('.qa-legend').forEach(d => d.ontoggle = () => { try { localStorage.setItem('adash.qalegend', d.open ? '1' : '0'); } catch {} });
   if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
 }
 async function qaClick(b) {
