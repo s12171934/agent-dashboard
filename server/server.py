@@ -5178,7 +5178,9 @@ class Handler(BaseHTTPRequestHandler):
         """{"key"} -> open: one VS Code window holding every worktree of the ticket. Only for a request addressed to
         this Mac's loopback (the page open on this Mac): it starts an app here, and a tailnet device reaches the server
         through `tailscale serve`, whose requests carry the ts.net Host and X-Forwarded-For. mark {"key", "done"}:
-        record or clear the review in the ticket's vault step note, with each worktree's HEAD now."""
+        record or clear the review in the ticket's vault step note, with each worktree's HEAD now. On a driver ticket
+        whose coordinator has finished its own review (stage committed, ready/ written) a review is also the push·PR
+        approval: `qa-driver approve`. Earlier, the review alone is recorded."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             key = body["key"]
@@ -5238,6 +5240,17 @@ class Handler(BaseHTTPRequestHandler):
             write_review(t["step"], shas if done else None, rnd)
         except (OSError, ValueError) as e:
             return self.send_json({"error": "스텝 노트 기록 실패: " + short(repr(e), 200)}, 500)
+        approve = None
+        if done and (t.get("qa") or {}).get("stage") == "committed":
+            with lock:
+                st = next((x for x in review_state["sets"] if x.get("driver") and x.get("watch")
+                           and any(y["key"] == key for y in x["tickets"])), None)
+                epic, watch = (st["epic"], st["watch"]) if st else (None, None)
+            if epic:
+                try:
+                    approve = qa_cli(epic, watch, "approve", key, "--by", "대시보드 리뷰 완료")
+                except subprocess.TimeoutExpired:
+                    approve = (124, "qa-driver 가 제한 시간 안에 끝나지 않았습니다")
         with lock:  # show it now; the next pass (woken here) recomputes it from the note anyway
             live = review_ticket(key)
             if live:
@@ -5246,7 +5259,10 @@ class Handler(BaseHTTPRequestHandler):
                 review_state["updated"] = datetime.now(timezone.utc).isoformat()
                 bump()
         review_kick.set()
-        self.send_json({"ok": True, "review_sha": shas if done else {}})
+        if approve and approve[0]:
+            return self.send_json({"error": "리뷰는 기록했지만 반출 승인 실패: " + short(approve[1], 300)}, 502)
+        self.send_json({"ok": True, "review_sha": shas if done else {}, "approved": bool(approve),
+                        "output": approve[1] if approve else None})
 
     def orca_terminal(self, action):
         """{"handle"} -> focus: `orca terminal switch` and raise the Orca window, for any connected terminal the
