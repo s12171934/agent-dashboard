@@ -4610,9 +4610,9 @@ ship_launch = {}  # key -> {"at", "error"} while worker-start runs, and why it f
 
 
 def jira_stage(t):
-    """Same split as the page's jiraStage: 개발 완료 and QA 준비 완료 share 진행 중's category, so they go by name."""
+    """Same split as the page's jiraStage: 보류, 개발 완료 and QA 준비 완료 share 진행 중's category, so they go by name."""
     n = re.sub(r"\s", "", t.get("status") or "")
-    return ("ready" if "QA준비" in n else "dev" if "개발완료" in n else "qa" if "QA완료" in n or t.get("cat") == "done"
+    return ("hold" if re.search(r"hold|홀딩|보류", n, re.I) else "ready" if "QA준비" in n else "dev" if "개발완료" in n else "qa" if "QA완료" in n or t.get("cat") == "done"
             else "todo" if t.get("cat") == "new" else "prog")
 
 

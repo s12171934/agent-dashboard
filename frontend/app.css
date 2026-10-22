@@ -963,6 +963,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 /* Jira stage chips: 개발 완료 is outlined, QA 준비 완료 filled — the one the QA reviewer acts on */
 .rv-js { padding: 0 7px; border-radius: 9px; font-size: 11px; line-height: 18px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .rv-js.j-prog { color: var(--run); border-color: color-mix(in srgb, var(--run) 50%, var(--line)); }
+.rv-js.j-hold { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); border-style: dashed; }
 .rv-js.j-dev { color: var(--s-write); border-color: var(--s-write); }
 .rv-js.j-ready { color: var(--on-accent); background: var(--warn); border-color: var(--warn); font-weight: 600; }
 .rv-js.j-qa { color: var(--done); border-color: color-mix(in srgb, var(--done) 50%, var(--line)); }
