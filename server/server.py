@@ -4432,6 +4432,7 @@ def qa_ticket(watch, key):
             "workers": [{"name": n, **w} for n, w in (rec.get("workers") or {}).items()],
             "worktree": (rec.get("worktree") or {}).get("path"), "at": at, "prs": prs,
             "handoffs": len(hand), "done": len(done), "driver": bool(rec.get("driver")),
+            "merge_at": mt(p("merge", f"{key}.md")),
             "handles": list(dict.fromkeys(h for h in [c[2] for c in claims if len(c) > 2] + [coord]
                                           + [w.get("handle") for w in (rec.get("workers") or {}).values()] if h))}
 
@@ -5287,7 +5288,7 @@ class Handler(BaseHTTPRequestHandler):
             key = body.get("key")
             if not (isinstance(key, str) and key in keys):
                 return self.send_json({"error": "묶음에 없는 티켓입니다"}, 404)
-            args = {"approve": ("approve", key, "--by", "대시보드"), "cleanup_check": ("cleanup", key, "--dry-run"),
+            args = {"approve": ("approve", key, "--by", "대시보드"), "merge": ("merge", key, "--by", "대시보드"), "cleanup_check": ("cleanup", key, "--dry-run"),
                     "cleanup": ("cleanup", key), "restart": ("restart", key), "close": ("close", key),
                     "ignore": ("ignore", key), "unignore": ("ignore", key, "--undo")}.get(action)
         if not args:
