@@ -4389,6 +4389,14 @@ def qa_signal(watch, kind, key):
     return sorted(f for f in names if pat.match(f))
 
 
+def claim_at(c):
+    """When a claimed line (one per round: local time, epoch, handle, summary) started its round, as UTC ISO."""
+    try:
+        return datetime.fromtimestamp(int(c[1]), timezone.utc).isoformat()
+    except (IndexError, ValueError):
+        return c[0]
+
+
 def qa_ticket(watch, key):
     """{stage, blocked, ignored, round, coordinator, workers, worktree, at{stage: iso}, prs} or None if never claimed."""
     p = lambda *a: os.path.join(watch, *a)
@@ -4446,7 +4454,7 @@ def qa_ticket(watch, key):
             "workers": [{"name": n, **w} for n, w in (rec.get("workers") or {}).items()],
             "worktree": (rec.get("worktree") or {}).get("path"), "at": at, "prs": prs,
             "handoffs": len(hand), "done": len(done), "driver": bool(rec.get("driver")),
-            "merge_at": mt(p("merge", f"{key}.md")),
+            "merge_at": mt(p("merge", f"{key}.md")), "rounds": [claim_at(c) for c in claims],
             "handles": list(dict.fromkeys(h for h in [c[2] for c in claims if len(c) > 2] + [coord]
                                           + [w.get("handle") for w in (rec.get("workers") or {}).values()] if h))}
 
