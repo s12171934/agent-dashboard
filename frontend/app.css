@@ -92,7 +92,7 @@ tspan.ctx-warn { fill: var(--warn); font-weight: 600; } tspan.ctx-bad { fill: va
 .chips { display: flex; flex-wrap: wrap; gap: 5px 6px; align-items: center; font-size: 12px; margin-bottom: 6px; }
 .chips > b { color: var(--muted); font-weight: 600; min-width: 34px; }
 .track > div.cnt { color: #fff; font-size: 10.5px; font-weight: 700; text-align: center; line-height: 16px; overflow: hidden; white-space: nowrap; text-shadow: 0 0 2px #0006; }
-/* manual idle / hide */
+/* manual idle */
 .acts { margin-left: auto; display: inline-flex; gap: 4px; flex: none; }
 .act.slot { visibility: hidden; pointer-events: none; }
 .drv { border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: var(--radius); padding: 10px 12px; margin-top: 12px; background: color-mix(in srgb, var(--accent) 3%, transparent); }
@@ -140,8 +140,6 @@ a.tkc:hover { border-color: var(--accent); }
 .xp .badge { flex: none; }
 .m.est b.est-over { color: var(--bad); } .m.est b.est-pause { color: var(--warn); }
 .acts .act.idle-w { min-width: 5.4em; text-align: center; }  /* 유휴로 / 자동 상태 share one width */
-.act[data-act="hide"]:hover { color: var(--bad); border-color: var(--bad); }
-.act[data-act="unhide"], .act[data-act="unhide-all"] { color: var(--accent); border-color: var(--accent); }
 /* placement */
 .tlab { fill: var(--muted); font-size: 10.5px; font-weight: 600; }
 .tdep { fill: none; stroke-width: 1.6; stroke-dasharray: 5 3; stroke-linejoin: round; }

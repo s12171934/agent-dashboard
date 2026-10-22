@@ -6,7 +6,7 @@
 // The page is served from Cloudflare Pages and the metrics servers run on the user's machines, so the server list is
 // per device (localStorage adash.servers: [{id, name, url, on}]); ?server=<url> adds one and turns it on. Every server
 // that is on is read at once and merged into one snapshot: each session, run, plan, test file and question carries
-// `server` (its id), and a request about one of them (detail, hide, answer, focus, close) goes to the server that
+// `server` (its id), and a request about one of them (detail, answer, focus, close) goes to the server that
 // sent it. Session paths, run ids and terminal handles are UUID-based, so they stay unique across machines.
 // Other devices on the tailnet need the HTTPS address `tailscale serve` gives a Mac: an https page may not call http.
 const api = (() => {
@@ -281,7 +281,7 @@ const api = (() => {
       const messages = parts.flatMap(([s, d]) => tag(d.messages, s.id)).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       return { messages: messages.slice(0, limit), fetched: Math.max(...parts.map(([, d]) => d.fetched || 0)) };
     },
-    // action: idle | unidle | hide | unhide; paths: session log paths (sent to the servers that own them).
+    // action: idle | unidle; paths: session log paths (sent to the servers that own them).
     pref: async (action, paths) => {
       const by = {};
       for (const p of paths) (by[owner.path[p] || enabled()[0]?.id] ||= []).push(p);
