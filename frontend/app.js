@@ -56,7 +56,7 @@ let srvView = 'merged';  // merged | split: the agents view as one list, or one 
 try { srvView = localStorage.getItem('adash.srvview') === 'split' ? 'split' : 'merged'; } catch {}
 let agView = 'tree';  // tree | wt: the agents view as coordinator trees, or one section per worktree (「워크트리별」)
 try { agView = localStorage.getItem('adash.agview') === 'wt' ? 'wt' : 'tree'; } catch {}
-let state = null, view = 'agents', detail = null, runFull = null, hlTurn = null, openState = {}, goneOpen = false;
+let state = null, view = 'agents', detail = null, runFull = null, hlTurn = null, openState = {};
 let onlyLive = false;
 try { onlyLive = localStorage.getItem('adash.live') === '1'; } catch {}
 $('#only-live').checked = onlyLive;
@@ -224,34 +224,11 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['agents', 'compare', 'talk', 'tests', 'worktrees', 'hidden', 'decide'].includes(h) ? h : 'agents' };
+  return { v: ['agents', 'compare', 'talk', 'tests', 'worktrees', 'decide'].includes(h) ? h : 'agents' };
 }
 addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
 const openRun = id => location.hash = 'r=' + id;
-
-// Hiding a coordinator hides its whole tree; hiding any session hides its subagents.
-// A session whose worktree was deleted is out of view too (s.gone).
-function hiddenSet(all) {
-  const hid = new Set(all.filter(s => s.hidden || s.gone).map(s => s.path));
-  for (let changed = true; changed;) {
-    changed = false;
-    const handles = new Set(all.filter(s => hid.has(s.path) && s.own_handle).map(s => s.own_handle));
-    const ids = new Set(all.filter(s => hid.has(s.path)).map(s => s.id));
-    for (const s of all) {
-      if (hid.has(s.path)) continue;
-      if ((s.role === 'worker' && handles.has(s.coord_handle)) || (s.parent && ids.has(s.parent))) { hid.add(s.path); changed = true; }
-    }
-  }
-  return hid;
-}
-
-// A run belongs to its coordinator: hiding the coordinator hides its runs too (unless a visible session owns the handle).
-function visibleRuns() {
-  const shown = new Set(state.sessions.map(s => s.own_handle).filter(Boolean));
-  const hidden = new Set(state.all.filter(s => state.hid.has(s.path) && s.own_handle).map(s => s.own_handle));
-  return state.orca.runs.filter(r => shown.has(r.coordinator_handle) || !hidden.has(r.coordinator_handle));
-}
 
 // A driver creates Orca tasks lazily (or, on older driver code, never ahead of time), so its run holds only part of
 // the plan. Every plan row of a started ticket without an Orca task in that run becomes a synthetic task there, so
@@ -276,8 +253,6 @@ async function refresh() {
   // in state.server_errors (shown with the collector health).
   state = await api.state();
   state.all = state.sessions;
-  state.hid = hiddenSet(state.all);
-  state.sessions = state.all.filter(s => !state.hid.has(s.path));
   injectPlanTasks();
   IX = index();
   renderHeader();
@@ -327,7 +302,6 @@ async function renderView(navigated) {
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'worktrees') await renderWorktrees();
-  else if (r.v === 'hidden') renderHidden();
   else if (r.v === 'decide') renderDecide();
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'designs') await renderDesigns();
@@ -351,9 +325,8 @@ function renderHeader() {
   $('#k-cost').textContent = usd(priced.reduce((a, s) => a + s.cost, 0)) + (priced.length < ss.length ? '+' : '');
   $('#k-tokens').textContent = fmt(ss.reduce((a, s) => a + total(s), 0));
   $('#k-turns').textContent = fmt(ss.reduce((a, s) => a + s.turns, 0));
-  { const n = state.all.filter(s => s.hidden).length; $('#k-hidden').textContent = n; $('#k-hidden').hidden = !n; }
   { const n = testItems().filter(testLive).length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n; }
-  $('#k-runs').textContent = state.orca.error ? '오류' : visibleRuns().filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
+  $('#k-runs').textContent = state.orca.error ? '오류' : state.orca.runs.filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
   const dec = state.decisions || { available: false, pending: [] }, unread = (dec.inbox || []).filter(r => !r.read).length;
   $('#k-dec-wrap').hidden = !dec.available;
@@ -410,9 +383,8 @@ function notifyDecisions() {
 if (window.Notification?.permission === 'default') document.addEventListener('click', () => Notification.requestPermission(), { once: true });
 
 // 결정 버튼 cards for the current screen: a session's own questions on its page; on the agents list, questions
-// whose session is not listed (hidden; one with no session at all is closed by the server soon), so none is out of
-// sight; on the
-// 결정 대기 screen (#decide) every one, then the 메일함.
+// whose session is not listed (one with no session at all is closed by the server soon), so none is out of sight;
+// on the 결정 대기 screen (#decide) every one, then the 메일함.
 function showDecisions() {
   const pending = state.decisions?.pending || [], r = route();
   const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
@@ -931,7 +903,7 @@ function wpChart(d) {
   el.innerHTML = g + `</svg><div class="legend">${S.map(x => `<span><i style="background:${x.c}"></i>${x.n} ${x.t.length}</span>`).join('')}</div>`;
 }
 
-// ---------- manual idle / hide (stored by the server, shared across devices) ----------
+// ---------- manual idle (stored by the server, shared across devices) ----------
 async function pref(action, paths, undo) {
   await api.pref(action, paths);
   await refresh();
@@ -943,10 +915,8 @@ function actBtns(s, big) {
   const idle = s.manual_idle ? `<button class="${cls} idle-w" data-act="unidle" data-path="${esc(s.path)}" title="수동 유휴를 풀고 자동 판정으로">자동 상태</button>`
     : st !== 'idle' && st !== 'done' ? `<button class="${cls} idle-w" data-act="idle" data-path="${esc(s.path)}" title="유휴로 표시 (새 기록이 생기면 자동으로 풀림)">유휴로</button>`
     : `<button class="${cls} idle-w slot" tabindex="-1" aria-hidden="true">유휴로</button>`;  // placeholder keeps the layout fixed
-  const hide = s.hidden ? `<button class="${cls}" data-act="unhide" data-path="${esc(s.path)}">복원</button>`
-    : `<button class="${cls}" data-act="hide" data-path="${esc(s.path)}" title="대시보드에서 숨김 (숨김 탭에서 복원)">숨김</button>`;
   // On a card the Orca buttons go to the bottom row (orcaBtns), so the state pill keeps its 「· n시간 전」.
-  return `<span class="acts">${big ? orcaBtns(s, true) : ''}${idle}${hide}</span>`;
+  return `<span class="acts">${big ? orcaBtns(s, true) : ''}${idle}</span>`;
 }
 // 「Orca 에서 열기」 only where the server found the connected Orca terminal the agent runs in.
 const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} accent" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
@@ -975,13 +945,8 @@ document.addEventListener('click', e => {
   e.stopPropagation(); e.preventDefault();
   const a = b.dataset.act, p = b.dataset.path, all = state.all || state.sessions;
   const s = all.find(x => x.path === p), name = s ? nameOf(s) : '';
-  if (a === 'hide') {
-    const n = [...hiddenSet(all.map(x => x.path === p ? { ...x, hidden: true } : x))].filter(q => !state.hid.has(q)).length;
-    pref('hide', [p], { msg: `"${cut(name, 30)}" 숨김${n > 1 ? ` (하위 ${n - 1}개 포함)` : ''}`, action: 'unhide' });
-  } else if (a === 'unhide') pref('unhide', [p], { msg: `"${cut(name, 30)}" 복원`, action: 'hide' });
-  else if (a === 'idle') pref('idle', [p], { msg: `"${cut(name, 30)}" 유휴로 표시`, action: 'unidle' });
+  if (a === 'idle') pref('idle', [p], { msg: `"${cut(name, 30)}" 유휴로 표시`, action: 'unidle' });
   else if (a === 'unidle') pref('unidle', [p]);
-  else if (a === 'unhide-all') pref('unhide', state.all.filter(x => x.hidden).map(x => x.path));
   else if (a === 'close') closeOrca(s, name, b.dataset.handle);
   else if (a === 'focus') api.focus(b.dataset.handle).then(r => toast(r.status === 200 ? 'Orca 에서 열었습니다' : r.body?.error || `Orca 전환 실패 (${r.status})`))
     .catch(() => toast('대시보드 서버에 보내지 못했습니다'));
@@ -1071,21 +1036,6 @@ async function followClose(job, name, hs, fail) {
   if (!j.failed.length) return render();
   fail(self ? `${who} 닫기 실패: ${self.error}${below.length ? ` · 하위 ${below.length}개도 실패` : ''}`
     : `${who} 하위 ${below.length}개 닫기 실패: ${below[0].error}`);
-}
-
-function renderHidden() {
-  const hs = state.all.filter(s => s.hidden).sort((a, b) => (b.last_ts || '').localeCompare(a.last_ts || ''));
-  const under = s => [...hiddenSet(state.all.map(x => ({ ...x, hidden: x.path === s.path, gone: false })))].length - 1;
-  const gone = state.all.filter(s => s.gone && !s.parent && !s.hidden).sort((a, b) => (b.last_ts || '').localeCompare(a.last_ts || ''));
-  $('#view').innerHTML = hs.length ? `<div class="sec-h"><h2>숨긴 세션 ${hs.length}</h2><span>코디네이터를 숨기면 그 아래 워커·하위 트리도 함께 숨겨집니다.</span>
-      <button class="act big" data-act="unhide-all" style="margin-left:auto">모두 복원</button></div>
-    <div class="grid">${hs.map(s => card(s, under(s) ? 'with-under' : '').replace('<div class="c-foot">', `${under(s) ? `<div class="st">함께 숨겨진 하위 ${under(s)}개</div>` : ''}<div class="c-foot">`)).join('')}</div>`
-    : '<div class="empty">숨긴 세션이 없습니다. 카드나 세션 상세의 "숨김" 버튼으로 숨길 수 있습니다.</div>';
-  // Deleted worktrees: listed for reference only; there is nothing to restore them to.
-  if (gone.length) $('#view').innerHTML += `<details class="gone-sec" style="margin-top:18px" ${goneOpen ? 'open' : ''}><summary class="sec-h" style="cursor:pointer"><h2 style="display:inline">워크트리 삭제됨 ${gone.length}</h2> <span>작업 디렉터리가 디스크에서 사라진 세션은 자동으로 숨겨집니다.</span></summary>
-    <div class="grid" style="margin-top:10px">${gone.map(s => card(s).replace(/<span class="acts">[\s\S]*?<\/span>/, '')).join('')}</div></details>`;
-  { const el = $('#view .gone-sec'); if (el) el.ontoggle = () => goneOpen = el.open; }  // survives live re-renders
-  $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
 }
 
 const mcpName = n => n.replace(/^claude_ai_/, '').replace(/^plugin_([^_]+)_.*/, '$1').replace(/_/g, ' ');
@@ -2917,7 +2867,7 @@ function renderSession(navigated) {
     </div>`;
   }
   $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
-    <h2 class="d">${esc(nameOf(d))}</h2>${d.hidden || state.hid.has(d.path) ? `<div class="box st" style="border-color:var(--warn)">이 세션은 대시보드에서 숨겨져 있습니다${d.hidden ? '' : ' (상위 코디네이터가 숨겨짐)'}. ${d.hidden ? '"복원"을 누르면 다시 보입니다.' : '<a href="#hidden">숨김 탭</a>에서 복원하세요.'}</div>` : ''}
+    <h2 class="d">${esc(nameOf(d))}</h2>
     <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>
     <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
     ${rel ? `<div class="box">${rel}</div>` : ''}

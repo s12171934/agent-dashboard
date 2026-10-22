@@ -230,7 +230,7 @@ STATE_CACHE_SECONDS = 5  # health.now and the age-based states move without a ve
 version = 0
 sessions = {}  # path -> Session
 
-# User choices made in the UI, shared by every device: {"idle": {path: last_ts when marked}, "hidden": {path: when}}.
+# User choices made in the UI, shared by every device: {"idle": {path: last_ts when marked}}.
 PREFS_PATH = os.path.join(HERE, "prefs.json")
 try:
     with open(PREFS_PATH) as _f:
@@ -238,8 +238,6 @@ try:
 except (OSError, ValueError):
     prefs = {}
 prefs.setdefault("idle", {})
-prefs.setdefault("hidden", {})
-prefs.setdefault("hidden_ids", {})  # "kind:id" -> when; survives the same session resurfacing under another file
 
 
 def save_prefs():
@@ -250,12 +248,11 @@ def save_prefs():
 
 
 def apply_prefs(sm):
-    """A manual idle mark holds until the session writes something newer; hidden is kept until restored."""
+    """A manual idle mark holds until the session writes something newer."""
     mark = prefs["idle"].get(sm["path"])
     sm["manual_idle"] = mark is not None and (sm["last_ts"] or "") <= mark
     if sm["manual_idle"] and sm["state"] != "done":
         sm.update(state="idle", live=False, state_reason="수동으로 유휴 처리됨")
-    sm["hidden"] = sm["path"] in prefs["hidden"] or f'{sm["kind"]}:{sm["id"]}' in prefs["hidden_ids"]
     return sm
 orca_state = {"runs": [], "tasks": {}, "workers": [], "terminals": [], "error": None, "updated": 0}
 
@@ -776,7 +773,7 @@ class Session:
             "compactions": len(self.compactions), "tool_calls": sum(len(t["tools"]) for t in self.turns),
             "skills": sum(self.skill_use.values()), "skill_kinds": len(self.skill_use),
             "skill_use": dict(self.skill_use), "mcp_use": dict(self.mcp_use), "use_tok": self.use_tokens(),
-            "last_action": self.last_action(), "plan": self.plan_summary(), "place": self.placement(), "gone": self.gone(), "made_terms": self.made_terms,
+            "last_action": self.last_action(), "plan": self.plan_summary(), "place": self.placement(), "made_terms": self.made_terms,
             "slots": turn_slots(self.turns, self.model, int(time.time() // SLOT_SECONDS) - SLOT_KEEP),
             "tokens": {
                 "input": sum(t["input"] for t in self.turns),
@@ -817,11 +814,6 @@ class Session:
                 created = {t["id"]: t.get("created_at") or "" for ts in (orca_state.get("tasks") or {}).values() for t in ts}
                 cur = max(ids, key=lambda i: created.get(i, ""))
         return cur, ids
-
-    def gone(self):
-        """The session's worktree (or launch directory) no longer exists on disk."""
-        d = self.work_dir()
-        return bool(d) and not os.path.isdir(d)
 
     def pane_handle(self):
         """The connected Orca terminal whose pane Orca's hook puts this session in, or None."""
@@ -1078,7 +1070,7 @@ def prune_sessions(known, cutoff, held=frozenset()):
     """Drop sessions whose transcript has not changed since `cutoff`, the same test that keeps a file out at
     discovery, so a long-running server holds what a fresh start would (it held every session it ever saw:
     944 after a day, 10 of them live, with /api/state growing to 2.9MB). A dropped session moves to the
-    history cache so the 7-day compare keeps it; prefs (idle/hidden) are keyed by path and survive.
+    history cache so the 7-day compare keeps it; prefs (idle) are keyed by path and survive.
     Sessions in `held` (ids with a 메일함 item, inbox_sessions) stay whatever their age. Returns the dropped paths."""
     gone = []
     for path, s in list(known.items()):
@@ -5244,7 +5236,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             action, paths = body["action"], body["paths"]
-            assert action in ("idle", "unidle", "hide", "unhide") and isinstance(paths, list)
+            assert action in ("idle", "unidle") and isinstance(paths, list)
         except (ValueError, KeyError, AssertionError, TypeError):
             return self.send_json({"error": "bad request"}, 400)
         with lock:
@@ -5254,13 +5246,8 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 if action == "idle":
                     prefs["idle"][path] = s.last_ts or ""
-                elif action == "unidle":
-                    prefs["idle"].pop(path, None)
-                elif action == "hide":
-                    prefs["hidden"][path] = prefs["hidden_ids"][f"{s.kind}:{s.id}"] = datetime.now(timezone.utc).isoformat()
                 else:
-                    prefs["hidden"].pop(path, None)
-                    prefs["hidden_ids"].pop(f"{s.kind}:{s.id}", None)
+                    prefs["idle"].pop(path, None)
             save_prefs()
             bump()
         self.send_json({"ok": True})
