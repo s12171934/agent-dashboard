@@ -1932,7 +1932,9 @@ function wtTicket(t, set) {
   const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
   const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
   // On a driver ticket the coordinator has finished reviewing (ready/ written), a review is also the push·PR approval.
+  // Before that (stage under committed) the coordinator is still changing the worktree, so a review cannot be recorded yet.
   const ship = set.driver && t.qa?.stage === 'committed';
+  const early = set.driver && t.qa && t.qa.stage_no < set.stages.indexOf('committed') + 1 && t.review !== 'done';
   const markLbl = ship ? '리뷰 완료 · 반출 승인' : t.review === 'done' ? '리뷰 취소' : t.review === 'changed' || t.review === 'reopened' ? '다시 리뷰 완료' : '리뷰 완료';
   return `<div class="rv-tk ${t.review}">
     <div class="rv-head">
@@ -1950,7 +1952,7 @@ function wtTicket(t, set) {
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
         <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
-        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${t.step ? ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : ''}
+        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : ''}
     </div>
     ${qaTrack(t.qa)}
     ${t.repos.map(r => wtRepo(t, r)).join('')}
