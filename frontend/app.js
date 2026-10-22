@@ -1785,12 +1785,12 @@ const wtf = (() => { try { return { f: 'all', q: '', ...JSON.parse(localStorage.
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'pending', 'done', 'none'];
 const WT_FILTERS = { all: '전체', changed: '리뷰 후 변경', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
-// Jira status → stage. 개발 완료 and QA 준비 완료 share Jira's 'indeterminate' category with 진행 중, so they go by name;
-// an unknown name falls back to its category.
-const WT_JIRA = { todo: '시작 전', prog: '진행 중', dev: '개발 완료', ready: 'QA 준비 완료', qa: 'QA 완료' };
+// Jira status → stage. 보류(Holding), 개발 완료 and QA 준비 완료 share Jira's 'indeterminate' category with 진행 중, so they
+// go by name; an unknown name falls back to its category.
+const WT_JIRA = { todo: '시작 전', prog: '진행 중', hold: '보류', dev: '개발 완료', ready: 'QA 준비 완료', qa: 'QA 완료' };
 const jiraStage = t => {
   const n = (t.status || '').replace(/\s/g, '');
-  return /QA준비/.test(n) ? 'ready' : /개발완료/.test(n) ? 'dev' : /QA완료/.test(n) || t.cat === 'done' ? 'qa' : t.cat === 'new' ? 'todo' : 'prog';
+  return /hold|홀딩|보류/i.test(n) ? 'hold' : /QA준비/.test(n) ? 'ready' : /개발완료/.test(n) ? 'dev' : /QA완료/.test(n) || t.cat === 'done' ? 'qa' : t.cat === 'new' ? 'todo' : 'prog';
 };
 const obsLink = p => 'obsidian://open?path=' + encodeURIComponent(p);
 const BASE_SRC = { PR: 'PR 의 base', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
