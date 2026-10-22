@@ -88,7 +88,8 @@ const api = (() => {
   function merge(parts) {
     const out = { version: parts.map(([s, d]) => `${s.id}:${d.version}`).join(','), api: API_VERSION, sessions: [],
       orca: { runs: [], tasks: {}, workers: [], terminals: [], error: null, updated: null }, ext_plans: [],
-      tests: { files: [], run_tc: {}, history_n: 0, history_at: null }, decisions: { available: false, pending: [], inbox: [], inbox_mode: {} } };
+      tests: { files: [], run_tc: {}, history_n: 0, history_at: null }, decisions: { available: false, pending: [], inbox: [], inbox_mode: {} },
+      flow: { contracts: null, items: [], ok: 0, rules: {}, errors: [], from: [], missing: [] } };
     const errors = [], next = { path: {}, run: {}, handle: {}, decision: {} };
     for (const [srv, d] of parts) {
       const id = srv.id, o = d.orca || {}, t = d.tests || {};
@@ -109,6 +110,17 @@ const api = (() => {
       // 메일함: a server older than it sends no inbox_mode and is left out of the switch.
       if (typeof d.decisions?.inbox_mode === 'boolean') out.decisions.inbox_mode[id] = d.decisions.inbox_mode;
       out.decisions.inbox.push(...tag(d.decisions?.inbox, id));
+      // Flow deviations (server flow_check): each item goes back to its server for 「정상으로 표시」. Contracts are the
+      // first server's; a server older than the check sends no flow and adds nothing.
+      if (!d.flow) out.flow.missing.push(srv.name);
+      else {
+        out.flow.from.push(id);
+        out.flow.items.push(...tag(d.flow.items, id));
+        out.flow.ok += d.flow.ok || 0;
+        out.flow.contracts ||= d.flow.contracts;
+        Object.assign(out.flow.rules, d.flow.rules);
+        if (d.flow.error) out.flow.errors.push(parts.length > 1 ? `[${srv.name}] ${d.flow.error}` : d.flow.error);
+      }
       for (const s of d.sessions || []) { next.path[s.path] = id; if (s.orca_focus) next.handle[s.orca_focus] = id; if (s.decision) next.decision[s.decision.id] = id; }
       for (const r of o.runs || []) next.run[r.id] = id;
       for (const x of o.terminals || []) next.handle[x.handle] = id;
@@ -286,6 +298,18 @@ const api = (() => {
       const by = {};
       for (const p of paths) (by[owner.path[p] || enabled()[0]?.id] ||= []).push(p);
       await Promise.all(Object.entries(by).map(([id, ps]) => post(byId(id), '/api/pref', { action, paths: ps })));
+    },
+    // 「정상으로 표시」 on a flow deviation (ok=false undoes it), sent to the server that judged it.
+    flowOk: (server, id, ok, item) => post(byId(server), '/api/flow/ok', { id, ok, item }),
+    // aplan plans with step times for the 진행 타임라인, asked of each path's own server: {path: [{ts, prompt, steps}]}.
+    plans: async paths => {
+      const by = {};
+      for (const p of paths) (by[owner.path[p] || enabled()[0]?.id] ||= []).push(p);
+      const parts = await Promise.all(Object.entries(by).map(async ([id, ps]) => {
+        const srv = byId(id);
+        try { return srv ? (await getJson(srv, '/api/plans?' + ps.map(p => 'p=' + encodeURIComponent(p)).join('&')))?.plans || {} : {}; } catch { return {}; }
+      }));
+      return Object.assign({}, ...parts);
     },
     // 결정 버튼 answer: answers in question order (a label or typed text, a label list for multiSelect); the server
     // hands them to the waiting decision-hook. Resolves to {status, body}: 200 settled, 400 an answer missing,

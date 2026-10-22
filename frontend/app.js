@@ -54,8 +54,8 @@ const srvName = id => api.server(id)?.name || '';
 const srvBadge = x => multiSrv() && x?.server ? `<span class="badge srv" title="메트릭 서버 ${esc(api.server(x.server)?.url || '')}">${esc(srvName(x.server))}</span>` : '';
 let srvView = 'merged';  // merged | split: the agents view as one list, or one section per server
 try { srvView = localStorage.getItem('adash.srvview') === 'split' ? 'split' : 'merged'; } catch {}
-let agView = 'tree';  // tree | wt: the agents view as coordinator trees, or one section per worktree (「워크트리별」)
-try { agView = localStorage.getItem('adash.agview') === 'wt' ? 'wt' : 'tree'; } catch {}
+let agView = 'tree';  // tree | wt | map | tl: coordinator trees, one section per worktree (「워크트리별」), 「관계 지도」, 「타임라인」
+try { agView = ['wt', 'map', 'tl'].find(v => v === localStorage.getItem('adash.agview')) || 'tree'; } catch {}
 let state = null, view = 'agents', detail = null, runFull = null, hlTurn = null, openState = {};
 let onlyLive = false;
 try { onlyLive = localStorage.getItem('adash.live') === '1'; } catch {}
@@ -2272,6 +2272,553 @@ async function wtClick(e) {
   b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
 }
 
+// ---------- 관계 지도 · 진행 타임라인: the agents tab's flow views ----------
+// Both draw the same model: per coordinator family a band of nodes (coordinator → its workers → its reviews and verdicts)
+// built from the tree (families) and the worker plan (workerPlan), QA driver sets on the left when the coordinator works a
+// QA ticket. Whether each node follows its contract is the server's flow check (state.flow): deviations per session,
+// task, checkbox or ticket, and the contracts they were judged against (QA stages from the driver's state contract,
+// checkbox roles). The page never judges; it places the server's verdicts on nodes and rows.
+const NODE_ST = { ...ST_LABEL, ...FLOW_ST };
+const SEV_RANK = { bad: 2, warn: 1 };
+const flowContract = () => state.flow?.contracts || {};
+const cbFlow = () => flowContract().checkbox || { roles: FLOW_ROLE, work: FLOW_ROLE.slice(0, 1), review: FLOW_ROLE.slice(1, 3), verdict: FLOW_ROLE.slice(3) };
+const qaStages = () => flowContract().qa?.stages || Object.keys(QA_ST).map(key => ({ key, label: QA_ST[key] }));
+const qaName = k => QA_ST[k] || qaStages().find(s => s.key === k)?.label || k;
+// Reviews and verdicts of the checkbox contract (and any other role named as a review) go in the last column.
+const isReview = role => [...(cbFlow().review || []), ...(cbFlow().verdict || [])].includes(role) || /리뷰|review/i.test(role || '');
+const sevOf = xs => xs.reduce((m, x) => Math.max(m, SEV_RANK[x.severity] || 0), 0);
+const ATTN_ST = ['stalled', 'wait', 'fail'];
+let mapSel = null, mapMore = 40;
+const MAP_BANDS = 12, MAP_COL = 8;
+try { mapSel = localStorage.getItem('adash.mapsel') || null; } catch {}
+
+// QA driver sets (from /api/reviews, as the 워크트리 tab reads them), loaded once per server pass.
+let rvLoad = null, rvFailed = null;
+function needReviews() {
+  if (wtData.at === state.reviews_at || rvLoad || rvFailed === state.reviews_at) return;
+  const want = state.reviews_at;
+  rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '' }; })
+    .catch(() => { rvFailed = want; })
+    .finally(() => { rvLoad = null; if (route().v === 'agents' && ['map', 'tl'].includes(agView)) render(); });
+}
+// The QA ticket (and its set) a session works on: a terminal handle the driver recorded for the ticket (coordinator,
+// workers), else the ticket key in the session's title or worktree name — a closed terminal leaves only those.
+function qaHandles() {
+  const m = new Map(), keys = new Map();
+  for (const s of wtData.sets || []) if (s.driver) for (const t of s.tickets) {
+    if (t.qa) keys.set(t.key, { set: s, t });
+    for (const h of t.qa?.handles || []) if (!m.has(h)) m.set(h, { set: s, t });
+  }
+  m.keys_ = keys;
+  return m;
+}
+const qaOf = (s, qh) => {
+  for (const h of [s.orca_focus, s.own_handle]) if (h && qh.has(h)) return qh.get(h);
+  for (const k of `${s.title || ''} ${s.place?.worktree || ''}`.match(/[A-Z][A-Z0-9]+-\d+/g) || []) if (qh.keys_.has(k)) return qh.keys_.get(k);
+  return null;
+};
+const famQa = (f, qh) => f.coord ? qaOf(f.coord, qh) : qh.get(f.handle) || null;
+
+// A task's node state: the task's own outcome first (a failed task is 실패, never 완료), then its worker session.
+function taskNodeSt(x) {
+  const t = IX.tasks[x.id];
+  if (t?.status === 'completed') return 'done';
+  if (t?.status === 'failed') return 'fail';
+  if (t?.status === 'cancelled') return 'skip';
+  if (x.sess) return status(x.sess);
+  return x.st === 'blocked' ? 'blocked' : 'planned';
+}
+const ENDED_ST = st => ['done', 'idle', 'skip', 'fail'].includes(st);
+// One band per coordinator family (sub-families get their own band, joined to their parent's coordinator).
+function famBands(f, qh, depth = 0, parent = null) {
+  const c = f.coord;
+  const coord = { id: c ? 's:' + c.path : 'h:' + f.handle, kind: 'coord', sess: c, name: c ? nameOf(c) : ownerName(f.handle), st: c ? status(c) : f.st, qa: famQa(f, qh), sub: depth > 0, parent };
+  const band = { key: f.key, coord, work: [], review: [], depth, fam: f };
+  const wp = workerPlan(f.handle, f.extra), seen = new Set();
+  for (const x of wp?.items || []) {
+    if (x.sess && isSubCoord(x.sess) && f.subs.some(y => y.coord === x.sess)) { seen.add(x.sess.path); continue; }
+    const t = IX.tasks[x.id], role = t ? roleOf(t) : '';
+    if (filtering() && !(x.sess && liveSess(x.sess))) continue;
+    if (x.sess) seen.add(x.sess.path);
+    (isReview(role) ? band.review : band.work).push({ id: 't:' + x.id, kind: 'task', taskId: x.id, sess: x.sess, name: x.name, role, st: taskNodeSt(x), item: x });
+  }
+  for (const w of f.workers) if (!seen.has(w.path) && liveSess(w)) band.work.push({ id: 's:' + w.path, kind: 'sess', sess: w, name: nameOf(w), st: status(w) });
+  return [band, ...f.subs.filter(liveFam).flatMap(x => famBands(x, qh, depth + 1, coord.id))];
+}
+const bandNodes = b => [b.coord, ...b.work, ...b.review];
+// The server's deviations onto nodes: by task first, then by session (a session serving several tasks gives its own
+// deviations to the node of its current task), then a ticket's to the node standing for that ticket's coordinator.
+function placeDevs(nodes) {
+  const by = new Map(nodes.map(n => [n.id, n]));
+  nodes.forEach(n => { n.devs = []; n.involved = 0; });
+  const byTask = new Map(), bySess = new Map();
+  for (const n of nodes) {
+    if (n.taskId) byTask.set(n.taskId, n);
+    if (n.sess && (!bySess.has(n.sess.path) || n.taskId === n.sess.task_id || n.kind !== 'task')) bySess.set(n.sess.path, n);
+  }
+  const byTicket = new Map(nodes.filter(n => n.qa && (n.kind === 'coord' || n.kind === 'ticket')).map(n => [n.qa.t.key, n]));
+  for (const x of state.flow?.items || []) {
+    const n = (x.task_id && byTask.get(x.task_id)) || (x.session && bySess.get(x.session)) || (x.ticket && byTicket.get(x.ticket));
+    if (n) n.devs.push(x);
+    for (const id of x.task_ids || []) { const m = byTask.get(id); if (m && m !== n) m.involved = Math.max(m.involved, SEV_RANK[x.severity] || 0); }
+  }
+  return by;
+}
+const nodeSev = n => Math.max(sevOf(n.devs || []), n.involved || 0);
+
+// Groups of the map: a QA driver with the bands of its tickets, else one coordinator family; solo sessions only when
+// they deviate or need attention. Ordered by worst deviation, then attention, then live, then newest.
+function mapModel() {
+  const { fams, solos } = families(), qh = qaHandles();
+  const groups = [], byEpic = new Map();
+  for (const f of fams.filter(liveFam)) {
+    const bands = famBands(f, qh), q = bands[0].coord.qa;
+    if (q) {
+      const k = q.set.epic + '|' + q.set.server;
+      let g = byEpic.get(k);
+      if (!g) {
+        const autos = q.set.automations || [], on = autos.some(a => a.enabled);
+        const qs = q.set.tickets.filter(t => t.qa), act = qs.filter(t => !['delivered', 'cleaned'].includes(t.qa.stage) && !t.qa.ignored).length;
+        g = { key: 'qa:' + k, kind: 'qa', title: `QA 드라이버 · ${q.set.epic}`, bands: [], set: q.set,
+          driver: { id: 'd:' + k, kind: 'driver', name: `⚙ QA 드라이버 · ${q.set.epic}`, st: on ? 'run' : 'idle', meta: `티켓 ${qs.length} · 진행 ${act} · 자동화 ${on ? '켜짐' : autos.length ? '꺼짐' : '없음'}` } };
+        byEpic.set(k, g); groups.push(g);
+      }
+      g.bands.push(...bands);
+    } else groups.push({ key: 'f:' + f.key, kind: 'fam', title: bands[0].coord.name, bands });
+  }
+  // Solo sessions of a QA ticket (its coordinator and workers run as plain terminals) join that ticket's band: the
+  // first one started in the ticket's latest round is its coordinator, the rest its workers.
+  const qaSolo = new Map(), rest = [];
+  for (const s of solos.filter(liveSess)) { const q = qaOf(s, qh); if (q) (qaSolo.get(q.t.key) || qaSolo.set(q.t.key, { q, ss: [] }).get(q.t.key)).ss.push(s); else rest.push(s); }
+  for (const { q, ss } of qaSolo.values()) {
+    const k = q.set.epic + '|' + q.set.server, round = (q.t.qa.rounds || []).slice(-1)[0] || '';
+    let g = byEpic.get(k);
+    if (!g) { g = { key: 'qa:' + k, kind: 'qa', title: `QA 드라이버 · ${q.set.epic}`, bands: [], set: q.set, driver: { id: 'd:' + k, kind: 'driver', name: `⚙ QA 드라이버 · ${q.set.epic}`, st: (q.set.automations || []).some(a => a.enabled) ? 'run' : 'idle', meta: `티켓 ${q.set.tickets.filter(t => t.qa).length} · 자동화 ${(q.set.automations || []).some(a => a.enabled) ? '켜짐' : '꺼짐'}` } }; byEpic.set(k, g); groups.push(g); }
+    const node = s => ({ id: 's:' + s.path, kind: 'sess', sess: s, name: nameOf(s), st: status(s) });
+    const band = g.bands.find(b => !b.depth && b.coord.qa?.t.key === q.t.key);
+    if (band) { band.work.push(...ss.map(node)); continue; }
+    ss.sort(byStart);
+    const head = ss.find(s => !round || (s.started || '') >= new Date(new Date(round).getTime() - 60e3).toISOString()) || ss[0];
+    g.bands.push({ key: 'tk:' + q.t.key, depth: 0, review: [], work: ss.filter(s => s !== head).map(node), coord: { ...node(head), kind: 'coord', qa: q } });
+  }
+  // A QA ticket whose coordinator session is gone from the window but still deviates keeps a stand-in band.
+  const shown = new Set(groups.flatMap(g => g.bands.flatMap(b => b.coord.qa ? [b.coord.qa.t.key] : [])));
+  for (const x of state.flow?.items || []) {
+    if (!x.ticket || shown.has(x.ticket) || (x.session && state.sessions.some(s => s.path === x.session))) continue;
+    const hit = (wtData.sets || []).flatMap(s => s.tickets.map(t => ({ set: s, t }))).find(y => y.t.key === x.ticket);
+    if (!hit) continue;
+    shown.add(x.ticket);
+    const k = hit.set.epic + '|' + hit.set.server;
+    let g = byEpic.get(k);
+    if (!g) { g = { key: 'qa:' + k, kind: 'qa', title: `QA 드라이버 · ${hit.set.epic}`, bands: [], set: hit.set, driver: { id: 'd:' + k, kind: 'driver', name: `⚙ QA 드라이버 · ${hit.set.epic}`, st: 'idle', meta: '' } }; byEpic.set(k, g); groups.push(g); }
+    g.bands.push({ key: 'tk:' + x.ticket, depth: 0, work: [], review: [], coord: { id: 'k:' + x.ticket, kind: 'ticket', name: `${x.ticket} 코디네이터`, st: hit.t.qa.stage === 'cleaned' ? 'done' : 'idle', qa: hit, note: '세션이 추적 범위 밖' } });
+  }
+  const odd = rest.filter(s => ATTN_ST.includes(status(s)) || s.decision || (state.flow?.items || []).some(x => x.session === s.path));
+  if (odd.length) groups.push({ key: 'solo', kind: 'solo', title: '단독 세션 — 이탈·주의만', bands: odd.map(s => ({ key: 'solo:' + s.path, depth: 0, work: [], review: [], coord: { id: 's:' + s.path, kind: 'solo', sess: s, name: nameOf(s), st: status(s) } })), hidden: solos.length - odd.length });
+  const nodes = groups.flatMap(g => [...(g.driver ? [g.driver] : []), ...g.bands.flatMap(bandNodes)]);
+  const by = placeDevs(nodes);
+  for (const g of groups) {
+    const ns = [...(g.driver ? [g.driver] : []), ...g.bands.flatMap(bandNodes)];
+    g.devs = ns.reduce((a, n) => a + n.devs.length, 0);
+    g.sev = Math.max(0, ...ns.map(nodeSev));
+    g.attn = ns.some(n => ATTN_ST.includes(n.st) || n.sess?.decision);
+    g.live = ns.some(n => n.sess && OPEN(status(n.sess)));
+    g.open = ns.some(n => !ENDED_ST(n.st));
+    g.started = g.bands.map(b => b.coord.sess?.started || '').sort().pop() || '';
+    for (const b of g.bands) {
+      const bn = bandNodes(b);
+      b.sev = Math.max(0, ...bn.map(nodeSev)); b.devs = bn.reduce((a, n) => a + n.devs.length, 0);
+      b.attn = bn.some(n => ATTN_ST.includes(n.st) || n.sess?.decision); b.open = bn.some(n => !ENDED_ST(n.st));
+    }
+    g.bands = byRank(g.bands, b => b.depth ? 0 : -(b.sev * 4 + (b.attn ? 2 : 0) + (b.open ? 1 : 0)));  // sub-bands stay after their parent
+    if (g.kind === 'qa') g.bands = (() => { const out = [], put = b => { out.push(b); g.bands.filter(y => y.coord.parent === b.coord.id).forEach(put); }; g.bands.filter(b => !b.depth).forEach(put); g.bands.filter(b => !out.includes(b)).forEach(b => out.push(b)); return out; })();
+  }
+  // Relations first: the solo group (no relations to draw) always goes last.
+  groups.sort((a, b) => (a.kind === 'solo') - (b.kind === 'solo') || b.sev - a.sev || b.attn - a.attn || b.live - a.live || b.open - a.open || b.started.localeCompare(a.started));
+  return { groups, by };
+}
+
+// What a node is measured by, with the unit named: QA contract stage, else the session's aplan plan, else the task.
+function nodeProgress(n) {
+  const q = n.qa?.t?.qa;
+  if (q) {
+    const ks = qaStages().map(s => s.key), cur = ks.indexOf(q.stage);
+    return `<span class="mp-r"><span class="mp-steps" aria-hidden="true">${ks.map((k, i) => `<i class="${i < cur ? 'done' : i === cur ? (n.devs.some(x => x.rule === 'order') ? 'fail' : q.stage === 'cleaned' ? 'done' : 'run') : ''}"></i>`).join('')}</span>QA 단계 ${cur + 1}/${ks.length} ${esc(qaName(q.stage))}</span>`;
+  }
+  const s = n.sess, out = [];
+  if (s?.plan) {
+    const p = s.plan, ended = ENDED(status(s));
+    out.push(`<span class="mp-r"><span class="mp-steps" aria-hidden="true">${missed(p, ended).steps.map(x => `<i class="${x === 'miss' ? 'fail' : x}"></i>`).join('')}</span>계획 ${p.done}/${p.total}${p.cur_text && !ended ? ' · ▶ ' + esc(cutW(p.cur_text, 18)) : ''}</span>`);
+  }
+  if (n.kind === 'task' && n.st !== 'done' && n.st !== 'skip' && n.st !== 'fail') {
+    const t = IX.tasks[n.taskId], r = t && taskLeft(t);
+    if (!n.sess) out.push(`<span class="mp-r">${n.item?.open ? `선행 대기: ${esc(cut(n.item.deps.join(', '), 30))}` : esc(NODE_ST[n.st])}</span>`);
+    else if (r?.e && r.el != null) out.push(`<span class="mp-r${r.el > 2 * r.e.ms ? ' mp-over' : ''}">${mins(r.el)}째 (기대 ${mins(r.e.ms)})</span>`);
+  }
+  return out.join('');
+}
+// 「✓ 흐름 정상」 only where a server judged: a node from a server without the flow check says nothing.
+const judged = n => (state.flow?.from || []).includes(n.sess ? n.sess.server : n.qa?.set?.server);
+const devBadge = n => n.devs.length ? `<span class="mp-dev ${sevOf(n.devs) === 2 ? 'bad' : 'warn'}">⚠ 이탈 ${n.devs.length} · ${esc(cutW(n.devs[0].reason, 22))}</span>`
+  : (n.sess || n.kind === 'ticket') && judged(n) ? '<span class="mp-ok">✓ 흐름 정상</span>' : '';
+function nodeHtml(n) {
+  const st = n.st, role = n.kind === 'coord' && n.sub ? '하위 코디네이터' : n.kind === 'task' && n.sess?.viaScript ? '스크립트 경유' : '';
+  // One state line: a task's own state (with how long it took once settled), a session's state and last record.
+  const meta = n.kind === 'driver' ? n.meta : n.note || (n.kind === 'task' ? (n.sess ? `${NODE_ST[st]}${n.item?.spawned && n.item?.done ? ' · ' + dur(n.item.spawned, n.item.done) : ''}${n.sess.decision ? ' · 결정 대기' : ''}` : '')
+    : n.sess ? `${NODE_ST[status(n.sess)] || ''}${n.sess.decision ? ' · 결정 대기' : ''} · ${ago(n.sess.last_ts)}` : NODE_ST[st] || '');
+  return `<button type="button" class="mp-n st-${st}${nodeSev(n) === 2 ? ' dev-bad' : nodeSev(n) === 1 ? ' dev-warn' : ''}${mapSel === n.id ? ' sel' : ''}" data-n="${esc(n.id)}" aria-pressed="${mapSel === n.id}">
+    <b class="mp-t" title="${esc(n.name)}">${esc(cutW(n.name, 30))}</b>${role ? `<span class="mp-r mp-role">${role}</span>` : ''}
+    ${nodeProgress(n)}${meta ? `<span class="mp-r">${esc(meta)}</span>` : ''}${devBadge(n)}</button>`;
+}
+
+// Edges of one group: spawn (solid, parent → child), deps (arrow, predecessor → task), messages (dotted, sender → receiver),
+// and red when the target deviates. A folded run of finished nodes stands in for each node it hides.
+function groupEdges(g, vis, msgs) {
+  const out = [], add = (a, b, k) => { const A = vis[a], B = vis[b]; if (A && B && A !== B && !out.some(e => e.a === A && e.b === B && e.k === k)) out.push({ a: A, b: B, k }); };
+  const nodes = new Map([...(g.driver ? [g.driver] : []), ...g.bands.flatMap(bandNodes)].map(n => [n.id, n]));
+  const bad = id => nodeSev(nodes.get(id) || {}) === 2;
+  const byTask = new Map([...nodes.values()].filter(n => n.taskId).map(n => [n.taskId, n]));
+  for (const b of g.bands) {
+    if (g.driver && !b.depth) add(g.driver.id, b.coord.id, bad(b.coord.id) ? 'bad' : 'spawn');
+    if (b.coord.parent) add(b.coord.parent, b.coord.id, bad(b.coord.id) ? 'bad' : 'spawn');
+    for (const n of [...b.work, ...b.review]) {
+      const deps = n.taskId ? (() => { try { return JSON.parse(IX.tasks[n.taskId]?.deps || '[]'); } catch { return []; } })().map(d => byTask.get(d)).filter(Boolean) : [];
+      deps.forEach(d => add(d.id, n.id, bad(n.id) ? 'bad' : 'dep'));
+      if (!deps.length || !b.review.includes(n)) add(b.coord.id, n.id, bad(n.id) ? 'bad' : 'spawn');
+    }
+  }
+  const at = new Map();
+  for (const n of nodes.values()) for (const h of n.sess ? [n.sess.own_handle, n.sess.orca_focus] : []) if (h && !at.has(h)) at.set(h, n.id);
+  // Workers report to their run (run:<id>), which Orca resolves to the run's coordinator terminal: a script driver the
+  // coordinator opened stands for that coordinator.
+  for (const b of g.bands) for (const h of [b.fam?.handle, ...(b.fam?.extra || [])]) if (h && !at.has(h)) at.set(h, b.coord.id);
+  for (const m of msgs) { const a = at.get(m.from_term), b = at.get(m.to_term); if (a && b) add(a, b, 'msg'); }
+  return out;
+}
+// One shared load of the 상호작용 tab's messages for both views; every caller waits for the same request.
+let talkLoad = null;
+const talkOnce = () => talkLoad ||= loadTalk().finally(() => { talkLoad = null; });
+// Messages of the last 6 hours (the 상호작용 tab's cache), heartbeats left out.
+const MSG_WINDOW = 6 * 3600e3;
+const recentMsgs = () => { const since = Date.now() - MSG_WINDOW; return (talk.data?.messages || []).filter(m => m.type !== 'heartbeat' && m.created_at && toDate(m.created_at).getTime() >= since); };
+
+function mapHtml() {
+  needReviews();
+  if (!talk.data) talkOnce().then(() => { if (talk.data && route().v === 'agents' && agView === 'map') mapEdges(); });
+  const model = mapLast = mapModel(), { groups, by } = model, msgs = recentMsgs();
+  mapNodes = by;
+  if (!groups.length) return '<div class="empty">표시할 코디네이터·에이전트가 없습니다.</div>';
+  const fl = state.flow, nDev = (fl?.items || []).length;
+  const head = `<div class="mp-head"><span><b>흐름 이탈 ${nDev}</b>${nDev ? ` (${Object.entries((fl.items || []).reduce((a, x) => (a[x.rule_name] = (a[x.rule_name] || 0) + 1, a), {})).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')})` : ''}${fl?.ok ? ` · 정상으로 표시 ${fl.ok}` : ''}</span>
+    ${fl?.errors?.length ? `<span class="mp-err">판정 오류: ${esc(fl.errors.join(' · '))}</span>` : ''}${fl?.missing?.length ? `<span class="mp-err">흐름 판정을 보내지 않는 메트릭 서버: ${esc(fl.missing.join(', '))} — 서버를 갱신해야 이탈이 보입니다</span>` : ''}</div>`;
+  const legend = `<div class="legend mp-leg"><span><i class="mp-lk spawn"></i>실선 = 띄움(부모 → 자식)</span><span><i class="mp-lk dep"></i>화살표 = 선행(deps)</span><span><i class="mp-lk msg"></i>점선 = 메시지(최근 6시간)</span><span><i class="mp-lk bad"></i>빨강 = 이탈 경로</span><span class="st">왼쪽 띠 = 상태 색 · 진행 칸은 「QA 단계」(계약 ${qaStages().length}단계) 또는 「계획」(aplan 단계)</span></div>`;
+  const gHtml = g => {
+    const gk = 'mapg:' + g.key, hasSel = mapSel && [...(g.driver ? [g.driver] : []), ...g.bands.flatMap(bandNodes)].some(n => n.id === mapSel);
+    const open = hasSel || (famMin[gk] ?? (g.kind !== 'solo' && (g.sev > 0 || g.attn || g.open)));
+    const ns = g.bands.flatMap(bandNodes), c = k => ns.filter(n => n.st === k).length;
+    const sum = [`에이전트 ${ns.filter(n => n.sess).length}`, c('run') && `실행 중 <b style="color:var(--run)">${c('run')}</b>`, c('wait') && `입력 대기 ${c('wait')}`, c('stalled') && `응답 없음 <b style="color:var(--bad)">${c('stalled')}</b>`,
+      `완료 ${c('done')}`, c('fail') && `실패 <b style="color:var(--bad)">${c('fail')}</b>`, (c('planned') + c('blocked')) && `생성 예정 ${c('planned') + c('blocked')}`].filter(Boolean).join(' · ');
+    const hdr = `<button type="button" class="mp-gh" data-mpg="${esc(gk)}" data-open="${open ? 1 : 0}" aria-expanded="${open}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(g.title)}</b><span class="st">${sum}</span>${g.devs ? `<span class="mp-dev ${g.sev === 2 ? 'bad' : 'warn'}">⚠ 이탈 ${g.devs}</span>` : ns.some(judged) ? '<span class="mp-ok">✓ 이탈 없음</span>' : ''}${g.hidden ? `<span class="st">그 밖의 단독 세션 ${g.hidden}개는 관계가 없어 뺐습니다</span>` : ''}</button>`;
+    if (!open) return `<section class="box mp-g">${hdr}</section>`;
+    if (g.kind === 'solo') return `<section class="box mp-g">${hdr}<div class="mp-solo">${g.bands.map(b => nodeHtml(b.coord)).join('')}</div></section>`;
+    const vis = {};
+    // A column keeps what needs a look (deviations, open work, the picked node); finished nodes fold into 「✓ 완료 N」,
+    // and past MAP_COL nodes the rest wait behind 「외 N」, worst first.
+    const col = (b, list, which) => {
+      const fk = `mapd:${b.key}:${which}`, xk = `mapx:${b.key}:${which}`, keep = n => n.devs.length || n.involved || !ENDED_ST(n.st) || n.id === mapSel;
+      const done = list.filter(n => !keep(n)), fold = done.length > 2 && !famMin[fk];
+      let shown = fold ? list.filter(keep) : list, extra = [];
+      const fid = 'fold:' + fk, xid = 'more:' + xk;
+      if (shown.length > MAP_COL && !famMin[xk]) {
+        const rank = n => -(nodeSev(n) * 8 + (ATTN_ST.includes(n.st) ? 4 : 0) + (n.st === 'run' || n.st === 'bg' ? 2 : 0) + (n.id === mapSel ? 99 : 0));
+        const top = new Set(byRank(shown, rank).slice(0, MAP_COL));
+        extra = shown.filter(n => !top.has(n)); shown = shown.filter(n => top.has(n));
+      }
+      shown.forEach(n => (vis[n.id] = n.id));
+      if (fold) done.forEach(n => (vis[n.id] = fid));
+      extra.forEach(n => (vis[n.id] = xid));
+      const xd = extra.reduce((a, n) => a + n.devs.length, 0);
+      return shown.map(nodeHtml).join('')
+        + (extra.length ? `<button type="button" class="mp-n mp-fold mp-more-n" data-n="${esc(xid)}" data-mpd="${esc(xk)}">외 ${extra.length}개${xd ? ` · 이탈 ${xd}` : ''}<span class="mp-r">눌러서 모두 보기</span></button>`
+          : famMin[xk] ? `<button type="button" class="act" data-mpd="${esc(xk)}" data-unfold="1">${MAP_COL}개만 보기</button>` : '')
+        + (fold ? `<button type="button" class="mp-n mp-fold st-done" data-n="${esc(fid)}" data-mpd="${esc(fk)}">✓ 완료 ${done.length}<span class="mp-r">눌러서 펼치기</span></button>`
+          : done.length > 2 ? `<button type="button" class="act" data-mpd="${esc(fk)}" data-unfold="1">완료 ${done.length}개 접기</button>` : '');
+    };
+    // Long groups (a QA driver with dozens of tickets) show their first bands; the rest come on request.
+    const bk0 = 'mapbm:' + g.key, nb = Math.max(MAP_BANDS, famMin[bk0] || 0), selAt = g.bands.findIndex(b => bandNodes(b).some(n => n.id === mapSel));
+    const bands = g.bands.slice(0, Math.max(nb, selAt + 1));
+    let rows = '';
+    bands.forEach((b, i) => {
+      const bk = 'mapb:' + b.key, bopen = famMin[bk] ?? (b.sev > 0 || b.attn || b.open || bandNodes(b).some(n => n.id === mapSel));
+      vis[b.coord.id] = b.coord.id;
+      const kids = b.work.length + b.review.length;
+      if (!bopen) [...b.work, ...b.review].forEach(n => (vis[n.id] = b.coord.id));
+      rows += `<div class="mp-c2" style="grid-row:${i + 2}">${b.depth ? `<span class="mp-sub">↳ 하위 ${b.depth}</span>` : ''}${nodeHtml(b.coord)}${kids ? `<button type="button" class="tgl mp-bt" data-mpb="${esc(bk)}" data-open="${bopen ? 1 : 0}" aria-expanded="${bopen}">${bopen ? '▾ 하위 접기' : `▸ 하위 ${kids} 펼치기`}</button>` : ''}</div>
+        <div class="mp-c3" style="grid-row:${i + 2}">${bopen ? col(b, b.work, 'w') : ''}</div><div class="mp-c4" style="grid-row:${i + 2}">${bopen ? col(b, b.review, 'r') : ''}</div>`;
+    });
+    if (g.driver) vis[g.driver.id] = g.driver.id;
+    const edges = groupEdges(g, vis, msgs);
+    return `<section class="box mp-g">${hdr}<div class="mp-scroll"><div class="mp-grid" data-edges="${esc(JSON.stringify(edges))}" data-g="${esc(g.key)}" data-msgs="${msgs.length ? 1 : ''}">
+      <span class="mp-ch" style="grid-column:1">드라이버 (스크립트)</span><span class="mp-ch" style="grid-column:2">코디네이터 (티켓)</span><span class="mp-ch" style="grid-column:3">워커 (구현)</span><span class="mp-ch" style="grid-column:4">리뷰·판정</span>
+      <div class="mp-c1" style="grid-row:2 / span ${bands.length}">${g.driver ? nodeHtml(g.driver) : '<span class="st mp-none">—</span>'}</div>${rows}
+      <svg class="mp-edges" aria-hidden="true"></svg></div></div>
+      ${g.bands.length > bands.length ? `<button type="button" class="act big mp-bm" data-mpbm="${esc(bk0)}" data-n0="${bands.length}">${g.kind === 'qa' ? '티켓' : '묶음'} ${g.bands.length - bands.length}개 더 보기 (이탈·주의 먼저 정렬됨)</button>` : ''}</section>`;
+  };
+  const shown = groups.slice(0, mapMore);
+  return `${head}${legend}<div class="mp-wrap"><div class="mp-main">${shown.map(gHtml).join('')}
+    ${groups.length > shown.length ? `<button type="button" class="act big" id="mp-more">묶음 ${groups.length - shown.length}개 더 보기</button>` : ''}</div>
+    <aside class="box mp-side" aria-live="polite">${mapPanel(by.get(mapSel))}</aside></div>`;
+}
+let mapNodes = new Map(), mapLast = null;
+
+// The selected node beside the map: its contract against what happened, its deviations, and what to do about them.
+function mapPanel(n) {
+  if (!n) {
+    const top = [...mapNodes.values()].filter(x => x.devs?.length).sort((a, b) => nodeSev(b) - nodeSev(a)).slice(0, 8);
+    return `<h3>노드를 고르면 여기에 계약 대비 실제</h3>${top.length ? `<div class="st">이탈한 노드</div>${top.map(x => `<button type="button" class="mp-pick" data-n="${esc(x.id)}"><span class="mp-dev ${nodeSev(x) === 2 ? 'bad' : 'warn'}">⚠ ${x.devs.length}</span>${esc(cutW(x.name, 34))}<span class="st">${esc(x.devs[0].reason)}</span></button>`).join('')}` : '<div class="st">이탈한 노드가 없습니다.</div>'}`;
+  }
+  const s = n.sess, t = n.taskId && IX.tasks[n.taskId];
+  let contract = '';
+  const q = n.qa?.t?.qa;
+  if (q) {
+    const ks = qaStages(), cur = ks.findIndex(x => x.key === q.stage), gate = new Set(n.devs.filter(x => x.rule === 'order').map(x => x.id.split('|')[2]));
+    contract = `<div class="mp-sec">계약: QA 단계 ${ks.length}칸 <span class="st">(${esc(flowContract().qa?.source ? '드라이버 상태 계약' : '대시보드 기본값')})</span></div><ol class="mp-ct">${ks.map((x, i) => {
+      const missing = gate.has(x.key), cls = missing ? 'bad' : i < cur || (i === cur && q.stage === 'cleaned') ? 'done' : i === cur ? 'run' : '';
+      return `<li class="${cls}"><span class="ic">${missing ? '✕' : cls === 'done' ? '✓' : cls === 'run' ? '▶' : '·'}</span>${esc(qaName(x.key))}${x.user ? ' <span class="st">(사용자 차례)</span>' : ''}<span class="st">${missing ? ' 신호 없음' : q.at?.[x.key] && i <= cur ? ' ' + clockAt(q.at[x.key]) : ''}</span></li>`; }).join('')}</ol>`;
+  }
+  const m = t && TASK_NAME.exec(taskName(t));
+  if (m && m[2]) {
+    const box = `${m[1]}#${m[2]}`, same = (state.orca.tasks[t.run_id] || []).filter(x => { const y = TASK_NAME.exec(taskName(x)); return y && `${y[1]}#${y[2]}` === box; });
+    const cf = cbFlow(), lacking = new Set(n.devs.filter(x => x.rule === 'missing').flatMap(x => x.task_ids.slice(1)));
+    const rounds = same.filter(x => (cf.work || []).includes(roleOf(x))).length;
+    // The round this node belongs to: for a verdict, each role's latest task made before it (what it judged); else the latest.
+    const upto = (cf.verdict || []).includes(roleOf(t)) && t.created_at ? t.created_at : '~';
+    contract = `<div class="mp-sec">계약: ${esc(cf.roles.join(' → '))} <span class="st">· ${esc(box)}${rounds > 1 ? ` · ${rounds}라운드` : ''}${upto !== '~' ? ' · 이 판정의 회차' : ''}</span></div><ol class="mp-ct">${cf.roles.map(role => {
+      const ts = same.filter(x => roleOf(x) === role && (x === t || (x.created_at || '~') <= upto)).sort((a, b) => (a.created_at || '~').localeCompare(b.created_at || '~'));
+      const x = ts.find(y => lacking.has(y.id)) || ts[ts.length - 1];
+      const w = x && estIndex().sess[x.id];
+      const [cls, ic, txt] = !x ? ['', '·', '아직 없음'] : lacking.has(x.id) ? ['bad', '✕', '취소되지 않았는데 결과 없음'] : x.status === 'completed' ? ['done', '✓', w?.started ? dur(w.started, x.completed_at ? toDate(x.completed_at).toISOString() : w.last_ts) : '완료']
+        : x.status === 'cancelled' ? ['', '–', '취소'] : x.status === 'failed' ? ['bad', '✕', '실패'] : ['run', '▶', w ? NODE_ST[status(w)] : NODE_ST[x.status === 'blocked' ? 'blocked' : 'planned']];
+      return `<li class="${cls}"><span class="ic">${ic}</span>${w ? `<a href="#s=${encodeURIComponent(w.path)}">${esc(role)}</a>` : esc(role)}<span class="st"> · ${esc(txt)}</span></li>`; }).join('')}</ol>`;
+  }
+  const devs = n.devs.map(x => `<div class="mp-dv ${x.severity}"><b>⚠ ${esc(x.rule_name)}</b> · ${esc(x.reason)}<ul>${x.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+    <button type="button" class="act" data-flow-ok="${esc(x.id)}" data-srv="${esc(x.server || '')}">정상으로 표시</button></div>`).join('');
+  const links = [s && `<a class="act big" href="#s=${encodeURIComponent(s.path)}">세션 열기</a>`, s?.orca_focus && focusBtn(s.orca_focus, true),
+    ...n.devs.filter(x => x.rule === 'missing').flatMap(x => x.task_ids.slice(1)).map(id => { const w = estIndex().sess[id]; return w && `<a class="act big" href="#s=${encodeURIComponent(w.path)}">${esc(roleOf(IX.tasks[id] || {}) || '리뷰')} 열기</a>`; }),
+    n.qa && `<a class="act big" href="#worktrees">워크트리 탭에서 ${esc(n.qa.t.key)}</a>`].filter(Boolean).join('');
+  return `<div class="fl-ph"><b>${esc(n.name)}</b>${s ? pill(status(s), s) : `<span class="st">${esc(NODE_ST[n.st] || '')}</span>`}<button type="button" class="act" data-n="">닫기</button></div>
+    ${n.devs.length ? `<div class="mp-sec bad">흐름 이탈 ${n.devs.length}</div>${devs}` : n.sess && judged(n) ? '<div class="mp-sec ok">✓ 흐름 정상 — 판정 규칙에 걸린 것 없음</div>' : n.sess ? '<div class="mp-sec">이 세션의 서버는 흐름 판정을 보내지 않습니다</div>' : ''}
+    ${contract}
+    ${s?.plan ? `<div class="mp-sec">계획 (aplan) ${s.plan.done}/${s.plan.total}</div><div id="mp-plan" class="st">불러오는 중…</div>` : s ? '<div class="st mp-sec">이 세션은 aplan 계획을 남기지 않았습니다.</div>' : ''}
+    ${links ? `<div class="mp-acts">${links}</div>` : ''}`;
+}
+// aplan steps for the panel and the timeline, fetched per path and kept while the session's plan summary is unchanged.
+const planCache = new Map();
+const planSig = s => `${s.last_ts}|${s.plan?.done}|${s.plan?.total}|${s.plan?.cur}|${s.plan?.count}`;
+async function plansFor(list) {
+  const need = list.filter(s => planCache.get(s.path)?.sig !== planSig(s));
+  if (need.length) {
+    const got = await api.plans(need.map(s => s.path));
+    for (const s of need) planCache.set(s.path, { sig: planSig(s), plans: got[s.path] || [] });
+  }
+  return Object.fromEntries(list.map(s => [s.path, planCache.get(s.path)?.plans || []]));
+}
+async function mapPlan() {
+  const n = mapNodes.get(mapSel), s = n?.sess;
+  if (!s?.plan || !$('#mp-plan')) return;
+  const ps = (await plansFor([s]))[s.path], p = ps[ps.length - 1], el = $('#mp-plan');
+  if (el) { el.className = p ? '' : 'st'; el.innerHTML = p ? stepList(p, ENDED(status(s))) : '단계 시각을 가져오지 못했습니다 (서버에 /api/plans 가 없으면 갱신 필요)'; }
+}
+
+// Edges over the laid-out nodes of every open group, redrawn when the layout changes.
+let mpRO = null;
+function mapEdges() {
+  const grids = [...$('#view').querySelectorAll('.mp-grid')];
+  if (!grids.length) return;
+  const msgs = recentMsgs();
+  for (const grid of grids) {
+    const svg = grid.querySelector('.mp-edges');
+    let edges = JSON.parse(grid.dataset.edges || '[]');
+    if (msgs.length && !grid.dataset.msgs) {  // messages arrive after the first draw: merge them in once
+      const g = mapGroupOf(grid.dataset.g);
+      if (g) { const vis = {}; grid.querySelectorAll('[data-n]').forEach(b => (vis[b.dataset.n] = b.dataset.n)); edges = edges.concat(groupEdges(g, vis, msgs).filter(e => e.k === 'msg' && !edges.some(f => f.a === e.a && f.b === e.b && f.k === 'msg'))); }
+      grid.dataset.msgs = '1'; grid.dataset.edges = JSON.stringify(edges);
+    }
+    const o = grid.getBoundingClientRect(), at = k => grid.querySelector(`[data-n="${CSS.escape(k)}"]`);
+    svg.setAttribute('width', grid.scrollWidth); svg.setAttribute('height', grid.scrollHeight);
+    svg.innerHTML = `<defs>${['spawn', 'dep', 'msg', 'bad'].map(k => `<marker id="mp-a-${k}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="mp-m ${k}" d="M0,0 L8,4 L0,8 z"/></marker>`).join('')}</defs>`
+      + edges.map(e => {
+        const A = at(e.a), B = at(e.b); if (!A || !B) return '';
+        const a = A.getBoundingClientRect(), b = B.getBoundingClientRect(), L = r => r.left - o.left, T = r => r.top - o.top;
+        let d;
+        if ((e.k === 'spawn' || e.k === 'bad') && b.left >= a.right - 4) {  // parent → children: one trunk down the gap, a branch into each
+          const x1 = L(a) + a.width, y1 = T(a) + Math.min(a.height / 2, 18), xt = x1 + 18, x2 = L(b) - 2, y2 = T(b) + b.height / 2;
+          return `<path class="mp-e spawn" d="M${x1},${y1} H${xt} V${y2}"/><path class="mp-e ${e.k}" d="M${xt},${y2} H${x2}" marker-end="url(#mp-a-${e.k})"/>`;
+        }
+        if (b.left >= a.right - 4) { const x1 = L(a) + a.width, y1 = T(a) + a.height / 2, x2 = L(b) - 2, y2 = T(b) + b.height / 2, c = Math.max(12, (x2 - x1) / 2); d = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`; }
+        else if (a.left >= b.right - 4) { const x1 = L(a), y1 = T(a) + a.height / 2, x2 = L(b) + b.width + 2, y2 = T(b) + b.height / 2, c = Math.max(12, (x1 - x2) / 2); d = `M${x1},${y1} C${x1 - c},${y1} ${x2 + c},${y2} ${x2},${y2}`; }
+        else { const x1 = L(a) + 14, y1 = b.top > a.top ? T(a) + a.height : T(a), x2 = L(b) + 14, y2 = b.top > a.top ? T(b) - 2 : T(b) + b.height + 2, c = (y2 - y1) / 2; d = `M${x1},${y1} C${x1 - 16},${y1 + c} ${x2 - 16},${y2 - c} ${x2},${y2}`; }
+        return `<path class="mp-e ${e.k}" d="${d}" marker-end="url(#mp-a-${e.k})"/>`;
+      }).join('');
+  }
+}
+const mapGroupOf = key => mapLast?.groups.find(g => g.key === key);
+function mapBind() {
+  mpRO?.disconnect();
+  const wrap = $('#view .mp-main');
+  if (!wrap) return;
+  mapEdges();
+  mpRO = new ResizeObserver(() => mapEdges()); mpRO.observe(wrap);
+  const rerender = () => { const sv = saveScroll(); renderAgents(); restoreScroll(sv); };
+  const save = () => { try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {} };
+  $('#view').querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
+    if (b.dataset.mpd) { famMin[b.dataset.mpd] = true; save(); return rerender(); }
+    const k = b.dataset.n; mapSel = k && mapSel !== k ? k : null;
+    try { mapSel ? localStorage.setItem('adash.mapsel', mapSel) : localStorage.removeItem('adash.mapsel'); } catch {}
+    rerender();
+    if (mapSel && PHONE.matches) $('#view .mp-side')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+  $('#view').querySelectorAll('[data-mpd][data-unfold]').forEach(b => b.onclick = () => { famMin[b.dataset.mpd] = false; save(); rerender(); });
+  $('#view').querySelectorAll('[data-mpg], [data-mpb]').forEach(b => b.onclick = () => { famMin[b.dataset.mpg || b.dataset.mpb] = b.dataset.open !== '1'; save(); rerender(); });
+  const more = $('#mp-more'); if (more) more.onclick = () => { mapMore += 40; rerender(); };
+  $('#view').querySelectorAll('[data-mpbm]').forEach(b => b.onclick = () => { famMin[b.dataset.mpbm] = +b.dataset.n0 + 24; save(); rerender(); });
+  flowOkBind();
+  mapPlan();
+}
+// 「정상으로 표시」: the server stores it and leaves the deviation out from then on; the toast can take it back.
+function flowOkBind() {
+  $('#view').querySelectorAll('[data-flow-ok]').forEach(b => b.onclick = async () => {
+    const x = (state.flow?.items || []).find(y => y.id === b.dataset.flowOk && (y.server || '') === b.dataset.srv);
+    if (!x) return;
+    b.disabled = true; b.textContent = '저장 중…';
+    const r = await api.flowOk(x.server, x.id, true, { rule: x.rule, reason: x.reason });
+    if (r.status !== 200) { b.disabled = false; b.textContent = '정상으로 표시'; return uiAlert(r.body?.error || `저장 실패 (${r.status})`); }
+    await refresh();
+    toast(`「${cut(x.reason, 30)}」 정상으로 표시`, async () => { await api.flowOk(x.server, x.id, false); await refresh(); });
+  });
+}
+
+// ---------- 진행 타임라인: one coordinator and the agents below it on one time axis ----------
+let tlSel = null;
+try { tlSel = localStorage.getItem('adash.tlcoord') || null; } catch {}
+let tlToken = 0, tlWin = null;  // hours shown (0 = all); null = all for a small tree, the last 6 hours for a big one
+try { const v = localStorage.getItem('adash.tlwin'); tlWin = v === null ? null : +v; } catch {}
+const TL_WIN = [[2, '2시간'], [6, '6시간'], [24, '24시간'], [0, '전체']], TL_MAX = 80;
+function tlChoices() {
+  const { groups } = mapModel();
+  return groups.flatMap(g => g.bands.filter(b => b.coord.sess && (b.work.length || b.review.length || b.coord.sess.role === 'coordinator')).map(b => ({ b, g })));
+}
+function tlHtml() {
+  needReviews();
+  const ch = tlChoices();
+  if (!ch.length) return '<div class="empty">시간축에 놓을 코디네이터가 없습니다.</div>';
+  const pick = ch.find(x => x.b.coord.id === tlSel) || ch[0];
+  const opt = x => { const n = x.b.coord, d = bandNodes(x.b).reduce((a, y) => a + y.devs.length, 0);
+    return `<option value="${esc(n.id)}"${x === pick ? ' selected' : ''}>${d ? `⚠${d} ` : ''}${esc(cutW(n.name, 50))} · ${esc(NODE_ST[n.st] || '')} · 하위 ${x.b.work.length + x.b.review.length}</option>`; };
+  return `<div class="controls tl-ctl"><label>코디네이터 <select id="tl-pick" class="field">${ch.map(opt).join('')}</select></label>
+      <span class="seg" id="tl-win" role="group" aria-label="기간">${TL_WIN.map(([h, l]) => `<button type="button" data-h="${h}">${h ? '최근 ' + l : l}</button>`).join('')}</span></div>
+    <div class="legend tl-leg"><span><i class="tl-k bar"></i>막대 = aplan 계획 단계(시작~끝)</span><span><i class="tl-k act"></i>회색 막대 = 계획 없음(첫 기록~마지막 기록)</span><span><i class="tl-k ghost"></i>점선 틀 = 기대 시간(같은 Run 의 끝난 형제 중앙값)</span><span><i class="tl-k hatch"></i>빗금 = 결과 없음 · 응답 없음</span><span><i class="tl-k msg"></i>보라 점선 = 메시지</span><span><i class="tl-k now"></i>파란 선 = 지금</span></div>
+    <div id="tl-body" data-pick="${esc(pick.b.coord.id)}"><div class="empty">계획을 불러오는 중…</div></div>`;
+}
+const TL_ROW = 34, TL_LABEL = 190;
+const STEP_WORD = { done: '완료', skip: '건너뜀', fail: '실패', run: '진행 중' };
+async function tlFill() {
+  const el = $('#tl-body'), id = el?.dataset.pick;
+  if (!el) return;
+  const pick = tlChoices().find(x => x.b.coord.id === id);
+  if (!pick) return;
+  const my = ++tlToken;
+  const { b, g } = pick, rows = [];
+  const push = (n, depth) => rows.push({ n, depth });
+  push(b.coord, 0);
+  const bands = g.bands.filter(x => x === b || (() => { for (let p = x.coord.parent; p;) { if (p === b.coord.id) return true; p = g.bands.find(y => y.coord.id === p)?.coord.parent; } return false; })());
+  for (const x of bands) { if (x !== b) push(x.coord, x.depth - b.depth); [...x.work, ...x.review].sort((p, q) => (taskT0(p) || Infinity) - (taskT0(q) || Infinity)).forEach(n => push(n, x.depth - b.depth + 1)); }
+  // The window and the row cap come before fetching plans: a tree of hundreds of workers draws its recent part.
+  const win = tlWin ?? (rows.length > 40 ? 6 : 0), from = win ? Date.now() - win * 3600e3 : 0;
+  $('#tl-win')?.querySelectorAll('button').forEach(x => { x.classList.toggle('on', +x.dataset.h === win); x.setAttribute('aria-pressed', +x.dataset.h === win); });
+  const planned = rows.filter((r, i) => i && !r.n.sess).length;
+  let shown = rows.filter((r, i) => !i || (r.n.sess && taskT0(r.n) && (!from || (taskT1(r.n) ?? Date.now()) >= from)));
+  if (shown.length > TL_MAX) { const keep = new Set([shown[0], ...shown.slice(1).sort((p, q) => (taskT1(q.n) || 0) - (taskT1(p.n) || 0)).slice(0, TL_MAX - 1)]); shown = shown.filter(r => keep.has(r)); }
+  const meta = { from, planned, out: rows.length - planned - shown.length, win, handles: bands.flatMap(x => [x.fam?.handle, ...(x.fam?.extra || [])].filter(Boolean).map(h => [h, x.coord.id])) };
+  const sess = [...new Set(shown.map(r => r.n.sess).filter(Boolean))];
+  const draw = plans => { if (my === tlToken && $('#tl-body') === el) { el.innerHTML = tlBody(shown, plans, meta); tlBind(); } };
+  if (sess.every(s => planCache.get(s.path)?.sig === planSig(s))) draw(Object.fromEntries(sess.map(s => [s.path, planCache.get(s.path).plans])));
+  else { if (!el.querySelector('.tl')) draw(Object.fromEntries(sess.map(s => [s.path, planCache.get(s.path)?.plans || []]))); draw(await plansFor(sess)); }
+  if (!talk.data) { await talkOnce(); if (talk.data && my === tlToken) tlFill(); }
+}
+// When a row's work started: its task's start (a reused session takes the task later), else the session's.
+const taskT0 = n => { const t = n.taskId && IX.tasks[n.taskId], s = n.sess; const a = s?.started && toDate(s.started).getTime(), c = t?.created_at && toDate(t.created_at).getTime(); return a ? Math.max(a, c || 0) : c || null; };
+const taskT1 = n => { const t = n.taskId && IX.tasks[n.taskId], s = n.sess;
+  if (t?.completed_at) return toDate(t.completed_at).getTime();
+  if (s) return OPEN(status(s)) ? Date.now() : toDate(s.last_ts).getTime();
+  return null; };
+function tlBody(rows, plans, meta = {}) {
+  const now = Date.now(), live = rows.some(r => r.n.sess && OPEN(status(r.n.sess)));
+  const t0s = rows.map(r => taskT0(r.n)).filter(Boolean), t1s = rows.map(r => taskT1(r.n)).filter(Boolean);
+  if (!t0s.length) return '<div class="empty">시작한 에이전트가 없습니다.</div>';
+  const T0 = Math.max(Math.min(...t0s), meta.from || 0), T1 = Math.max(live ? now : Math.max(...t1s), T0 + 10 * 60e3);
+  const W = Math.max(560, ($('#tl-body')?.clientWidth || 900) - TL_LABEL - 24), X = t => (t - T0) / (T1 - T0) * W;
+  const span = (T1 - T0) / 60e3, steps = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440], step = steps.find(s => W / (span / s) >= 70) || 1440;
+  const ticks = []; for (let m = 0; m <= span; m += step) ticks.push(`<span style="left:${X(T0 + m * 60e3)}px">${m < 60 ? m + '분' : Math.floor(m / 60) + '시간' + (m % 60 ? ' ' + m % 60 + '분' : '')}</span>`);
+  const missingOf = new Map();  // reviewer task -> the verdict that passed without it
+  for (const x of state.flow?.items || []) if (x.rule === 'missing') for (const id of x.task_ids.slice(1)) missingOf.set(id, x);
+  const rowOf = new Map();
+  rows.forEach((r, i) => { for (const h of r.n.sess ? [r.n.sess.own_handle, r.n.sess.orca_focus] : []) if (h && !rowOf.has(h)) rowOf.set(h, i); });
+  for (const [h, id] of meta.handles || []) { const i = rows.findIndex(r => r.n.id === id); if (i >= 0 && !rowOf.has(h)) rowOf.set(h, i); }  // a coordinator's script drivers
+  const bar = (a, b, cls, label, tip) => { const l = X(Math.max(a, T0)), w = Math.max(3, X(Math.min(b, T1)) - l); return `<div class="tl-b ${cls}" style="left:${l}px;width:${w}px" title="${esc(tip)}">${w > 34 ? esc(label) : ''}</div>`; };
+  const track = r => {
+    const n = r.n, s = n.sess, a = taskT0(n), z = taskT1(n);
+    if (!s || !a) return `<span class="st tl-none">${esc(NODE_ST[n.st] || '')}${n.item?.open ? ' · 선행 ' + esc(cut(n.item.deps.join(', '), 40)) : ''}</span>`;
+    let h = '';
+    const t = n.taskId && IX.tasks[n.taskId], e = t && taskLeft(t)?.e;
+    if (e && a + e.ms > T0) { const g1 = a + e.ms; h += `<div class="tl-ghost${g1 > T1 ? ' open' : ''}" style="left:${X(Math.max(a, T0))}px;width:${X(Math.min(g1, T1)) - X(Math.max(a, T0))}px" title="기대 ${mins(e.ms)} · 같은 Run${e.role ? ` · 같은 역할(${esc(e.role)})` : ''}의 끝난 형제 ${e.n}개 중앙값${g1 > T1 ? ' · 기대 끝은 아직 오지 않음' : ''}"></div>`; }
+    const ended = ENDED(status(s)), stalled = status(s) === 'stalled', last = toDate(s.last_ts).getTime();
+    const steps = (plans[s.path] || []).flatMap(p => p.steps.map((x, i) => ({ ...x, i, n: p.steps.length })))
+      .filter(x => x.ts0 && x.st !== 'todo').map(x => ({ ...x, a: new Date(x.ts0).getTime(), b: x.ts1 ? new Date(x.ts1).getTime() : x.st === 'run' && !ended && !stalled ? Math.min(now, z || now) : last }))
+      .filter(x => x.b > a - 60e3 && x.a < (z || now) + 60e3);  // a reused session: only the steps inside this task's own window
+    if (steps.length) for (const x of steps) { const st = ended && x.st === 'run' ? 'miss' : x.st;
+      h += bar(Math.max(x.a, a), Math.min(x.b, z || x.b), 'st-' + st, x.t, `계획 단계 ${x.i + 1}/${x.n} · ${x.t} · ${st === 'miss' ? '표시 안 됨(세션 종료)' : STEP_WORD[x.st] || ''} · ${hhmm(new Date(x.a).toISOString())}~${x.ts1 ? hhmm(x.ts1) : st === 'run' ? '지금' : hhmm(s.last_ts)} (${mins(Math.max(0, Math.min(x.b, z || x.b) - x.a))})`); }
+    else { const why = s.plan && !(plans[s.path] || []).length ? '계획 시각 없음' : '계획 없음';  // a plan the server could not send times for is not 「계획 없음」
+      h += bar(a, z || last, 'act', why, `${why} · 첫 기록 ${hhmm(new Date(a).toISOString())} ~ ${OPEN(status(s)) ? '지금' : '마지막 기록 ' + hhmm(s.last_ts)}`); }
+    if (stalled) h += bar(last, now, 'hatch bad', `응답 없음 ${human((now - last) / 1000)}`, `응답 없음 — 마지막 기록 ${hhmm(s.last_ts)} 이후 ${human((now - last) / 1000)}`);
+    const miss = n.taskId && missingOf.get(n.taskId);
+    if (miss) { const v = IX.tasks[miss.task_id], vd = v?.completed_at ? toDate(v.completed_at).getTime() : now; h += bar(a, Math.max(vd, a + 60e3), 'hatch', '결과 없음', `결과 없음 — 판정이 ${v?.completed_at ? hhmm(toDate(v.completed_at).toISOString()) : ''}에 이 리뷰 없이 통과`); }
+    return h;
+  };
+  const msgs = (talk.data?.messages || []).filter(m => m.type !== 'heartbeat' && m.created_at && rowOf.has(m.from_term) && rowOf.has(m.to_term) && m.from_term !== m.to_term)
+    .map(m => ({ m, t: toDate(m.created_at).getTime(), a: rowOf.get(m.from_term), b: rowOf.get(m.to_term) })).filter(x => x.t >= T0 && x.t <= T1);
+  const lines = msgs.map(x => { const top = Math.min(x.a, x.b) * TL_ROW + TL_ROW / 2, hgt = Math.abs(x.a - x.b) * TL_ROW;
+    return `<div class="tl-msg" style="left:${X(x.t)}px;top:${top}px;height:${hgt}px" title="${esc(`${TALK_TYPES[x.m.type]?.[0] || x.m.type} · ${hhmm(toDate(x.m.created_at).toISOString())} · ${rows[x.a].n.name} → ${rows[x.b].n.name}\n${x.m.subject || ''}`)}"><i style="top:${x.b > x.a ? hgt - 4 : -2}px"></i></div>`; }).join('');
+  const label = r => { const n = r.n, d = n.devs?.length; const nm = `${r.depth ? '└ '.padStart(r.depth * 2 + 1, ' ') : ''}${cutW(n.name, 26)}`;
+    return `<span class="tl-l" title="${esc(n.name)}">${n.sess ? `<a href="#s=${encodeURIComponent(n.sess.path)}">${esc(nm)}</a>` : esc(nm)}${d ? ` <span class="mp-dev ${sevOf(n.devs) === 2 ? 'bad' : 'warn'}">⚠${d}</span>` : ''}</span>`; };
+  const devRows = rows.filter(r => r.n.devs?.length), okRows = rows.filter(r => r.n.sess && judged(r.n) && !r.n.devs?.length && ENDED_ST(r.n.st) && r.n.st !== 'fail');
+  const okCards = okRows.slice(0, 3).map(r => { const s = r.n.sess, pl = (plans[s.path] || []).slice(-1)[0], t = r.n.taskId && IX.tasks[r.n.taskId];
+    const inOrder = pl && pl.steps.every((x, i, xs) => x.st === 'done' && (!i || (xs[i - 1].ts1 || '') <= (x.ts1 || '')));
+    const took = taskT0(r.n) && taskT1(r.n) ? taskT1(r.n) - taskT0(r.n) : null, med = t && estIndex().durs[t.run_id]?.length ? (() => { const ds = estIndex().durs[t.run_id].filter(d => d.role === roleOf(t)); return ds.length ? median(ds.map(d => d.ms)) : null; })() : null;
+    return `<div class="box tl-card ok"><b>✓ ${esc(cutW(r.n.name, 34))} — 정상</b><div class="st">${pl ? `aplan ${pl.steps.length}단계를 ${[inOrder && '순서대로', pl.steps.every(x => x.st === 'done' || x.st === 'skip') ? '모두 끝냄' : '일부 남김'].filter(Boolean).join(' ')}` : '계획 없이 끝남'}${took && med ? ` · ${mins(took)} (형제 중앙값 ${mins(med)})` : took ? ` · ${mins(took)}` : ''}</div></div>`; }).join('');
+  const devCards = devRows.flatMap(r => r.n.devs.map(x => `<div class="box tl-card ${x.severity}"><b>⚠ ${esc(cutW(r.n.name, 30))} — ${esc(x.rule_name)}</b><div>${esc(x.reason)}</div><ul class="st">${x.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+    <button type="button" class="act" data-flow-ok="${esc(x.id)}" data-srv="${esc(x.server || '')}">정상으로 표시</button></div>`)).join('');
+  return `<div class="tscroll tl-scroll"><div class="tl" style="width:${TL_LABEL + W + 16}px">
+      <div class="tl-ax" style="padding-left:${TL_LABEL}px"><div style="width:${W}px">${ticks.join('')}</div></div>
+      <div class="tl-rows" style="--tl-w:${W}px">${rows.map(r => `<div class="tl-row st-${r.n.st}">${label(r)}<div class="tl-tr">${track(r)}</div></div>`).join('')}
+        <div class="tl-over" style="left:${TL_LABEL}px;width:${W}px">${lines}${live ? `<div class="tl-now" style="left:${X(now)}px" title="지금 ${hhmm(new Date(now).toISOString())}"></div>` : ''}</div></div>
+      <div class="st tl-foot">시작 ${esc(new Date(T0).toLocaleString('ko-KR', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }))} 기준 경과 · ${live ? '지금까지' : '마지막 기록까지'} · 에이전트 ${rows.filter(r => r.n.sess).length}${meta.out ? ` · 기간 밖·상한(${TL_MAX}줄)으로 뺀 에이전트 ${meta.out}` : ''}${meta.planned ? ` · 생성 예정 ${meta.planned}(시작 전이라 그리지 않음)` : ''} · 메시지 ${msgs.length}${talk.data ? '' : ' (메시지 불러오는 중)'}</div></div></div>
+    <div class="tl-cards">${devCards || (rows.some(r => judged(r.n)) ? '<div class="box tl-card ok"><b>✓ 이 코디네이터 아래 흐름 이탈 없음</b></div>' : '<div class="box tl-card"><b>이 에이전트들의 메트릭 서버는 흐름 판정을 보내지 않습니다</b></div>')}${okCards}</div>`;
+}
+function tlBind() {
+  flowOkBind();
+  $('#tl-win')?.querySelectorAll('button').forEach(b => b.onclick = () => { tlWin = +b.dataset.h; try { localStorage.setItem('adash.tlwin', tlWin); } catch {} tlFill(); });
+  const sel = $('#tl-pick');
+  if (sel) sel.onchange = () => { tlSel = sel.value; try { localStorage.setItem('adash.tlcoord', tlSel); } catch {} renderAgents(); };
+}
+
+function agViewBind() {
+  $('#ag-view').querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === agView);
+    b.setAttribute('aria-pressed', b.dataset.k === agView);
+    b.onclick = () => { agView = b.dataset.k; try { localStorage.setItem('adash.agview', agView); } catch {} renderAgents(); };
+  });
+}
 function renderAgents() {
   const { fams, solos } = families();
   const fv = fams.filter(liveFam), sv = solos.filter(liveSess);
@@ -2280,13 +2827,16 @@ function renderAgents() {
   const top = state.sessions.filter(s => !s.parent), up = agView === 'wt' ? coordOf(fams) : null;
   const one = x => agView === 'wt' ? wtHtml(top, fams, up, x)
     : agentsHtml(fv.filter(f => !x || famSrv(f) === x.id), sv.filter(s => !x || s.server === x.id), x);
+  const seg = `<div class="controls ag-controls"><span class="seg" id="ag-view"><button data-k="tree">코디네이터 트리</button><button data-k="wt">워크트리별</button><button data-k="map">관계 지도</button><button data-k="tl">타임라인</button></span></div>`;
+  if (agView === 'map' || agView === 'tl') {  // the flow views: one picture over every server that is on
+    $('#view').innerHTML = seg + (agView === 'map' ? mapHtml() : tlHtml());
+    agViewBind();
+    if (agView === 'map') mapBind(); else { tlBind(); tlFill(); }
+    return;
+  }
   const h = srvView === 'split' && multiSrv() ? srvOn().map(one).join('').replace('sec-h srv-h', 'sec-h srv-h first') : one(null);
-  $('#view').innerHTML = `<div class="controls ag-controls"><span class="seg" id="ag-view"><button data-k="tree">코디네이터 트리</button><button data-k="wt">워크트리별</button></span></div>`
-    + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>') + extPlansHtml((state.ext_plans || []).filter(p => !planOwner(p)));
-  $('#ag-view').querySelectorAll('button').forEach(b => {
-    b.classList.toggle('on', b.dataset.k === agView);
-    b.onclick = () => { agView = b.dataset.k; try { localStorage.setItem('adash.agview', agView); } catch {} renderAgents(); };
-  });
+  $('#view').innerHTML = seg + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>') + extPlansHtml((state.ext_plans || []).filter(p => !planOwner(p)));
+  agViewBind();
   { const el = $('#view .tests-sec'); if (el) el.ontoggle = () => testsOpen = el.open; }  // survives live re-renders
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
   $('#view').querySelectorAll('[data-fold]').forEach(b => b.onclick = e => { e.stopPropagation(); foldAll(b.dataset.fold === 'open'); });
