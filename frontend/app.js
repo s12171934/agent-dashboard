@@ -107,6 +107,11 @@ function index() {
   return { tasks, runOf, runsByCoord, byId, subsOf, addedBy };
 }
 let IX = null;
+// Values derived from the whole snapshot (test items, which session started which E2E run) that every card asks for:
+// computed once per refresh instead of once per card, which was quadratic in the session count. Keyed by IX, which
+// refresh() rebuilds with every new snapshot.
+let snapMemo = null;
+const memo = () => (snapMemo?.ix === IX ? snapMemo : (snapMemo = { ix: IX, sessOf: new WeakMap() }));
 const nameOf = s => (s.role === 'worker' && IX.tasks[s.task_id]?.display_name) || s.title;
 // additive totals including subagents
 const bothUse = x => ({ ...(x.skill_use || {}), ...Object.fromEntries(Object.entries(x.mcp_use || {}).map(([k, c]) => ['mcp:' + k, c])) });
@@ -168,7 +173,10 @@ function famTotals(f) {
   f.turns = aggs.reduce((a, x) => a + x.turns, 0);
   f.tok = aggs.reduce((a, x) => a + Object.values(x.tok).reduce((p, q) => p + q, 0), 0);
 }
-function families() {
+// The tree depends only on the snapshot (not on folds or filters), and driver blocks look up their owner in it, so it is
+// built once per refresh.
+const families = () => memo().fams ||= buildFamilies();
+function buildFamilies() {
   const top = state.sessions.filter(s => !s.parent);
   const fams = [], used = new Set();
   // Top-level coordinators first; sub-coordinators are pulled in by their parent's subtree.
@@ -1443,7 +1451,7 @@ function e2eRunLine(id, r, inCard) {
 // An active run belongs to the session whose name or task title is its caller ("X1#6 리뷰 claude"); a run without such a
 // session (a driver's own verify, or 미지정) stays on the ticket.
 const e2eNorm = x => String(x || '').replace(/\s+/g, ' ').trim();
-const e2eRunsAll = () => { const seen = new Set(), out = [];
+const e2eRunsAll = () => { const m = memo(); if (m.e2eRuns) return m.e2eRuns; const seen = new Set(), out = m.e2eRuns = [];
   for (const p of state.ext_plans || []) for (const k of p.tickets || []) {
     if (!k.e2e || seen.has(k.e2e_progress)) continue; seen.add(k.e2e_progress);
     for (const [id, r] of Object.entries(k.e2e.active || {})) out.push({ id, r, k });
@@ -1451,8 +1459,9 @@ const e2eRunsAll = () => { const seen = new Set(), out = [];
   return out; };
 // Match order: terminal (ORCA_TERMINAL_HANDLE = the session's own_handle, or the Orca pane it runs in) → session_id (CLAUDE_CODE_SESSION_ID; codex
 // workers may lack it) → caller name → 「미지정 (cwd …)」 with exactly one running worker in that worktree.
-const e2eSessOf = r => {
-  const top = state.sessions.filter(s => !s.parent), newest = a => a.sort((x, y) => (y.last_ts || '').localeCompare(x.last_ts || ''))[0] || null;
+const e2eSessOf = r => { const m = memo().sessOf; if (!m.has(r)) m.set(r, e2eSessFind(r)); return m.get(r); };
+const e2eSessFind = r => {
+  const top = memo().top ||= state.sessions.filter(s => !s.parent), newest = a => a.sort((x, y) => (y.last_ts || '').localeCompare(x.last_ts || ''))[0] || null;
   if (r.terminal) { const m = newest(top.filter(s => s.own_handle === r.terminal || s.orca_focus === r.terminal)); if (m) return m; }
   if (r.session_id) { const m = top.find(s => s.id === r.session_id); if (m) return m; }
   const c = e2eNorm(r.caller); if (!c) return null;
@@ -1480,11 +1489,22 @@ function e2eDriverHtml(d) {
   if (!runs.length) return '';
   return `<div class="e2e e2e-card">${runs.map(({ id, r }) => `${e2eRunLine(id, r)}${(r.tests || []).length ? `<div class="cbr e2e-tcs">${e2eRunChips(r)}</div>` : ''}`).join('')}</div>`;
 }
+// Per snapshot: session -> its active runs, and session -> its last finished run.
+function e2eBySess() {
+  const m = memo();
+  if (m.e2eBy) return m.e2eBy;
+  const runs = new Map(), last = new Map(), at = h => h.finished_at || h.started_at || '';
+  for (const x of e2eRunsAll()) { const s = e2eSessOf(x.r); if (s) (runs.get(s) || runs.set(s, []).get(s)).push(x); }
+  for (const p of state.ext_plans || []) for (const k of p.tickets || []) for (const h of k.e2e?.history || []) {
+    const s = e2eSessOf(h);
+    if (s && (!last.has(s) || at(h).localeCompare(at(last.get(s))) > 0)) last.set(s, h);
+  }
+  return (m.e2eBy = { runs, last });
+}
 function e2eCardHtml(s) {
-  const runs = e2eRunsAll().filter(x => e2eSessOf(x.r) === s);
+  const by = e2eBySess(), runs = by.runs.get(s) || [];
   if (!runs.length) {  // not running now: the session's last finished run, if any
-    const last = (state.ext_plans || []).flatMap(p => (p.tickets || []).flatMap(k => k.e2e?.history || []))
-      .filter(h => e2eSessOf(h) === s).sort((a, b) => (b.finished_at || b.started_at || '').localeCompare(a.finished_at || a.started_at || ''))[0];
+    const last = by.last.get(s);
     if (!last) return '';
     const ok = last.outcome === 'passed', cls = ok ? 'done' : last.failed || E2E_BAD.includes(last.outcome) ? 'fail' : 'pending';
     return `<div class="e2e e2e-card"><div class="cbr e2e-run" title="${esc((last.ids || []).join(', ') + (last.log ? ' · ' + last.log : ''))}"><b class="e2e-tag">E2E</b><span class="tkc ${cls}"><i>${TK_IC[cls]}</i>마지막 ${esc(E2E_TEST[last.outcome] || last.outcome || '?')}</span><span>통과 ${last.passed ?? 0} · 실패 ${last.failed ?? 0}</span><span class="st">${ago(last.finished_at || last.started_at)}${last.started_at && last.finished_at ? ` · ${dur(last.started_at, last.finished_at)}` : ''}</span></div></div>`;
@@ -1791,7 +1811,9 @@ const TEST_PHASE = { building: '빌드', running: '실행 중', done: '통과', 
 const testLive = t => t.phase !== 'done' && t.phase !== 'failed';
 const ageS = ts => ts ? (Date.now() - toDate(ts)) / 1000 : Infinity;
 function testItems() {
-  const T = state.tests || {}, out = [];
+  const m = memo();
+  if (m.tests) return m.tests;
+  const T = state.tests || {}, out = m.tests = [];
   for (const f of T.files || []) {
     const updated = f.updated_at || (f.mtime && new Date(f.mtime * 1000).toISOString());
     out.push({ ...f, src: 'file', updated_at: updated, finished_at: testLive(f) ? null : updated,
