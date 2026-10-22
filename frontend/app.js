@@ -2036,6 +2036,67 @@ function qaAutoHtml(s) {
   const sum = qs.length ? `<div class="rv-jsum">진행 ${Object.keys(QA_ST).length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
   return (qs.length ? qaLegend() : '') + (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
 }
+// 「QA 통계」 of a set, all from /api/reviews: a summary, rounds started and finished per day, and the change size.
+function qaStatsHtml(s) {
+  const T = s.tickets, n = T.length;
+  if (!n) return '';
+  const open = (() => { try { return localStorage.getItem('adash.qastats') === '1'; } catch { return false; } })();
+  const qs = T.map(t => t.qa).filter(Boolean), fin = T.filter(t => jiraStage(t) === 'qa').length, pct = Math.round(fin / n * 100);
+  const re = qs.filter(q => q.round > 1).length, rounds = qs.reduce((a, q) => a + (q.round || 0), 0);
+  const tile = (v, l, tip, extra = '') => `<div class="qs-tile"${tip ? ` title="${esc(tip)}"` : ''}><b>${v}</b><span>${l}</span>${extra}</div>`;
+  const tiles = [
+    tile(`${fin}/${n}`, `QA 완료 ${pct}%`, 'Jira 가 QA 완료인 티켓 / 에픽의 하위 티켓', `<i class="qs-bar"><i style="width:${pct}%"></i></i>`),
+    qs.length ? tile(re, `재오픈 티켓 ${Math.round(re / qs.length * 100)}%`, '2회차 이상 기동한 티켓 / 드라이버가 잡은 티켓') : '',
+    qs.length ? tile((rounds / qs.length).toFixed(1), '평균 회차', `드라이버가 잡은 티켓의 회차 합 ${rounds}`) : '',
+    tile(`${qs.length}/${n}`, '드라이버 기동', '드라이버가 한 번이라도 잡은 티켓'),
+    qs.length ? tile(qs.filter(q => q.blocked).length, '막힘') : ''].join('');
+  // Rounds started (1회차 = 신규, later = 재오픈) and tickets committed, per local day over the last 14 days.
+  const now = new Date(), days = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); days.push({ d, k: dayKey(d.toISOString()), neu: [], re: [], fin: [] }); }
+  const byDay = Object.fromEntries(days.map(x => [x.k, x]));
+  for (const t of T) {
+    const q = t.qa; if (!q) continue;
+    (q.rounds || []).forEach((r, i) => byDay[dayKey(r)]?.[i ? 're' : 'neu'].push(t.key));
+    const f = q.at?.committed || q.at?.cleaned;
+    if (f) byDay[dayKey(f)]?.fin.push(t.key);
+  }
+  while (days.length > 7 && !days[0].neu.length && !days[0].re.length && !days[0].fin.length) days.shift();
+  const tot = k => days.reduce((a, x) => a + x[k].length, 0);
+  const max = Math.max(1, ...days.map(x => Math.max(x.neu.length + x.re.length, x.fin.length)));
+  const seg = (v, c) => v ? `<i style="height:${v / max * 100}%;background:${c}"></i>` : '';
+  const lbl = v => v ? `<em>${v}</em>` : '';
+  const WD = '일월화수목금토';
+  const cols = days.map((x, i) => `<div class="qs-day" data-qs="${i}"><div class="qs-bars"><span class="qs-b">${lbl(x.neu.length + x.re.length)}${seg(x.re.length, 'var(--c2)')}${seg(x.neu.length, 'var(--c1)')}</span><span class="qs-b">${lbl(x.fin.length)}${seg(x.fin.length, 'var(--c3)')}</span></div><small>${x.d.getMonth() + 1}/${x.d.getDate()}</small></div>`).join('');
+  qaStatsDays[s.epic + '|' + s.server] = days.map(x => `<b>${x.d.getMonth() + 1}/${x.d.getDate()} (${WD[x.d.getDay()]})</b>`
+    + [['neu', '신규 기동', 'var(--c1)'], ['re', '재오픈 기동', 'var(--c2)'], ['fin', '커밋 완료', 'var(--c3)']].map(([k, l, c]) =>
+      `<br><i class="sw" style="background:${c}"></i>${l} <b>${x[k].length}</b>${x[k].length ? ' · ' + esc(x[k].join(', ')) : ''}`).join(''));
+  const leg = [['var(--c1)', '신규 기동', tot('neu')], ['var(--c2)', '재오픈 기동', tot('re')], ['var(--c3)', '커밋 완료', tot('fin')]]
+    .map(([c, l, v]) => `<span><i style="background:${c}"></i>${l} <b>${v}</b></span>`).join('');
+  // Change size: worktrees still on disk only (cleaned tickets drop out), summed per repo.
+  const rp = {}, prs = new Set();
+  let wt = 0;
+  for (const t of T) {
+    if (t.repos.length) wt++;
+    for (const r of t.repos) {
+      const a = rp[r.repo] ||= { t: 0, files: 0, ins: 0, dels: 0 };
+      a.t++; a.files += r.files || 0; a.ins += r.ins || 0; a.dels += r.dels || 0;
+      if (r.pr?.url) prs.add(r.pr.url);
+    }
+    (t.qa?.prs || []).forEach(u => prs.add(u));
+  }
+  const rows = Object.entries(rp).sort((a, b) => b[1].ins + b[1].dels - a[1].ins - a[1].dels);
+  const sum = rows.reduce((a, [, x]) => ({ t: a.t + x.t, files: a.files + x.files, ins: a.ins + x.ins, dels: a.dels + x.dels }), { t: 0, files: 0, ins: 0, dels: 0 });
+  const tr = (name, x, cls = '') => `<tr${cls}><td>${name}</td><td>${x.t}</td><td>${x.files}</td><td class="ins">+${x.ins}</td><td class="dels">−${x.dels}</td></tr>`;
+  const code = rows.length ? `<table class="qs-tbl"><thead><tr><th>저장소</th><th>티켓</th><th>파일</th><th>추가</th><th>삭제</th></tr></thead><tbody>${rows.map(([k, x]) => tr(esc(k), x)).join('')}${rows.length > 1 ? tr('합계', sum, ' class="tot"') : ''}</tbody></table>`
+    : '<div class="st">워크트리가 남은 티켓이 없습니다.</div>';
+  return `<details class="qa-legend qa-stats" data-set="${esc(s.epic + '|' + s.server)}"${open ? ' open' : ''}><summary>QA 통계</summary>
+    <div class="qs-tiles">${tiles}</div>
+    ${qs.length ? `<div class="qs-h">일별 추이 <span class="st">최근 ${days.length}일 · 왼쪽 막대 = 기동한 회차, 오른쪽 = 커밋 완료</span></div>
+    <div class="qs-chart">${cols}</div><div class="qs-leg">${leg}</div>` : ''}
+    <div class="qs-h">코드 변경 규모 <span class="st">워크트리가 남은 티켓 ${wt}개 · PR ${prs.size}개 · 베이스 대비</span></div>${code}
+    <div class="st">완료는 티켓의 마지막 회차 시각만 남아 앞 회차의 완료는 세지 않습니다. 정리된 티켓의 코드 변경은 빠집니다.</div></details>`;
+}
+const qaStatsDays = {};
 // The set's watcher itself: an older watcher (not qa-driver) can hand its automation to qa-driver; coordinators of
 // tickets that are past 진행 중 can be closed together; once every ticket is QA 완료 the QA can be ended (retire).
 const qaFinished = (t, set) => { const q = t.qa; if (!q?.live?.length || !['dev', 'ready', 'qa'].includes(jiraStage(t)) && !['delivered', 'cleaned'].includes(q.stage)) return false;
@@ -2133,12 +2194,15 @@ async function renderWorktrees() {
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
-      ${qaAutoHtml(s)}${qaLegacyHtml(s)}
+      ${qaStatsHtml(s)}${qaAutoHtml(s)}${qaLegacyHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   }).join('');
   $('#wt-body').innerHTML = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
-  $('#wt-body').querySelectorAll('.qa-legend').forEach(d => d.ontoggle = () => { try { localStorage.setItem('adash.qalegend', d.open ? '1' : '0'); } catch {} });
+  $('#wt-body').querySelectorAll('.qa-legend').forEach(d => d.ontoggle = () => { try { localStorage.setItem(d.classList.contains('qa-stats') ? 'adash.qastats' : 'adash.qalegend', d.open ? '1' : '0'); } catch {} });
+  const tip = $('#tip');
+  $('#wt-body').querySelectorAll('.qa-stats').forEach(d => { const days = qaStatsDays[d.dataset.set] || [];
+    d.querySelectorAll('[data-qs]').forEach(c => { c.onmousemove = e => tip.show(days[+c.dataset.qs], e); c.onmouseleave = () => tip.hide(); }); });
   if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
 }
 async function qaClick(b) {
