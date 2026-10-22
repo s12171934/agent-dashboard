@@ -5305,7 +5305,7 @@ class Handler(BaseHTTPRequestHandler):
         through `tailscale serve`, whose requests carry the ts.net Host and X-Forwarded-For. mark {"key", "done"}:
         record or clear the review in the ticket's vault step note, with each worktree's HEAD now. On a driver ticket
         whose coordinator has finished its own review (stage committed, ready/ written) a review is also the push·PR
-        approval: `qa-driver approve`. Earlier, the review alone is recorded."""
+        approval: `qa-driver approve`. Before committed a review is refused: the worktree is still being changed."""
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 65536)))
             key = body["key"]
@@ -5365,8 +5365,12 @@ class Handler(BaseHTTPRequestHandler):
             write_review(t["step"], shas if done else None, rnd)
         except (OSError, ValueError) as e:
             return self.send_json({"error": "스텝 노트 기록 실패: " + short(repr(e), 200)}, 500)
+        qa = t.get("qa") or {}
+        if done and qa.get("stage") in QA_STAGES[:QA_STAGES.index("committed")] and any(
+                x.get("driver") and any(y["key"] == key for y in x["tickets"]) for x in review_state["sets"]):
+            return self.send_json({"error": "코디네이터가 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"}, 409)
         approve = None
-        if done and (t.get("qa") or {}).get("stage") == "committed":
+        if done and qa.get("stage") == "committed":
             with lock:
                 st = next((x for x in review_state["sets"] if x.get("driver") and x.get("watch")
                            and any(y["key"] == key for y in x["tickets"])), None)
