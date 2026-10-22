@@ -1973,7 +1973,7 @@ function wtTicket(t, set) {
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
       ${t.repos.length ? `<span class="rv-acts">
         ${set.driver && t.qa?.stage === 'delivered' && !t.qa.merge_at ? `<button class="act big accent" data-qa-tk="merge" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 올린 PR 을 의존 저장소부터 머지하라고 지시합니다 (merge 파일을 남김)">PR 머지</button>` : ''}
-        ${set.driver && t.qa?.stage === 'delivered' && t.qa.merge_at ? `<span class="rv-flag warn" title="${esc(t.qa.merge_at)} 에 지시. PR 이 모두 머지되면 드라이버 회차가 정리합니다">머지 지시됨</span>` : ''}
+        ${set.driver && t.qa?.stage === 'delivered' && t.qa.merge_at ? `<button class="act big" disabled title="${esc(clockAt(t.qa.merge_at))} 에 지시. PR 이 모두 머지되면 드라이버 회차가 정리합니다">머지 지시됨</button>` : ''}
         ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
