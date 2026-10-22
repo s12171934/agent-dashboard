@@ -1820,14 +1820,14 @@ function agentsHtml(fv, sv, srv) {
 const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv.name)}</h2><span class="sp-msg ${cls}" title="${esc(srv.url)}">${esc(st)}</span>`; };
 // ---------- 워크트리: a QA set's tickets with their worktrees, reviewed ticket by ticket in VS Code ----------
 // Each server joins its QA sets' Jira children, Orca worktrees, vault step notes and test runs (/api/reviews). A review
-// is recorded in the step note's frontmatter and reads 「리뷰 후 변경」 once a worktree's HEAD moves past it, 「재오픈」 once
-// the driver starts a later round than the one the review saw (HEAD may not have moved yet). Opening VS Code
+// is recorded in the step note's frontmatter; the server moves its shas along with the worktrees' HEADs (rebases), and it
+// reads 「재오픈」 once the driver starts a later round than the one the review saw. Opening VS Code
 // goes to the set's server and works only when that server is this device's loopback (set.local).
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
 const wtf = (() => { try { return { f: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '' }; } })();
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], reopened: ['fail', '재오픈 후 리뷰 대기'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'reopened', 'pending', 'done', 'none'];
-const WT_FILTERS = { all: '전체', changed: '리뷰 후 변경', reopened: '재오픈', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
+const WT_FILTERS = { all: '전체', reopened: '재오픈', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
 // Jira status → stage. 보류(Holding), 개발 완료 and QA 준비 완료 share Jira's 'indeterminate' category with 진행 중, so they
 // go by name; an unknown name falls back to its category.
 const WT_JIRA = { todo: '시작 전', prog: '진행 중', hold: '보류', dev: '개발 완료', ready: 'QA 준비 완료', qa: 'QA 완료' };
@@ -2006,7 +2006,7 @@ async function renderWorktrees() {
   const body = wtData.sets.map(s => {
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
     const ts = s.tickets.filter(hit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
-    return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 리뷰 후 변경 ${n('changed')} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
+    return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
       ${qaAutoHtml(s)}${qaLegacyHtml(s)}

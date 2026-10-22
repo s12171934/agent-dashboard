@@ -4183,9 +4183,9 @@ def session_design_refs(sid):
 # prefs.json "qa_sets": [{"epic": "<epic key>", "project": "<vault-relative project folder>"}]. The epic's children
 # (Jira `parent = epic`, read only) are the set's tickets. Each ticket pulls in the Orca worktrees whose folder name
 # carries its key, the vault step note whose file name does (the project's progress.json lists them) and its latest
-# test run. A review is recorded in that step note's frontmatter (review / review_sha / review_at / review_round);
-# 「리뷰 후 변경」 and 「재오픈」 are not stored but derived: review_sha against the worktrees' HEADs now, review_round
-# against the driver's round now (a reopen may leave HEAD where the review saw it).
+# test run. A review is recorded in that step note's frontmatter (review / review_sha / review_at / review_round).
+# review_sha follows the worktrees' HEADs (rebases before push move them all the time); 「재오픈」 is derived from
+# review_round against the driver's round now, and is what sends a reviewed ticket back to review.
 QA_SETS = prefs.get("qa_sets") or []
 # Branch a worktree is compared with when it has no open PR, per repo (the main checkout's folder name); else main.
 REVIEW_BASES = prefs.get("review_bases") or {}
@@ -4319,6 +4319,28 @@ def reopened_since(fm, qa, path):
         return at < started[:10] or datetime.fromtimestamp(os.path.getmtime(path)).isoformat(" ") < started
     except OSError:
         return True
+
+
+def write_review_sha(path, shas):
+    """Replace only review_sha in a step note's frontmatter (review, review_at, review_round stay)."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        raise ValueError("frontmatter 없음")
+    out, skip = [], False
+    for ln in m.group(1).split("\n"):
+        if skip and ln[:1] in (" ", "\t"):
+            continue
+        skip = ln.startswith("review_sha:")
+        if skip:
+            out += ["review_sha:", *[f'  {r}: "{sh}"' for r, sh in sorted(shas.items())]]
+        else:
+            out.append(ln)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("---\n" + "\n".join(out) + "\n---\n" + text[m.end():])
+    os.replace(tmp, path)
 
 
 def project_notes(project, prefix):
@@ -4588,9 +4610,19 @@ def review_pass(jira, prs, stats):
             else:
                 rs = fm.get("review_sha") or {}
                 same = all(r["head"] and rs.get(r["repo"]) and r["head"].startswith(rs[r["repo"]]) for r in repos)
-                review = "done" if same else "changed"
-                if review == "done" and reopened_since(fm, qa, n["step"]):
+                if reopened_since(fm, qa, n["step"]):
                     review = "reopened"
+                else:
+                    review = "done"
+                    if not same and all(r["head"] for r in repos):
+                        # A moved HEAD is mostly a rebase before push: the review follows it instead of reading
+                        # 「리뷰 후 변경」. A reopen (a later round) is what sends a ticket back to review.
+                        shas = {r["repo"]: r["head"][:9] for r in repos}
+                        try:
+                            write_review_sha(n["step"], shas)
+                            fm["review_sha"] = shas
+                        except (OSError, ValueError) as e:
+                            log(f"review: {key} review_sha 갱신 실패 {e!r}")
             tickets.append({**c, "repos": repos, "review": review, "review_at": fm.get("review_at"),
                             "review_sha": fm.get("review_sha") or {}, "review_round": fm.get("review_round"),
                             "step": n.get("step"),
