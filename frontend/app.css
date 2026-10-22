@@ -565,7 +565,7 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .pj-head b { font-size: 14px; }
 .pj-head .st { flex-basis: 100%; }
-@media (max-width: 700px) { details.pj-row > summary { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { details.pj-row > summary { grid-template-columns: minmax(0, 1fr); } }
 
 /* a project's line of stages: each stage draws the half-segments on both sides of its node; green between two
    finished stages */
@@ -601,12 +601,12 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-kpis { margin-bottom: 8px; }
 .pj-kpis .kpi b.pj-sm { font-size: 13px; }
 .pj-prog { margin-bottom: 12px; }
-.pj-split { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+.pj-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
 .pj-split.on { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
 .pj-note { display: none; }
 .pj-split.on .pj-note { display: block; position: sticky; top: calc(var(--hdr-top) + 70px); max-height: calc(100vh - var(--hdr-top) - 90px); overflow: auto;
   padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--surface-edge); background: var(--surface-sheen), var(--surface-2); box-shadow: var(--surface-hi); }
-@media (max-width: 900px) { .pj-split.on { grid-template-columns: 1fr; } .pj-split.on .pj-note { position: static; max-height: none; } }
+@media (max-width: 900px) { .pj-split.on { grid-template-columns: minmax(0, 1fr); } .pj-split.on .pj-note { position: static; max-height: none; } }
 .pj-stage { border-top: 1px solid var(--surface-edge); padding: 8px 0; scroll-margin: calc(var(--hdr-top) + 80px); }
 .pj-stage:first-child { border-top: 0; }
 .pj-stage h4 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; font-size: 13px; }
@@ -626,6 +626,17 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-stitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-step .st { white-space: nowrap; }
 .pj-none { padding-left: 30px; }
+/* A phone fits all nine stages on one line (steps share the width, labels wrap) and step dates go under the title. */
+@media (max-width: 500px) {
+  .pj-flow .pj-st { flex: 1 1 0; min-width: 0; gap: 4px; }
+  .pj-flow .pj-st::before, .pj-flow .pj-st::after { top: 10px; }
+  .pj-flow .pj-dot { width: 22px; height: 22px; font-size: 10px; }
+  .pj-flow .pj-st > span { font-size: 9.5px; max-width: 100%; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.2; }
+  .pj-steps { padding-left: 22px; }
+  .pj-step { flex-wrap: wrap; gap: 0 8px; }
+  .pj-stitle { flex: 1 1 calc(100% - 20px); white-space: normal; }
+  .pj-step .st { margin-left: 17px; font-size: 11px; }
+}
 .vn-list { list-style: none; margin: 10px 0 0; padding: 0 4px 0 0; max-height: 480px; overflow-y: auto; }
 .vn-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 6px 0; border-top: 1px solid var(--surface-edge); }
 .vn-list li:first-child { border-top: 0; }
@@ -976,6 +987,15 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .qa-legend summary { cursor: pointer; color: var(--accent); width: fit-content; }
 .qa-legend ol { margin: 6px 0 4px; padding-left: 22px; display: grid; gap: 2px; }
 .qa-track a { color: var(--accent); text-decoration: none; margin-left: 6px; }
+/* A phone keeps the nine stages on one line (stage names wrap under their number) and the filter row scrolls sideways. */
+@media (max-width: 500px) {
+  .qa-steps { display: flex; flex: 1 1 100%; flex-wrap: nowrap; min-width: 0; }
+  .qa-steps > b { flex: 0 1 6px; min-width: 2px; }
+  .qa-step { flex: 1 1 0; min-width: 0; }
+  .qa-step small { font-size: 9px; line-height: 11px; white-space: normal; text-align: center; word-break: keep-all; overflow-wrap: anywhere; }
+  .qa-lbl { margin: 4px 0 0; }
+  #wt-f { flex-wrap: nowrap; }
+}
 .qa-autos { display: grid; gap: 6px; margin-bottom: 8px; }
 .qa-auto { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; }
 .qa-runs { display: inline-flex; gap: 3px; }
