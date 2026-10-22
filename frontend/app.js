@@ -736,24 +736,176 @@ const wpBar = (wp, ex = { starting: 0, later: 0 }) => {
   return `<div class="wp-row">${bar}<div class="pline wp-leg"><b>워커 계획 ${wp.spawnedEver}/${total} 생성</b><span class="pend">${swatch('done')}완료 <b>${wp.done}</b></span>${wp.live ? `<span class="pend">${swatch('spawned')}실행 <b>${wp.live}</b></span>` : ''}${wp.fail ? `<span class="pend">${swatch('fail')}실패 <b>${wp.fail}</b></span>` : ''}${pend ? `<span class="pend-sep">생성 예정 ${pend} =</span>${pendLine(pc)}` : ''}</div></div>`;
 };
 
-function workerPlanBox(d) {
-  const wp = workerPlan(d.own_handle, delegatedOf(d));
-  if (!wp) return '';
-  const stages = [];
-  wp.items.forEach(x => (stages[x.stage] ||= []).push(x));
-  const chip = x => {
-    const body = `<span class="ic">${WP_IC[x.st]}</span><span><span class="nm">${esc(x.name)}</span><span class="meta">${x.st === 'spawned' && x.live ? '워커 ' + ST_LABEL[x.live] + (x.live === 'stalled' && x.sess.state_reason ? ' · ' + esc(x.sess.state_reason) : '') : x.label || WP_LABEL[x.st]}${x.deps.length ? ` · 선행: ${x.deps.map(esc).join(', ')}` : ''}${x.sess ? ' · ' + esc(modelName(x.sess.model)) : ''}${x.spawned && x.done ? ' · ' + dur(x.spawned, x.done) : x.spawned ? ' · ' + dur(x.spawned) + '째' : ''}</span><span class="meta wt" title="${esc(placeLabel(x.place))}">▣ ${esc(wtShort(x.place))}${x.place?.guess ? ' (예정 · 코디네이터와 같은 곳으로 가정)' : x.sess ? '' : ' (예정)'}</span></span>`;
-    return x.sess ? `<a class="wchip ${x.st} ${x.st === 'spawned' ? 'lv-' + x.live : ''}" href="#s=${encodeURIComponent(x.sess.path)}">${body}</a>` : `<div class="wchip ${x.st}">${body}</div>`;
+// ---------- coordinator detail: checkbox flow graph, its side panel and the worker table ----------
+// Tasks named 「<ticket>#<checkbox> <role>」 (TASK_NAME) make one node per checkbox, and ticket-level tasks (착수 시트,
+// 통합 리뷰 …) one node per role and predecessors, in one lane per ticket. Any other naming: one node per task in a single
+// lane. Edges are task deps between different nodes. In a lane the nodes flow in dependency order and wrap with the
+// width; arrows are drawn over the laid-out boxes. A lane's leading run of finished nodes folds into one 「완료 N」 node.
+const FLOW_ROLE = ['구현', '리뷰 codex', '리뷰 claude', '판정'];
+const FLOW_ST = { skip: '취소', fail: '실패', stalled: '응답 없음', wait: '입력 대기', run: '실행 중', blocked: '선행 대기', planned: '생성 대기', done: '완료' };
+// A cancelled task (a reviewer the driver dropped) is 취소, not 실패: it does not hold the node back.
+const flowItemSt = x => IX.tasks[x.id]?.status === 'cancelled' ? 'skip' : x.st === 'spawned' ? (x.live === 'stalled' ? 'stalled' : x.live === 'wait' ? 'wait' : 'run') : x.st;
+const flowSel = {};  // coordinator path -> selected node key; survives live re-renders
+function flowOf(wp) {
+  const named = wp.items.every(x => TASK_NAME.test(x.name || ''));
+  const nodes = new Map(), nodeOf = {}, byId = Object.fromEntries(wp.items.map(x => [x.id, x]));
+  const depIds = x => { try { return JSON.parse(IX.tasks[x.id]?.deps || '[]').filter(d => byId[d]); } catch { return []; } };
+  for (const x of wp.items) {
+    const m = named && TASK_NAME.exec(x.name), role = m ? m[3].trim() : x.name;
+    const base = role.replace(/\s+(codex|claude)$/, '');
+    const key = !m ? x.id : m[2] ? `${m[1]}#${m[2]}` : `${m[1]} ${base} ${depIds(x).sort().join(',')}`;
+    let n = nodes.get(key);
+    if (!n) nodes.set(key, n = { key, lane: m ? m[1] : '태스크', label: !m ? x.name : m[2] ? '#' + m[2] : base, items: [], deps: new Set() });
+    n.items.push({ ...x, role, ist: flowItemSt(x) });
+    nodeOf[x.id] = n;
+  }
+  for (const x of wp.items) for (const d of depIds(x)) if (nodeOf[d] !== nodeOf[x.id]) nodeOf[x.id].deps.add(nodeOf[d].key);
+  const lv = new Map(), level = k => { if (lv.has(k)) return lv.get(k); lv.set(k, 0); const v = Math.max(-1, ...[...nodes.get(k).deps].map(level)) + 1; lv.set(k, v); return v; };
+  const ord = r => { const i = FLOW_ROLE.indexOf(r); return i < 0 ? FLOW_ROLE.length : i; };
+  for (const n of nodes.values()) {
+    // Dots in creation order (one round = 구현 · 리뷰 · 리뷰 · 판정); the state reads only each role's latest task, so a
+    // failed round that a retry already passed does not keep the node red.
+    n.items.sort((a, b) => (a.created || '\uffff').localeCompare(b.created || '\uffff') || ord(a.role) - ord(b.role));  // planned rows (no task yet) come last
+    const latest = n.latest = Object.values(Object.fromEntries(n.items.map(i => [i.role, i])));
+    const has = k => latest.some(i => i.ist === k);
+    n.st = ['fail', 'stalled', 'wait', 'run'].find(has) || (latest.every(i => i.ist === 'done' || i.ist === 'skip') ? 'done' : has('blocked') ? 'blocked' : 'planned');
+    n.level = level(n.key);
+    n.created = n.items.map(i => i.created || '').filter(Boolean).sort()[0] || '';
+  }
+  const lanes = [];
+  for (const n of [...nodes.values()].sort((a, b) => a.level - b.level || a.created.localeCompare(b.created))) {
+    let l = lanes.find(y => y.key === n.lane);
+    if (!l) lanes.push(l = { key: n.lane, nodes: [] });
+    l.nodes.push(n);
+  }
+  lanes.sort((a, b) => a.nodes[0].created.localeCompare(b.nodes[0].created));
+  return { nodes, lanes, named };
+}
+const ATTN = ['fail', 'stalled', 'wait'];
+const flowDots = n => n.items.map(i => `<i class="${i.ist}" title="${esc(i.role)} · ${FLOW_ST[i.ist]}"></i>`).join('');
+// What a node is doing now, in a few words: the first step that is not done, else how long the whole node took.
+const flowNow = n => { const i = n.latest.find(x => x.ist !== 'done' && x.ist !== 'skip');
+  if (!i) { const t0 = n.items.map(x => x.spawned).filter(Boolean).sort()[0], t1 = n.items.map(x => x.done).filter(Boolean).sort().pop(); return t0 && t1 ? '완료 · ' + dur(t0, t1) : '완료'; }
+  return `${n.items.length > 1 ? i.role + ' ' : ''}${FLOW_ST[i.ist]}${i.spawned && !i.done ? ' · ' + dur(i.spawned) : ''}`; };
+function flowBox(d, wp) {
+  const f = flowOf(wp), id = 'flow:' + d.path, sel = f.nodes.get(flowSel[d.path]) ? flowSel[d.path] : null;
+  const edges = [], vis = {};  // node key -> the key drawn for it (a folded node points at its fold box)
+  const laneHtml = l => {
+    const lid = id + ':' + l.key, attn = l.nodes.some(n => ATTN.includes(n.st)) || l.nodes.some(n => n.key === sel);
+    // famMin[lid] = the lane is open (default: while not all done); attention or the picked node keeps it open.
+    const allDone = l.nodes.every(n => n.st === 'done'), open = attn || (famMin[lid] ?? !allDone);
+    let lead = 0;
+    while (lead < l.nodes.length && l.nodes[lead].st === 'done' && l.nodes[lead].key !== sel) lead++;
+    const fold = lead >= 2 && !famMin[lid + ':done'] ? lead : 0;  // famMin[...:done] = the user unfolded them
+    const c = k => l.nodes.filter(n => n.st === k).length;
+    const sum = `${l.nodes.length > 1 ? `완료 ${c('done')}/${l.nodes.length}` : FLOW_ST[l.nodes[0].st]}${c('run') ? ` · 실행 <b style="color:var(--run)">${c('run')}</b>` : ''}${l.nodes.filter(n => ATTN.includes(n.st)).length ? ` · 주의 <b style="color:var(--bad)">${l.nodes.filter(n => ATTN.includes(n.st)).length}</b>` : ''}`;
+    const box = n => { vis[n.key] = n.key;
+      return `<button class="fl-n ${n.st}${n.key === sel ? ' sel' : ''}" data-k="${esc(n.key)}" title="${esc(n.items.map(i => `${i.role} · ${FLOW_ST[i.ist]}`).join('\n'))}">
+        <span class="fl-k">${esc(cutW(n.label, 22))}</span><span class="fl-dots">${flowDots(n)}</span><span class="fl-s">${esc(flowNow(n))}</span></button>`; };
+    let body = '';
+    if (open) {
+      if (fold) { const fk = 'fold:' + l.key; l.nodes.slice(0, fold).forEach(n => (vis[n.key] = fk));
+        body += `<button class="fl-n fl-fold done" data-k="${esc(fk)}" data-fold="${esc(lid + ':done')}" title="눌러서 펼치기">✓ 완료 ${fold}<span class="fl-s">${esc(l.nodes[0].label)} … ${esc(l.nodes[fold - 1].label)}</span></button>`; }
+      body += l.nodes.slice(fold).map(box).join('');
+      if (lead >= 2 && !fold) body += `<button class="act" data-fold="${esc(lid + ':done')}" data-unfold="1">완료 ${lead}개 접기</button>`;
+    } else l.nodes.forEach(n => (vis[n.key] = 'lane:' + l.key));
+    return `<div class="fl-lane${open ? ' open' : ''}"${open ? '' : ` data-k="${esc('lane:' + l.key)}"`}>
+      ${f.named || f.lanes.length > 1 ? `<button class="fl-lh" data-flane="${esc(lid)}" data-open="${open ? 1 : 0}" aria-expanded="${open}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(l.key)}</b><span>${sum}</span></button>` : ''}
+      ${open ? `<div class="fl-ns">${body}</div>` : ''}</div>`;
   };
-  const groups = {};
-  wp.items.forEach(x => { const k = placeLabel(x.place); groups[k] = (groups[k] || 0) + 1; });
+  const lanes = f.lanes.map(laneHtml).join('');
+  for (const n of f.nodes.values()) for (const k of n.deps) { const a = vis[k], b = vis[n.key];
+    if (a && b && a !== b && !edges.some(e => e.a === a && e.b === b)) edges.push({ a, b }); }
+  const pick = sel && f.nodes.get(sel);
+  const attn = [...f.nodes.values()].filter(n => ATTN.includes(n.st));
+  const row = i => { const w = i.sess, name = `<span class="ic ${i.ist}">${WP_IC[i.st] || ''}</span>${esc(i.role)}`;
+    return `<div class="fl-row">${w ? `<a href="#s=${encodeURIComponent(w.path)}">${name}</a>` : `<span>${name}</span>`}<span class="fl-rs">${FLOW_ST[i.ist]}${w ? ' · ' + esc(modelName(w.model)) : ''}${i.spawned ? ' · ' + (i.done ? dur(i.spawned, i.done) : dur(i.spawned) + '째') : ''}${w ? ' · ' + usd(agg(w).cost) : ''}</span></div>`; };
+  const panel = pick ? `<div class="fl-ph"><b>${esc(pick.lane === '태스크' ? '' : pick.lane + ' ')}${esc(pick.label)}</b><span class="st">${FLOW_ST[pick.st]}</span><button class="act" data-fsel="">닫기</button></div>
+      ${pick.items.map(row).join('')}${pick.deps.size ? `<div class="st fl-dep">선행: ${[...pick.deps].map(k => esc(f.nodes.get(k)?.lane === pick.lane ? f.nodes.get(k).label : k)).join(', ')}</div>` : ''}
+      <div class="st fl-dep">아래 워커 표가 이 노드의 워커로 걸러집니다.</div>`
+    : `<div class="fl-ph"><b>노드를 누르면 여기에 단계별 워커</b></div>${attn.length ? `<div class="st" style="margin:6px 0 4px">주의가 필요한 노드</div>${attn.map(n => `<button class="fl-n ${n.st} fl-mini" data-k="${esc(n.key)}"><span class="fl-k">${esc(n.lane === '태스크' ? '' : n.lane + ' ')}${esc(n.label)}</span><span class="fl-s">${esc(flowNow(n))}</span></button>`).join('')}` : '<div class="st" style="margin-top:6px">주의가 필요한 노드 없음</div>'}`;
+  return `<div class="fl"><div class="fl-wrap"><div class="fl-lanes">${lanes}</div><svg class="fl-edges" data-edges="${esc(JSON.stringify(edges))}"></svg></div>
+    <div class="fl-panel">${panel}</div></div>
+    <div class="legend fl-leg">${['done', 'run', 'wait', 'stalled', 'fail', 'blocked', 'planned', 'skip'].map(k => `<span><i class="fl-sw ${k}"></i>${FLOW_ST[k]}</span>`).join('')}<span class="st">점 하나 = 태스크 하나, 만든 순서 (${f.named ? '구현 · 리뷰 codex · 리뷰 claude · 판정' : '태스크'}), 화살표 = deps</span></div>`;
+}
+let flRO = null;
+function flowBind(d) {
+  flRO?.disconnect();
+  const wrap = $('#view .fl-wrap');
+  if (!wrap) return;
+  const svg = wrap.querySelector('.fl-edges'), edges = JSON.parse(svg.dataset.edges || '[]');
+  const draw = () => {
+    const o = wrap.getBoundingClientRect(), at = k => wrap.querySelector(`[data-k="${CSS.escape(k)}"]`);
+    svg.setAttribute('width', wrap.scrollWidth); svg.setAttribute('height', wrap.scrollHeight);
+    svg.innerHTML = `<defs><marker id="fl-arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z"/></marker></defs>`
+      + edges.map(e => { const A = at(e.a), B = at(e.b); if (!A || !B) return '';
+        const a = A.getBoundingClientRect(), b = B.getBoundingClientRect(), x = r => r.left - o.left, y = r => r.top - o.top;
+        let p;
+        if (Math.abs(a.top - b.top) < a.height / 2 && b.left >= a.right) {  // same row, left to right
+          const x1 = x(a) + a.width, y1 = y(a) + a.height / 2, x2 = x(b) - 2, y2 = y(b) + b.height / 2, c = Math.max(8, (x2 - x1) / 2);
+          p = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`;
+        } else {  // wrapped to a later row (or another lane): bottom to top
+          const x1 = x(a) + a.width / 2, y1 = y(a) + a.height, x2 = x(b) + b.width / 2, y2 = y(b) - 2, c = Math.max(10, (y2 - y1) / 2);
+          p = `M${x1},${y1} C${x1},${y1 + c} ${x2},${y2 - c} ${x2},${y2}`;
+        }
+        return `<path class="fl-e${e.a === flowSel[d.path] || e.b === flowSel[d.path] ? ' on' : ''}" d="${p}" marker-end="url(#fl-arr)"/>`; }).join('');
+  };
+  draw();
+  flRO = new ResizeObserver(draw); flRO.observe(wrap);
+  const rerender = () => { const sv = saveScroll(); renderSession(); restoreScroll(sv); };
+  $('#view').querySelectorAll('.fl [data-k]:not([data-fold])').forEach(b => b.onclick = () => {
+    const k = b.dataset.k; if (k.startsWith('lane:')) return;
+    flowSel[d.path] = flowSel[d.path] === k ? null : k; rerender(); });
+  $('#view').querySelectorAll('.fl [data-fold]').forEach(b => b.onclick = () => {
+    famMin[b.dataset.fold] = !b.dataset.unfold;
+    try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
+    rerender(); });
+  $('#view').querySelectorAll('.fl [data-flane]').forEach(b => b.onclick = () => {
+    famMin[b.dataset.flane] = b.dataset.open !== '1';
+    try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
+    rerender(); });
+  $('#view').querySelectorAll('.fl [data-fsel]').forEach(b => b.onclick = () => { flowSel[d.path] = null; rerender(); });
+}
+
+// The coordinator's workers as one row each. State filter (진행 중 · 주의 · 완료 · 전체) and a name search; a node picked
+// in the flow graph narrows the table to that node's workers instead.
+const wtab = { f: null, q: '' };
+const WT_F = { open: ['진행 중', s => OPEN(status(s)) || s.decision], attn: ['주의', s => ['stalled', 'wait'].includes(status(s)) || s.decision], done: ['완료', s => ['done', 'idle'].includes(status(s))], all: ['전체', () => true] };
+function workerTable(d, kids, wp) {
+  const node = flowSel[d.path] && wp && flowOf(wp).nodes.get(flowSel[d.path]);
+  // A picked node lists its own sessions: a driver script may have launched them, so they need not be direct workers.
+  const only = node && [...new Map(node.items.filter(i => i.sess).map(i => [i.sess.path, i.sess])).values()];
+  const fk = wtab.f || 'open';  // finished workers stay folded until asked for
+  const q = wtab.q.trim().toLowerCase();
+  const rows = (only || kids.filter(WT_F[fk][1])).filter(s => !q || nameOf(s).toLowerCase().includes(q));
+  const tr = s => { const a = agg(s), st = status(s);
+    return `<tr class="wt-r${ATTN.includes(st) || s.decision ? ' attn' : ''}"><td><a href="#s=${encodeURIComponent(s.path)}">${esc(nameOf(s))}</a>${s.decision ? ' <span class="badge dec">결정 대기</span>' : ''}</td><td>${pill(st, s)}</td><td>${modelChip(s.model)}</td>
+      <td class="n">${s.started ? dur(s.started, OPEN(st) ? null : s.last_ts) : '–'}</td><td class="n">${fmt(a.turns)}</td><td class="n">${usd(a.cost)}</td></tr>`; };
+  const ctl = only ? `<span class="chip" style="--c:var(--accent)">${esc(node.lane === '태스크' ? '' : node.lane + ' ')}${esc(node.label)} 의 워커 <i>${rows.length}</i></span><button class="act" data-fsel="">전체 보기</button>`
+    : `<span class="seg" id="wt-f">${Object.entries(WT_F).map(([k, [l, fn]]) => `<button data-k="${k}" class="${k === fk ? 'on' : ''}">${l} ${kids.filter(fn).length}</button>`).join('')}</span>`;
+  return `<div class="wt-h">${ctl}<input class="field" id="wt-q" type="search" placeholder="이름 검색" value="${esc(wtab.q)}" aria-label="워커 이름 검색"></div>
+    ${rows.length ? `<div class="tscroll"><table class="wt-t"><tr><th>워커</th><th>상태</th><th>모델</th><th class="n">소요</th><th class="n">턴</th><th class="n">비용</th></tr>${byRank(rows, sessRank).map(tr).join('')}</table></div>` : `<div class="st" style="margin:8px 0">${fk === 'open' && !only && !q ? '진행 중인 워커가 없습니다. 끝난 워커는 「완료」에서 봅니다.' : '해당하는 워커가 없습니다.'}</div>`}`;
+}
+function workerTableBind(d) {
+  const rerender = () => { const sv = saveScroll(); renderSession(); restoreScroll(sv); };
+  $('#view').querySelectorAll('#wt-f button').forEach(b => b.onclick = () => { wtab.f = b.dataset.k; rerender(); });
+  $('#view').querySelectorAll('.wt-h [data-fsel]').forEach(b => b.onclick = () => { flowSel[d.path] = null; rerender(); });
+  const q = $('#wt-q');
+  if (q) q.oninput = () => { wtab.q = q.value; const pos = q.selectionStart; rerender(); const n = $('#wt-q'); n.focus(); n.setSelectionRange(pos, pos); };
+}
+
+// Coordinator detail sections (오케스트레이션 · 이 세션 지표 · 로그): open state per session in adash.dsec. The
+// orchestration section opens by itself while a worker needs attention.
+let dsec = {};
+try { dsec = JSON.parse(localStorage.getItem('adash.dsec') || '{}'); } catch {}
+const secOpen = (d, k, dflt) => dsec[d.path]?.[k] ?? dflt;
+function secSave(d, k, v) {
+  (dsec[d.path] ||= {})[k] = v;
+  try { localStorage.setItem('adash.dsec', JSON.stringify(dsec)); } catch {}
+}
+function coordEta(d) {
   const cl = coordLeft(d.own_handle, delegatedOf(d));
-  const eta = cl && !cl.done && cl.unknown < cl.open ? ` · 남은 예상 ${cl.unknown ? '≥' : ''}${durHM(cl.left / 1000)} (완료 약 ${new Date(Date.now() + cl.left).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })})` : '';
-  return `<div class="box"><h3>워커 생성 계획 <span class="st">Orca 태스크 ${wp.total} · 생성 ${wp.spawnedEver} · 완료 ${wp.done}${(() => { const pc = pendCounts(wp, planExtra(d)), n = pc.blocked + pc.planned + pc.starting + pc.unborn; return n ? ` · 생성 예정 ${n} = ${PEND.filter(([k]) => pc[k]).map(([k, l]) => `${l} ${pc[k]}`).join(' + ')}` : ''; })()}${eta}</span></h3>
-    <div class="wt-sum">${Object.entries(groups).map(([k, n]) => `<span>▣ ${esc(k)} <b>${n}</b></span>`).join('')}</div>
-    <div class="stages">${stages.map((g, i) => `<div class="stage ${stages.length < 2 ? 'wide' : ''}"><h4>${stages.length < 2 ? '태스크' : wp.byDeps ? `단계 ${i + 1}` : `생성 묶음 ${i + 1} · ${hhmm(g[0].created && toDate(g[0].created).toISOString())}`} · ${g.length}</h4>${g.map(chip).join('')}</div>`).join('')}</div>
-    <div id="wp-chart" style="margin-top:10px"></div>
-    <div class="st" style="margin-top:4px">태스크를 만든 시점이 계획, 워커 세션이 시작된 시점이 생성입니다. 열은 deps 가 있으면 의존 단계, 없으면 태스크를 함께 만든 묶음입니다.</div></div>`;
+  return cl && !cl.done && cl.unknown < cl.open ? `남은 예상 ${cl.unknown ? '≥' : ''}${durHM(cl.left / 1000)} (완료 약 ${new Date(Date.now() + cl.left).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })})` : '';
 }
 
 // Three step lines over time: tasks planned, workers spawned, tasks settled.
@@ -2688,23 +2840,16 @@ function renderSession(navigated) {
   const cp = d.cost_parts;
   let rel = '';
   if (coord || (d.role === 'worker')) rel += `<div class="rel"><b>코디네이터</b>${coord ? `<a href="#s=${encodeURIComponent(coord.path)}">${esc(nameOf(coord))}</a> ${modelChip(coord.model)}` : (d.coord_handle ? `<span>${esc(ownerName(d.coord_handle))}</span> <span class="st">${ownerNote(d.coord_handle)}</span>` : '<span class="st">추적 범위 밖</span>')}${run ? ` · Run <a href="#r=${run.id}">${esc(cut(run.objective, 50))}</a>` : ''}${task ? ` · 태스크 <span style="color:${STATUS_COLOR(task.status)}">${esc(task.status)}</span>` : ''}</div>`;
-  if (parent) rel += `<div class="rel"><b>부모 세션</b><a href="#s=${encodeURIComponent(parent.path)}">${esc(nameOf(parent))}</a></div>`;
-  let kidsHtml = '';
-  if (kids.length) {
-    const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0);
-    kidsHtml += `<details class="box" id="d-kids" ${(openState.kids ?? kids.length <= 6) ? 'open' : ''}><summary><b>워커 ${kids.length}</b> <span class="st">실행 중 ${kids.filter(k => agg(k).live).length} · 합계 비용 ${usd(kc)} · 합계 턴 ${fmt(kids.reduce((x, k) => x + agg(k).turns, 0))}</span></summary><div class="tree" style="margin-top:10px"><div class="grid">${kids.map(k => card(k)).join('')}</div></div></details>`;
+  // A worker's checkbox mates (구현 · 리뷰 × 2 · 판정 of the same 「<ticket>#<n>」), so siblings are one click away.
+  const tm = task && TASK_NAME.exec(taskName(task));
+  if (tm?.[2] && run) {
+    const pre = `${tm[1]}#${tm[2]} `, mates = (state.orca.tasks[run.id] || []).filter(t => t.id !== task.id && taskName(t).startsWith(pre));
+    if (mates.length) rel += `<div class="rel"><b>같은 체크박스</b>${mates.map(t => { const w = estIndex().sess[t.id], nm = esc(taskName(t).slice(pre.length));
+      return w ? `<a href="#s=${encodeURIComponent(w.path)}">${nm}</a> <span class="st">${ST_LABEL[status(w)]}</span>` : `<span class="st">${nm} · ${esc(t.status)}</span>`; }).join(' · ')}</div>`;
   }
-  if (a.subs.length) kidsHtml += `<details class="box" id="d-subs" ${openState.subs ? 'open' : ''}><summary><b>서브에이전트 ${a.subs.length}</b> <span class="st">합계 비용 ${usd(a.subs.reduce((x, k) => x + (k.cost || 0), 0))}</span></summary><div class="grid" style="margin-top:10px">${a.subs.map(k => card(k)).join('')}</div></details>`;
-  $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
-    <h2 class="d">${esc(nameOf(d))}</h2>${d.hidden || state.hid.has(d.path) ? `<div class="box st" style="border-color:var(--warn)">이 세션은 대시보드에서 숨겨져 있습니다${d.hidden ? '' : ' (상위 코디네이터가 숨겨짐)'}. ${d.hidden ? '"복원"을 누르면 다시 보입니다.' : '<a href="#hidden">숨김 탭</a>에서 복원하세요.'}</div>` : ''}
-    <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>
-    <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
-    ${rel ? `<div class="box">${rel}</div>` : ''}
-    ${workerPlanBox(d)}
-    ${extPlansHtml(plansOf(d), true)}
-    ${planBox(d)}
-    ${designRefsBox(d)}
-    ${vaultBox(d)}
+  if (parent) rel += `<div class="rel"><b>부모 세션</b><a href="#s=${encodeURIComponent(parent.path)}">${esc(nameOf(parent))}</a></div>`;
+  const subsHtml = a.subs.length ? `<details class="box" id="d-subs" ${openState.subs ? 'open' : ''}><summary><b>서브에이전트 ${a.subs.length}</b> <span class="st">합계 비용 ${usd(a.subs.reduce((x, k) => x + (k.cost || 0), 0))}</span></summary><div class="grid" style="margin-top:10px">${a.subs.map(k => card(k)).join('')}</div></details>` : '';
+  const kpisHtml = `
     <div class="kpis">
       <div class="kpi"><span>턴</span><b>${d.turns}</b></div>
       <div class="kpi" title="${ctxTitle(d)}"><span>현재 컨텍스트</span><b class="${ctxLvl(d)}">${fmt(d.ctx_now)}</b>${d.ctx_window ? `<small> / ${fmt(d.ctx_window)}</small>` : ''}</div>
@@ -2714,13 +2859,14 @@ function renderSession(navigated) {
       <div class="kpi"><span>압축</span><b>${d.compactions}</b></div>
       <div class="kpi"><span>총 입력</span><b>${fmt(totalIn)}</b><small> · 캐시 ${totalIn ? Math.round(tk.cache_read / totalIn * 100) : 0}%</small></div>
       <div class="kpi"><span>총 출력</span><b>${fmt(tk.output)}</b></div>
-    </div>
+    </div>`;
+  const costHtml = `
     ${cp ? `<div class="box"><h3>비용 구성 <span class="st">${usd(d.cost)}${a.subs.length ? ` · 서브에이전트 포함 ${usd(a.cost)}` : ''}</span></h3>
       <div class="track" style="height:22px">${[['input', '--s-input'], ['cache_write', '--s-write'], ['cache_read', '--s-read'], ['output', '--s-out']].map(([k, c]) => `<div style="width:${cp[k] / (d.cost || 1) * 100}%;background:var(${c})" title="${k} ${usd(cp[k])}"></div>`).join('')}</div>
-      <div class="legend" style="margin-top:6px">${[['input', '입력', '--s-input'], ['cache_write', '캐시 쓰기', '--s-write'], ['cache_read', '캐시 읽기', '--s-read'], ['output', '출력', '--s-out']].map(([k, n, c]) => `<span><i style="background:var(${c})"></i>${n} ${usd(cp[k])}</span>`).join('')}</div></div>` : `<div class="box st">이 모델(${esc(modelName(d.model))})은 단가가 없어 비용을 계산하지 않았습니다. pricing.json 에 단가를 넣으면 표시됩니다.</div>`}
-    ${kidsHtml}
-    <div class="box"><h3>턴별 컨텍스트 <span class="legend" style="margin:0"><span><i style="background:var(--s-read)"></i>캐시 읽기</span><span><i style="background:var(--s-write)"></i>캐시 쓰기</span><span><i style="background:var(--s-input)"></i>새 입력</span><span><i style="background:var(--warn)"></i>압축</span></span></h3><div id="ctx-chart"></div></div>
-    <div class="grid2">
+      <div class="legend" style="margin-top:6px">${[['input', '입력', '--s-input'], ['cache_write', '캐시 쓰기', '--s-write'], ['cache_read', '캐시 읽기', '--s-read'], ['output', '출력', '--s-out']].map(([k, n, c]) => `<span><i style="background:var(${c})"></i>${n} ${usd(cp[k])}</span>`).join('')}</div></div>` : `<div class="box st">이 모델(${esc(modelName(d.model))})은 단가가 없어 비용을 계산하지 않았습니다. pricing.json 에 단가를 넣으면 표시됩니다.</div>`}`;
+  const ctxHtml = `
+    <div class="box"><h3>턴별 컨텍스트 <span class="legend" style="margin:0"><span><i style="background:var(--s-read)"></i>캐시 읽기</span><span><i style="background:var(--s-write)"></i>캐시 쓰기</span><span><i style="background:var(--s-input)"></i>새 입력</span><span><i style="background:var(--warn)"></i>압축</span></span></h3><div id="ctx-chart"></div></div>`;
+  const useHtml = `
       <div class="box"><h3>작업 분류 <span class="st">도구 호출 ${d.tool_calls}회 · 무엇에 썼는지 기준</span></h3>
         ${chipRow('스킬', d.skill_use, '--s-write')}${chipRow('MCP', d.mcp_use, '--accent', mcpName)}
         ${(() => {
@@ -2732,13 +2878,53 @@ function renderSession(navigated) {
         })()}
         <div class="tscroll" style="margin-top:8px"><table><tr><th>분류</th><th class="n">호출</th><th class="n">컨텍스트 증가</th><th class="n">호출당</th></tr>
         ${tools.map(([n, b]) => `<tr><td>${esc(n)}</td><td class="n">${b.calls}</td><td class="n">${fmt(b.ctx_growth)}</td><td class="n">${fmt(b.ctx_growth / b.calls)}</td></tr>`).join('') || '<tr><td colspan=4 class="st">도구 호출 없음</td></tr>'}</table></div>
-        <div class="st" style="margin-top:6px">스킬은 Skill 도구 호출과 SKILL.md 읽기(Codex)를 셉니다. 컨텍스트 증가는 도구 결과가 다음 턴을 얼마나 키웠는지로 근사합니다. 누적은 그 토큰이 압축 전까지 매 턴 다시 읽힌 합입니다.</div></div>
+        <div class="st" style="margin-top:6px">스킬은 Skill 도구 호출과 SKILL.md 읽기(Codex)를 셉니다. 컨텍스트 증가는 도구 결과가 다음 턴을 얼마나 키웠는지로 근사합니다. 누적은 그 토큰이 압축 전까지 매 턴 다시 읽힌 합입니다.</div></div>`;
+  const logHtml = `
       <div class="box"><h3>로그 <span class="st">최근 ${d.log.length}건</span></h3>
         <div class="log">${d.log.map(l => `<div class="${l.role} ${hlTurn !== null && l.turn === hlTurn ? 'hl' : ''}"><span class="st">${hhmm(l.ts)}</span><span class="r">${l.role}${l.turn >= 0 ? ' #' + (l.turn + 1) : ''}</span>
-          <span class="${l.error ? 'err' : ''}"><b class="r">${window.innerWidth <= 700 ? esc(l.role) + ' ' : ''}</b>${esc(l.text)}${l.detail ? ' <span class="st">' + esc(l.detail) + '</span>' : ''}${l.size ? ' <span class="st">(' + fmt(l.size) + '자)</span>' : ''}</span></div>`).join('')}</div></div>
+          <span class="${l.error ? 'err' : ''}"><b class="r">${window.innerWidth <= 700 ? esc(l.role) + ' ' : ''}</b>${esc(l.text)}${l.detail ? ' <span class="st">' + esc(l.detail) + '</span>' : ''}${l.size ? ' <span class="st">(' + fmt(l.size) + '자)</span>' : ''}</span></div>`).join('')}</div></div>`;
+  // A coordinator (it has workers, a worker plan or a driver plan) reads orchestration first: a summary line that is
+  // always there, then 오케스트레이션 (flow graph + panel, driver plans, worker table), the session's own plan and notes,
+  // and its own metrics and log folded below. Everyone else keeps the plain layout.
+  const wp = d.own_handle ? workerPlan(d.own_handle, delegatedOf(d)) : null, plans = plansOf(d);
+  const orch = !!(wp || kids.length || plans.length);
+  let body;
+  if (orch) {
+    const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0), eta = coordEta(d);
+    const attn = kids.some(k => ['stalled', 'wait'].includes(status(k)) || k.decision) || wp?.fail;
+    const openOrch = attn || secOpen(d, 'orch', true), openSelf = secOpen(d, 'self', false), openLog = secOpen(d, 'log', false);
+    const sec = (k, open, title, sub, inner) => `<details class="dsec" id="d-${k}" ${open ? 'open' : ''}><summary class="sec-h"><h2>${title}</h2><span>${sub}</span></summary>${inner}</details>`;
+    body = `<div class="box o-sum">${wp ? wpBar(wp, planExtra(d)) : ''}<div class="pline">${kids.length ? `<span>워커 <b>${kids.length}</b></span><span>실행 중 <b style="color:var(--run)">${kids.filter(k => agg(k).live).length}</b></span><span>워커 합계 비용 <b>${usd(kc)}</b></span>` : ''}${eta ? `<span>${eta}</span>` : ''}</div></div>
+    ${sec('orch', openOrch, '오케스트레이션', [wp && `Orca 태스크 ${wp.total}`, kids.length && `워커 ${kids.length}`, plans.length && `드라이버 계획 ${plans.length}`].filter(Boolean).join(' · '),
+      `${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
+        <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
+      ${extPlansHtml(plans, true)}
+      ${kids.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${kids.filter(k => agg(k).live).length} · 합계 비용 ${usd(kc)} · 합계 턴 ${fmt(kids.reduce((x, k) => x + agg(k).turns, 0))}</span></h3>${workerTable(d, kids, wp)}</div>` : ''}`)}
+    ${planBox(d)}
+    ${designRefsBox(d)}
+    ${vaultBox(d)}
+    ${sec('self', openSelf, '이 세션 지표', `턴 ${d.turns} · 컨텍스트 ${fmt(d.ctx_now)} · 비용 ${usd(d.cost)} · 압축 ${d.compactions}`, kpisHtml + costHtml + subsHtml + ctxHtml + useHtml)}
+    ${sec('log', openLog, '로그', `최근 ${d.log.length}건${d.log.length ? ' · 마지막 ' + hhmm(d.log[d.log.length - 1].ts) : ''}`, logHtml)}`;
+  } else {
+    body = `${planBox(d)}
+    ${designRefsBox(d)}
+    ${vaultBox(d)}
+    ${kpisHtml}
+    ${costHtml}
+    ${subsHtml}
+    ${ctxHtml}
+    <div class="grid2">${useHtml}${logHtml}
     </div>`;
+  }
+  $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
+    <h2 class="d">${esc(nameOf(d))}</h2>${d.hidden || state.hid.has(d.path) ? `<div class="box st" style="border-color:var(--warn)">이 세션은 대시보드에서 숨겨져 있습니다${d.hidden ? '' : ' (상위 코디네이터가 숨겨짐)'}. ${d.hidden ? '"복원"을 누르면 다시 보입니다.' : '<a href="#hidden">숨김 탭</a>에서 복원하세요.'}</div>` : ''}
+    <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>
+    <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
+    ${rel ? `<div class="box">${rel}</div>` : ''}
+    ${body}`;
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
-  for (const k of ['kids', 'subs', 'prevplans', 'design', 'vault']) { const el = $('#d-' + k); if (el) el.ontoggle = () => openState[k] = el.open; }
+  for (const k of ['subs', 'prevplans', 'design', 'vault', 'wpchart']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { openState[k] = el.open; if (k === 'wpchart' && el.open) wpChart(d); }; }
+  for (const k of ['orch', 'self', 'log']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { secSave(d, k, el.open); if (el.open && k === 'self') ctxChart(d); if (el.open && k === 'orch') flowBind(d); if (el.open && k === 'log') $('.log').scrollTop = $('.log').scrollHeight; }; }
   $('#view').querySelectorAll('[data-vstep]').forEach(b => b.onclick = () => openStep(...JSON.parse(b.dataset.vstep)));
   $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
     if (e.target.closest('a')) return;
@@ -2747,9 +2933,11 @@ function renderSession(navigated) {
     { const sv = saveScroll(); renderSession(); restoreScroll(sv); }
   });
   ticketGraphBind();
+  flowBind(d);
+  workerTableBind(d);
   ctxChart(d);
   planChart(d);
-  wpChart(d);
+  if (openState.wpchart) wpChart(d);
   const log = $('.log');
   if (hlTurn !== null) log.querySelector('.hl')?.scrollIntoView({ block: 'center' });
   else if (navigated || scroll === undefined || d.live) log.scrollTop = log.scrollHeight;
