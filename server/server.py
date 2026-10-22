@@ -4730,6 +4730,130 @@ def review_ticket(key):
     return next((t for s in review_state["sets"] for t in s["tickets"] if t["key"] == key), None)
 
 
+# ---- 볼트 노트: the notes each session created, by the `agent/<tool>-<session id>` tag in their frontmatter ----
+# The vault's note rule puts exactly one such tag on every note, naming the session that first made it. Every .md
+# under VAULT is stat'ed each pass and its head re-read only when its mtime moved. A note is tied to the project steps
+# whose step note links to it (or that it is), so a session's page can say which step its documents belong to.
+VAULT_EVERY = 5
+VAULT_HEAD = 8192  # frontmatter sits at the top; no need to read whole notes
+AGENT_TAG = re.compile(r"(?<![\w/])agent/(claude|codex)-([0-9A-Za-z][\w-]*)")
+vault_cache = {}  # vault-relative path -> (mtime, {title, created, updated, agent})
+step_links_cache = {}  # step note absolute path -> (mtime, [wikilink targets])
+vault = {"on": False, "notes": {}, "by_agent": {}, "steps": {}}  # rebound whole, so readers need no lock
+
+
+def note_head(full):
+    """-> {title, created, updated, agent} from a note's frontmatter; agent is "<tool>-<id>" or None."""
+    try:
+        with open(full, encoding="utf-8", errors="replace") as f:
+            head = f.read(VAULT_HEAD)
+    except OSError:
+        return None
+    m = re.match(r"---\n(.*?)\n---", head, re.S)
+    fm = m.group(1) if m else ""
+    field = lambda k: (re.search(rf"^{k}:\s*(.+?)\s*$", fm, re.M) or [None, None])[1]
+    tag = AGENT_TAG.search(fm)
+    return {"title": (field("title") or "").strip("'\"") or os.path.splitext(os.path.basename(full))[0],
+            "created": field("created"), "updated": field("updated"), "agent": tag and f"{tag[1]}-{tag[2]}"}
+
+
+def resolve_link(target, rels, by_name):
+    """[[target]] -> the vault-relative path Obsidian would open, or None: a path matches by suffix (the longest
+    match wins), a bare name by file name."""
+    want = target if target.endswith(".md") else target + ".md"
+    if "/" in want:
+        hit = [r for r in rels if ("/" + r).endswith("/" + want)]
+        return min(hit, key=len) if hit else None
+    hit = by_name.get(want)
+    return min(hit, key=len) if hit else None
+
+
+def scan_vault():
+    seen = {}
+    for d, subdirs, files in os.walk(VAULT):
+        subdirs[:] = [s for s in subdirs if not s.startswith(".") and s != "node_modules"]
+        for f in files:
+            if not f.endswith(".md"):
+                continue
+            full = os.path.join(d, f)
+            try:
+                mtime = os.path.getmtime(full)
+            except OSError:
+                continue
+            rel = os.path.relpath(full, VAULT)
+            cached = vault_cache.get(rel)
+            if not cached or cached[0] != mtime:
+                head = note_head(full)
+                if head is None:
+                    continue
+                cached = vault_cache[rel] = (mtime, head)
+            seen[rel] = {**cached[1], "mtime": mtime}
+    for rel in [r for r in vault_cache if r not in seen]:
+        vault_cache.pop(rel)
+    by_name = {}
+    for rel in seen:
+        by_name.setdefault(os.path.basename(rel), []).append(rel)
+    # Project steps: a step note itself, and every note its [[links]] reach, belong to that step.
+    steps = {}
+    step_rels = {os.path.relpath(os.path.join(os.path.dirname(p["path"]), sp["path"]), VAULT)
+                 for p in projects["list"] for st in p.get("stages") or [] for sp in st["steps"]}
+    for p in projects["list"]:
+        root = os.path.dirname(p["path"])
+        proj = os.path.relpath(root, VAULT) + "/"
+        for st in p.get("stages") or []:
+            for sp in st["steps"]:
+                full = os.path.join(root, sp["path"])
+                rel = os.path.relpath(full, VAULT)
+                if rel.startswith(".."):
+                    continue  # a --projects-dir outside the vault
+                try:
+                    mtime = os.path.getmtime(full)
+                except OSError:
+                    continue
+                cached = step_links_cache.get(full)
+                if not cached or cached[0] != mtime:
+                    try:
+                        with open(full, encoding="utf-8", errors="replace") as f:
+                            targets = list(dict.fromkeys(m.strip() for m in WIKILINK.findall(f.read(NOTE_MAX))))
+                    except OSError:
+                        targets = []
+                    cached = step_links_cache[full] = (mtime, targets)
+                ref = {"project": p["name"], "dir": p["dir"], "path": sp["path"], "title": sp["title"],
+                       "status": sp["status"], "no": st["no"], "stage": st["name"]}
+                # Its documents are the notes in the same project folder it links to; up-links (_index hubs), rule
+                # notes and other steps it mentions are not, nor anything outside the project (CHANGE_LOG etc.).
+                hits = [h for h in (resolve_link(t, seen, by_name) for t in cached[1]) if h and h not in step_rels and
+                        h.startswith(proj) and os.path.basename(h) != "_index.md" and "/rules/" not in "/" + h]
+                for hit in [rel, *hits]:
+                    if ref not in steps.setdefault(hit, []):
+                        steps[hit].append(ref)
+    by_agent = {}
+    for rel, n in seen.items():
+        if n["agent"]:
+            by_agent.setdefault(n["agent"], []).append(rel)
+    global vault
+    vault = {"on": True, "notes": seen, "by_agent": by_agent, "steps": steps}
+
+
+def vault_notes(s):
+    """The notes this session created, newest first, each with the project steps it belongs to."""
+    v = vault
+    rels = v["by_agent"].get(f"{s.kind}-{s.id}", [])
+    out = [{"path": rel, "abs": os.path.join(VAULT, rel), **v["notes"][rel], "steps": v["steps"].get(rel, [])}
+           for rel in rels if rel in v["notes"]]
+    return sorted(out, key=lambda n: n["mtime"], reverse=True)
+
+
+def vault_loop():
+    while True:
+        try:
+            scan_vault()
+            loop_ok("vault")
+        except Exception as e:
+            loop_failed("vault", e)
+        time.sleep(VAULT_EVERY)
+
+
 # ---- HTTP ----
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
 # with the one it was built for and says so instead of rendering garbage.
@@ -4953,7 +5077,8 @@ class Handler(BaseHTTPRequestHandler):
             if s and design_bases:
                 extra["design_refs"] = session_design_refs(s.id)  # the sections it (and its subagents) read
             with lock:
-                body = s and self.encode({**apply_prefs(with_plan_terms(s.detail())), **extra})
+                body = s and self.encode({**apply_prefs(with_plan_terms({**s.detail(), "vault_on": vault["on"],
+                                                                         "vault_notes": vault_notes(s)})), **extra})
             if not body:
                 return self.send_json({"error": "not found"}, 404)
             self.send_body(body)
@@ -5365,7 +5490,7 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
-    global DESIGN_DAYS
+    global DESIGN_DAYS, VAULT
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--hours", type=float, default=24, help="only sessions touched within this window")
@@ -5380,6 +5505,9 @@ def main():
                     help="design document folder (e.g. <repo>/feature-designs), added to prefs.json design_dirs; repeatable")
     ap.add_argument("--design-days", type=float, default=DESIGN_DAYS,
                     help="how far back (days) design reads are looked for in transcripts outside --hours")
+    ap.add_argument("--vault", default=VAULT,
+                    help="Obsidian vault whose notes are tied to the sessions that created them (default %(default)s); "
+                         "off when the folder does not exist")
     args = ap.parse_args()
     DESIGN_DAYS = args.design_days
     for d in (prefs.get("design_dirs") or []) + args.design_dir:
@@ -5389,6 +5517,7 @@ def main():
     design_bases.update(os.path.basename(d) for d in DESIGN_DIRS)  # before scan_loop parses the first transcript
     hosts = args.host or ["127.0.0.1"]
     PROJECTS_DIRS.extend(os.path.abspath(os.path.expanduser(d)) for d in args.projects_dir)
+    VAULT = os.path.abspath(os.path.expanduser(args.vault))
     threading.Thread(target=scan_loop, args=(args.hours,), daemon=True).start()
     threading.Thread(target=orca_loop, args=(args.runs, args.hours), daemon=True).start()
     threading.Thread(target=ext_plan_loop, daemon=True).start()
@@ -5400,6 +5529,8 @@ def main():
     if DESIGN_DIRS or EXTERNAL_PLANS:  # an external plan's design_root is a design folder too
         threading.Thread(target=design_loop, daemon=True).start()
         threading.Thread(target=design_backfill_loop, daemon=True).start()
+    if os.path.isdir(VAULT):
+        threading.Thread(target=vault_loop, daemon=True).start()
     servers = []
     ALLOWED_HOSTS.update(h.lower() for h in hosts)
     ALLOWED_ORIGINS.update(o.rstrip("/").lower() for o in args.origin)
@@ -5410,6 +5541,7 @@ def main():
     print(f"allowed origins: {', '.join(sorted(ALLOWED_ORIGINS)) or '(local only)'}", flush=True)
     print(f"project dirs: {', '.join(PROJECTS_DIRS) or '(off)'}", flush=True)
     print(f"design dirs: {', '.join(DESIGN_DIRS) or '(off)'}", flush=True)
+    print(f"vault: {VAULT if os.path.isdir(VAULT) else '(off)'}", flush=True)
     for server in servers[1:]:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     servers[0].serve_forever()
