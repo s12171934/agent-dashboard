@@ -4183,8 +4183,9 @@ def session_design_refs(sid):
 # prefs.json "qa_sets": [{"epic": "<epic key>", "project": "<vault-relative project folder>"}]. The epic's children
 # (Jira `parent = epic`, read only) are the set's tickets. Each ticket pulls in the Orca worktrees whose folder name
 # carries its key, the vault step note whose file name does (the project's progress.json lists them) and its latest
-# test run. A review is recorded in that step note's frontmatter (review / review_sha / review_at); 「리뷰 후 변경」 is
-# not stored but derived from review_sha against the worktrees' HEADs now.
+# test run. A review is recorded in that step note's frontmatter (review / review_sha / review_at / review_round);
+# 「리뷰 후 변경」 and 「재오픈」 are not stored but derived: review_sha against the worktrees' HEADs now, review_round
+# against the driver's round now (a reopen may leave HEAD where the review saw it).
 QA_SETS = prefs.get("qa_sets") or []
 # Branch a worktree is compared with when it has no open PR, per repo (the main checkout's folder name); else main.
 REVIEW_BASES = prefs.get("review_bases") or {}
@@ -4254,8 +4255,8 @@ def git_at(path, *args, timeout=10):
 
 
 def note_review(path):
-    """Step note frontmatter: {status, review, review_sha {repo: sha}, review_at}."""
-    out = {"status": None, "review": None, "review_sha": {}, "review_at": None}
+    """Step note frontmatter: {status, review, review_sha {repo: sha}, review_at, review_round}."""
+    out = {"status": None, "review": None, "review_sha": {}, "review_at": None, "review_round": None}
     try:
         with open(path, encoding="utf-8") as f:
             text = f.read(8192)
@@ -4272,14 +4273,14 @@ def note_review(path):
         k, _, v = ln.partition(":")
         if k == "review_sha":
             sub = True
-        elif k in ("status", "review", "review_at"):
+        elif k in ("status", "review", "review_at", "review_round"):
             out[k] = v.strip() or None
     return out
 
 
-def write_review(path, shas):
-    """Replace the review fields of a step note's frontmatter; shas None clears them. The note's `updated` stays:
-    a review mark is state, not a change to what the note says."""
+def write_review(path, shas, rnd=None):
+    """Replace the review fields of a step note's frontmatter; shas None clears them. rnd: the driver's round the
+    review saw. The note's `updated` stays: a review mark is state, not a change to what the note says."""
     with open(path, encoding="utf-8") as f:
         text = f.read()
     m = re.match(r"---\n(.*?)\n---\n", text, re.S)
@@ -4289,17 +4290,35 @@ def write_review(path, shas):
     for ln in m.group(1).split("\n"):
         if skip and ln[:1] in (" ", "\t"):
             continue
-        skip = bool(re.match(r"(review|review_sha|review_at):", ln))
+        skip = bool(re.match(r"(review|review_sha|review_at|review_round):", ln))
         if not skip:
             keep.append(ln)
     if shas is not None:
         # quoted: an all-digit short sha would otherwise read back as a YAML number
         keep += ["review: done", "review_sha:", *[f'  {r}: "{s}"' for r, s in sorted(shas.items())],
-                 f"review_at: {datetime.now().date().isoformat()}"]
+                 f"review_at: {datetime.now().date().isoformat()}", *([f"review_round: {rnd}"] if rnd else [])]
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write("---\n" + "\n".join(keep) + "\n---\n" + text[m.end():])
     os.replace(tmp, path)
+
+
+def reopened_since(fm, qa, path):
+    """The driver started a later round than the one the review saw. A review without review_round (written before
+    it was recorded) is stale when review_at's date is before the latest round's start, or the same day and the
+    step note has not been written since that start (a review rewrites the note, so it cannot predate its mtime)."""
+    if not qa or qa.get("round", 0) < 2:
+        return False
+    rr = fm.get("review_round")
+    if rr and rr.isdigit():
+        return qa["round"] > int(rr)
+    started, at = (qa.get("at") or {}).get("selected"), fm.get("review_at")
+    if not (started and at) or at > started[:10]:
+        return False
+    try:
+        return at < started[:10] or datetime.fromtimestamp(os.path.getmtime(path)).isoformat(" ") < started
+    except OSError:
+        return True
 
 
 def project_notes(project, prefix):
@@ -4569,8 +4588,11 @@ def review_pass(jira, prs, stats):
                 rs = fm.get("review_sha") or {}
                 same = all(r["head"] and rs.get(r["repo"]) and r["head"].startswith(rs[r["repo"]]) for r in repos)
                 review = "done" if same else "changed"
+                if review == "done" and reopened_since(fm, qa, n["step"]):
+                    review = "reopened"
             tickets.append({**c, "repos": repos, "review": review, "review_at": fm.get("review_at"),
-                            "review_sha": fm.get("review_sha") or {}, "step": n.get("step"),
+                            "review_sha": fm.get("review_sha") or {}, "review_round": fm.get("review_round"),
+                            "step": n.get("step"),
                             "step_status": fm.get("status"), "notes": n.get("notes") or [], "test": ticket_test(key),
                             "ship": ship_state(ships.get(key), ship_launch.get(key)), "qa": qa})
         # Worktrees named after a key the epic does not list (another QA, or a key typo) stay visible too.
@@ -5212,13 +5234,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": f'{r["repo"]} HEAD 를 읽지 못함'}, 502)
             shas[r["repo"]] = head
         try:
-            write_review(t["step"], shas if done else None)
+            rnd = (t.get("qa") or {}).get("round") if done else None
+            write_review(t["step"], shas if done else None, rnd)
         except (OSError, ValueError) as e:
             return self.send_json({"error": "스텝 노트 기록 실패: " + short(repr(e), 200)}, 500)
         with lock:  # show it now; the next pass (woken here) recomputes it from the note anyway
             live = review_ticket(key)
             if live:
-                live.update(review="done" if done else "pending", review_sha=shas if done else {},
+                live.update(review="done" if done else "pending", review_sha=shas if done else {}, review_round=rnd,
                             review_at=datetime.now().date().isoformat() if done else None)
                 review_state["updated"] = datetime.now(timezone.utc).isoformat()
                 bump()

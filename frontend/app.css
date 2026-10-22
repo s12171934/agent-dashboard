@@ -946,7 +946,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 /* 워크트리 리뷰 tab: QA tickets with their worktrees */
 .rv-list { display: grid; gap: 8px; }
 .rv-tk { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 0; }
-.rv-tk.changed { border-left-color: var(--bad); } .rv-tk.pending { border-left-color: var(--warn); } .rv-tk.done { border-left-color: var(--done); }
+.rv-tk.changed, .rv-tk.reopened { border-left-color: var(--bad); } .rv-tk.pending { border-left-color: var(--warn); } .rv-tk.done { border-left-color: var(--done); }
 .rv-tk.none { opacity: .7; }
 .rv-head, .rv-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .rv-head a, .rv-meta a, .rv-repo a { color: var(--accent); text-decoration: none; }
