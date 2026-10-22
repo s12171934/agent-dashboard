@@ -1843,7 +1843,7 @@ const QA_DESC = {
   reviewing: ['워커가 모두 끝냈고 코디네이터가 결과를 검토하는 중', '검토를 통과하면 커밋한다'],
   committed: ['검토를 통과해 커밋까지 끝났다 — 반출 승인을 기다린다', '사용자가 반출을 승인한다', true],
   approved: ['사용자가 반출을 승인했다', '코디네이터가 PR 을 올려 넘긴다'],
-  delivered: ['PR 을 올려 넘겼다', '워크트리·브랜치를 정리한다'],
+  delivered: ['PR 을 올려 넘겼다', '사용자가 머지를 지시하면 코디네이터가 머지하고, 머지되면 드라이버가 정리한다', true],
   cleaned: ['워크트리와 브랜치를 정리했다 — 끝', ''],
 };
 const qaTip = (k, i, at) => `${i + 1}. ${QA_ST[k]} — ${QA_DESC[k][0]}${at ? '\n들어간 시각 ' + clockAt(at) : ''}`;
@@ -1855,7 +1855,9 @@ function qaLegend() {
 }
 function qaTrack(q) {
   if (!q) return '';
-  const keys = Object.keys(QA_ST), cur = keys.indexOf(q.stage), [, next, user] = QA_DESC[q.stage] || [];
+  const keys = Object.keys(QA_ST), cur = keys.indexOf(q.stage);
+  let [, next, user] = QA_DESC[q.stage] || [];
+  if (q.stage === 'delivered' && q.merge_at) [next, user] = ['코디네이터가 머지하고, 머지되면 드라이버가 정리한다', false];
   const nodes = keys.map((k, i) => `<span class="qa-step${i < cur ? ' done' : i === cur ? (q.blocked ? ' bad' : ' cur') : ''}" title="${esc(qaTip(k, i, q.at?.[k]))}"><i class="qa-n">${i + 1}</i><small>${QA_ST[k]}</small></span>`).join('<b></b>');
   const nextTxt = q.blocked ? '막힘 — 사람이 판단해야 다음으로 간다' : next ? '다음: ' + next : '';
   return `<div class="qa-track"><span class="qa-steps">${nodes}</span><span class="qa-lbl">${q.stage_no}/${keys.length} ${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}${nextTxt ? `<span class="qa-next${user && !q.blocked ? ' user' : ''}">${esc(nextTxt)}</span>` : ''}</span>
@@ -1948,6 +1950,8 @@ function wtTicket(t, set) {
       ${wtTest(t.test)}${wtShip(t)}${qaAgents(t.qa)}
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
       ${t.repos.length ? `<span class="rv-acts">
+        ${set.driver && t.qa?.stage === 'delivered' && !t.qa.merge_at ? `<button class="act big accent" data-qa-tk="merge" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 올린 PR 을 의존 저장소부터 머지하라고 지시합니다 (merge 파일을 남김)">PR 머지</button>` : ''}
+        ${set.driver && t.qa?.stage === 'delivered' && t.qa.merge_at ? `<span class="rv-flag warn" title="${esc(t.qa.merge_at)} 에 지시. PR 이 모두 머지되면 드라이버 회차가 정리합니다">머지 지시됨</span>` : ''}
         ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
@@ -1994,6 +1998,7 @@ async function renderWorktrees() {
 async function qaClick(b) {
   const { qaAuto, qaTk, qaSet, epic, srv, id, key } = b.dataset, txt = b.textContent;
   if (qaSet) return qaSetClick(b);
+  if (qaTk === 'merge' && !confirm(`${key} 의 PR 머지를 코디네이터에게 지시합니다.\n의존 저장소부터 머지하고, 머지할 수 없으면 막힘으로 남깁니다. 진행할까요?`)) return;
   if (qaTk === 'restart' && !confirm(`${key} 코디네이터를 기록된 브리프로 새 터미널에 다시 띄웁니다. 진행할까요?`)) return;
   b.disabled = true; b.textContent = '처리 중…';
   let r = qaAuto ? await api.qaAutomation(srv, epic, id, qaAuto) : await api.qaTicket(srv, epic, key, qaTk);
