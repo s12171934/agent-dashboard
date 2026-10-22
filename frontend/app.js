@@ -841,6 +841,28 @@ document.addEventListener('click', e => {
 const isLive = x => status(x) === 'run' || agg(x).live;
 const PHONE = matchMedia('(max-width: 500px)');
 const closing = new Set();
+
+// In-page replacements for alert / confirm / prompt: Aside's browser (and some embedded webviews) block the native
+// dialogs, so a confirm came back false and the action silently did nothing. One <dialog>, one question at a time.
+let uiQueue = Promise.resolve();
+function uiDialog(msg, { ok = '확인', cancel = '취소', input = null, danger = false } = {}) {
+  const run = () => new Promise(res => {
+    let d = $('#ui-dlg');
+    if (!d) { d = document.createElement('dialog'); d.id = 'ui-dlg'; d.className = 'dialog'; document.body.appendChild(d); }
+    d.innerHTML = `<form method="dialog"><p class="ui-msg">${esc(msg)}</p>
+      ${input != null ? `<input class="field" name="v" value="${esc(input)}" style="width:100%">` : ''}
+      <div class="dialog-btns">${cancel ? `<button class="act big" value="">${esc(cancel)}</button>` : ''}<button class="act big ${danger ? 'danger' : 'accent'}" value="ok">${esc(ok)}</button></div></form>`;
+    const v = d.querySelector('[name=v]');
+    d.onclose = () => res(d.returnValue === 'ok' ? (v ? v.value : true) : (v ? null : false));
+    d.returnValue = '';
+    d.showModal();
+    (v || d.querySelector('button[value=ok]')).focus();
+  });
+  return (uiQueue = uiQueue.then(run, run));
+}
+const uiAlert = msg => uiDialog(msg, { cancel: '' });
+const uiConfirm = (msg, opt) => uiDialog(msg, opt);
+const uiPrompt = (msg, def = '') => uiDialog(msg, { input: def });
 function closeOrca(s, name, handle) {
   const below = s?.orca_close_tree || [], all = state.all || state.sessions;
   const kids = all.filter(x => x.orca_focus && below.includes(x.orca_focus));
@@ -1998,34 +2020,34 @@ async function renderWorktrees() {
 async function qaClick(b) {
   const { qaAuto, qaTk, qaSet, epic, srv, id, key } = b.dataset, txt = b.textContent;
   if (qaSet) return qaSetClick(b);
-  if (qaTk === 'merge' && !confirm(`${key} 의 PR 머지를 코디네이터에게 지시합니다.\n의존 저장소부터 머지하고, 머지할 수 없으면 막힘으로 남깁니다. 진행할까요?`)) return;
-  if (qaTk === 'restart' && !confirm(`${key} 코디네이터를 기록된 브리프로 새 터미널에 다시 띄웁니다. 진행할까요?`)) return;
+  if (qaTk === 'merge' && !await uiConfirm(`${key} 의 PR 머지를 코디네이터에게 지시합니다.\n의존 저장소부터 머지하고, 머지할 수 없으면 막힘으로 남깁니다. 진행할까요?`)) return;
+  if (qaTk === 'restart' && !await uiConfirm(`${key} 코디네이터를 기록된 브리프로 새 터미널에 다시 띄웁니다. 진행할까요?`)) return;
   b.disabled = true; b.textContent = '처리 중…';
   let r = qaAuto ? await api.qaAutomation(srv, epic, id, qaAuto) : await api.qaTicket(srv, epic, key, qaTk);
   if (qaTk === 'cleanup_check' && r.status === 200) {
     const out = r.body.output || '';
-    if (r.body.code === 3) alert(`정리를 멈춥니다:\n\n${out}`);
-    else if (confirm(`${key} 워크트리를 정리합니다:\n\n${out}\n\n진행할까요?`)) { b.textContent = '정리 중…'; r = await api.qaTicket(srv, epic, key, 'cleanup'); }
+    if (r.body.code === 3) uiAlert(`정리를 멈춥니다:\n\n${out}`);
+    else if (await uiConfirm(`${key} 워크트리를 정리합니다:\n\n${out}\n\n진행할까요?`)) { b.textContent = '정리 중…'; r = await api.qaTicket(srv, epic, key, 'cleanup'); }
   }
-  if (r.status !== 200) alert(r.body.error || r.body.output || `실패 (${r.status})`);
+  if (r.status !== 200) uiAlert(r.body.error || r.body.output || `실패 (${r.status})`);
   else if (qaTk && qaTk !== 'cleanup_check') toast(cut(r.body.output || '처리했습니다', 200));
   b.disabled = false; b.textContent = txt;
 }
 async function qaSetClick(b) {
   const { qaSet, epic, srv, keys } = b.dataset, txt = b.textContent, call = (a, extra) => api.qaTicket(srv, epic, undefined, a, extra);
-  const done = r => { if (r.status !== 200 || r.body.ok === false) alert(r.body.error || r.body.output || `실패 (${r.status})`); else toast(cut(r.body.output || '처리했습니다', 200)); };
+  const done = r => { if (r.status !== 200 || r.body.ok === false) uiAlert(r.body.error || r.body.output || `실패 (${r.status})`); else toast(cut(r.body.output || '처리했습니다', 200)); };
   const busy = l => { b.disabled = true; b.textContent = l; }, idle = () => { b.disabled = false; b.textContent = txt; };
   if (qaSet === 'close_finished') {
     const ks = keys.split(',');
-    if (!confirm(`끝난 티켓 ${ks.length}개의 코디네이터·워커 터미널을 닫습니다:\n\n${ks.join(', ')}\n\n진행할까요?`)) return;
+    if (!await uiConfirm(`끝난 티켓 ${ks.length}개의 코디네이터·워커 터미널을 닫습니다:\n\n${ks.join(', ')}\n\n진행할까요?`)) return;
     busy('닫는 중…'); done(await call('close_finished', { keys: ks })); return idle();
   }
   if (qaSet === 'retire_check') {
     busy('확인 중…'); const r = await call('retire_check');
     if (r.status !== 200) { done(r); return idle(); }
     const out = r.body.output || '';
-    if (r.body.code === 3) { alert(`QA 종료를 멈춥니다:\n\n${out}`); return idle(); }
-    if (confirm(`${epic} QA 를 종료합니다:\n\n${out}\n\n진행할까요?`)) { busy('종료 중…'); done(await call('retire')); }
+    if (r.body.code === 3) { uiAlert(`QA 종료를 멈춥니다:\n\n${out}`); return idle(); }
+    if (await uiConfirm(`${epic} QA 를 종료합니다:\n\n${out}\n\n진행할까요?`)) { busy('종료 중…'); done(await call('retire')); }
     return idle();
   }
   if (qaSet === 'adopt_check') {
@@ -2034,13 +2056,13 @@ async function qaSetClick(b) {
     if (r.status !== 200 || !info) { done(r); return idle(); }
     const set = {}, hint = { JIRA_SITE: wtData.jira, ...info.hints };
     for (const k of info.missing || []) {
-      const v = prompt(`${epic} 상태 디렉터리 config.env 에 없는 값: ${k}${hint[k] ? `\n(추정값: ${hint[k]})` : ''}`, hint[k] || '');
+      const v = await uiPrompt(`${epic} 상태 디렉터리 config.env 에 없는 값: ${k}${hint[k] ? `\n(추정값: ${hint[k]})` : ''}`, hint[k] || '');
       if (v == null) return idle();
       if (v.trim()) set[k] = v.trim();
     }
     const auto = (info.automations || []).filter(a => !a.adopted);
-    if (!auto.length) { alert('이관할 자동화가 없습니다'); return idle(); }
-    if (!confirm(`자동화 ${auto.map(a => `「${a.name}」`).join(', ')} 의 precheck·prompt 를 qa-driver 로 바꿉니다.\n${Object.keys(set).length ? `config.env 에 추가: ${Object.entries(set).map(([k, v]) => `${k}=${v}`).join(', ')}\n` : ''}이미 처리 중인 티켓은 그대로 두고, 이후 회차부터 티켓마다 워크트리·코디네이터를 띄웁니다. 진행할까요?`)) return idle();
+    if (!auto.length) { uiAlert('이관할 자동화가 없습니다'); return idle(); }
+    if (!await uiConfirm(`자동화 ${auto.map(a => `「${a.name}」`).join(', ')} 의 precheck·prompt 를 qa-driver 로 바꿉니다.\n${Object.keys(set).length ? `config.env 에 추가: ${Object.entries(set).map(([k, v]) => `${k}=${v}`).join(', ')}\n` : ''}이미 처리 중인 티켓은 그대로 두고, 이후 회차부터 티켓마다 워크트리·코디네이터를 띄웁니다. 진행할까요?`)) return idle();
     busy('이관 중…');
     for (const [i, a] of auto.entries()) done(await call('adopt', { set: i ? {} : set, automation: a.id }));
     return idle();
@@ -2051,13 +2073,13 @@ async function wtClick(e) {
   if (q && !q.disabled) return qaClick(q);
   const b = e.target.closest('button[data-wt-open], button[data-wt-mark], button[data-wt-ship]');
   if (!b || b.disabled) return;
-  if (b.dataset.ship && !confirm(`${b.dataset.wtMark} 리뷰를 기록하고 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
-  if (b.dataset.wtShip && !confirm(`${b.dataset.wtShip} 을(를) PR 로 올리고 머지합니다.\nOrca 워커가 머지 뒤 Jira 「개발 완료」 전이, 스텝 노트 기록, 워크트리·브랜치 정리까지 합니다. 진행할까요?`)) return;
+  if (b.dataset.ship && !await uiConfirm(`${b.dataset.wtMark} 리뷰를 기록하고 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
+  if (b.dataset.wtShip && !await uiConfirm(`${b.dataset.wtShip} 을(를) PR 로 올리고 머지합니다.\nOrca 워커가 머지 뒤 Jira 「개발 완료」 전이, 스텝 노트 기록, 워크트리·브랜치 정리까지 합니다. 진행할까요?`)) return;
   const txt = b.textContent;
   b.disabled = true; b.textContent = b.dataset.wtOpen ? '여는 중…' : b.dataset.wtShip ? '시작 중…' : '기록 중…';
   const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen)
     : b.dataset.wtShip ? await api.reviewShip(b.dataset.srv, b.dataset.wtShip) : await api.reviewMark(b.dataset.srv, b.dataset.wtMark, b.dataset.done === '1');
-  if (st !== 200 && st !== 202) alert(body.error || `실패 (${st})`);
+  if (st !== 200 && st !== 202) uiAlert(body.error || `실패 (${st})`);
   else if (body.approved) toast(body.output || '승인을 전달했습니다');
   b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
 }
@@ -3069,7 +3091,7 @@ function serverPanel() {
     const id = row.dataset.id, cur = () => api.servers().map(x => ({ ...x }));
     row.querySelector('[data-on]').onchange = e => apply(cur().map(x => x.id === id ? { ...x, on: e.target.checked } : x));
     row.querySelector('[data-name]').onchange = e => { api.setServers(cur().map(x => x.id === id ? { ...x, name: e.target.value } : x)); render(); };
-    row.querySelector('[data-sp=del]').onclick = () => { if (confirm(`${api.server(id).name} 을(를) 목록에서 지울까요?`)) apply(cur().filter(x => x.id !== id)); };
+    row.querySelector('[data-sp=del]').onclick = async () => { if (await uiConfirm(`${api.server(id).name} 을(를) 목록에서 지울까요?`)) apply(cur().filter(x => x.id !== id)); };
     row.querySelector('[data-sp=test]').onclick = async () => {
       const st = row.querySelector('[data-st]');
       st.className = 'sp-msg'; st.textContent = '시험 중…';
@@ -3084,7 +3106,7 @@ function serverPanel() {
     say('시험 중…');
     const r = await api.probe(url), [text, cls] = verdict(r);
     say(text, cls);
-    if (cls === 'ok' || confirm(`${text}\n그래도 추가할까요?`)) apply([...api.servers(), { name: $('#sp-new-name').value, url, on: true }]);
+    if (cls === 'ok' || await uiConfirm(`${text}\n그래도 추가할까요?`)) apply([...api.servers(), { name: $('#sp-new-name').value, url, on: true }]);
   };
   el.querySelector('[data-sp=add]').onclick = add;
   $('#sp-url').onkeydown = e => { if (e.key === 'Enter') add(); };
