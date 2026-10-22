@@ -251,8 +251,8 @@ const api = (() => {
       return { runs: runs.sort((a, b) => (b.finished_at || '').localeCompare(a.finished_at || '')) };
     },
     // QA sets for the 워크트리 tab, over the servers that are on: {sets[{server, local, epic, summary, project, error,
-    // stray[], tickets[{key, summary, status, cat, assignee, review none|pending|done|changed, review_at,
-    // review_sha{repo: sha}, step, step_status, notes[], test, repos[{repo, path, branch, name, comment, head, base,
+    // stray[], tickets[{key, summary, status, cat, assignee, review none|pending|done|changed|reopened, review_at,
+    // review_round, review_sha{repo: sha}, step, step_status, notes[], test, repos[{repo, path, branch, name, comment, head, base,
     // base_ref, base_src PR|설정|기본, pr, dirty, ahead, behind, files, ins, dels}]}]}], jira}. local: the server is this
     // device's loopback, the only place 「VS Code 로 열기」 can work. state.reviews_at changes when any server's sets do.
     reviews: async () => {
