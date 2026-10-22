@@ -1891,10 +1891,8 @@ function qaMore(t, set) {
   const q = t.qa; if (!q) return '';
   const d = `data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}"`, live = q.live?.length;
   const items = [
-    !live && !q.ignored && !['delivered', 'cleaned'].includes(q.stage) ? `<button class="act big" data-qa-tk="restart" ${d} title="기록된 브리프로 코디네이터를 새 터미널에 다시 띄웁니다">코디네이터 재기동</button>` : '',
-    live ? `<button class="act big" data-qa-tk="close" ${d} title="${esc(q.live.join('\n'))}">터미널 닫기 (${live})</button>` : '',
-    `<button class="act big" data-qa-tk="${q.ignored ? 'unignore' : 'ignore'}" ${d} title="${q.ignored ? '다시 드라이버가 처리합니다' : '드라이버가 이 티켓을 더는 고르지 않습니다'}">${q.ignored ? '제외 해제' : '드라이버에서 제외'}</button>`].join('');
-  return `<details class="qa-more"><summary class="act big" title="코디네이터·제외 제어">⋯</summary><div>${items}</div></details>`;
+    !live && !q.ignored && !['delivered', 'cleaned'].includes(q.stage) ? `<button class="act big" data-qa-tk="restart" ${d} title="기록된 브리프로 코디네이터를 새 터미널에 다시 띄웁니다">코디네이터 재기동</button>` : ''].join('');
+  return items ? `<details class="qa-more"><summary class="act big" title="코디네이터 제어">⋯</summary><div>${items}</div></details>` : '';
 }
 function wtRepo(t, r) {
   const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
@@ -1913,7 +1911,9 @@ function wtTicket(t, set) {
   const [cls, lbl] = WT_REVIEW[t.review];
   const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
   const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
-  const markLbl = t.review === 'done' ? '리뷰 취소' : t.review === 'changed' || t.review === 'reopened' ? '다시 리뷰 완료' : '리뷰 완료';
+  // On a driver ticket the coordinator has finished reviewing (ready/ written), a review is also the push·PR approval.
+  const ship = set.driver && t.qa?.stage === 'committed';
+  const markLbl = ship ? '리뷰 완료 · 반출 승인' : t.review === 'done' ? '리뷰 취소' : t.review === 'changed' || t.review === 'reopened' ? '다시 리뷰 완료' : '리뷰 완료';
   return `<div class="rv-tk ${t.review}">
     <div class="rv-head">
       <span class="tkc ${cls}"><i>${TK_IC[cls]}</i>${lbl}${t.review_at && t.review !== 'pending' ? ' · ' + esc(t.review_at) : ''}${t.review === 'reopened' ? `<span title="리뷰 뒤 드라이버가 재오픈으로 ${t.qa?.round}회차를 기동했습니다"> (${t.review_round ? esc(t.review_round) + '회차' : '이전 회차'} 리뷰)</span>` : ''}</span>
@@ -1926,12 +1926,11 @@ function wtTicket(t, set) {
       ${wtTest(t.test)}${wtShip(t)}${qaAgents(t.qa)}
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
       ${t.repos.length ? `<span class="rv-acts">
-        ${set.driver && t.qa?.stage === 'committed' ? `<button class="act big accent" data-qa-tk="approve" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)">반출 승인</button>` : ''}
         ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
         <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
-        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' ? 0 : 1}"${t.step ? '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : ''}
+        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${t.step ? ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : '' : ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"'}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : ''}
     </div>
     ${qaTrack(t.qa)}
     ${t.repos.map(r => wtRepo(t, r)).join('')}
@@ -1974,9 +1973,6 @@ async function qaClick(b) {
   const { qaAuto, qaTk, qaSet, epic, srv, id, key } = b.dataset, txt = b.textContent;
   if (qaSet) return qaSetClick(b);
   if (qaTk === 'restart' && !confirm(`${key} 코디네이터를 기록된 브리프로 새 터미널에 다시 띄웁니다. 진행할까요?`)) return;
-  if (qaTk === 'close' && !confirm(`${key} 의 열린 터미널(코디네이터·워커)을 닫습니다. 진행할까요?`)) return;
-  if (qaTk === 'ignore' && !confirm(`${key} 를 드라이버에서 제외합니다. 이후 회차가 이 티켓을 고르지 않습니다. 진행할까요?`)) return;
-  if (qaTk === 'approve' && !confirm(`${key} 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
   b.disabled = true; b.textContent = '처리 중…';
   let r = qaAuto ? await api.qaAutomation(srv, epic, id, qaAuto) : await api.qaTicket(srv, epic, key, qaTk);
   if (qaTk === 'cleanup_check' && r.status === 200) {
@@ -1985,7 +1981,6 @@ async function qaClick(b) {
     else if (confirm(`${key} 워크트리를 정리합니다:\n\n${out}\n\n진행할까요?`)) { b.textContent = '정리 중…'; r = await api.qaTicket(srv, epic, key, 'cleanup'); }
   }
   if (r.status !== 200) alert(r.body.error || r.body.output || `실패 (${r.status})`);
-  else if (qaTk === 'approve') toast(r.body.output || '승인을 전달했습니다');
   else if (qaTk && qaTk !== 'cleanup_check') toast(cut(r.body.output || '처리했습니다', 200));
   b.disabled = false; b.textContent = txt;
 }
@@ -2029,12 +2024,14 @@ async function wtClick(e) {
   if (q && !q.disabled) return qaClick(q);
   const b = e.target.closest('button[data-wt-open], button[data-wt-mark], button[data-wt-ship]');
   if (!b || b.disabled) return;
+  if (b.dataset.ship && !confirm(`${b.dataset.wtMark} 리뷰를 기록하고 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
   if (b.dataset.wtShip && !confirm(`${b.dataset.wtShip} 을(를) PR 로 올리고 머지합니다.\nOrca 워커가 머지 뒤 Jira 「개발 완료」 전이, 스텝 노트 기록, 워크트리·브랜치 정리까지 합니다. 진행할까요?`)) return;
   const txt = b.textContent;
   b.disabled = true; b.textContent = b.dataset.wtOpen ? '여는 중…' : b.dataset.wtShip ? '시작 중…' : '기록 중…';
   const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen)
     : b.dataset.wtShip ? await api.reviewShip(b.dataset.srv, b.dataset.wtShip) : await api.reviewMark(b.dataset.srv, b.dataset.wtMark, b.dataset.done === '1');
   if (st !== 200 && st !== 202) alert(body.error || `실패 (${st})`);
+  else if (body.approved) toast(body.output || '승인을 전달했습니다');
   b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
 }
 
