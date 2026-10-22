@@ -2057,7 +2057,7 @@ function qaStatsHtml(s) {
   for (const t of T) {
     const q = t.qa; if (!q) continue;
     (q.rounds || []).forEach((r, i) => byDay[dayKey(r)]?.[i ? 're' : 'neu'].push(t.key));
-    const f = q.at?.committed || q.at?.cleaned;
+    const f = q.at?.committed;
     if (f) byDay[dayKey(f)]?.fin.push(t.key);
   }
   while (days.length > 7 && !days[0].neu.length && !days[0].re.length && !days[0].fin.length) days.shift();
