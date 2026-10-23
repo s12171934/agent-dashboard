@@ -1951,7 +1951,9 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // reads 「재오픈」 once the driver starts a later round than the one the review saw. Opening VS Code
 // goes to the set's server and works only when that server is this device's loopback (set.local).
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
-const wtf = (() => { try { return { f: 'all', q: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '' }; } })();
+// f: review / Jira filter, q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home 「QA 파이프라인」 sets it.
+const wtf = (() => { try { return { f: 'all', q: '', qa: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '', qa: '' }; } })();
+const wtQaHit = t => !wtf.qa || (wtf.qa === 'blocked' ? !!t.qa?.blocked : t.qa?.stage === wtf.qa);
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], reopened: ['fail', '재오픈 후 리뷰 대기'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'reopened', 'pending', 'done', 'none'];
 const WT_FILTERS = { all: '전체', reopened: '재오픈', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
@@ -2139,15 +2141,27 @@ function wtRepo(t, r) {
     ${moved ? `<span class="rv-flag bad" title="리뷰 때 ${esc(rs)} → 지금 ${esc(r.head.slice(0, 9))}">리뷰 후 변경</span>` : ''}
   </div>`;
 }
-function wtTicket(t, set) {
-  const [cls, lbl] = WT_REVIEW[t.review];
-  const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
-  const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
+// A ticket's action buttons, by its stage — the 워크트리 tab's rows and the home 「QA 파이프라인」 both use them; clicks go
+// through wtClick.
+function wtActs(t, set) {
   // On a driver ticket the coordinator has finished reviewing (ready/ written), a review is also the push·PR approval.
   // Before that (stage under committed) the coordinator is still changing the worktree, so a review cannot be recorded yet.
   const ship = set.driver && t.qa?.stage === 'committed';
   const early = set.driver && t.qa && t.qa.stage_no < set.stages.indexOf('committed') + 1 && t.review !== 'done';
   const markLbl = ship ? '리뷰 완료 · 반출 승인' : t.review === 'done' ? '리뷰 취소' : t.review === 'changed' || t.review === 'reopened' ? '다시 리뷰 완료' : '리뷰 완료';
+  return t.repos.length ? `<span class="rv-acts">
+        ${set.driver && t.qa?.stage === 'delivered' && !t.qa.merge_at ? `<button class="act big accent" data-qa-tk="merge" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 올린 PR 을 의존 저장소부터 머지하라고 지시합니다 (merge 파일을 남김)">PR 머지</button>` : ''}
+        ${set.driver && t.qa?.stage === 'delivered' && t.qa.merge_at ? `<button class="act big" disabled title="${esc(clockAt(t.qa.merge_at))} 에 지시. PR 이 모두 머지되면 드라이버 회차가 정리합니다">머지 지시됨</button>` : ''}
+        ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
+        ${qaMore(t, set)}
+        ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
+        <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
+        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : '';
+}
+function wtTicket(t, set) {
+  const [cls, lbl] = WT_REVIEW[t.review];
+  const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
+  const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
   return `<div class="rv-tk ${t.review}">
     <div class="rv-head">
       <span class="tkc ${cls}"><i>${TK_IC[cls]}</i>${lbl}${t.review_at && t.review !== 'pending' ? ' · ' + esc(t.review_at) : ''}${t.review === 'reopened' ? `<span title="리뷰 뒤 드라이버가 재오픈으로 ${t.qa?.round}회차를 기동했습니다"> (${t.review_round ? esc(t.review_round) + '회차' : '이전 회차'} 리뷰)</span>` : ''}</span>
@@ -2159,14 +2173,7 @@ function wtTicket(t, set) {
       ${t.step ? `<a href="${obsLink(t.step)}" title="${esc(t.step.split('/').pop())}">스텝 ${esc(t.step_status || '')}</a>` : '<span class="st">스텝 노트 없음</span>'}${notes ? ' · ' + notes : ''}
       ${wtTest(t.test)}${wtShip(t)}${qaAgents(t.qa)}
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
-      ${t.repos.length ? `<span class="rv-acts">
-        ${set.driver && t.qa?.stage === 'delivered' && !t.qa.merge_at ? `<button class="act big accent" data-qa-tk="merge" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 올린 PR 을 의존 저장소부터 머지하라고 지시합니다 (merge 파일을 남김)">PR 머지</button>` : ''}
-        ${set.driver && t.qa?.stage === 'delivered' && t.qa.merge_at ? `<button class="act big" disabled title="${esc(clockAt(t.qa.merge_at))} 에 지시. PR 이 모두 머지되면 드라이버 회차가 정리합니다">머지 지시됨</button>` : ''}
-        ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
-        ${qaMore(t, set)}
-        ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
-        <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
-        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : ''}
+      ${wtActs(t, set)}
     </div>
     ${qaTrack(t.qa)}
     ${t.repos.map(r => wtRepo(t, r)).join('')}
@@ -2178,17 +2185,20 @@ async function renderWorktrees() {
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
         <div class="seg" id="wt-f">${Object.entries(WT_FILTERS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}<span class="seg-sep"></span>${Object.entries(WT_JIRA).map(([k, l]) => `<button data-k="j:${k}" title="Jira 상태">${l}</button>`).join('')}</div>
+        <select id="wt-qa" class="field" title="QA 드라이버 단계"></select>
         <input type="search" id="wt-q" class="field" placeholder="키·제목·브랜치 검색" value="${esc(wtf.q)}">
       </div><div id="wt-body"></div>`;
+    $('#wt-qa').onchange = e => { wtf.qa = e.target.value; save(); renderWorktrees(); };
     $('#wt-f').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.f = b.dataset.k; save(); renderWorktrees(); });
     $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
     $('#wt-body').onclick = wtClick;
     wtMounted = true;
   }
   $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
+  $('#wt-qa').innerHTML = [['', 'QA 단계 전체'], ...qaStages().map(x => [x.key, 'QA ' + x.label]), ['blocked', 'QA 막힘']].map(([k, l]) => `<option value="${k}"${k === wtf.qa ? ' selected' : ''}>${esc(l)}</option>`).join('');
   const q = wtf.q.trim().toLowerCase();
   if (!(wtf.f in WT_FILTERS || wtf.f.slice(2) in WT_JIRA)) wtf.f = 'all';
-  const hit = t => (wtf.f === 'all' || t.review === wtf.f || 'j:' + jiraStage(t) === wtf.f)
+  const hit = t => (wtf.f === 'all' || t.review === wtf.f || 'j:' + jiraStage(t) === wtf.f) && wtQaHit(t)
     && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q)));
   const num = k => +k.split('-').pop();
   const body = wtData.sets.map(s => {
@@ -4793,8 +4803,8 @@ function hmData(key, fn, sig) {
   return c?.data;
 }
 
-// 내 차례: what waits for a person — a 결정 버튼 question, a QA ticket at a user gate (반출 승인, 막힘), a session whose
-// turn ended (입력 대기). Questions first, then tickets, then sessions; the longest wait first within each.
+// 내 차례: what waits for a person — a 결정 버튼 question, a QA ticket at a user gate (반출 승인 with its worktree still
+// there: without one there is nothing to approve, only a driver state left behind; 막힘), a session whose turn ended (입력 대기). Questions first, then tickets, then sessions; the longest wait first within each.
 function hmMine() {
   const out = [], dec = state.decisions;
   const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
@@ -4803,7 +4813,7 @@ function hmMine() {
     const qa = t.qa;
     if (!qa || qa.ignored) continue;
     if (qa.blocked) out.push({ kind: 'blocked', at: qa.at?.[qa.stage] ? new Date(qa.at[qa.stage]).getTime() : null, t, set });
-    else if (qa.stage === 'committed') out.push({ kind: 'approve', at: qa.at?.committed ? new Date(qa.at.committed).getTime() : null, t, set });
+    else if (qa.stage === 'committed' && t.repos.length) out.push({ kind: 'approve', at: qa.at?.committed ? new Date(qa.at.committed).getTime() : null, t, set });
   }
   for (const s of state.sessions) if (!s.parent && !s.decision && status(s) === 'wait') out.push({ kind: 'wait', at: toDate(s.last_ts).getTime(), s });
   const order = { dec: 0, blocked: 1, approve: 2, wait: 3 };
@@ -4915,20 +4925,56 @@ function hmBoardHtml(w) {
       || '<div class="st">지금 움직이는 에이전트가 없습니다</div>' };
 }
 
-// QA 파이프라인: tickets per driver stage, a user gate with tickets in it outlined; one strip per QA set.
-function hmQaHtml() {
+// QA 파이프라인: tickets per driver stage, a user gate with tickets in it outlined; one strip per QA set. A stage (or 막힘)
+// clicked opens its tickets under the strip, longest in that stage first, each with the 워크트리 tab's buttons for its
+// stage (wtActs, clicks through wtClick) and, while an agent works it, 「Orca 에서 열기」 on the coordinator.
+const hmQaKey = (s, k) => `${s.server}|${s.epic}|${k}`;
+const hmQaSince = t => { const at = t.qa.at?.[t.qa.stage]; return at ? new Date(at).getTime() : null; };
+function hmQaRow(t, set) {
+  const q = t.qa, since = hmQaSince(t), coord = q.coordinator && state.all.find(x => x.orca_focus === q.coordinator);
+  const working = ['analysis', 'implementing', 'reviewing', 'approved'].includes(q.stage) || q.blocked;
+  const devs = (state.flow?.items || []).filter(x => x.ticket === t.key).length;
+  const size = t.repos.reduce((a, r) => (r.ahead != null && (a.c += r.ahead, a.f += r.files, a.i += r.ins, a.d += r.dels), a), { c: 0, f: 0, i: 0, d: 0 });
+  const info = [
+    q.blocked && `<span class="hw-dev">막힘 · ${esc(cut(q.blocked_reason || '사람의 판단을 기다림', 60))}</span>`,
+    q.round > 1 && `<span class="rv-flag warn">${q.round}회차</span>`,
+    devs && `<span class="hw-dev">⚠ 흐름 이탈 ${devs}</span>`,
+    working && qaAgents(q),
+    !t.repos.length && q.stage !== 'cleaned' && `<span class="rv-flag" title="드라이버 상태에는 이 단계로 남아 있지만 워크트리가 없습니다 — 정리됐거나 다른 경로로 반출된 티켓">워크트리 없음${q.stage === 'committed' ? ' — 승인할 변경 없음' : ''}</span>`,
+    q.stage === 'committed' && (size.c ? `<span class="st">+${size.c} 커밋 · ${size.f} 파일 <span class="rv-ins">+${size.i}</span> <span class="rv-del">−${size.d}</span></span>` : ''),
+    q.stage === 'committed' && t.repos.length && `<span class="tkc ${WT_REVIEW[t.review][0]}"><i>${TK_IC[WT_REVIEW[t.review][0]]}</i>${WT_REVIEW[t.review][1]}</span>`,
+    q.stage === 'committed' && wtTest(t.test),
+    q.stage === 'delivered' && (q.prs.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">PR ${i + 1}</a>`).join(' ') || '<span class="st">PR 링크 없음</span>'),
+    q.stage === 'delivered' && q.merge_at && `<span class="st">머지 지시 ${esc(clockAt(q.merge_at))}</span>`,
+  ].filter(Boolean).join('');
+  const acts = q.stage === 'cleaned' ? '' : `${working && coord?.orca_focus ? focusBtn(coord.orca_focus, true) : ''}${wtActs(t, set)}`;
+  return `<div class="hw-qa-tk">
+    <div class="hw-qa-h"><a href="${esc(wtData.jira)}/browse/${esc(t.key)}" target="_blank" rel="noopener"><b>${esc(t.key)}</b></a><span class="hw-t" title="${esc(t.summary || '')}">${esc(t.summary || '')}</span><span class="hw-age" title="이 단계에 들어간 시각 ${esc(clockAt(q.at?.[q.stage]))}">${since ? hmAge(since) : ''}</span></div>
+    ${info ? `<div class="hw-qa-i">${info}</div>` : ''}${acts ? `<div class="hw-qa-a">${acts}</div>` : ''}</div>`;
+}
+function hmQaHtml(w) {
   needReviews();
   const sets = (wtData.sets || []).filter(s => s.tickets.some(t => t.qa));
   if (!sets.length) return null;
-  const stages = qaStages();
+  const stages = qaStages(), sel = w.opts?.st || '';
   const body = sets.map(s => {
     const ts = s.tickets.filter(t => t.qa && !t.qa.ignored), cnt = k => ts.filter(t => t.qa.stage === k).length;
-    const blocked = ts.filter(t => t.qa.blocked).length, again = ts.filter(t => t.qa.round > 1).length;
-    const live = ts.filter(t => !['cleaned'].includes(t.qa.stage) && t.qa.at?.[t.qa.stage]).sort((a, b) => new Date(a.qa.at[a.qa.stage]) - new Date(b.qa.at[b.qa.stage]))[0];
+    const gate = k => QA_DESC[k]?.[2] && ts.some(t => t.qa.stage === k && t.repos.length);  // a user gate with real work in it
+    const blocked = ts.filter(t => t.qa.blocked), again = ts.filter(t => t.qa.round > 1).length;
+    const cell = (k, label, c, cls, tip) => `<button type="button" class="hw-stage${c ? '' : ' zero'}${cls}${sel === hmQaKey(s, k) ? ' on' : ''}" data-hm-opt="st" data-v="${esc(hmQaKey(s, k))}" aria-pressed="${sel === hmQaKey(s, k)}" title="${esc(tip)}"${c || sel === hmQaKey(s, k) ? '' : ' disabled'}><b>${c}</b>${esc(label)}</button>`;
+    const pick = sel.startsWith(`${s.server}|${s.epic}|`) ? sel.slice(`${s.server}|${s.epic}|`.length) : null;
+    let list = '';
+    if (pick) {
+      const rows = ts.filter(t => pick === 'blocked' ? t.qa.blocked : t.qa.stage === pick).sort((a, b) => (hmQaSince(a) || Infinity) - (hmQaSince(b) || Infinity));
+      const shown = rows.slice(0, HM_ROWS[w.size]), name = pick === 'blocked' ? '막힘' : stages.find(x => x.key === pick)?.label || qaName(pick);
+      const gone = pick === 'cleaned' ? 0 : rows.filter(t => !t.repos.length).length;
+      list = `<div class="hw-qa-list"><div class="hw-sub">${esc(name)} ${rows.length}${gone ? ` (워크트리 없음 ${gone})` : ''} · 이 단계에 오래 머문 순${QA_DESC[pick]?.[1] ? ` · 다음: ${esc(QA_DESC[pick][1])}` : ''}</div>
+        ${shown.map(t => hmQaRow(t, s)).join('')}
+        ${rows.length > shown.length ? `<div class="hw-rest">외 ${rows.length - shown.length}건 — <a href="#worktrees" data-hm-wtqa="${esc(pick)}">워크트리 리뷰 탭에서 이 단계 전부 보기</a></div>` : ''}</div>`;
+    }
     return `${sets.length > 1 ? `<div class="hw-sub">${esc(s.epic)} ${esc(cut(s.summary || '', 30))}</div>` : ''}
-      <div class="hw-stages">${stages.map(st => { const c = cnt(st.key), gate = QA_DESC[st.key]?.[2];
-        return `<span class="hw-stage${c ? '' : ' zero'}${gate && c ? ' gate' : ''}" title="${esc(QA_DESC[st.key]?.[0] || st.label)}"><b>${c}</b>${esc(st.label)}</span>`; }).join('')}</div>
-      <div class="st">티켓 ${ts.length}${blocked ? ` · <b style="color:var(--bad)">막힘 ${blocked}</b>` : ''}${again ? ` · 재오픈 ${again}` : ''}${live ? ` · 가장 오래 머문 티켓 ${esc(live.key)} ${esc(qaName(live.qa.stage))} ${hmAge(new Date(live.qa.at[live.qa.stage]).getTime())}` : ''}</div>`;
+      <div class="hw-stages">${stages.map(st => cell(st.key, st.label, cnt(st.key), gate(st.key) ? ' gate' : '', QA_DESC[st.key]?.[0] || st.label)).join('')}${blocked.length ? cell('blocked', '막힘', blocked.length, ' bad', '그 단계에서 멈춰 사람의 판단을 기다리는 티켓') : ''}</div>
+      ${pick ? list : `<div class="st">티켓 ${ts.length}${again ? ` · 재오픈 ${again}` : ''} · 단계를 누르면 그 단계의 티켓과 버튼이 펼쳐집니다</div>`}`;
   }).join('');
   return { more: '#worktrees', body };
 }
@@ -5053,7 +5099,9 @@ function hmBind() {
   v.querySelectorAll('[data-hm-opt]').forEach(b => b.onclick = e => {
     e.preventDefault();
     const w = find(b), k = b.dataset.hmOpt;
-    w.opts = { ...w.opts, [k]: k === 'h' ? +b.dataset.v : !w.opts?.[k] };
+    // h: a number; another option with a value toggles off when picked again (st: the QA stage shown); without one, on/off.
+    const v = b.dataset.v;
+    w.opts = { ...w.opts, [k]: k === 'h' ? +v : v !== undefined ? (w.opts?.[k] === v ? '' : v) : !w.opts?.[k] };
     hmSave(); renderHome();
   });
   // A single-choice question answers on click, as its card on 결정 대기 does; anything else opens that screen.
@@ -5067,6 +5115,10 @@ function hmBind() {
     if (r.status !== 200) b.closest('.hw-item')?.classList.remove('sent');
     refresh();
   });
+  v.querySelectorAll('[data-hm-wtqa]').forEach(a => a.onclick = () => { wtf.qa = a.dataset.hmWtqa; wtf.f = 'all'; try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} });
+  // The QA tickets' buttons are the 워크트리 tab's, handled as there (confirmations included).
+  const qa = v.querySelector('.hw[data-hm=qa]');
+  if (qa) qa.onclick = wtClick;
   if (hmEdit) v.querySelectorAll('.hw-grip').forEach(g => g.onpointerdown = hmDragStart);
 }
 
