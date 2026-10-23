@@ -1954,6 +1954,13 @@ let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
 // f: review / Jira filter, q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home 「QA 파이프라인」 sets it.
 const wtf = (() => { try { return { f: 'all', q: '', qa: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '', qa: '' }; } })();
 const wtQaHit = t => !wtf.qa || (wtf.qa === 'blocked' ? !!t.qa?.blocked : t.qa?.stage === wtf.qa);
+// The tab's three filters together; the home 「QA 파이프라인」 counts and lists only the tickets they let through.
+const wtHit = t => { const q = wtf.q.trim().toLowerCase();
+  return (wtf.f === 'all' || t.review === wtf.f || 'j:' + jiraStage(t) === wtf.f) && wtQaHit(t)
+    && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q))); };
+// The filters in force, named for the home widget's note ([] when none).
+const wtFilterNames = () => [wtf.f !== 'all' && (WT_FILTERS[wtf.f] || WT_JIRA[wtf.f.slice(2)]),
+  wtf.qa && (wtf.qa === 'blocked' ? 'QA 막힘' : 'QA ' + qaName(wtf.qa)), wtf.q.trim() && `「${wtf.q.trim()}」`].filter(Boolean);
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], reopened: ['fail', '재오픈 후 리뷰 대기'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'reopened', 'pending', 'done', 'none'];
 const WT_FILTERS = { all: '전체', reopened: '재오픈', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
@@ -2196,14 +2203,11 @@ async function renderWorktrees() {
   }
   $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
   $('#wt-qa').innerHTML = [['', 'QA 단계 전체'], ...qaStages().map(x => [x.key, 'QA ' + x.label]), ['blocked', 'QA 막힘']].map(([k, l]) => `<option value="${k}"${k === wtf.qa ? ' selected' : ''}>${esc(l)}</option>`).join('');
-  const q = wtf.q.trim().toLowerCase();
   if (!(wtf.f in WT_FILTERS || wtf.f.slice(2) in WT_JIRA)) wtf.f = 'all';
-  const hit = t => (wtf.f === 'all' || t.review === wtf.f || 'j:' + jiraStage(t) === wtf.f) && wtQaHit(t)
-    && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q)));
   const num = k => +k.split('-').pop();
   const body = wtData.sets.map(s => {
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
-    const ts = s.tickets.filter(hit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
+    const ts = s.tickets.filter(wtHit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
@@ -4925,7 +4929,8 @@ function hmBoardHtml(w) {
       || '<div class="st">지금 움직이는 에이전트가 없습니다</div>' };
 }
 
-// QA 파이프라인: tickets per driver stage, a user gate with tickets in it outlined; one strip per QA set. A stage (or 막힘)
+// QA 파이프라인: tickets per driver stage, a user gate with tickets in it outlined; one strip per QA set, counting only the
+// tickets the 워크트리 리뷰 tab's filters let through (wtHit), named above the strips with 「해제」. A stage (or 막힘)
 // clicked opens its tickets under the strip, longest in that stage first, each with the 워크트리 tab's buttons for its
 // stage (wtActs, clicks through wtClick) and, while an agent works it, 「Orca 에서 열기」 on the coordinator.
 const hmQaKey = (s, k) => `${s.server}|${s.epic}|${k}`;
@@ -4956,9 +4961,9 @@ function hmQaHtml(w) {
   needReviews();
   const sets = (wtData.sets || []).filter(s => s.tickets.some(t => t.qa));
   if (!sets.length) return null;
-  const stages = qaStages(), sel = w.opts?.st || '';
+  const stages = qaStages(), sel = w.opts?.st || '', fl = wtFilterNames();
   const body = sets.map(s => {
-    const ts = s.tickets.filter(t => t.qa && !t.qa.ignored), cnt = k => ts.filter(t => t.qa.stage === k).length;
+    const ts = s.tickets.filter(t => t.qa && !t.qa.ignored && wtHit(t)), cnt = k => ts.filter(t => t.qa.stage === k).length;
     const gate = k => QA_DESC[k]?.[2] && ts.some(t => t.qa.stage === k && t.repos.length);  // a user gate with real work in it
     const blocked = ts.filter(t => t.qa.blocked), again = ts.filter(t => t.qa.round > 1).length;
     const cell = (k, label, c, cls, tip) => `<button type="button" class="hw-stage${c ? '' : ' zero'}${cls}${sel === hmQaKey(s, k) ? ' on' : ''}" data-hm-opt="st" data-v="${esc(hmQaKey(s, k))}" aria-pressed="${sel === hmQaKey(s, k)}" title="${esc(tip)}"${c || sel === hmQaKey(s, k) ? '' : ' disabled'}><b>${c}</b>${esc(label)}</button>`;
@@ -4976,7 +4981,8 @@ function hmQaHtml(w) {
       <div class="hw-stages">${stages.map(st => cell(st.key, st.label, cnt(st.key), gate(st.key) ? ' gate' : '', QA_DESC[st.key]?.[0] || st.label)).join('')}${blocked.length ? cell('blocked', '막힘', blocked.length, ' bad', '그 단계에서 멈춰 사람의 판단을 기다리는 티켓') : ''}</div>
       ${pick ? list : `<div class="st">티켓 ${ts.length}${again ? ` · 재오픈 ${again}` : ''} · 단계를 누르면 그 단계의 티켓과 버튼이 펼쳐집니다</div>`}`;
   }).join('');
-  return { more: '#worktrees', body };
+  const note = fl.length ? `<div class="hw-sub">워크트리 리뷰 탭 필터 적용: ${fl.map(esc).join(' · ')} — <a href="#home" data-hm-wtreset>해제</a></div>` : '';
+  return { more: '#worktrees', body: note + body };
 }
 
 // 오늘 타임라인: top-level sessions on one time axis — a bar from start to now (open) or to the last record, coloured by
@@ -5115,7 +5121,8 @@ function hmBind() {
     if (r.status !== 200) b.closest('.hw-item')?.classList.remove('sent');
     refresh();
   });
-  v.querySelectorAll('[data-hm-wtqa]').forEach(a => a.onclick = () => { wtf.qa = a.dataset.hmWtqa; wtf.f = 'all'; try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} });
+  v.querySelectorAll('[data-hm-wtqa]').forEach(a => a.onclick = () => { wtf.qa = a.dataset.hmWtqa; try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} });
+  v.querySelectorAll('[data-hm-wtreset]').forEach(a => a.onclick = e => { e.preventDefault(); Object.assign(wtf, { f: 'all', q: '', qa: '' }); try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} renderHome(); });
   // The QA tickets' buttons are the 워크트리 tab's, handled as there (confirmations included).
   const qa = v.querySelector('.hw[data-hm=qa]');
   if (qa) qa.onclick = wtClick;
