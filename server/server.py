@@ -4877,6 +4877,20 @@ def vault_notes(s):
     return sorted(out, key=lambda n: n["mtime"], reverse=True)
 
 
+def vault_recent(limit):
+    """GET /api/vault/recent: the notes agent sessions made (their agent/ tag), newest first, each with the live session
+    that made it when this server holds it — the home tab's 「최근 볼트 문서」."""
+    v = vault
+    with lock:
+        by_tag = {f"{x.kind}-{x.id}": x for x in sessions.values()}
+    out = []
+    for rel, n in sorted(((r, n) for r, n in v["notes"].items() if n["agent"]), key=lambda e: e[1]["mtime"], reverse=True)[:limit]:
+        x = by_tag.get(n["agent"])
+        out.append({"path": rel, "abs": os.path.join(VAULT, rel), "title": n["title"], "mtime": n["mtime"], "agent": n["agent"],
+                    "session": x.path if x else None, "session_title": x.title if x else None})
+    return {"on": v["on"], "notes": out}
+
+
 def vault_loop():
     while True:
         try:
@@ -5494,6 +5508,8 @@ class Handler(BaseHTTPRequestHandler):
             if not found:
                 return self.send_json({"error": "not found" if PROJECTS_DIRS else "--projects-dir 가 지정되지 않음"}, 404)
             self.send_json(*project_note(found, (q.get("path") or [""])[0]))
+        elif url.path == "/api/vault/recent":
+            self.send_json(vault_recent(max(1, min(50, int((parse_qs(url.query).get("limit") or ["10"])[0] or 10)))))
         elif url.path == "/api/designs":
             self.send_json(design_list())
         elif url.path == "/api/design":
