@@ -386,6 +386,20 @@ const api = (() => {
         docs: parts.flatMap(([s, d]) => tag(d.docs, s.id)), plans: parts.flatMap(([s, d]) => tag(d.plans, s.id)),
         refs: parts.reduce((n, [, d]) => n + (d.refs || 0), 0) };
     },
+    // Notes agent sessions made in the vault, newest first over the servers that are on: {on, old (a server without
+    // the API), notes[{server, path, abs, title, mtime, agent, session (log path or null), session_title}]}.
+    vaultRecent: async limit => {
+      let on = false, old = false;
+      const notes = (await Promise.all(enabled().map(async srv => {
+        try {
+          const d = await getJson(srv, '/api/vault/recent?limit=' + limit);
+          if (!d) { old = true; return []; }
+          on ||= d.on;
+          return tag(d.notes, srv.id);
+        } catch { return []; }
+      }))).flat().sort((a, b) => b.mtime - a.mtime).slice(0, limit);
+      return { on, old, notes };
+    },
     // One document: {key, kind, mtime, size, source{dir, repo, worktree, branch, head}, copies[], content (Markdown),
     // toc[{id, title, no, start, end}], refs[{section, session, title, path, kind, parent, reads, searches, lines,
     // cover, first, last, exact, commits, ticket}], plans[{project, design_commit, head, same, same_file}]}. null when unknown.

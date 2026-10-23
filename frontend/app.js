@@ -226,13 +226,13 @@ function buildFamilies() {
 
 // ---------- routing ----------
 function route() {
-  const h = decodeURIComponent(location.hash.slice(1) || 'agents');
+  const h = decodeURIComponent(location.hash.slice(1) || 'home');
   if (h === 'projects') return { v: 'projects' };
   if (h === 'designs') return { v: 'designs' };
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['agents', 'compare', 'talk', 'tests', 'worktrees', 'decide'].includes(h) ? h : 'agents' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide'].includes(h) ? h : 'home' };
 }
 addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
@@ -305,7 +305,9 @@ async function renderView(navigated) {
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
-  if (r.v === 'agents') renderAgents();
+  if (r.v !== 'home') hmEdit = false;
+  if (r.v === 'home') renderHome();
+  else if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
@@ -334,6 +336,7 @@ function renderHeader() {
   $('#k-tokens').textContent = fmt(ss.reduce((a, s) => a + total(s), 0));
   $('#k-turns').textContent = fmt(ss.reduce((a, s) => a + s.turns, 0));
   { const n = testItems().filter(testLive).length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n; }
+  { const n = hmMine().length; $('#k-home').textContent = n; $('#k-home').hidden = !n; }
   $('#k-runs').textContent = state.orca.error ? '오류' : state.orca.runs.filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
   const dec = state.decisions || { available: false, pending: [] }, unread = (dec.inbox || []).filter(r => !r.read).length;
@@ -2299,7 +2302,7 @@ function needReviews() {
   const want = state.reviews_at;
   rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '' }; })
     .catch(() => { rvFailed = want; })
-    .finally(() => { rvLoad = null; if (route().v === 'agents' && ['map', 'tl'].includes(agView)) render(); });
+    .finally(() => { rvLoad = null; if (route().v === 'home' || route().v === 'agents' && ['map', 'tl'].includes(agView)) render(); });
 }
 // The QA ticket (and its set) a session works on: a terminal handle the driver recorded for the ticket (coordinator,
 // workers), else the ticket key in the session's title or worktree name — a closed terminal leaves only those.
@@ -4761,13 +4764,348 @@ function ticketDesignBadge(p, n) {
   return `<div class="tg-d" title="${esc('읽은 설계 섹션\n' + tip)}">${top.map(x => esc(lbl(x))).join(' · ')}${rows.length > 3 ? ` <span>+${rows.length - 3}</span>` : ''}</div>`;
 }
 
+// ---------- 「홈」 tab: widgets over the same snapshot, arranged per device (adash.home) ----------
+// What needs a person sits on top (내 차례, 흐름 이탈 are pinned there), progress below. Each widget is a function of the
+// snapshot that returns its body, or null when there is nothing to show (no QA sets, no test ever): the widget then
+// leaves the grid, except in 편집 where it stays as a placeholder so it can still be moved. Sizes: S one column,
+// M two, L two by two, W the whole row. A click on a widget's 「→」 goes to the tab that holds the full view.
+const HM_SIZES = ['S', 'M', 'L', 'W'];
+const HM_DEFAULT = [{ id: 'mine', size: 'L', pin: true }, { id: 'flow', size: 'M', pin: true }, { id: 'tests', size: 'S' }, { id: 'cost', size: 'S' },
+  { id: 'board', size: 'W' }, { id: 'qa', size: 'M' }, { id: 'tl', size: 'M' }];
+const hmSave = () => { try { localStorage.setItem('adash.home', JSON.stringify(hmLay)); } catch {} };
+let hmEdit = false, hmDrag = null;
+const hmNorm = () => { hmLay.widgets = [...hmLay.widgets.filter(w => w.pin), ...hmLay.widgets.filter(w => !w.pin)]; };
+const hmAge = ms => human(Math.max(0, (Date.now() - ms) / 1000));
+const hmLink = (href, label = '→') => `<a class="hw-more" href="${href}">${label}</a>`;
+const hmRow = (kind, cls, main, sub, right, href) => `<${href ? `a href="${href}"` : 'div'} class="hw-row"><span class="hw-kind ${cls}">${kind}</span><span class="hw-t">${main}${sub ? `<small>${sub}</small>` : ''}</span>${right || ''}</${href ? 'a' : 'div'}>`;
+const sessHref = s => '#s=' + encodeURIComponent(s.path);
+
+// Data the snapshot does not carry, fetched once per change and kept: 「최근 볼트 문서」.
+const hmFetch = {};
+function hmData(key, fn, sig) {
+  const c = hmFetch[key];
+  if (c && c.sig === sig) return c.data;
+  if (!c?.loading) {
+    hmFetch[key] = { ...c, loading: true };
+    fn().then(d => { hmFetch[key] = { sig, data: d }; }, () => { hmFetch[key] = { sig, data: null }; })
+      .finally(() => { if (route().v === 'home') render(); });
+  }
+  return c?.data;
+}
+
+// 내 차례: what waits for a person — a 결정 버튼 question, a QA ticket at a user gate (반출 승인, 막힘), a session whose
+// turn ended (입력 대기). Questions first, then tickets, then sessions; the longest wait first within each.
+function hmMine() {
+  const out = [], dec = state.decisions;
+  const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
+  for (const q of dec?.pending || []) out.push({ kind: 'dec', at: q.created_at * 1000, q, s: sessOf(q) });
+  for (const set of wtData.sets || []) for (const t of set.tickets) {
+    const qa = t.qa;
+    if (!qa || qa.ignored) continue;
+    if (qa.blocked) out.push({ kind: 'blocked', at: qa.at?.[qa.stage] ? new Date(qa.at[qa.stage]).getTime() : null, t, set });
+    else if (qa.stage === 'committed') out.push({ kind: 'approve', at: qa.at?.committed ? new Date(qa.at.committed).getTime() : null, t, set });
+  }
+  for (const s of state.sessions) if (!s.parent && !s.decision && status(s) === 'wait') out.push({ kind: 'wait', at: toDate(s.last_ts).getTime(), s });
+  const order = { dec: 0, blocked: 1, approve: 2, wait: 3 };
+  return out.sort((a, b) => order[a.kind] - order[b.kind] || (a.at || Infinity) - (b.at || Infinity));
+}
+const hmRec = o => /recommended|권장/i.test(o.label);
+// Rows by the widget's size; the rest is counted per kind under them.
+const HM_ROWS = { S: 3, M: 5, L: 8, W: 6 };
+const HM_KIND = { dec: ['결정', '#decide'], blocked: ['막힘', '#worktrees'], approve: ['반출 승인', '#worktrees'], wait: ['입력 대기', '#agents'] };
+function hmMineHtml(w) {
+  const items = hmMine(), dec = state.decisions, unread = (dec?.inbox || []).filter(r => !r.read).length;
+  const n = k => items.filter(x => x.kind === k).length, shown = items.slice(0, HM_ROWS[w.size]), rest = items.slice(shown.length);
+  const rows = shown.map(x => {
+    const age = x.at ? hmAge(x.at) : '';
+    if (x.kind === 'dec') {
+      const q0 = x.q.questions?.[0] || {}, simple = x.q.questions?.length === 1 && !q0.multiSelect;
+      const who = x.s ? nameOf(x.s) : (x.q.agent || '에이전트');
+      return `<div class="hw-item">${hmRow('결정', 'q', esc(cut(q0.question || q0.header || '', 90)), `${esc(cut(who, 40))}${x.q.questions?.length > 1 ? ` · 질문 ${x.q.questions.length}개` : ''}`, `<span class="hw-age">${age}</span>`)}
+        <div class="hw-opts">${simple ? q0.options.map((o, i) => `<button type="button" class="hw-opt${hmRec(o) ? ' rec' : ''}" data-hm-dec="${esc(x.q.id)}" data-i="${i}" title="${esc(o.description || '')}">${esc(cut(o.label, 40))}</button>`).join('') : ''}
+          <a class="hw-opt ghost" href="#decide">${simple ? '기타…' : '답하기 →'}</a></div></div>`;
+    }
+    if (x.kind === 'wait') return hmRow('입력 대기', 'idle', esc(cut(x.s.last_action?.text || '턴을 끝내고 다음 지시를 기다림', 90)), esc(cut(nameOf(x.s), 40)), `<span class="hw-age">${age}</span>`, sessHref(x.s));
+    const q = x.t.qa;
+    return hmRow(x.kind === 'approve' ? '반출 승인' : '막힘', x.kind === 'approve' ? 'ok' : 'bad', `${esc(x.t.key)} ${esc(cut(x.t.summary || '', 60))}`,
+      x.kind === 'approve' ? `검토 통과·커밋 완료${q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}` : esc(cut(q.blocked_reason || qaName(q.stage) + ' 단계에서 멈춤', 70)), `<span class="hw-age">${age}</span>`, '#worktrees');
+  }).join('') + (rest.length ? `<div class="hw-rest">외 ${Object.keys(HM_KIND).filter(k => rest.some(x => x.kind === k)).map(k => `<a href="${HM_KIND[k][1]}">${HM_KIND[k][0]} ${rest.filter(x => x.kind === k).length}</a>`).join(' · ')}</div>` : '');
+  const sum = [['결정', n('dec')], ['막힘', n('blocked')], ['반출 승인', n('approve')], ['입력 대기', n('wait')], ['메일함', unread]].filter(([, c]) => c).map(([l, c]) => `${l} ${c}`).join(' · ');
+  return { n: items.length, hot: items.length > 0, note: sum, body: rows || '<div class="hw-ok">기다리는 일이 없습니다 ✓</div>' };
+}
+
+// 흐름 이탈: the server's flow check (state.flow); a server that does not judge leaves the widget out.
+function hmFlowHtml() {
+  const fl = state.flow;
+  if (!fl) return null;
+  const items = byRank(fl.items || [], x => -(SEV_RANK[x.severity] || 0));
+  const rows = items.slice(0, 8).map(x => {
+    const s = x.session && state.all.find(y => y.path === x.session);
+    const who = s ? nameOf(s) : x.ticket || (x.task_id && IX.tasks[x.task_id]?.display_name) || '';
+    return hmRow(esc(x.rule_name || x.rule), x.severity === 'bad' ? 'bad' : 'warn', `${esc(cut(who, 40))}${who ? ' · ' : ''}${esc(cut(x.reason, 70))}`, esc(cut(x.evidence?.[0] || '', 90)),
+      s ? pill(status(s), s) : '', s ? sessHref(s) : '#agents');
+  }).join('');
+  return { n: items.length, bad: items.some(x => x.severity === 'bad'), note: fl.ok ? `정상 표시 ${fl.ok}` : '', more: '#agents',
+    body: (rows || '<div class="hw-ok">흐름 이탈이 없습니다 ✓</div>') + (items.length > 8 ? `<div class="st">외 ${items.length - 8}건</div>` : '') };
+}
+
+function hmTestsHtml() {
+  const all = testItems();
+  if (!all.length) return null;
+  const live = all.filter(testLive), fin = all.filter(t => !testLive(t)), bad = fin.filter(t => t.phase === 'failed' || t.failed);
+  const last = bad.sort((a, b) => (b.finished_at || '').localeCompare(a.finished_at || ''))[0];
+  const rows = live.slice(0, 3).map(t => { const pct = t.total ? Math.min(100, (t.done || 0) / t.total * 100) : 0;
+    return `<div class="hw-test"><b>${esc(cut(t.label || t.key, 40))}</b><span class="st">${t.total ? `${t.done ?? 0}/${t.total}` : esc(TEST_PHASE[t.phase] || t.phase || '진행')} · 실패 ${t.failed || 0}</span>
+      ${t.total ? `<span class="tbar"><i style="width:${pct.toFixed(1)}%"></i>${t.failed ? `<i class="f" style="width:${Math.min(100, t.failed / t.total * 100).toFixed(2)}%"></i>` : ''}</span>` : ''}</div>`; }).join('');
+  return { n: live.length || null, note: live.length ? '실행 중' : '', more: '#tests',
+    body: `${rows || '<div class="st">실행 중인 테스트가 없습니다</div>'}<div class="st">24시간 안에 끝난 실행 ${fin.length} · 실패 ${bad.length}${last ? ` (${esc(cut(last.label || last.key, 30))}, ${ago(last.finished_at)})` : ''}</div>` };
+}
+
+// 오늘 비용: the 5-minute cost slots of every session, by hour since midnight.
+function hmCostHtml() {
+  const day0 = new Date().setHours(0, 0, 0, 0), hours = new Array(new Date().getHours() + 1).fill(0), by = new Map();
+  for (const s of state.sessions) for (const [k, v] of Object.entries(s.slots || {})) {
+    const t = +k * 300e3;
+    if (t < day0) continue;
+    hours[Math.floor((t - day0) / 3600e3)] += v[4];
+    const top = s.parent ? state.sessions.find(x => x.id === s.parent) || s : s;
+    by.set(top, (by.get(top) || 0) + v[4]);
+  }
+  const sum = hours.reduce((a, x) => a + x, 0), max = Math.max(...hours, 1e-9);
+  const big = [...by].sort((a, b) => b[1] - a[1])[0];
+  return { more: '#compare', body: `<div class="hw-big">${usd(sum)} <span class="st">오늘 0시부터</span></div>
+    <div class="hw-spark" title="시간대별 비용">${hours.map((x, i) => `<i class="${i === hours.length - 1 ? 'cur' : ''}" style="height:${Math.max(2, x / max * 100)}%" title="${i}시 ${usd(x)}"></i>`).join('')}</div>
+    ${big ? `<div class="st">가장 큰 세션: <a href="${sessHref(big[0])}">${esc(cut(nameOf(big[0]), 26))}</a> ${usd(big[1])}</div>` : ''}` };
+}
+
+// 작업 보드: each coordinator family with its runs' tasks, its workers' aplan steps, then the solo sessions. Families
+// and sessions with nothing open and no record in the last hour drop out unless 「완료도 보기」 is on.
+const HM_TASK = { completed: 'done', failed: 'fail', cancelled: 'skip' };
+const hmTaskCell = t => HM_TASK[t.status] || (['dispatched', 'running', 'in_progress'].includes(t.status) ? 'run' : '');
+// On the board: running, background or waiting, a pending question, a record in the last hour, or 응답 없음 for under
+// six hours (a session stalled since yesterday is a leftover, not work in progress).
+const hmRecent = s => { const st = status(s); return ['run', 'bg', 'wait'].includes(st) || s.decision || ageS(s.last_ts) < (st === 'stalled' ? 6 * 3600 : 3600); };
+const HM_BOARD = { S: 6, M: 10, L: 16, W: 14 };
+// One cell per task up to 30; past that the cells are too thin to read, so the same states as proportions.
+const hmTaskBar = tasks => { if (tasks.length <= 30) return `<div class="pbar">${tasks.map(t => `<i class="${hmTaskCell(t)}" title="${esc(t.display_name || t.task_title || '')}"></i>`).join('')}</div>`;
+  const c = k => tasks.filter(t => hmTaskCell(t) === k).length, pct = k => (c(k) / tasks.length * 100).toFixed(2);
+  return `<div class="prog" title="완료 ${c('done')} · 진행 ${c('run')} · 실패 ${c('fail')} · 남음 ${c('')}"><div style="width:${pct('done')}%;background:var(--done)"></div><div style="width:${pct('run')}%;background:var(--run)"></div><div style="width:${pct('fail')}%;background:var(--bad)"></div></div>`; };
+function hmPlanCells(s) { const p = s.plan; return p ? pbar(missed(p, ENDED(status(s)))) : '<div class="pbar"></div>'; }
+function hmBoardHtml(w) {
+  const { fams, solos } = families(), all = w.opts?.all;
+  const famOn = f => all || f.members.some(hmRecent);
+  const row = (cls, name, sub, cells, right, href) => `<a class="hw-run ${cls}" href="${href}"><span class="hw-who"><b>${name}</b><small>${sub}</small></span>${cells}<span class="hw-right">${right}</span></a>`;
+  const out = [];
+  for (const f of fams.filter(famOn)) {
+    const tasks = f.runs.flatMap(r => state.orca.tasks[r.id] || []).filter(t => !t.plan_row);
+    const done = tasks.filter(t => t.status === 'completed').length, c = f.coord;
+    const nm = c ? nameOf(c) : ownerName(f.handle), devs = (state.flow?.items || []).filter(x => f.members.some(m => m.path === x.session)).length;
+    out.push(row('fam', esc(cut(nm, 34)), `${c?.role === 'coordinator' ? '코디네이터' : '묶음'}${tasks.length ? ` · 태스크 ${done}/${tasks.length}` : ''}${devs ? ` · <span class="hw-dev">⚠${devs}</span>` : ''}`,
+      tasks.length ? hmTaskBar(tasks) : c ? hmPlanCells(c) : '<div class="pbar"></div>',
+      c ? pill(status(c), c) : `<ds-pill state="${f.st}">${ST_LABEL[f.st]}</ds-pill>`, c ? sessHref(c) : '#agents'));
+    const kids = byRank(f.members.filter(m => m !== c && (all || hmRecent(m))), sessRank);
+    for (const m of kids.slice(0, 6)) out.push(row('sub', esc(cut(nameOf(m), 30)), m.plan ? `계획 ${m.plan.done}/${m.plan.total}${m.plan.cur_text ? ' · ' + esc(cut(m.plan.cur_text, 24)) : ''}` : esc(ROLE[m.role] || ''), hmPlanCells(m), pill(status(m), m), sessHref(m)));
+    if (kids.length > 6) out.push(`<div class="hw-run sub st">외 ${kids.length - 6}개</div>`);
+  }
+  for (const s of byRank(solos.filter(s => all || hmRecent(s)), sessRank))
+    out.push(row('solo', esc(cut(nameOf(s), 34)), `단독${s.plan ? ` · 계획 ${s.plan.done}/${s.plan.total}${s.plan.cur_text ? ' · ' + esc(cut(s.plan.cur_text, 24)) : ''}` : ''}`, hmPlanCells(s), pill(status(s), s), sessHref(s)));
+  const nf = fams.filter(famOn).length, ns = solos.filter(s => all || hmRecent(s)).length, max = HM_BOARD[w.size];
+  return { note: `묶음 ${nf} · 단독 ${ns}`, more: '#agents', tools: `<button type="button" class="hw-tog${all ? ' on' : ''}" data-hm-opt="all" aria-pressed="${!!all}">완료도 보기</button>`,
+    body: out.slice(0, max).join('') + (out.length > max ? `<div class="hw-rest">외 ${out.length - max}줄 — <a href="#agents">에이전트 탭에서 전부 보기</a></div>` : '')
+      || '<div class="st">지금 움직이는 에이전트가 없습니다</div>' };
+}
+
+// QA 파이프라인: tickets per driver stage, a user gate with tickets in it outlined; one strip per QA set.
+function hmQaHtml() {
+  needReviews();
+  const sets = (wtData.sets || []).filter(s => s.tickets.some(t => t.qa));
+  if (!sets.length) return null;
+  const stages = qaStages();
+  const body = sets.map(s => {
+    const ts = s.tickets.filter(t => t.qa && !t.qa.ignored), cnt = k => ts.filter(t => t.qa.stage === k).length;
+    const blocked = ts.filter(t => t.qa.blocked).length, again = ts.filter(t => t.qa.round > 1).length;
+    const live = ts.filter(t => !['cleaned'].includes(t.qa.stage) && t.qa.at?.[t.qa.stage]).sort((a, b) => new Date(a.qa.at[a.qa.stage]) - new Date(b.qa.at[b.qa.stage]))[0];
+    return `${sets.length > 1 ? `<div class="hw-sub">${esc(s.epic)} ${esc(cut(s.summary || '', 30))}</div>` : ''}
+      <div class="hw-stages">${stages.map(st => { const c = cnt(st.key), gate = QA_DESC[st.key]?.[2];
+        return `<span class="hw-stage${c ? '' : ' zero'}${gate && c ? ' gate' : ''}" title="${esc(QA_DESC[st.key]?.[0] || st.label)}"><b>${c}</b>${esc(st.label)}</span>`; }).join('')}</div>
+      <div class="st">티켓 ${ts.length}${blocked ? ` · <b style="color:var(--bad)">막힘 ${blocked}</b>` : ''}${again ? ` · 재오픈 ${again}` : ''}${live ? ` · 가장 오래 머문 티켓 ${esc(live.key)} ${esc(qaName(live.qa.stage))} ${hmAge(new Date(live.qa.at[live.qa.stage]).getTime())}` : ''}</div>`;
+  }).join('');
+  return { more: '#worktrees', body };
+}
+
+// 오늘 타임라인: top-level sessions on one time axis — a bar from start to now (open) or to the last record, coloured by
+// state, ⚠ on a session the flow check flagged. The window is the widget's own setting.
+const HM_TL = [[3, '3시간'], [6, '6시간'], [24, '24시간']];
+function hmTlHtml(w) {
+  const hrs = w.opts?.h || 6, now = Date.now(), T0 = now - hrs * 3600e3, X = t => ((Math.max(t, T0) - T0) / (now - T0) * 100).toFixed(2);
+  const devOf = new Map(); for (const x of state.flow?.items || []) if (x.session) devOf.set(x.session, (devOf.get(x.session) || 0) + 1);
+  const busy = s => ['run', 'bg'].includes(status(s));  // still working: the bar runs to now; anything else ends at its last record
+  const rows = byRank(state.sessions.filter(s => !s.parent && s.started && (busy(s) || toDate(s.last_ts).getTime() >= T0)), s => busy(s) ? 0 : 1)
+    .slice(0, w.size === 'S' ? 6 : 12).sort(byStart);
+  if (!rows.length) return { body: `<div class="st">최근 ${hrs}시간 안에 기록이 있는 세션이 없습니다</div>`, tools: hmTlTools(hrs) };
+  const ticks = []; const step = hrs <= 3 ? 3600e3 / 2 : hrs <= 6 ? 3600e3 : 4 * 3600e3;
+  for (let t = Math.ceil(T0 / step) * step; t <= now; t += step) ticks.push(`<span style="left:${X(t)}%">${new Date(t).getHours()}${new Date(t).getMinutes() ? ':30' : '시'}</span>`);
+  return { tools: hmTlTools(hrs), body: `<div class="hw-tl">${rows.map(s => { const st = status(s), a = toDate(s.started).getTime(), z = busy(s) ? now : toDate(s.last_ts).getTime(), d = devOf.get(s.path);
+    return `<a class="hw-tl-n" href="${sessHref(s)}" title="${esc(nameOf(s))}">${d ? `<span class="hw-dev">⚠${d}</span> ` : ''}${esc(cutW(nameOf(s), 18))}</a>
+      <div class="hw-tl-lane"><i class="hw-tl-b st-${st}${d ? ' dev' : ''}" style="left:${X(a)}%;width:max(3px, ${(X(z) - X(a)).toFixed(2)}%)" title="${esc(`${nameOf(s)} · ${ST_LABEL[st]} · ${hhmm(toDate(s.started).toISOString())}~${busy(s) ? '지금' : hhmm(s.last_ts)}`)}"></i></div>`; }).join('')}
+    <span></span><div class="hw-tl-ax">${ticks.join('')}</div></div>` };
+}
+const hmTlTools = h => `<span class="seg hw-seg">${HM_TL.map(([v, l]) => `<button type="button" data-hm-opt="h" data-v="${v}" class="${v === h ? 'on' : ''}">${l}</button>`).join('')}</span>`;
+
+// Past 40 workers a dot each stops being readable: one dot per state with its count.
+const hmStCounts = ms => Object.entries(ms.reduce((o, m) => (o[status(m)] = (o[status(m)] || 0) + 1, o), {})).sort((a, b) => (RANK[a[0]] ?? 9) - (RANK[b[0]] ?? 9))
+  .map(([st, n]) => `<span class="hw-cnt"><i class="hw-dot st-${st}"></i>${ST_LABEL[st]} ${n}</span>`).join('');
+// 관계 미니맵: each coordinator family as one line — the coordinator, then a dot per worker in its state colour.
+function hmMapHtml() {
+  const { fams } = families(), on = fams.filter(f => f.members.some(hmRecent));
+  if (!on.length) return { body: '<div class="st">최근 한 시간 안에 움직인 코디네이터가 없습니다</div>', more: '#agents' };
+  const line = (f, d = 0) => { const c = f.coord, kids = f.members.filter(m => m !== c && !f.subs.some(x => x.members.includes(m)));
+    return `<div class="hw-map" style="padding-left:${d * 16}px"><a href="${c ? sessHref(c) : '#agents'}" class="hw-map-c st-${c ? status(c) : f.st}">${esc(cutW(c ? nameOf(c) : ownerName(f.handle), 22))}</a><span class="hw-map-ar">→</span>
+      <span class="hw-map-k">${kids.length > 40 ? hmStCounts(kids) : kids.map(m => `<a href="${sessHref(m)}" class="hw-dot st-${status(m)}" title="${esc(`${nameOf(m)} · ${ST_LABEL[status(m)]}`)}"></a>`).join('') || '<span class="st">워커 없음</span>'}</span></div>${f.subs.map(x => line(x, d + 1)).join('')}`; };
+  return { more: '#agents', body: on.map(f => line(f)).join('') };
+}
+
+let hmPjLoad = null;
+function hmProjHtml() {
+  if (!pjData) { if (!hmPjLoad) hmPjLoad = api.projects().then(d => { pjData = d; }, () => { pjData = { enabled: false, dirs: [], projects: [] }; }).finally(() => { hmPjLoad = null; if (route().v === 'home') render(); }); return { body: '<div class="st">불러오는 중…</div>' }; }
+  if (!pjData.enabled) return null;
+  return { more: '#projects', body: pjData.projects.filter(p => !p.error).slice(0, 8).map(p => { const pct = Math.round((p.ratio || 0) * 100);
+    return `<a class="hw-proj" href="#projects"><b>${esc(cut(p.name, 30))}</b><span class="ctxbar"><span style="width:${pct}%"></span></span><span class="st">${p.counts.done}/${p.total} · ${pct}%${p.current ? ' · ' + esc(cut(p.current.name, 18)) : ''}</span></a>`; }).join('') || '<div class="st">프로젝트가 없습니다</div>' };
+}
+
+function hmVaultHtml() {
+  const d = hmData('vault', () => api.vaultRecent(6), Math.floor(Date.now() / 60e3));
+  if (d === undefined) return { body: '<div class="st">불러오는 중…</div>' };
+  if (!d || (!d.on && !d.notes.length)) return d?.old ? { body: '<div class="st">메트릭 서버가 이 기능보다 오래됐습니다 — 서버를 다시 시작하면 보입니다</div>' } : null;
+  return { body: d.notes.map(n => `<div class="hw-row"><span class="hw-t"><a href="${obsLink(n.abs)}">${esc(cut(n.title, 40))}</a><small>${n.session ? `<a href="#s=${encodeURIComponent(n.session)}">${esc(cut(n.session_title || n.agent, 30))}</a>` : esc(n.agent)}</small></span><span class="hw-age">${ago(n.mtime * 1000)}</span></div>`).join('') || '<div class="st">에이전트가 만든 노트가 없습니다</div>' };
+}
+
+function hmDesignHtml() {
+  const d = dzList && dzListV === (state.design?.version ?? '') ? dzList : hmData('design', () => api.designs(), state.design?.version ?? '');
+  if (d === undefined) return { body: '<div class="st">불러오는 중…</div>' };
+  if (!d?.enabled) return null;
+  const top = [...d.docs].filter(x => x.sessions).sort((a, b) => b.sessions - a.sessions || b.reads - a.reads).slice(0, 5);
+  return { more: '#designs', body: top.map(x => `<a class="hw-row" href="#dz=${encodeURIComponent(x.server + '|' + x.key)}"><span class="hw-t">${esc(cut(x.title || x.key.split('/').pop(), 44))}<small>${esc(x.key.split('/').slice(-2, -1)[0] || '')}</small></span><span class="hw-age">세션 ${x.sessions}</span></a>`).join('') || '<div class="st">세션이 읽은 설계문서가 없습니다</div>' };
+}
+
+function hmServersHtml() {
+  const errs = state.server_errors || [];
+  return { body: api.servers().map(x => { const err = errs.find(e => e.startsWith(x.name + ':'));
+    return `<div class="hw-row"><span class="hw-kind ${!x.on ? '' : err ? 'bad' : 'ok'}">${!x.on ? '꺼짐' : err ? '오류' : '연결'}</span><span class="hw-t">${esc(x.name || x.url)}<small>${esc(err ? cut(err, 60) : x.url)}</small></span></div>`; }).join('') };
+}
+
+const HM_W = {
+  mine: { name: '내 차례', desc: '결정 대기 · 막힘 · 반출 승인 · 입력 대기', html: hmMineHtml },
+  flow: { name: '흐름 이탈', desc: '서버의 흐름 판정 결과', html: hmFlowHtml },
+  tests: { name: '테스트', desc: '실행 중 테스트와 24시간 결과', html: hmTestsHtml },
+  cost: { name: '오늘 비용', desc: '0시부터 시간대별 비용', html: hmCostHtml },
+  board: { name: '작업 보드', desc: '코디네이터 묶음·워커·단독 세션의 진행', html: hmBoardHtml },
+  qa: { name: 'QA 파이프라인', desc: 'QA 드라이버 단계별 티켓 수', html: hmQaHtml },
+  tl: { name: '오늘 타임라인', desc: '세션들을 한 시간축에', html: hmTlHtml },
+  map: { name: '관계 미니맵', desc: '코디네이터와 워커 상태', html: hmMapHtml, size: 'M' },
+  proj: { name: '프로젝트 진행', desc: 'progress.json 의 단계 진행률', html: hmProjHtml, size: 'M' },
+  vault: { name: '최근 볼트 문서', desc: '에이전트가 만든 노트', html: hmVaultHtml, size: 'S' },
+  design: { name: '설계문서 참조', desc: '세션이 많이 읽은 설계문서', html: hmDesignHtml, size: 'S' },
+  servers: { name: '서버 상태', desc: '메트릭 서버별 연결', html: hmServersHtml, size: 'S' },
+};
+// The layout of this device: {widgets[{id, size, pin, opts}], fold{id: folded on a phone}}.
+let hmLay = { widgets: HM_DEFAULT.map(w => ({ ...w })), fold: {} };
+try { const v = JSON.parse(localStorage.getItem('adash.home') || 'null'); if (Array.isArray(v?.widgets)) hmLay = { widgets: v.widgets.filter(w => HM_W[w.id] && HM_SIZES.includes(w.size)), fold: v.fold || {} }; } catch {}
+
+function hmWidget(w) {
+  const def = HM_W[w.id];
+  let r;
+  try { r = def.html(w); } catch (e) { r = { body: `<div class="st">그리지 못했습니다: ${esc(e.message)}</div>` }; }
+  if (!r && !hmEdit) return '';
+  const folded = PHONE.matches && !w.pin && (hmLay.fold[w.id] ?? true);
+  const head = `<h3>${hmEdit ? '<span class="hw-grip" title="끌어서 순서 바꾸기">⠿</span>' : ''}<span class="hw-name"${PHONE.matches && !w.pin && !hmEdit ? ` data-hm-fold="${w.id}"` : ''}>${def.name}</span>${r?.n ? `<span class="hw-n${r.bad ? ' bad' : r.hot ? ' hot' : ''}">${r.n}</span>` : ''}${w.pin ? '<span class="hw-pin" title="고정: 맨 위에 둔다">📌</span>' : ''}
+    <span class="hw-note">${r?.note || ''}</span>${!hmEdit && r?.tools ? r.tools : ''}${!hmEdit && r?.more ? hmLink(r.more) : ''}
+    ${hmEdit ? `<span class="hw-edit"><span class="seg">${HM_SIZES.map(z => `<button type="button" data-hm-size="${z}" class="${z === w.size ? 'on' : ''}">${z}</button>`).join('')}</span>
+      <button type="button" class="hw-x" data-hm-pin title="${w.pin ? '고정 풀기' : '맨 위에 고정'}">📌</button><button type="button" class="hw-x" data-hm-del title="빼기">✕</button></span>` : ''}</h3>`;
+  return `<section class="hw ${w.size}${folded ? ' fold' : ''}${!r ? ' empty' : ''}" data-hm="${w.id}">${head}<div class="hw-body">${r ? r.body : `<div class="st">보여 줄 데이터가 없어 평소에는 숨겨집니다</div>`}</div></section>`;
+}
+
+function renderHome() {
+  if (hmDrag) return;  // a drag in progress keeps its DOM; the next refresh after it draws
+  needReviews();
+  const left = Object.keys(HM_W).filter(id => !hmLay.widgets.some(w => w.id === id));
+  $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span>
+      <span class="hm-tools">${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
+        : '<button type="button" class="act big" data-hm-act="edit">편집</button>'}</span></div>
+    ${hmEdit && left.length ? `<div class="box hm-cat"><b>위젯 추가</b>${left.map(id => `<button type="button" class="hm-add" data-hm-add="${id}"><span>+</span>${HM_W[id].name}<small>${HM_W[id].desc}</small></button>`).join('')}</div>` : ''}
+    <div class="hm-grid${hmEdit ? ' editing' : ''}">${hmLay.widgets.map(hmWidget).join('')}</div>`;
+  hmBind();
+}
+
+function hmBind() {
+  const v = $('#view'), find = el => hmLay.widgets.find(w => w.id === el.closest('[data-hm]')?.dataset.hm);
+  v.querySelectorAll('[data-hm-act]').forEach(b => b.onclick = () => {
+    const a = b.dataset.hmAct;
+    if (a === 'reset') { hmLay.widgets = HM_DEFAULT.map(w => ({ ...w })); hmSave(); }
+    hmEdit = a === 'edit' || (a === 'reset' && hmEdit);
+    renderHome();
+  });
+  v.querySelectorAll('[data-hm-add]').forEach(b => b.onclick = () => { const id = b.dataset.hmAdd; hmLay.widgets.push({ id, size: HM_W[id].size || 'M' }); hmSave(); renderHome(); });
+  v.querySelectorAll('[data-hm-size]').forEach(b => b.onclick = () => { find(b).size = b.dataset.hmSize; hmSave(); renderHome(); });
+  v.querySelectorAll('[data-hm-del]').forEach(b => b.onclick = () => { hmLay.widgets = hmLay.widgets.filter(w => w !== find(b)); hmSave(); renderHome(); });
+  v.querySelectorAll('[data-hm-pin]').forEach(b => b.onclick = () => { const w = find(b); w.pin = !w.pin; hmNorm(); hmSave(); renderHome(); });
+  v.querySelectorAll('[data-hm-fold]').forEach(b => b.onclick = () => { const id = b.dataset.hmFold; hmLay.fold[id] = !(hmLay.fold[id] ?? true); hmSave(); renderHome(); });
+  v.querySelectorAll('[data-hm-opt]').forEach(b => b.onclick = e => {
+    e.preventDefault();
+    const w = find(b), k = b.dataset.hmOpt;
+    w.opts = { ...w.opts, [k]: k === 'h' ? +b.dataset.v : !w.opts?.[k] };
+    hmSave(); renderHome();
+  });
+  // A single-choice question answers on click, as its card on 결정 대기 does; anything else opens that screen.
+  v.querySelectorAll('[data-hm-dec]').forEach(b => b.onclick = async () => {
+    const q = (state.decisions?.pending || []).find(x => x.id === b.dataset.hmDec), o = q?.questions?.[0]?.options?.[+b.dataset.i];
+    if (!o) return;
+    b.closest('.hw-item').classList.add('sent');
+    let r;
+    try { r = await api.decide(q.id, [o.label]); } catch { r = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
+    toast(r.status === 200 ? `「${cut(o.label, 30)}」 — 터미널에 답을 넣었습니다` : r.body?.error || `전송 실패 (${r.status})`);
+    if (r.status !== 200) b.closest('.hw-item')?.classList.remove('sent');
+    refresh();
+  });
+  if (hmEdit) v.querySelectorAll('.hw-grip').forEach(g => g.onpointerdown = hmDragStart);
+}
+
+// 편집: drag a widget by its ⠿ grip; it moves before the widget under the pointer (after it past that widget's middle).
+// Pinned widgets stay ahead of the rest whatever the drop.
+function hmDragStart(e) {
+  e.preventDefault();
+  const el = e.target.closest('.hw'), grid = el.parentElement;
+  hmDrag = el;
+  el.classList.add('dragging');
+  // Listened on the document, not captured on the grip: moving the widget in the DOM drops a pointer capture.
+  const move = ev => {
+    const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.hw');
+    if (!over || over === el || over.parentElement !== grid) return;
+    const r = over.getBoundingClientRect(), after = ev.clientX > r.left + r.width / 2 || ev.clientY > r.bottom - 10;
+    grid.insertBefore(el, after ? over.nextSibling : over);
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    const ids = [...grid.querySelectorAll('.hw')].map(x => x.dataset.hm);
+    hmLay.widgets.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    hmNorm(); hmSave();
+    hmDrag = null;
+    renderHome();
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
 function connect() {
   const last = {};
   let wasLive = false;
   api.events({
     version: v => { const i = v.indexOf(':'), id = v.slice(0, i); if (last[id] !== v) { last[id] = v; pump(); } },
     // a server's projects changed: drop what was fetched and redraw the projects view (an open note stays as it is)
-    projects: () => { pjData = null; pjFull = {}; if (route().v === 'projects') render(); },
+    projects: () => { pjData = null; pjFull = {}; if (['projects', 'home'].includes(route().v)) render(); },
     change: () => {
       renderConn();
       // which servers are on and connected decides where projects come from: refetch them when that changes

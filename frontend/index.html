@@ -26,7 +26,7 @@
 <body>
 <header>
   <div class="hrow">
-    <h1><a href="#agents" title="에이전트 탭으로"><img src="icons/icon.svg" alt="">Agent Dashboard</a></h1>
+    <h1><a href="#home" title="홈으로"><img src="icons/icon.svg" alt="">Agent Dashboard</a></h1>
     <div class="kpis-h">
       <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
       <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
@@ -45,6 +45,7 @@
      The bar adds its own ⋯ settings button (position, size). On a phone it is a launcher pill (summary: set by app.js)
      that opens these same buttons as a sheet, grouped under the separators' data-label. -->
 <ds-dock id="dock" inset-from="header">
+  <a href="#home" data-v="home" data-tip="홈" aria-label="홈"><ds-icon name="home"></ds-icon><b class="dn" id="k-home" hidden>0</b></a>
   <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#compare" data-v="compare" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
   <a href="#talk" data-v="talk" data-tip="상호작용" aria-label="상호작용"><ds-icon name="chat"></ds-icon></a>
