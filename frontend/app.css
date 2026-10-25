@@ -1452,19 +1452,19 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-name { font-size: 12px; font-weight: 600; }
 .ch-meta { color: var(--muted); font-size: 11px; }
 .ch .badge { margin-top: 2px; }
-/* motion (AI 생성): pixel art at 2×, so it moves a sprite pixel (2px) at a time, in steps; the generated pose carries
+/* motion (AI 생성): pixel art at 3×, so it moves a sprite pixel (3px) at a time, in steps; the generated pose carries
    the state. Live2D moves in its canvas instead. */
-.fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
-  animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -2px; }
+.fig-ai { image-rendering: pixelated; filter: drop-shadow(3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent));
+  animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -3px; }
 .ch.st-run .fig-ai { animation-duration: .8s; }
 .ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph, 0s); --bob: -6px; }
-.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -4px; }
+.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -3px; }
 .ch.st-stalled .fig-ai { animation: shake .4s steps(1, end) infinite; }
 .ch.st-idle .fig-ai { animation-duration: 4s; }
 .ch.st-idle .ch-fig { opacity: .8; }
 .ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
-.ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
-@keyframes shake { 50% { transform: translateX(2px); } }
+.ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
+@keyframes shake { 50% { transform: translateX(3px); } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
 /* 「캐릭터」 tab: a card per person; its three stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows */
 .cx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 12px; margin-bottom: 14px; }
