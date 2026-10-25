@@ -6,6 +6,10 @@
 // - The long side ignores rotation, unlike outerWidth, which keeps the old orientation's value for a moment; the value
 //   is set again 150, 400 and 1000ms after a turn. After a portrait-to-landscape turn the PWA spans all 951px (lost 0).
 // - Other orientations and devices get 0: the other landscape was not measured, and a portrait fold runs across.
+// Also sets --vp-cut (tokens.css): in an installed PWA the layout viewport should be the whole screen, but iOS
+// sometimes takes the status bar's thickness off its height too (iPhone Duo half folded sideways: 587 of 669, the
+// page's background painted below), so the bottom edge floats; --vp-cut is the shortfall against the screen's side
+// (screen.width/height keep the upright values), up to 120px, and ds-viewport fires on window when it changes.
 // Also sets <html data-posture> while the fold layout's screen is half folded (the browser reports
 // device-posture: folded): "book" held sideways (the fold runs down: left and right halves), "laptop" upright (the
 // fold runs across: top and bottom halves). The first half is then a page like the cover screen and the second the
@@ -13,7 +17,16 @@
 (() => {
   const root = document.documentElement;
   const HALF = matchMedia('(device-posture: folded)');
+  const APP = matchMedia('(display-mode: standalone)');
+  const cut = () => {
+    if (!APP.matches && !navigator.standalone) return 0;
+    const side = innerWidth > innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const c = side - root.clientHeight;
+    return c > 0 && c <= 120 ? c : 0;
+  };
   const set = () => {
+    const c = cut() + 'px';
+    if (root.style.getPropertyValue('--vp-cut') !== c) { root.style.setProperty('--vp-cut', c); dispatchEvent(new Event('ds-viewport')); }
     const fold = getComputedStyle(root).getPropertyValue('--fold').trim() === '1';
     const long = Math.max(outerWidth, outerHeight), lost = long - innerWidth;
     const on = fold && innerWidth > innerHeight && long > 800
