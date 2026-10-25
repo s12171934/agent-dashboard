@@ -87,6 +87,11 @@ let onlyOrca = false;
 try { onlyOrca = localStorage.getItem('adash.orca') === '1'; } catch {}
 $('#only-orca').checked = onlyOrca;
 $('#only-orca').onchange = e => { onlyOrca = e.target.checked; try { localStorage.setItem('adash.orca', onlyOrca ? '1' : '0'); } catch {} gKey = ''; render(); };
+// 「캐릭터 모드」: the agents tab drawn as an office of characters (renderOffice) instead of cards. This device only.
+let charMode = false;
+try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
+$('#char-mode').checked = charMode;
+$('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
 
 // ---------- model of the world ----------
 function index() {
@@ -2839,7 +2844,74 @@ function agViewBind() {
     b.onclick = () => { agView = b.dataset.k; try { localStorage.setItem('adash.agview', agView); } catch {} renderAgents(); };
   });
 }
+// ---------- 캐릭터 모드: the agents tab as an office ----------
+// Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
+// sessions share the last one. Each agent is a character at a desk in its model's colour; its face and speech bubble
+// carry the state (a sign and words, not motion alone — A3), and it is a button that opens the session like a card.
+const CH_EYES = {
+  open: '<circle cx="27" cy="22" r="2"/><circle cx="37" cy="22" r="2"/>',
+  down: '<circle cx="27" cy="24" r="2"/><circle cx="37" cy="24" r="2"/>',
+  shut: '<path d="M24.5 23h5M34.5 23h5"/>',
+  happy: '<path d="M24.5 24l2.5-3 2.5 3M34.5 24l2.5-3 2.5 3"/>',
+  dizzy: '<path d="M25 20.5l4 4M29 20.5l-4 4M35 20.5l4 4M39 20.5l-4 4"/>',
+};
+const CH_MOUTH = { flat: '<path d="M29 29h6"/>', smile: '<path d="M28.5 28.5q3.5 3 7 0"/>', o: '<circle cx="32" cy="29.5" r="1.6"/>', frown: '<path d="M28.5 30.5q3.5-3 7 0"/>' };
+const CH_FACE = { run: ['down', 'flat'], bg: ['open', 'smile'], wait: ['open', 'smile'], stalled: ['dizzy', 'frown'], idle: ['shut', 'flat'], done: ['happy', 'smile'] };
+const CH_SIGN = { bg: '◍', wait: '…', stalled: '!', idle: 'z', done: '✓' };
+const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
+function charSvg(st, s) {
+  const [eyes, mouth] = s.decision ? ['open', 'o'] : CH_FACE[st] || CH_FACE.idle;
+  return `<svg class="ch-svg" viewBox="0 0 64 64" aria-hidden="true">
+    <path class="ch-legs" d="M9 55v8M55 55v8"/>
+    <g class="ch-me">
+      ${isBoss(s) ? '<path class="ch-hat" d="M22 11l4 4 6-6 6 6 4-4v5H22z"/>' : '<path class="ch-ant" d="M32 9V4"/><circle class="ch-skin" cx="32" cy="3.5" r="2"/>'}
+      <rect class="ch-skin" x="19" y="9" width="26" height="25" rx="10"/>
+      <rect class="ch-face" x="22.5" y="14" width="19" height="18" rx="7"/>
+      <g class="ch-ink">${CH_EYES[eyes]}${CH_MOUTH[mouth]}</g>
+      <rect class="ch-skin" x="21" y="35" width="22" height="17" rx="7"/>
+    </g>
+    <rect class="ch-desk" x="3" y="50" width="58" height="5" rx="2"/>
+    <rect class="ch-glow" x="23" y="38" width="18" height="2" rx="1"/>
+    <path class="ch-lap" d="M21 50l2-10h18l2 10z"/>
+    <rect class="ch-skin ch-arm l" x="13" y="46" width="8" height="5" rx="2.5"/>
+    <rect class="ch-skin ch-arm r" x="43" y="46" width="8" height="5" rx="2.5"/>
+  </svg>`;
+}
+function charHtml(s) {
+  const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length;
+  const say = s.decision ? '결정을 기다려요' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
+  const sign = s.decision ? '?' : CH_SIGN[st];
+  const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
+  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" style="--c:var(--m-${modelKey(s.model)})"
+      title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}`)}">
+    <span class="ch-say"><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
+    ${charSvg(st, s)}
+    <span class="ch-name">${esc(nameOf(s))}</span>
+    <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
+  </button>`;
+}
+const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
+  return [['일하는 중', n(['run', 'bg'])], ['대기', n(['wait'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
+function roomHtml(f) {
+  const ms = f.members.filter(m => !filtering() || liveSess(m)).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y));
+  if (!ms.length) return '';
+  const c = f.coord || ms[0];
+  return `<section class="box room"><div class="room-h"><b>${esc(f.coord ? nameOf(f.coord) : termOwner(f.handle).title || '코디네이터 미상')}</b><span class="st">▣ ${esc(wtShort(c.place))}</span>${srvBadge(c)}<span class="room-n">${roomCount(ms)}</span></div>
+    <div class="room-floor">${ms.map(charHtml).join('')}</div></section>`;
+}
+function renderOffice() {
+  const { fams, solos } = families();
+  const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
+  const sv = byRank(solos.filter(liveSess), sessRank);
+  const rooms = fv.map(roomHtml).join('') + (sv.length ? `<section class="box room"><div class="room-h"><b>단독 자리</b><span class="room-n">${roomCount(sv)}</span></div><div class="room-floor">${sv.map(charHtml).join('')}</div></section>` : '');
+  // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
+  $('#view').innerHTML = `<div class="sec-h"><h2>사무실</h2><span>캐릭터 모드 · 캐릭터를 누르면 세션을 엽니다. 끄려면 바의 「캐릭터 모드」</span></div>
+    ${rooms ? `<div class="office" style="--ph:${-(Date.now() % 2400) / 1000}s">${rooms}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}`;
+  $('#view').querySelectorAll('.ch[data-path]').forEach(b => b.onclick = () => openSession(b.dataset.path));
+}
+
 function renderAgents() {
+  if (charMode) return renderOffice();
   const { fams, solos } = families();
   const fv = fams.filter(liveFam), sv = solos.filter(liveSess);
   // 「서버별 보기」: one block per server that is on, in list order. A family belongs to its coordinator's server.
