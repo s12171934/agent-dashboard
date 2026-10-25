@@ -3114,8 +3114,8 @@ function charHtml(s) {
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
     <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
     ${chFig(st, s)}
-    <span class="ch-name">${esc(nameOf(s))}</span>
-    <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}${srvBadge(s)}
+    <span class="ch-tag"><span class="ch-name"><i class="ch-dot" title="${ST_LABEL[st]}"></i><span class="ch-nm">${esc(nameOf(s))}</span></span>
+      <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}</span>${srvBadge(s)}
   </button>`;
 }
 // Session detail: the same person as in the office, in the same pose, beside the title — continuity from the office.
@@ -3226,7 +3226,7 @@ function chLinks() {
   if (svg) w.insertAdjacentHTML('beforeend', `<svg class="ch-links" width="${w.offsetWidth}" height="${w.offsetHeight}" aria-hidden="true">${svg}</svg>${tags}`);
   chHot(w.dataset.hot);
 }
-// Pointing at a person brings their family forward: its lines, chips and people stay, the rest fade.
+// Pointing at (or focusing) a person shows their team's lines — hidden otherwise — and fades everyone else.
 function chHot(fam) {
   const w = $('#view .ch-world');
   if (!w) return;
@@ -3247,7 +3247,9 @@ function chLayout() {
     fl.querySelectorAll('.wall-item').forEach((it, i) => it.hidden = i >= Math.max(2, Math.floor(W / 130)));
     if (!us.length) return;
     // the first row's bubbles sit on the lower wall, below its decorations
-    const uw = us[0].offsetWidth, uh = us[0].offsetHeight, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
+    // grown labels (chApply's --lz) reach past a person's box: the bubble up, the name plate down
+    const grow = (chLz - 1) * ($('#ch-canvas.ch-far') ? 64 : 90);
+    const uw = us[0].offsetWidth, uh = us[0].offsetHeight + grow, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
     let H = top + Math.ceil(us.length / cols) * (uh + CH_GAP) + CH_GAP;
     us.forEach((u, i) => {
       const p = chPos[u.dataset.id];
@@ -3312,7 +3314,7 @@ function chBind() {
       };
       addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
     };
-    if (u.dataset.fam) { u.onpointerenter = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = () => chHot(null); }
+    if (u.dataset.fam) { u.onpointerenter = u.onfocus = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = u.onblur = () => chHot(null); }
     u.addEventListener('touchmove', ev => { if (u.classList.contains('lift')) ev.preventDefault(); }, { passive: false });
     u.addEventListener('contextmenu', ev => { if (u.classList.contains('lift')) ev.preventDefault(); });
     u.onkeydown = e => {
@@ -3333,6 +3335,7 @@ addEventListener('resize', () => { if ($('#view .office')) { chLayout(); chApply
 // zoomed with Ctrl/⌘ + wheel, a pinch or the − / + buttons. 「맞춤」 fits every room in view and keeps fitting as the
 // office changes, until the view is moved by hand. The view is kept on this device (adash.chview).
 let chView = { x: 0, y: 0, z: 1, fit: true };
+let chLz = 1;  // the label growth chLayout last spaced the rows for
 try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}') }; } catch {}
 let chPanAt = 0, chSaveT;
 const chViewSave = () => { clearTimeout(chSaveT); chSaveT = setTimeout(() => { try { localStorage.setItem('adash.chview', JSON.stringify(chView)); } catch {} }, 300); };
@@ -3355,6 +3358,12 @@ function chApply() {
   w.style.transform = `translate(${chView.x}px, ${chView.y}px) scale(${chView.z})`;
   // the corridor floor moves and scales with the plane (the backdrop in app.css)
   cv.style.setProperty('--bx', chView.x + 'px'); cv.style.setProperty('--by', chView.y + 'px'); cv.style.setProperty('--bz', chView.z);
+  // labels grow back as the view shrinks, so names and bubbles stay readable when zoomed out (up to 1.8×; .ch-far hides
+  // the role line). Rows open up to make room, so the layout is redone when the growth changes noticeably.
+  const lz = Math.min(1.8, Math.max(1, .9 / chView.z));
+  cv.style.setProperty('--lz', lz);
+  cv.classList.toggle('ch-far', lz > 1.3);
+  if (Math.abs(lz - chLz) > .1) { chLz = lz; chLayout(); }
   const zl = $('#ch-zl');
   if (zl) zl.textContent = Math.round(chView.z * 100) + '%';
   $('#ch-fit')?.setAttribute('aria-pressed', chView.fit);
@@ -3431,8 +3440,8 @@ function staffHtml(w) {
       title="${esc(`${role} · ${def.name}\n${say}\n누르면 ${def.name} 열기`)}" aria-label="${esc(`${role}: ${def.name}${r?.n ? ' ' + r.n : ''}. ${say}`)}">
     <span class="ch-say"><span>${r?.n ? `<b>${r.n}</b>` : ''}${esc(cut(say, 60))}</span></span>
     ${chFig(st, me)}
-    <span class="ch-name">${role}</span>
-    <span class="ch-meta">${def.name}</span>
+    <span class="ch-tag"><span class="ch-name"><i class="ch-dot"></i><span class="ch-nm">${role}</span></span>
+      <span class="ch-meta">${def.name}</span></span>
   </button>`;
 }
 function staffRoom() {
