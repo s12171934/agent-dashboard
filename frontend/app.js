@@ -3402,14 +3402,16 @@ function chZoom(k, px, py) {
 }
 // iOS now and then lays an installed PWA out smaller than its screen: iPhone Duo held sideways gets 867×587 of 951×669,
 // the status bar's thickness off the width and the height, and the strips beyond stay empty. A fixed box is cut at the
-// viewport's edge (#109), so then the canvas sits in the page instead (.ch-over: absolute) and reaches the screen's edge
-// by the shortfall [right, bottom]. Touch devices' installed apps only (a desktop window's outer size has its title bar).
-const chOver = () => {
-  if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone) || !matchMedia('(pointer: coarse)').matches) return [0, 0];
-  // the long and short sides, as outerWidth keeps the old orientation's value for a moment after a turn (ds fold.js)
-  const land = innerWidth > innerHeight, long = Math.max(outerWidth, outerHeight), short = Math.min(outerWidth, outerHeight);
-  const cut = c => c > 0 && c <= 120 ? c : 0;
-  return [cut((land ? long : short) - innerWidth), cut((land ? short : long) - innerHeight)];
+// viewport's edge (#109), so in an installed app on a touch screen the canvas always sits in the page (.ch-over:
+// absolute) and reaches the screen's edges. Its box follows the screen, never the viewport: sized by the viewport, the
+// taller page changed the viewport, which changed the box again, and the office blinked. Elsewhere this is null (a
+// desktop window's outer size has its title bar).
+const chScreen = () => {
+  if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone) || !matchMedia('(pointer: coarse)').matches) return null;
+  // the long and short sides, as outerWidth keeps the old orientation's value for a moment after a turn (ds fold.js);
+  // a short viewport loses a strip, never enough to turn its aspect, so it still tells the orientation
+  const long = Math.max(outerWidth, outerHeight), short = Math.min(outerWidth, outerHeight);
+  return innerWidth > innerHeight ? [long, short] : [short, long];
 };
 // the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
 // when that is the lower half); the page itself does not scroll
@@ -3417,14 +3419,16 @@ function chSize() {
   const cv = $('#ch-canvas');
   if (!cv) return;
   // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the viewport's bottom
-  // (down to the bar's sheet when that is the lower half), and past a short viewport's edges to the screen's (chOver)
+  // (down to the bar's sheet when that is the lower half); in an installed app, to the screen's edges (chScreen)
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
   const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight;
-  const [ox, oy] = chOver(), r = v.right >= innerWidth - 1 ? ox : 0, b = sheet ? 0 : oy;
-  cv._vw = v.width; cv._vh = Math.max(240, bottom - v.top);
-  cv.classList.toggle('ch-over', !!(r || b));
-  cv.style.setProperty('--over-r', r + 'px'); cv.style.setProperty('--over-b', b + 'px');
-  Object.assign(cv.style, { left: v.left + (r || b ? scrollX : 0) + 'px', top: v.top + (r || b ? scrollY : 0) + 'px', width: cv._vw + r + 'px', height: cv._vh + b + 'px' });
+  cv._vw = v.width; cv._vh = Math.max(240, bottom - v.top);  // the part inside the viewport, for 맞춤 and the zoom
+  const sc = chScreen(), top = v.top + (sc ? scrollY : 0), left = v.left + (sc ? scrollX : 0);
+  // across to the screen's right edge when the view reaches the viewport's (not beside a sheet), down to its bottom
+  const w = sc && v.right >= innerWidth - 1 ? Math.max(cv._vw, sc[0] - left) : cv._vw, h = sc && !sheet ? Math.max(cv._vh, sc[1] - top) : cv._vh;
+  cv.classList.toggle('ch-over', !!sc);
+  const css = { left: left + 'px', top: top + 'px', width: w + 'px', height: h + 'px', '--over-r': w - cv._vw + 'px', '--over-b': h - cv._vh + 'px' };
+  for (const k in css) if (cv.style.getPropertyValue(k) !== css[k]) cv.style.setProperty(k, css[k]);
   chApply();
 }
 // zoom by k around the middle of the canvas's part in the viewport
