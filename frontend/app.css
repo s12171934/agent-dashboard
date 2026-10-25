@@ -1615,7 +1615,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-link circle { fill: var(--panel); stroke: var(--fc); stroke-width: 2; }
 .ch-link circle.boss { fill: var(--fc); }
 .ch-link-tag, .ch-fam { --fc: hsl(var(--fh) 72% 48%); }
-.ch-link-tag { position: absolute; z-index: 3; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
+.ch-link-tag { position: absolute; z-index: 3; transform: translate(-50%, -50%); pointer-events: auto; cursor: help; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 600; color: var(--fc); background: color-mix(in srgb, var(--fc) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--fc) 50%, transparent); transition: opacity .2s; }
 .ch-fam { display: block; max-width: 100%; margin: 3px auto 0; width: fit-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 600; color: var(--fc); background: color-mix(in srgb, var(--fc) 14%, var(--panel)); border: 1.5px solid var(--fc); }
