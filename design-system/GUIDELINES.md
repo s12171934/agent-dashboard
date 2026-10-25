@@ -152,6 +152,7 @@ CSS 와 스크립트만으로는 컴포넌트를 바르게 쓸 수 없다. 어�
   - 헤더처럼 늘 보이는 줄은 펼침에서도 두 줄을 넘기지 않는다(가로로 들면 높이가 669px 이다).
 - **B10** 🔍 힌지와 화면 조각은 토큰으로만 읽는다: `--fold`, `--hinge`, `--seg-w`, `--pane-gap`, `--fold-off`, `--fold-cols` (`tokens.css`, `--fold-off` 는 `foundations/fold.js` 가 정한다). `env(viewport-segment-*)` 는 `tokens.css` 밖에서 쓰지 않는다. 스크립트가 펼침인지 알아야 하면 `--fold` 를 읽는다(폭으로 다시 추측하지 않는다).
   - 힌지가 보고되면 떠 있는 것(대화상자, 팝오버, 위·아래 바)은 첫 화면 조각(`--seg-w`) 안에 둔다. 이음매 없는 화면(iPhone Duo)에서는 `--seg-w` 가 `100vw` 라 아무것도 바뀌지 않는다. iPhone Duo 의 홈 화면 PWA 는 Viewport Segments 를 보고하지 않는다(Safari 탭은 플래그를 켜면 보고하지만 회전 뒤 값이 틀린다).
+- **B11** 살짝 접은 자세(브라우저가 `device-posture: folded` 를 알려 줄 때, 펼침 레이아웃 안에서만)는 `foundations/fold.js` 가 `<html data-posture>` 로 알린다: 옆으로 들면 `book`(좌우 반쪽), 세워 들면 `laptop`(위아래 반쪽). 첫 반쪽은 커버 화면처럼 한 열(`--fold-cols` 가 한 칸)로 그린 페이지, 둘째 반쪽은 늘 열린 바의 시트다(닫기·스크림·⋯ 메뉴 없음). `book` 에서 `--seg-w` 는 첫 반쪽이고 팝오버는 그 위에 뜬다. 페이지는 `[data-posture]` 로만 가르고 자세를 다시 추측하지 않는다. 바뀌면 `window` 에 `ds-posture` 이벤트가 온다.
 
 ## 11. 완료 기준
 

@@ -6,7 +6,8 @@
 //   not the choice. dockPos() reads the choice.
 // - adash.dock.size = button size in px (28–56), set as --dock-pick; a phone's launcher ignores it. dockSize().
 // - adash.dock.hidden = '1' when the bar is folded to its one 「바 보이기」 button: <html data-dock-hidden>, except on
-//   a phone (≤500px wide), which keeps its launcher.
+//   a phone (≤500px wide), which keeps its launcher, or a half-folded screen (<html data-posture>, fold.js), whose
+//   second half is the bar's sheet.
 (() => {
   const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
   window.dockPos = () => read('adash.dock', 'bottom');
@@ -16,8 +17,9 @@
     const root = document.documentElement;
     root.dataset.dock = dockLocked() || (innerWidth <= 700 || innerHeight <= 500) && (choice === 'left' || choice === 'right') ? 'bottom' : choice;
     root.style.setProperty('--dock-pick', size + 'px');
-    root.toggleAttribute('data-dock-hidden', read('adash.dock.hidden', '') === '1' && innerWidth > 500);
+    root.toggleAttribute('data-dock-hidden', read('adash.dock.hidden', '') === '1' && innerWidth > 500 && !root.dataset.posture);
   };
   addEventListener('resize', () => applyDock());
+  addEventListener('ds-posture', () => applyDock());
   applyDock();
 })();
