@@ -342,7 +342,7 @@ async function renderView(navigated) {
   $('#dz-pane-chk').checked = dz.pane;
   if (r.v !== 'home') hmEdit = false;
   const office = (r.v === 'agents' && charMode) || (r.v === 'home' && homeView === 'office');
-  document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom and 맞춤, on the bar
+  document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom figure (맞춤), on the bar
   if (!office) document.documentElement.classList.remove('ch-full');
   if (r.v === 'home') { if (homeView === 'office') renderOffice(); else renderHome(); }
   else if (r.v === 'agents') renderAgents();
@@ -3365,13 +3365,12 @@ const chViewSave = () => { clearTimeout(chSaveT); chSaveT = setTimeout(() => { t
 function chApply() {
   const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world');
   if (!w) return;
-  // the part of the canvas inside the viewport (chSize: on a short PWA viewport the canvas reaches past it)
-  const cw = cv._vw || cv.clientWidth, ch = cv._vh || cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
+  const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
   if (chView.fit) {  // below the tools, which float over the top left, and beside an open staff panel
     // and above a bar floating on the bottom of the canvas
     const t = cv.querySelector('.ch-tools'), top = (t ? t.offsetTop + t.offsetHeight : 10) + 4;
     const dk = document.documentElement.dataset.dock === 'bottom' && $('ds-dock:not([open])')?.getBoundingClientRect();
-    const room = ch - top - (dk ? Math.max(8, cv.getBoundingClientRect().top + ch - dk.top + 8) : 8);
+    const room = ch - top - (dk ? Math.max(8, cv.getBoundingClientRect().bottom - dk.top + 8) : 8);
     const pn = cv.querySelector('.ch-panel'), side = pn && cw > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
     let z = Math.min(1, (fw - 24) / ww, room / wh);
     if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
@@ -3392,7 +3391,7 @@ function chApply() {
   cv.classList.toggle('ch-far', lz > 1.25);
   if (Math.abs(lz - chLz) > .1) { chLz = lz; chLayout(); }
   $('#k-zoom').textContent = Math.round(chView.z * 100) + '%';
-  $('#fit-btn').setAttribute('aria-pressed', chView.fit);
+  $('#zoom-btn').setAttribute('aria-pressed', chView.fit);
 }
 // zoom by k around a point of the canvas (px from its top left)
 function chZoom(k, px, py) {
@@ -3400,43 +3399,23 @@ function chZoom(k, px, py) {
   chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = false;
   chApply(); chViewSave();
 }
-// iOS now and then lays an installed PWA out smaller than its screen: iPhone Duo held sideways gets 867×587 of 951×669,
-// the status bar's thickness off the width and the height, and the strips beyond stay empty. A fixed box is cut at the
-// viewport's edge (#109), so in an installed app on a touch screen the canvas always sits in the page (.ch-over:
-// absolute) and reaches the screen's edges. Its box follows the screen, never the viewport: sized by the viewport, the
-// taller page changed the viewport, which changed the box again, and the office blinked. Elsewhere this is null (a
-// desktop window's outer size has its title bar).
-const chScreen = () => {
-  if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone) || !matchMedia('(pointer: coarse)').matches) return null;
-  // the long and short sides, as outerWidth keeps the old orientation's value for a moment after a turn (ds fold.js);
-  // a short viewport loses a strip, never enough to turn its aspect, so it still tells the orientation
-  const long = Math.max(outerWidth, outerHeight), short = Math.min(outerWidth, outerHeight);
-  return innerWidth > innerHeight ? [long, short] : [short, long];
-};
 // the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
-// when that is the lower half); the page itself does not scroll
+// when that is the lower half); the page itself does not scroll. It keeps to the viewport: when iOS lays an installed
+// PWA out shorter than its screen (iPhone Duo sideways, now and then: 867×587 of 951×669), a box reaching past it is
+// cut (#109), and a page taller than the viewport makes iOS change the viewport back and forth — the office and the
+// bar blinked (#113, #114). The strip left below takes the corridor's colour (chTint).
 function chSize() {
   const cv = $('#ch-canvas');
   if (!cv) return;
   // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the viewport's bottom
-  // (down to the bar's sheet when that is the lower half); in an installed app, to the screen's edges (chScreen)
+  // (down to the bar's sheet when that is the lower half)
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
   const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight;
-  cv._vw = v.width; cv._vh = Math.max(240, bottom - v.top);  // the part inside the viewport, for 맞춤 and the zoom
-  const sc = chScreen(), top = v.top + (sc ? scrollY : 0), left = v.left + (sc ? scrollX : 0);
-  // across to the screen's right edge when the view reaches the viewport's (not beside a sheet), down to its bottom
-  const w = sc && v.right >= innerWidth - 1 ? Math.max(cv._vw, sc[0] - left) : cv._vw, h = sc && !sheet ? Math.max(cv._vh, sc[1] - top) : cv._vh;
-  cv.classList.toggle('ch-over', !!sc);
-  const css = { left: left + 'px', top: top + 'px', width: w + 'px', height: h + 'px', '--over-r': w - cv._vw + 'px', '--over-b': h - cv._vh + 'px' };
-  for (const k in css) if (cv.style.getPropertyValue(k) !== css[k]) cv.style.setProperty(k, css[k]);
+  Object.assign(cv.style, { left: v.left + 'px', top: v.top + 'px', width: v.width + 'px', height: Math.max(240, bottom - v.top) + 'px' });
   chApply();
 }
-// zoom by k around the middle of the canvas's part in the viewport
-const chMid = k => { const cv = $('#ch-canvas'); if (cv) chZoom(k, (cv._vw || cv.clientWidth) / 2, (cv._vh || cv.clientHeight) / 2); };
-$('#zoom-in').onclick = () => chMid(1.25);
-$('#zoom-out').onclick = () => chMid(.8);
-$('#zoom-btn').onclick = () => chMid(1 / chView.z);
-$('#fit-btn').onclick = () => { if (!$('#ch-canvas')) return; chView.fit = true; chApply(); chViewSave(); };
+// the bar's zoom figure: pressed, 맞춤 (the view is zoomed by a pinch, Ctrl/⌘ + wheel or the trackpad; no buttons)
+$('#zoom-btn').onclick = () => { if (!$('#ch-canvas')) return; chView.fit = true; chApply(); chViewSave(); };
 const chPts = new Map();
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools, .ch-panel')) return;
@@ -3478,8 +3457,6 @@ document.addEventListener('wheel', e => {
   chApply(); chViewSave();
 }, { passive: false });
 addEventListener('resize', () => chSize());
-// the canvas in the page (.ch-over) makes the page taller than the viewport; it stays at the top
-addEventListener('scroll', () => { if (document.documentElement.classList.contains('ch-full') && (scrollX || scrollY)) scrollTo(0, 0); });
 // iOS can lay an installed PWA out shorter than its screen (app.css :root.ch-full). The strip below is not painted from
 // the html background but takes the page's theme-color (#0f1215 in dark), so while the office fills the screen the
 // theme-color is the corridor floor's colour and the office reaches the edge to the eye. theme.js sets it back to --bg
