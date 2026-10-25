@@ -2905,6 +2905,22 @@ const CH_ART = {
   yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]},sd:{pw:42,ph:59,top:[0.051,0.034,0.034,0.034,0.051,0.017,0.034,0.034]},sdb:{pw:56,ph:59,top:[0.068,0.017,0.017,0.034,0.068,0.017,0.017,0.034]}},
 };
 const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
+// More people without a deploy: chars/chars.json (the R2 bucket behind functions/chars, written by
+// scripts/char-publish.py) is { chars: { <who>: { name, look, boss, art: { full, bust, sd, sdb } } } }, the strips beside it.
+// Added people join the lists after the built-in six, so a session already drawn may change hands once.
+async function chLoad() {
+  let j;
+  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); if (!r.ok) return; j = await r.json(); } catch { return; }
+  let added = 0;
+  for (const [who, c] of Object.entries(j?.chars || {})) {
+    if (!/^[a-z0-9-]+$/.test(who) || !['full', 'bust', 'sd', 'sdb'].every(k => c?.art?.[k]?.top?.length === 8)) continue;
+    CH_ART[who] = c.art;
+    CH_INFO[who] = [String(c.name || who), String(c.look || '')];
+    const l = c.boss ? CH_BOSS : CH_CREW;
+    if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) { l.push(who); added++; }
+  }
+  if (added && state) { chxMounted = false; render(); }
+}
 // 「캐릭터」 tab: a person switched off (false) is left out of the office; a list with everyone off keeps them all.
 let chPool = {};
 try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch {}
@@ -3398,7 +3414,7 @@ function chxStages(who) {
     + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f]}" data-fr="${fr}" aria-hidden="true"></canvas>`);
 }
 function chxCard(who, boss, n) {
-  const [name, look] = CH_INFO[who], on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)];
+  const [name, look] = CH_INFO[who].map(esc), on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)];
   const thumbs = [...Array(8).keys()].map(i => `<button type="button" class="cx-pose${i === chx.pose ? ' on' : ''}" data-pose="${i}" aria-pressed="${i === chx.pose}" data-tip="${esc(CH_POSE_L[i])}" aria-label="${esc(CH_POSE_L[i])}">
       <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${a.pw * 8}px ${a.ph}px;background-position:${-i * a.pw}px 0"></span></button>`).join('');
   return `<section class="cx surface${on ? '' : ' off'}" data-who="${who}">
@@ -3423,7 +3439,7 @@ function renderChars() {
       <span class="st">${esc(CH_POSE_L[chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
     </div>
     ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
-    <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 그림은 <code>scripts/char-gen.sh</code> 로 만들고 <code>CH_ART</code>(frontend/app.js)에 크기를 적습니다.</div>`;
+    <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 그림은 <code>scripts/char-gen.sh</code> 로 만들고, 새 캐릭터는 <code>scripts/char-publish.py</code> 로 올리면 배포 없이 더해집니다.</div>`;
   $('#cx-fr').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
     b.onclick = () => { chx.fr = b.dataset.k; save(); chxMounted = false; renderChars(); };
@@ -5902,6 +5918,7 @@ function connect() {
   });
 }
 connect();
+chLoad();
 setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests'].includes(route().v) || onlyLive && route().v === 'compare')) render(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => {
   if (route().v === 'session' && detail) renderSession();

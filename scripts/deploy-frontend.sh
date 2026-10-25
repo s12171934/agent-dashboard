@@ -44,6 +44,8 @@ step() { echo "[$(date -u +%H:%M:%S)] $*"; }
 step "wrangler 받기"
 $WRANGLER --version
 step "배포 $ver → $PROJECT ($BRANCH)"
+# from the repo root: wrangler builds ./functions (the /chars/* Pages Function, R2 binding CHARS on the project) from there
+cd "$ROOT"
 # The project exists after the first deploy; only a failed deploy looks it up (and creates it when it is missing).
 if ! $WRANGLER pages deploy "$OUT" --project-name "$PROJECT" --branch "$BRANCH" --commit-dirty=true; then
   step "배포 실패 — 프로젝트 확인"

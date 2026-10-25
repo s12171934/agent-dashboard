@@ -4,6 +4,9 @@
 #   scripts/char-gen.sh <name> <full|bust|sd> [work dir]
 # bust and sd (the chibi pixel sheet) take the full sheet as their reference, so make full first. Each call takes about 10 minutes; several run
 # side by side. The frame sizes char-sprites.py prints go into CH_ART in frontend/app.js.
+# A name not listed below is a new character: describe them in CHAR_DESC (English, like the lines below); the strips go
+# to the work dir instead of frontend/chars, and scripts/char-publish.py puts them online without a deploy.
+#   CHAR_DESC='young woman ..., short red hair, ...' scripts/char-gen.sh mio full ~/chars-work
 # Needs `codex` logged in, and Python with Pillow, numpy and scipy for the cut (PYTHON, default python3).
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,8 +20,10 @@ CHARS=(
   kaede 'team leader woman, long straight black hair, violet eyes, black wireless gaming headset with a small boom microphone worn on her head, dark charcoal blazer over white shirt, black slacks, low black heels'
   yuki  'team leader young man, neat silver hair, light blue eyes, black wireless gaming headset with a small boom microphone worn on his head, light blue shirt with sleeves rolled up and loosened navy tie, black trousers, black shoes'
 )
-desc=${CHARS[$name]}
+desc=${CHARS[$name]:-${CHAR_DESC:-}}
+[ -n "$desc" ] || { echo "새 캐릭터 $name: CHAR_DESC 에 생김새를 적어 주세요" >&2; exit 2; }
 cd "$work"
+out="$ROOT/frontend/chars"; (( ${+CHARS[$name]} )) || out=$PWD
 style='modern Japanese anime style (clean cel shading, crisp dark lineart, TV-anime look)'
 if [ "$kind" = full ]; then
   frame='FULL BODY from head to shoes, standing, facing the viewer, same scale, centered, feet on the same baseline, nothing cropped'; ref=()
@@ -54,4 +59,4 @@ Cells (left to right, top row then bottom row):
 P
 # the prompt goes in on stdin: --image takes every argument after it
 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C . $ref < "p_${name}_${kind}.txt" > "log_${name}_${kind}.txt" 2>&1
-"${PYTHON:-python3}" "$ROOT/scripts/char-sprites.py" "${name}_${kind}.png" "$kind" "$ROOT/frontend/chars/${name}-${kind}.$([ "$kind" = sd ] && echo png || echo webp)"
+"${PYTHON:-python3}" "$ROOT/scripts/char-sprites.py" "${name}_${kind}.png" "$kind" "$out/${name}-${kind}.$([ "$kind" = sd ] && echo png || echo webp)"

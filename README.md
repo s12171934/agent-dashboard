@@ -19,9 +19,10 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 폴더 | 무엇 | 어디서 도는가 |
 | --- | --- | --- |
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
+| `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `launchd/` | 로컬 Mac |
-| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기 | |
+| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `exports/` | 공개 스키마 | |
 
 ```
@@ -120,6 +121,7 @@ PAGES_BRANCH=dev scripts/deploy-frontend.sh   # 프리뷰 배포 (<hash>.agent-d
 DEPLOY_OUT=/tmp/adash-out scripts/deploy-frontend.sh   # 배포하지 않고 올릴 파일만 만들어 확인
 ```
 
+- Pages 프로젝트에 R2 바인딩 `CHARS` → 버킷 `agent-dashboard-chars` 가 프로덕션·프리뷰 모두 걸려 있다(프로젝트 설정, 저장소에는 없음). `deploy-frontend.sh` 는 저장소 루트에서 `wrangler pages deploy` 를 돌려 `functions/` 를 함께 올린다.
 - `dashboard.s-dante.com` 은 Pages 프로젝트 `agent-dashboard` 의 커스텀 도메인이다 (`dashboard` CNAME → `agent-dashboard-2at.pages.dev`, 프록시).
 - PWA 로 설치할 수 있다 (`manifest.webmanifest`, `sw.js`, `icons/`). Chrome·Edge 는 주소창의 설치 버튼, iOS Safari 는 공유 → 홈 화면에 추가. 서비스 워커는 이 출처의 페이지 파일만 네트워크 우선으로 캐시해 오프라인에서도 열리게 하고, 메트릭 서버 요청과 `build.json` 은 건드리지 않는다.
 - 앱 아이콘은 바의 「앱 아이콘」에서 고른다: 컨셉 5종(그리드·펄스·봇·터미널·노드) × 색 4종(블루·에메랄드·선셋·그래파이트) = 20개, 이 기기에만 저장(`adash.icon`). `icon-boot.js` 가 고른 아이콘의 manifest·파비콘·apple-touch-icon 으로 링크를 바꾼다. 탭 아이콘은 바로 바뀌고, 설치한 앱은 브라우저가 다음에 manifest 를 확인할 때 바뀐다(Chrome 은 바꿀지 물을 수 있음). iOS 는 추가할 때의 아이콘을 유지하므로 홈 화면에 다시 추가해야 한다.
@@ -182,6 +184,14 @@ DEPLOY_OUT=/tmp/adash-out scripts/deploy-frontend.sh   # 배포하지 않고 올
 - 그림체: **AI 생성**(상태에 맞는 모션을 **SD 치비 픽셀 아트**로 보여 줌 — 모두 같은 2등신 몸 — aoi 의 SD 시트를 비율 템플릿으로 나머지를 그림. 일러스트 전신 시트를 디자인 참조로 AI 가 그린 픽셀 시트를, 서 있는 포즈가 50행이 되는 격자에 맞추고 블록마다 가장 많은 색을 골라 정리, 3배 정수 확대로 굵고 또렷하게, 3px 단위로 한 칸씩 들썩임. 기본)과 **Live2D**(같은 그림을 WebGL 메시로 실시간 변형 — 호흡, 목을 축으로 한 고개 기울임, 스프링처럼 늦게 따라오는 옆머리, 몸 흔들림, 서 있을 때 눈 깜빡임). Live2D 는 숨은 WebGL 캔버스 하나로 화면에 보이는 사람만 그려 각자의 캔버스에 복사한다(브라우저의 WebGL 컨텍스트 한도에 걸리지 않음). 진짜 Cubism 리깅은 아니다.
 - 상태는 모션과 말풍선 기호로 읽는다: 실행 중 = 노트북 타자(말풍선에 지금 하는 일), 백그라운드 `◍` = 커피, 입력 대기 = 서 있기, 응답 없음 `!` = 머리 감싸 쥐기·식은땀(빛바램), 유휴 `z` = 졸기(흐림), 완료 `✓` = 브이, 결정 대기 `?` = 손 들기(노란 테두리).
 - 캐릭터 그림은 `frontend/chars/<이름>-<full|bust>.webp`(Live2D 용 일러스트, 프레임 8개를 가로로 이은 투명 스트립)와 `<이름>-sd.png`·`<이름>-sd-bust.png`(AI 생성 용 SD 픽셀 스트립, 전신·상반신). `scripts/char-gen.sh <이름> <full|bust|sd>` 가 Codex 이미지 생성으로 시트를 만들고(bust·sd 는 full 을 참조, aoi 외의 sd 는 aoi 의 sd 도 비율 템플릿으로 참조 — aoi 를 먼저) `scripts/char-sprites.py` 로 배경을 지워 자른다. 출력한 프레임 크기는 `app.js` 의 `CH_ART` 에 넣는다.
+- **배포 없이 캐릭터 더하기:** 기본 6명은 배포본(`frontend/chars`, `CH_ART`)에 있고, 나머지는 R2 버킷 `agent-dashboard-chars` 의 `chars/chars.json` 과 그림 4장이다. Pages Function `functions/chars/[[path]].js`(Pages 프로젝트의 R2 바인딩 `CHARS`)가 `/chars/*` 를 R2 에서 먼저 찾고 없으면 배포본을 준다(`no-cache` + ETag, 바뀌지 않았으면 304). 페이지는 열 때 `chars/chars.json` 을 읽어 그 사람들을 코디네이터·워커 목록 뒤에 붙인다. 사람이 늘면 세션이 맡는 캐릭터가 한 번 바뀔 수 있다.
+  ```sh
+  CHAR_DESC='young woman ..., short red hair, yellow raincoat' scripts/char-gen.sh mio full ~/chars-work   # 이어서 bust, sd (sd 는 작업 폴더의 aoi_sd.png 를 비율 템플릿으로 참조)
+  scripts/char-publish.py mio --name 미오 --look '빨간 단발 · 노란 우비' --dir ~/chars-work   # 코디네이터면 --boss
+  scripts/char-publish.py --list          # 올린 사람들
+  scripts/char-publish.py mio --remove    # 내리기
+  ```
+  `char-publish.py` 는 `<이름>-full.webp`·`-bust.webp`·`-sd.png`·`-sd-bust.png` 에서 프레임 크기와 머리 위치를 재서 `chars.json` 에 적고(그림을 먼저, 목록을 마지막에 올린다), `npx wrangler login` 과 Pillow·numpy 가 필요하다. 기본 6명의 이름으로 올리면 그 사람의 그림과 크기를 덮어쓴다.
 - **「캐릭터」 탭**(「캐릭터 설정」 패널의 「캐릭터 그림 관리 →」, `#chars`)이 캐릭터 그림을 관리한다. 캐릭터마다 카드 한 장에 **베이스**(AI 생성 일러스트 `.webp`) → **SD 픽셀**(`-sd.png`, 베이스 전신을 참조로 다시 그린 2등신 치비 픽셀 아트, 「AI 생성」 그림체) → **Live2D**(베이스의 실시간 변형)를 같은 포즈로 화살표로 이어 보여 준다. 아래 포즈 8개(어떤 상태에 쓰이는지 툴팁)를 누르면 세 단계가 함께 바뀌고, 상반신·전신을 고른다(`adash.chars`). 「사무실에 배치」를 끄면 그 사람은 사무실에 나오지 않고 같은 목록(코디네이터·워커)의 다른 사람이 세션을 맡는다(`adash.chpool`, 이 기기만. 한 목록을 모두 끄면 전원 배치). 「맡은 세션」은 지금 보이는 세션 중 그 사람으로 그려지는 수, 「재생성 명령 복사」는 그 그림을 다시 만드는 `char-gen.sh` 명령이다.
 - 사람을 누르면 그 세션 상세가 열린다. 끌면(휴대폰은 길게 누른 뒤 끌면) 방 안 어디로든 옮겨지고, 포커스한 뒤 방향키(Shift 는 크게)로도 옮긴다. 아래로 끌면 방이 늘어난다. 옮긴 자리는 이 기기에 남는다(`adash.chpos`: 세션별 `{x: 남는 폭에 대한 비율, y: px}`) — 실시간 갱신이나 폭 변경 뒤에도 그 자리다.
 - 「원래 자리로」는 옮긴 사람을 모두 처음 자리(격자)로 미끄러지듯 되돌린다. 옮긴 사람이 없으면 꺼져 있다.
