@@ -342,6 +342,7 @@ async function renderView(navigated) {
   $('#dz-pane-chk').checked = dz.pane;
   if (r.v !== 'home') hmEdit = false;
   const office = (r.v === 'agents' && charMode) || (r.v === 'home' && homeView === 'office');
+  $('#zoom-btn').hidden = !office;  // the office canvas's zoom, on the bar
   if (!office) document.documentElement.classList.remove('ch-full');
   if (r.v === 'home') { if (homeView === 'office') renderOffice(); else renderHome(); }
   else if (r.v === 'agents') renderAgents();
@@ -3389,8 +3390,9 @@ function chApply() {
   cv.style.setProperty('--lz', lz);
   cv.classList.toggle('ch-far', lz > 1.25);
   if (Math.abs(lz - chLz) > .1) { chLz = lz; chLayout(); }
-  const zl = $('#ch-zl');
-  if (zl) zl.textContent = Math.round(chView.z * 100) + '%';
+  const zl = Math.round(chView.z * 100) + '%';
+  $('#k-zoom').textContent = zl;
+  if ($('#ch-zl')) $('#ch-zl').textContent = zl;
   $('#ch-fit')?.setAttribute('aria-pressed', chView.fit);
 }
 // zoom by k around a point of the canvas (px from its top left)
@@ -3452,6 +3454,23 @@ document.addEventListener('wheel', e => {
   chApply(); chViewSave();
 }, { passive: false });
 addEventListener('resize', () => chSize());
+// the bar's zoom figure: pressed, back to 100% around the middle of the canvas
+$('#zoom-btn').onclick = () => { const cv = $('#ch-canvas'); if (cv) chZoom(1 / chView.z, cv.clientWidth / 2, cv.clientHeight / 2); };
+// iOS can lay an installed PWA out shorter than its screen (app.css :root.ch-full). The strip below is not painted from
+// the html background but takes the page's theme-color (#0f1215 in dark), so while the office fills the screen the
+// theme-color is the corridor floor's colour and the office reaches the edge to the eye. theme.js sets it back to --bg
+// on a theme change; this runs after it (a mutation callback) and puts the office's colour back.
+const chTintCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const chTint = () => {
+  const m = document.querySelector('meta[name=theme-color]'), root = document.documentElement;
+  if (!m || !chTintCtx) return;
+  const cs = getComputedStyle(root), c = root.classList.contains('ch-full') ? cs.backgroundColor : cs.getPropertyValue('--bg').trim();
+  // as #rrggbb: the meta tag may not take color-mix() or color(srgb …)
+  chTintCtx.clearRect(0, 0, 1, 1); chTintCtx.fillStyle = '#000'; chTintCtx.fillStyle = c; chTintCtx.fillRect(0, 0, 1, 1);
+  const hex = '#' + [...chTintCtx.getImageData(0, 0, 1, 1).data.slice(0, 3)].map(v => v.toString(16).padStart(2, '0')).join('');
+  if (m.content !== hex) m.content = hex;
+};
+new MutationObserver(chTint).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
 // half folded or opened again: the office's width changed, so its rooms are laid out anew (after the bar's sheet has moved)
 addEventListener('ds-posture', () => requestAnimationFrame(() => { if ($('#view .office')) renderOffice(); }));
 // iOS: the on-screen keyboard pans the page up to the field, and closing it can leave the page there — the floating bar

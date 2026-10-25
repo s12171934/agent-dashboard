@@ -1550,10 +1550,12 @@ a.hw-row:hover .hw-t { color: var(--accent); }
    rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
 :root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
 /* iOS can lay an installed PWA out shorter than its screen (iPhone Duo sideways: 587 of 669 high, the status bar's
-   thickness taken off the height too). Nothing is drawn below the viewport but the page's background, so that strip
+   thickness taken off the height too). Nothing of the page is drawn below the viewport, so that strip
    takes the corridor floor's colour and the office still reaches the edge to the eye; the bar stays in the viewport. */
 :root.ch-full { background-color: color-mix(in srgb, #b98152 34%, var(--panel2)); }
 :root.ch-full[data-theme="dark"] { background-color: color-mix(in srgb, #b98152 22%, var(--bg)); }
+/* the strip itself is painted from the theme-color, which chTint (app.js) sets to this colour; body (--bg) stands aside */
+:root.ch-full body { background: none; }
 :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
 :root.ch-full main { padding: 0; }
 :root.ch-full .ch-canvas { position: fixed; border: 0; border-radius: 0; }
@@ -1576,6 +1578,10 @@ a.hw-row:hover .hw-t { color: var(--accent); }
   padding: 6px; border-radius: 16px; cursor: auto; }
 .ch-zoom { display: inline-flex; gap: 2px; }
 .ch-zoom .act { min-width: 34px; font-variant-numeric: tabular-nums; }
+/* the zoom figure is on the bar (#zoom-btn) — kept here only on a phone, whose bar is a launcher pill */
+#ch-zl { display: none; } @media (max-width: 500px) { #ch-zl { display: inline-flex; } }
+#zoom-btn { width: auto; min-width: var(--dock-sz); padding: 0 10px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+:root:is([data-dock="left"], [data-dock="right"]) ds-dock:not([open]) #zoom-btn { width: var(--dock-sz); padding: 0; font-size: 11px; }
 #ch-fit[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .ch-say[hidden] { visibility: hidden; display: flex; }
 /* The canvas backdrop: the corridor floor runs past the rooms in every direction and moves with the view (chApply sets
