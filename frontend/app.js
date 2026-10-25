@@ -87,15 +87,9 @@ let onlyOrca = false;
 try { onlyOrca = localStorage.getItem('adash.orca') === '1'; } catch {}
 $('#only-orca').checked = onlyOrca;
 $('#only-orca').onchange = e => { onlyOrca = e.target.checked; try { localStorage.setItem('adash.orca', onlyOrca ? '1' : '0'); } catch {} gKey = ''; render(); };
-// 「캐릭터 모드」: the agents tab drawn as an office of characters (renderOffice) instead of cards. This device only.
+// 「캐릭터 모드」: the agents tab and 홈 drawn as an office of characters (renderOffice) instead of cards and the widget
+// board. This device only.
 let charMode = false;
-// 홈: the office canvas of characters (default) or the widget board. Kept on this device (adash.homeview).
-let homeView = 'office';
-try { homeView = localStorage.getItem('adash.homeview') === 'widgets' ? 'widgets' : 'office'; } catch {}
-const homeViewSeg = () => `<span class="seg" id="home-view"><button data-k="office"${homeView === 'office' ? ' class="on"' : ''}>사무실</button><button data-k="widgets"${homeView === 'widgets' ? ' class="on"' : ''}>위젯</button></span>`;
-const homeViewBind = () => $('#home-view')?.querySelectorAll('button').forEach(b => b.onclick = () => {
-  homeView = b.dataset.k; try { localStorage.setItem('adash.homeview', homeView); } catch {} hmEdit = false; render(true);
-});
 try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
 $('#char-mode').checked = charMode;
 $('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
@@ -341,10 +335,10 @@ async function renderView(navigated) {
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
   if (r.v !== 'home') hmEdit = false;
-  const office = (r.v === 'agents' && charMode) || (r.v === 'home' && homeView === 'office');
+  const office = (r.v === 'agents' || r.v === 'home') && charMode;
   document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom figure (맞춤), on the bar
   if (!office) document.documentElement.classList.remove('ch-full');
-  if (r.v === 'home') { if (homeView === 'office') renderOffice(); else renderHome(); }
+  if (r.v === 'home') { if (charMode) renderOffice(); else renderHome(); }
   else if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
   else if (r.v === 'talk') await renderTalk();
@@ -2891,7 +2885,7 @@ function agViewBind() {
 // shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
 // (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
 // drag (a long press on touch) or the arrow keys move them anywhere in the room.
-// Moved places are kept on this device (adash.chpos); 「원래 자리로」 puts everyone back on the grid.
+// Moved places are kept on this device (adash.chpos).
 let charStyle = 'ai';  // ai | l2d
 try { charStyle = localStorage.getItem('adash.charstyle') === 'l2d' ? 'l2d' : 'ai'; } catch {}
 let charFrame = 'bust';  // bust | full
@@ -3143,7 +3137,7 @@ function charHtml(s) {
 }
 // Session detail: the same person as in the office, in the same pose, beside the title — continuity from the office.
 // A click opens the picker (chPicker): any person, coordinator or worker, or back to the hash (자동).
-const chShown = () => charMode || homeView === 'office';
+const chShown = () => charMode;
 let chPickOpen = false;
 const chName = w => CH_INFO[w]?.[0] || w;
 function chHero(d) {
@@ -3283,8 +3277,6 @@ function chLayout() {
     fl.style.height = H + 'px';
   });
   chLinks();
-  const rb = $('#ch-reset');
-  if (rb) rb.disabled = ![...$('#view').querySelectorAll('.ch')].some(u => chPos[u.dataset.id]);
 }
 const chPlace = (u, x, y) => { u.style.left = x + 'px'; u.style.top = y + 'px'; u.style.zIndex = 10 + Math.round(y); };
 function chKeep(u) {
@@ -3292,7 +3284,6 @@ function chKeep(u) {
   chPos[u.dataset.id] = { x: Math.min(1, Math.max(0, u.offsetLeft / free)), y: u.offsetTop };
   chPosSave();
   if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) { fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px'; chLinks(); }
-  $('#ch-reset').disabled = false;
 }
 // keep a person in sight beside (or above, on a narrow screen) the staff panel that just opened
 function chReveal(id) {
@@ -3366,9 +3357,9 @@ function chApply() {
   const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world');
   if (!w) return;
   const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
-  if (chView.fit) {  // below the tools, which float over the top left, and beside an open staff panel
-    // and above a bar floating on the bottom of the canvas
-    const t = cv.querySelector('.ch-tools'), top = (t ? t.offsetTop + t.offsetHeight : 10) + 4;
+  if (chView.fit) {  // beside an open staff panel and clear of the bar floating on the bottom (or top) of the canvas
+    const dt = document.documentElement.dataset.dock === 'top' && $('ds-dock:not([open])')?.getBoundingClientRect();
+    const top = dt ? Math.max(14, dt.bottom - cv.getBoundingClientRect().top + 8) : 14;
     const dk = document.documentElement.dataset.dock === 'bottom' && $('ds-dock:not([open])')?.getBoundingClientRect();
     const room = ch - top - (dk ? Math.max(8, cv.getBoundingClientRect().bottom - dk.top + 8) : 8);
     const pn = cv.querySelector('.ch-panel'), side = pn && cw > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
@@ -3410,15 +3401,19 @@ function chSize() {
   // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the viewport's bottom
   // (down to the bar's sheet when that is the lower half)
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
+  // It stays clear of the status bar and the home bar (the safe area, filled by the page's corridor colour): drawn
+  // under the status bar held upright, the canvas made iOS take the status bar's thickness off the viewport's height
+  // from then on once turned sideways (iPhone Duo: 587 of 669, a strip below), until the app was restarted.
   const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight;
-  Object.assign(cv.style, { left: v.left + 'px', top: v.top + 'px', width: v.width + 'px', height: Math.max(240, bottom - v.top) + 'px' });
+  const top = `max(${v.top}px, env(safe-area-inset-top))`, end = sheet ? `${bottom}px` : `calc(${bottom}px - env(safe-area-inset-bottom))`;
+  Object.assign(cv.style, { left: v.left + 'px', top, width: v.width + 'px', height: `max(240px, calc(${end} - ${top}))` });
   chApply();
 }
 // the bar's zoom figure: pressed, 맞춤 (the view is zoomed by a pinch, Ctrl/⌘ + wheel or the trackpad; no buttons)
 $('#zoom-btn').onclick = () => { if (!$('#ch-canvas')) return; chView.fit = true; chApply(); chViewSave(); };
 const chPts = new Map();
 document.addEventListener('pointerdown', e => {
-  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools, .ch-panel')) return;
+  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-panel')) return;
   if (e.pointerType === 'mouse' && (e.button || e.target.closest('.ch'))) return;  // a mouse on a person drags the person
   chPts.set(e.pointerId, [e.clientX, e.clientY]);
 });
@@ -3556,23 +3551,10 @@ function renderOffice() {
   if (scrollY) scrollTo(0, 0);
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
   $('#view').innerHTML = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
-      <div class="ch-tools surface">${home ? homeViewSeg() : ''}
-        <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
-      </div>
       ${home && chPanel ? staffPanel() : ''}
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
-  $('#ch-reset').onclick = () => {
-    chPos = {}; chPosSave();
-    const o = $('#view .office');
-    o?.classList.add('homing');  // glide back instead of jumping
-    chLayout();
-    setTimeout(() => o?.classList.remove('homing'), 500);
-  };
-  if (home) {
-    homeViewBind();
-    if (chPanel) { hmBind(); $('#ch-panel-x').onclick = () => { chPanel = null; renderOffice(); }; }
-  }
+  if (home && chPanel) { hmBind(); $('#ch-panel-x').onclick = () => { chPanel = null; renderOffice(); }; }
   chLayout();
   chBind();
   chSize();
@@ -6364,12 +6346,11 @@ function renderHome() {
   needReviews();
   const left = Object.keys(HM_W).filter(id => !hmLay.widgets.some(w => w.id === id));
   $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span>
-      <span class="hm-tools">${hmEdit ? '' : homeViewSeg()}${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
+      <span class="hm-tools">${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
         : '<button type="button" class="act big" data-hm-act="edit">편집</button>'}</span></div>
     ${hmEdit && left.length ? `<div class="box hm-cat"><b>위젯 추가</b>${left.map(id => `<button type="button" class="hm-add" data-hm-add="${id}"><span>+</span>${HM_W[id].name}<small>${HM_W[id].desc}</small></button>`).join('')}</div>` : ''}
     <div class="hm-grid${hmEdit ? ' editing' : ''}">${hmLay.widgets.map(hmWidget).join('')}</div>`;
   hmBind();
-  homeViewBind();
 }
 
 // A single-choice question answers on click, as its card on 결정 대기 does; anything else opens that screen.
@@ -6386,7 +6367,7 @@ function hmDecBind(v) {
   });
 }
 
-const hmRedraw = () => homeView === 'office' ? renderOffice() : renderHome();
+const hmRedraw = () => charMode ? renderOffice() : renderHome();
 function hmBind() {
   const v = $('#view'), find = el => hmLay.widgets.find(w => w.id === el.closest('[data-hm]')?.dataset.hm);
   v.querySelectorAll('[data-hm-act]').forEach(b => b.onclick = () => {
