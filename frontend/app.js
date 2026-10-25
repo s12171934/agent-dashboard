@@ -2925,18 +2925,22 @@ async function chLoad() {
 let chPool = {};
 try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch {}
 const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.length ? k : l; };
-const chWho = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
+// A person picked in a session's detail (chPick, this device only) wins over the hash, so the office shows them too.
+let chPick = {};
+try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch {}
+const chWho = s => { const p = chPick[s.id || s.path]; if (p && CH_ART[p]) return p;
+  const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
 const chMove = (st, s) => s.decision ? 'dec' : st;
 const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
 const chSrc = (who, fr) => `chars/${who}-${fr}.webp`;
 const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png`;
 const CH_H = { bust: 132, full: 196 };
-function chFig(st, s) {
+function chFig(st, s, small) {  // small: the session detail's header (2× pixels, a shorter canvas)
   const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
-  const H = CH_H[charFrame], W = Math.round(a.w * H / a.h);
+  const H = Math.round(CH_H[charFrame] * (small ? .72 : 1)), W = Math.round(a.w * H / a.h), x = small ? 2 : 3;
   if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
-  // AI 생성: the SD pixel sprite at a whole 3×, so every sprite pixel is a crisp 3 × 3 block
-  const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * 3, ph = sd.ph * 3;
+  // AI 생성: the SD pixel sprite at a whole 3× (2× in the detail), so every sprite pixel is a crisp block
+  const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * x, ph = sd.ph * x;
   return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
 }
 
@@ -3098,6 +3102,27 @@ function charHtml(s) {
     <span class="ch-name">${esc(nameOf(s))}</span>
     <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
   </button>`;
+}
+// Session detail: the same person as in the office, in the same pose, beside the title — continuity from the office.
+// A click opens the picker (chPicker): any person, coordinator or worker, or back to the hash (자동).
+const chShown = () => charMode || homeView === 'office';
+let chPickOpen = false;
+const chName = w => CH_INFO[w]?.[0] || w;
+function chHero(d) {
+  const st = subBg(d, agg(d), status(d)), who = chWho(d), k = d.id || d.path;
+  return `<button type="button" class="ch d-ch st-${st}${d.decision ? ' dec' : ''}" id="d-ch" data-id="${esc(k)}" aria-expanded="${chPickOpen}" aria-controls="d-chpick"
+      title="${esc(chName(who))} · 눌러서 캐릭터 바꾸기" aria-label="${esc(`캐릭터 ${chName(who)}${chPick[k] ? ' (직접 고름)' : ''}. 눌러서 바꾸기`)}">
+    ${chFig(st, d, true)}<span class="ch-name">${esc(chName(who))}${chPick[k] ? ' ✎' : ''}</span></button>`;
+}
+function chPicker(d) {
+  const k = d.id || d.path, cur = chWho(d), auto = !chPick[k];
+  const one = w => { const a = CH_ART[w].sdb;
+    return `<button type="button" class="d-chopt${w === cur ? ' on' : ''}" data-pick="${w}" aria-pressed="${w === cur}" title="${esc(CH_INFO[w]?.[1] || '')}">
+      <span class="d-chspr" style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(w, 'bust')});background-size:${a.pw * 8}px ${a.ph}px"></span>${esc(chName(w))}</button>`; };
+  return `<div class="box d-chpick" id="d-chpick"><div class="d-chpick-h"><b>캐릭터 고르기</b><span class="st">사무실에서도 이 사람으로 보입니다 · 이 기기에만 저장</span>
+      <button type="button" class="act" data-pick=""${auto ? ' disabled' : ''}>${auto ? '자동 배정 중' : '자동으로 되돌리기'}</button></div>
+    <div class="d-chgrp" role="group" aria-label="코디네이터"><span class="st">코디네이터</span>${CH_BOSS.map(one).join('')}</div>
+    <div class="d-chgrp" role="group" aria-label="워커"><span class="st">워커</span>${CH_CREW.map(one).join('')}</div></div>`;
 }
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
   return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
@@ -4054,6 +4079,7 @@ function runGraph(run, tasks, stages, depsOf, workers, result, sessByTask, coord
 
 // ---------- session detail ----------
 function renderSession(navigated) {
+  if (navigated) chPickOpen = false;
   const d = detail, a = agg(d), tk = d.tokens, totalIn = tk.input + tk.cache_read + tk.cache_write;
   const tools = Object.entries(d.by_tool).sort((x, y) => y[1].ctx_growth - x[1].ctx_growth);
   const scroll = $('.log')?.scrollTop;
@@ -4140,10 +4166,13 @@ function renderSession(navigated) {
     <div class="panes">${useHtml}${logHtml}
     </div>`;
   }
+  const ch = chShown();
   $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
+    ${ch ? `<div class="d-hero">${chHero(d)}<div class="d-head">` : ''}
     <h2 class="d">${esc(nameOf(d))}</h2>
-    <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>
+    <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>${ch ? '</div>' : ''}
     <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
+    ${ch ? `</div>${chPickOpen ? chPicker(d) : ''}` : ''}
     ${rel ? `<div class="box">${rel}</div>` : ''}
     ${body}`;
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
@@ -4156,6 +4185,15 @@ function renderSession(navigated) {
     try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
     { const sv = saveScroll(); renderSession(); restoreScroll(sv); }
   });
+  const reSess = () => { const sv = saveScroll(); renderSession(); restoreScroll(sv); };
+  if ($('#d-ch')) $('#d-ch').onclick = () => { chPickOpen = !chPickOpen; reSess(); };
+  $('#view').querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+    const k = d.id || d.path;
+    if (b.dataset.pick) chPick[k] = b.dataset.pick; else delete chPick[k];
+    try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {}
+    reSess();
+  });
+  if (ch) L2D.mount($('#view'));
   ticketGraphBind();
   flowBind(d);
   workerTableBind(d);
