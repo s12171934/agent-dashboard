@@ -2876,8 +2876,8 @@ function agViewBind() {
   });
 }
 // ---------- 캐릭터 모드: the agents tab as an office ----------
-// Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
-// sessions share the last one. A room is one scene (wall with decorations, floor); each agent is one of six original
+// Same sessions and filters as the tree. A worktree is one room (coordinators first, then by state), and rooms one
+// family spans are linked by a line (officeRooms, chLinks). A room is one scene (wall with decorations, floor); each agent is one of six original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
 // (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터 설정」 panel (charPanel): 「AI 생성」
 // shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
@@ -3113,13 +3113,59 @@ function charHtml(s) {
 }
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
   return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
-const roomBox = (title, key, ms, extra = '') => `<section class="box room"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
+const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
     <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
-function roomHtml(f) {
-  const ms = f.members.filter(m => !filtering() || liveSess(m)).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y));
-  if (!ms.length) return '';
-  const c = f.coord || ms[0];
-  return roomBox(esc(f.coord ? nameOf(f.coord) : termOwner(f.handle).title || '코디네이터 미상'), f.key || c.path, ms, `<span class="st">▣ ${esc(wtShort(c.place))}</span>${srvBadge(c)}`);
+// One room per worktree (wtKey): everyone on show sits where they run, so a coordinator and the workers it sent to other
+// worktrees sit in different rooms. Rooms a family spans are linked (coordinator's room → worker's room, with how many
+// it sent there; chLinks draws them), and linked rooms are laid out together, the room with a top coordinator first.
+function officeRooms(people) {
+  const up = coordOf(families().fams), by = new Map(), links = new Map();
+  for (const s of people) { const k = wtKey(s); (by.get(k) || by.set(k, []).get(k)).push(s); }
+  for (const s of people) {
+    const c = up.get(s.path)?.coord, a = c && wtKey(c), b = wtKey(s);
+    if (!a || a === b || !by.has(a)) continue;
+    const l = links.get(a + '\n' + b) || links.set(a + '\n' + b, { a, b, n: 0, by: new Set() }).get(a + '\n' + b);
+    l.n++; l.by.add(nameOf(c));
+  }
+  // linked rooms form groups (union-find); groups by their most urgent person, a lone room after the linked ones
+  const root = new Map([...by.keys()].map(k => [k, k])), find = k => root.get(k) === k ? k : find(root.get(k));
+  for (const l of links.values()) root.set(find(l.a), find(l.b));
+  const rank = k => Math.min(...by.get(k).map(sessRank)), lead = k => by.get(k).some(m => m.role === 'coordinator');
+  const late = k => by.get(k).map(m => m.started || '').sort().pop() || '';
+  const groups = new Map();
+  for (const k of by.keys()) (groups.get(find(k)) || groups.set(find(k), []).get(find(k))).push(k);
+  const order = [...groups.values()].map(ks => ks.sort((x, y) => lead(y) - lead(x) || rank(x) - rank(y) || late(y).localeCompare(late(x))))
+    .sort((x, y) => (y.length > 1) - (x.length > 1) || Math.min(...x.map(rank)) - Math.min(...y.map(rank)) || late(y[0]).localeCompare(late(x[0]))).flat();
+  const html = order.map(k => {
+    const ms = by.get(k).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y)), p = ms.find(m => m.place)?.place;
+    const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
+    return roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}${srvBadge(ms[0])}`);
+  });
+  return { html, links: [...links.values()] };
+}
+// The links between rooms, over the plane: a dotted line from the edge of the coordinator's room to the edge of the
+// worker's, an arrow at the worker's end and a tag in the middle. Rooms only move when their height changes, so it is
+// redrawn after every layout.
+let chLinkList = [];
+function chLinks() {
+  const w = $('#view .ch-world');
+  if (!w) return;
+  w.querySelectorAll('.ch-links, .ch-link-tag').forEach(x => x.remove());
+  const box = k => { const r = w.querySelector(`.room[data-room="${CSS.escape(k)}"]`); return r && { x: r.offsetLeft + r.offsetWidth / 2, y: r.offsetTop + r.offsetHeight / 2, hw: r.offsetWidth / 2 + 8, hh: r.offsetHeight / 2 + 8 }; };
+  // where the line from a room's centre along (dx, dy) leaves it
+  const edge = (r, dx, dy) => { const t = Math.min(dx ? r.hw / Math.abs(dx) : Infinity, dy ? r.hh / Math.abs(dy) : Infinity); return [r.x + dx * t, r.y + dy * t]; };
+  let lines = '', tags = '';
+  for (const l of chLinkList) {
+    const A = box(l.a), B = box(l.b);
+    if (!A || !B) continue;
+    const dx = B.x - A.x, dy = B.y - A.y, [x1, y1] = edge(A, dx, dy), [x2, y2] = edge(B, -dx, -dy);
+    if ((x2 - x1) * dx + (y2 - y1) * dy <= 0) continue;  // overlapping rooms: nothing between them to draw
+    lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    const who = [...l.by];
+    tags += `<span class="ch-link-tag" style="left:${(x1 + x2) / 2}px;top:${(y1 + y2) / 2}px" title="${esc(`${who.join(', ')} → 워커 ${l.n}`)}">${esc(cut(who[0], 14))}${who.length > 1 ? ` 외 ${who.length - 1}` : ''} → 워커 <b>${l.n}</b></span>`;
+  }
+  if (!lines) return;
+  w.insertAdjacentHTML('beforeend', `<svg class="ch-links" width="${w.offsetWidth}" height="${w.offsetHeight}" aria-hidden="true"><defs><marker id="ch-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs><g marker-end="url(#ch-arrow)">${lines}</g></svg>${tags}`);
 }
 
 // Places: a moved person keeps {x: share of the free width, y: px from the room's top}; the rest sit on the grid.
@@ -3144,6 +3190,7 @@ function chLayout() {
     });
     fl.style.height = H + 'px';
   });
+  chLinks();
   const rb = $('#ch-reset');
   if (rb) rb.disabled = ![...$('#view').querySelectorAll('.ch')].some(u => chPos[u.dataset.id]);
 }
@@ -3152,7 +3199,7 @@ function chKeep(u) {
   const fl = u.parentElement, free = Math.max(1, fl.clientWidth - u.offsetWidth);
   chPos[u.dataset.id] = { x: Math.min(1, Math.max(0, u.offsetLeft / free)), y: u.offsetTop };
   chPosSave();
-  if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px';
+  if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) { fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px'; chLinks(); }
   $('#ch-reset').disabled = false;
 }
 // keep a person in sight beside (or above, on a narrow screen) the staff panel that just opened
@@ -3361,14 +3408,15 @@ function renderOffice() {
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
   const home = route().v === 'home';
-  const rooms = [home ? staffRoom() : ''].concat(fv.map(roomHtml), sv.length ? roomBox('단독 자리', 'solo', sv) : []).filter(Boolean);
+  const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv], office = officeRooms(people);
+  chLinkList = office.links;
+  const rooms = [home ? staffRoom() : ''].concat(office.html).filter(Boolean);
   // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
   const narrow = innerWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
   $('#view').innerHTML = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       <div class="ch-tools surface">${home ? homeViewSeg() : ''}
         <span class="ch-zoom"><button type="button" class="act" id="ch-out" aria-label="축소">−</button><button type="button" class="act" id="ch-zl" title="100%로">100%</button><button type="button" class="act" id="ch-in" aria-label="확대">+</button></span>
