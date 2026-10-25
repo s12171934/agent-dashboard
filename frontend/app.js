@@ -3393,7 +3393,8 @@ function chSize() {
   const cv = $('#ch-canvas');
   if (!cv) return;
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
-  const bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight - (innerWidth <= 700 || posture ? 0 : 12);
+  const cut = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-cut')) || 0;  // ds fold.js
+  const bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight + cut - (innerWidth <= 700 || posture ? 0 : 12);
   cv.style.height = Math.max(240, bottom - cv.getBoundingClientRect().top) + 'px';
   chApply();
 }
@@ -3438,7 +3439,9 @@ document.addEventListener('wheel', e => {
   chApply(); chViewSave();
 }, { passive: false });
 addEventListener('resize', () => chSize());
-addEventListener('ds-posture', () => requestAnimationFrame(() => { if ($('#view .office')) { chSize(); chLayout(); } }));  // after the bar's sheet has moved
+// half folded or opened again: the office's width changed, so its rooms are laid out anew (after the bar's sheet has moved)
+addEventListener('ds-posture', () => requestAnimationFrame(() => { if ($('#view .office')) renderOffice(); }));
+addEventListener('ds-viewport', () => chSize());
 // iOS: the on-screen keyboard pans the page up to the field, and closing it can leave the page there — the floating bar
 // and the office then sit too high, and the office (its page cannot scroll) has no way back. Once the keyboard is gone,
 // put the office back at the top and re-anchor the fixed layer elsewhere.

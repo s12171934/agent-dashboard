@@ -37,7 +37,11 @@
   /* the bottom bar's distance from the screen's bottom edge. The home indicator's safe area (an installed PWA on
      iPhone: 34px) is mostly empty: the indicator itself is the bottom ~13px. The bar sits just clear of it (22px)
      rather than above the whole area, like the system's own floating tab bars; elsewhere the margin is 14px */
-  --dock-bottom: max(14px, env(safe-area-inset-bottom) - 12px);
+  --dock-bottom: calc(max(14px, env(safe-area-inset-bottom) - 12px) - var(--vp-cut));
+  /* how much of the screen's bottom an installed PWA's layout viewport leaves out (foundations/fold.js). iOS sometimes
+     takes the status bar's thickness off the viewport's height as well, so whatever sits on the bottom edge
+     (bottom: 0, the bar) floats that far above the screen's edge; those boxes reach down by it. 0 elsewhere. */
+  --vp-cut: 0px;
 }
 /* phone: the bar is the launcher pill (dock.css), 58px tall whatever the chosen size */
 @media (max-width: 500px) { :root { --dock-reach: 58px; } }
