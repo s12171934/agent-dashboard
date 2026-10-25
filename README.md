@@ -20,8 +20,8 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | --- | --- | --- |
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (`server.py`, REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `launchd/` | 로컬 Mac |
-| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인 | |
+| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `launchd/` | 로컬 Mac |
+| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사 | |
 | `exports/` | 공개 스키마 | |
 
 ```
@@ -126,7 +126,7 @@ DEPLOY_OUT=/tmp/adash-out scripts/deploy-frontend.sh   # 배포하지 않고 올
 - 아이콘은 `scripts/make-icons.py` 가 만든다(SVG 템플릿 → headless Chrome 으로 PNG). 기본(그리드·블루)은 `icons/` 와 `manifest.webmanifest`, 나머지는 `icons/app/<컨셉>-<색>/` 에 manifest 와 함께 있다. 아이콘을 바꾸거나 더할 때는 스크립트를 고쳐 다시 돌리고, 목록은 `icon-boot.js` 에도 맞춘다.
 - 배포할 때 페이지가 이름으로 불러오는 파일(`index.html` 의 스크립트·스타일, `ds.css` 의 `@import`, `ds.js` 의 `import`, 아이콘 스프라이트 `icons.svg`)에 `?v=<build>` 를 붙인다(원본은 그대로). `dashboard.s-dante.com` zone 이 `_headers` 의 `no-cache` 를 무시하고 JS·CSS·SVG 를 4시간 브라우저 캐시로 내보내서, 새 `index.html` 이 예전 `app.js`·`app.css`·`icons.svg` 와 섞여 화면이 깨졌기 때문이다(`*.pages.dev` 주소는 `no-cache` 그대로). 근본적으로는 그 zone 의 Caching → Browser Cache TTL 을 「Respect Existing Headers」로 두면 된다. 서비스 워커는 파일을 쿼리 없이 경로로 캐시한다.
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 1분마다, 그리고 화면에 다시 나타나거나 포커스·네트워크를 되찾을 때마다(10초에 한 번까지) 이것을 확인해 새 배포면 서비스 워커를 갱신하고 새로 고친다. 설치한 PWA 는 다시 열기보다 백그라운드에서 돌아오는 일이 많아서다.
-- 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
+- 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server/adash/http/snapshot.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
 ## 홈 — 위젯으로 모아 보기
 
