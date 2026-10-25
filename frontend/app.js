@@ -3144,12 +3144,13 @@ const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(
 const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
     <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
 // One room per worktree (wtKey): everyone on show sits where they run, so a coordinator and the workers it sent to other
-// worktrees sit in different rooms. Each coordinator with workers on show is a family with its own colour (chFam): its
-// people wear a chip in that colour — the coordinator how many workers it has and how many sit elsewhere, a worker
-// whose coordinator it is (its room in the tooltip) — and chLinks draws a line in that colour
-// from the coordinator to each worker in another room. Rooms a family spans are laid out together, the room with a top
+// worktrees sit in different rooms. Each coordinator with workers on show leads a team with its own colour and name
+// (chFam, FAM_TEAM): its people wear a chip in that colour — the coordinator 「★ 파도팀 팀장 · N명」, a worker 「◆ 파도팀」,
+// the coordinator's title and room in the tooltip — and chLinks draws a line in that colour from the coordinator to
+// each worker in another room. Rooms a family spans are laid out together, the room with a top
 // coordinator first.
-const FAM_HUE = [212, 24, 148, 282, 350, 48, 186, 318, 96, 252];
+// A family is a team: its colour and a name that goes with it, so a chip reads 「파도팀」 rather than a long session title.
+const FAM_TEAM = [[212, '파도'], [24, '노을'], [148, '숲'], [282, '라벤더'], [350, '장미'], [48, '햇살'], [186, '호수'], [318, '벚꽃'], [96, '새싹'], [252, '밤하늘']];
 let chFam = new Map(), chLinkList = [];
 const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
 function officeRooms(people) {
@@ -3164,14 +3165,14 @@ function officeRooms(people) {
   // colours in order of start, so a family keeps its colour while newer ones come and go
   chFam = new Map(); chLinkList = [];
   [...fams.values()].sort((x, y) => byStart(x.c, y.c)).forEach((f, i) => {
-    const hue = FAM_HUE[i % FAM_HUE.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+    const [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], team = tn + '팀' + (i >= FAM_TEAM.length ? ' ' + (Math.floor(i / FAM_TEAM.length) + 1) : ''), k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
     const cm = chFam.get(f.c.path) || {};
-    chFam.set(f.c.path, { ...cm, hue: cm.hue ?? hue, keys: [...(cm.keys || []), f.c.path], boss: { hue, n: f.ws.length, away: away.length } });
+    chFam.set(f.c.path, { ...cm, hue: cm.hue ?? hue, keys: [...(cm.keys || []), f.c.path], boss: { hue, team, n: f.ws.length, away: away.length } });
     for (const w of f.ws) {
       const wm = chFam.get(w.path) || {};
-      chFam.set(w.path, { ...wm, hue, keys: [f.c.path, ...(wm.keys || [])], of: { c: f.c, hue, room: wtKey(w) !== k ? roomName(f.c.place) : '' } });
+      chFam.set(w.path, { ...wm, hue, keys: [f.c.path, ...(wm.keys || [])], of: { c: f.c, hue, team, room: wtKey(w) !== k ? roomName(f.c.place) : '' } });
     }
-    away.forEach(w => chLinkList.push({ from: f.c.path, to: w.path, hue, fam: f.c.path, name: nameOf(f.c) }));
+    away.forEach(w => chLinkList.push({ from: f.c.path, to: w.path, hue, fam: f.c.path, team, name: nameOf(f.c) }));
   });
   // linked rooms form groups (union-find); groups by their most urgent person, a lone room after the linked ones
   const root = new Map([...by.keys()].map(k => [k, k])), find = k => root.get(k) === k ? k : find(root.get(k));
@@ -3192,14 +3193,13 @@ function famChips(s) {
   const m = chFam.get(s.path);
   if (!m) return '';
   const chip = (hue, txt, tip) => `<span class="ch-fam" style="--fh:${hue}" title="${esc(tip)}">${txt}</span>`;
-  return (m.boss ? chip(m.boss.hue, `◆ 워커 ${m.boss.n}${m.boss.away ? ` · 다른 방 ${m.boss.away}` : ''}`, `이 코디네이터의 워커 ${m.boss.n}명${m.boss.away ? `, 그중 ${m.boss.away}명은 다른 워크트리 방 (선으로 이어짐)` : ''}`) : '')
-    + (m.of ? chip(m.of.hue, `◆ ${esc(cut(nameOf(m.of.c), 18))} 소속`, `코디네이터 ${nameOf(m.of.c)}${m.of.room ? ` (▣ ${m.of.room} 방)` : ''} 의 워커`) : '');
+  return (m.boss ? chip(m.boss.hue, `★ ${m.boss.team} 팀장 · ${m.boss.n}명`, `${m.boss.team} 팀장 — 이 코디네이터의 워커 ${m.boss.n}명${m.boss.away ? `, 그중 ${m.boss.away}명은 다른 워크트리 방 (선으로 이어짐)` : ''}`) : '')
+    + (m.of ? chip(m.of.hue, `◆ ${m.of.team}`, `${m.of.team} 팀원 — 팀장(코디네이터) ${nameOf(m.of.c)}${m.of.room ? `, ▣ ${m.of.room} 방` : ', 같은 방'}`) : '');
 }
 // The family lines, over the plane: a dotted thread in the family's colour from the coordinator's side to the side of
 // each of its workers in another room (the sides facing each other, at the waist, clear of bubbles and name tags),
 // sagging a little across the corridor, a dot at each end and, at the bottom of the first thread of each family, the
-// coordinator's name. People
-// move (layout, drag), so it is redrawn after each move.
+// team's name. People move (layout, drag), so it is redrawn after each move.
 function chLinks() {
   const w = $('#view .ch-world');
   if (!w) return;
@@ -3220,7 +3220,7 @@ function chLinks() {
     svg += `<g class="ch-link" data-fam="${esc(l.fam)}" style="--fh:${l.hue}"><path d="${d}"/><circle class="boss" cx="${A.x}" cy="${A.y}" r="4"/><circle cx="${B.x}" cy="${B.y}" r="4"/></g>`;
     if (!named.has(l.fam)) {
       named.add(l.fam);
-      tags += `<span class="ch-link-tag" data-fam="${esc(l.fam)}" style="--fh:${l.hue};left:${(A.x + B.x) / 2}px;top:${(A.y + B.y) / 8 + low * .75}px">${esc(cut(l.name, 20))} 의 워커</span>`;
+      tags += `<span class="ch-link-tag" data-fam="${esc(l.fam)}" style="--fh:${l.hue};left:${(A.x + B.x) / 2}px;top:${(A.y + B.y) / 8 + low * .75}px" title="${esc(`${l.team} — 팀장 ${l.name}`)}">${esc(l.team)}</span>`;
     }
   }
   if (svg) w.insertAdjacentHTML('beforeend', `<svg class="ch-links" width="${w.offsetWidth}" height="${w.offsetHeight}" aria-hidden="true">${svg}</svg>${tags}`);
