@@ -1399,7 +1399,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 /* 캐릭터 모드 (renderOffice): each room is one scene — .room-wall (decorations) over the wall band, the floor below —
    and the people (.ch) sit on it at places chLayout sets (left, top; z-index grows downward so nearer people overlap).
    --c is the model colour, --ph the motion phase the page sets so live re-renders do not restart it. The face and the
-   bubble's sign carry the state; .fig-ai (a sprite frame) and .fig-l2d (a canvas L2D draws) are the two drawing styles. */
+   bubble's sign carry the state; .fig-ai (a pixel sprite frame) and .fig-l2d (a canvas L2D draws) are the two drawing styles. */
 .office { display: flex; flex-direction: column; gap: 12px; }
 .office, .ch-canvas {
   /* page-only palette for props: a leaf or a wooden desk is the same in light and dark */
@@ -1445,23 +1445,26 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-fig { display: block; flex: none; background-repeat: no-repeat; transition: transform .15s;
   filter: drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
 /* a bust is cut at the waist: fade the cut into the floor */
-.ch-fig.bust { -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
+.fig-l2d.bust { -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
 .ch-name { box-shadow: inset 0 -2px var(--c); }  /* the model's colour */
 .ch-name, .ch-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; border-radius: 6px;
   background: color-mix(in srgb, var(--panel) 82%, transparent); }
 .ch-name { font-size: 12px; font-weight: 600; }
 .ch-meta { color: var(--muted); font-size: 11px; }
 .ch .badge { margin-top: 2px; }
-/* motion (AI 생성): the generated pose carries the state, CSS adds a breath; Live2D moves in its canvas instead */
-.fig-ai { animation: bob 2.4s ease-in-out infinite var(--ph, 0s); --bob: -1.5px; }
-.ch.st-run .fig-ai { animation-duration: .9s; --bob: -2px; }
-.ch.st-done .fig-ai { animation: bob .7s ease-in-out 3 var(--ph, 0s); --bob: -6px; }
-.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -3px; }
-.ch.st-stalled .fig-ai { animation: shake .5s steps(2, end) infinite; }
+/* motion (AI 생성): pixel art at 2×, so it moves a sprite pixel (2px) at a time, in steps; the generated pose carries
+   the state. Live2D moves in its canvas instead. */
+.fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
+  animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -2px; }
+.ch.st-run .fig-ai { animation-duration: .8s; }
+.ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph, 0s); --bob: -6px; }
+.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -4px; }
+.ch.st-stalled .fig-ai { animation: shake .4s steps(1, end) infinite; }
 .ch.st-idle .fig-ai { animation-duration: 4s; }
 .ch.st-idle .ch-fig { opacity: .8; }
-.ch.st-stalled .ch-fig { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
-@keyframes shake { 50% { transform: translateX(1.5px); } }
+.ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
+.ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
+@keyframes shake { 50% { transform: translateX(2px); } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
 /* 3D 렌더: lighter and darker steps of each colour in OKLCH make the shading; white is the light */
 /* the 3D wall */
@@ -1567,4 +1570,4 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-panel .hw { border: 0; padding: 0; background: none; box-shadow: none; }
 @media (max-width: 700px) { .ch-panel { top: auto; height: 62%; } }  /* keeps the bubble's room so people stay on one line */
 @media (max-width: 700px) { .ch-world { padding: 12px; } }
-@media (max-width: 500px) { .ch { width: 124px; } .ch-fig { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
+@media (max-width: 500px) { .ch { width: 124px; } .fig-l2d { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }

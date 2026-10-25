@@ -2858,8 +2858,8 @@ function agViewBind() {
 // Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
 // sessions share the last one. A room is one scene (wall with decorations, floor); each agent is one of six original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
-// (charFrame) and drawn in one of two styles (charStyle): 「AI 생성」 shows the generated pose for the state, 「Live2D」
-// deforms that picture live (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry
+// (charFrame) and drawn in one of two styles (charStyle): 「AI 생성」 shows the generated pose for the state as pixel
+// art, 「Live2D」 deforms the smooth picture live (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry
 // the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
 // drag (a long press on touch) or the arrow keys move them anywhere in the room.
 // Moved places are kept on this device (adash.chpos); 「원래 자리로」 puts everyone back on the grid.
@@ -2870,16 +2870,17 @@ try { charFrame = localStorage.getItem('adash.charframe') === 'full' ? 'full' : 
 const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
-// A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h), one pose per frame:
+// A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h; the pixel copy pw × ph), one
+// pose per frame:
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
 // The coordinators (kaede, yuki) wear a headset; a session's hash picks the person, so they keep theirs across refreshes.
 const CH_ART = {
-  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]}},
-  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]}},
-  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]}},
-  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]}},
-  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]}},
-  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]}},
+  aoi: {full:{w:157,h:320,pw:48,ph:98,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,pw:52,ph:66,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]}},
+  ren: {full:{w:151,h:320,pw:46,ph:98,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,pw:52,ph:66,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]}},
+  hina: {full:{w:138,h:320,pw:42,ph:98,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,pw:50,ph:66,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]}},
+  sora: {full:{w:147,h:320,pw:45,ph:98,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,pw:48,ph:66,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]}},
+  kaede: {full:{w:175,h:320,pw:54,ph:98,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,pw:50,ph:66,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]}},
+  yuki: {full:{w:157,h:320,pw:48,ph:98,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,pw:51,ph:66,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]}},
 };
 const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
 const chWho = s => { const l = isBoss(s) ? CH_BOSS : CH_CREW; return l[chHash(s.id || s.path) % l.length]; };
@@ -2891,7 +2892,9 @@ function chFig(st, s) {
   const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
   const H = CH_H[charFrame], W = Math.round(a.w * H / a.h);
   if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
-  return `<span class="ch-fig fig-ai ${charFrame}" style="width:${W}px;height:${H}px;background-image:url(${chSrc(who, charFrame)});background-size:${W * 8}px ${H}px;background-position:${-f * W}px 0" aria-hidden="true"></span>`;
+  // AI 생성 is pixel art: the pixel copy at a whole 2×, so every sprite pixel is a crisp 2 × 2 block
+  const pw = a.pw * 2, ph = a.ph * 2;
+  return `<span class="ch-fig fig-ai ${charFrame}" style="width:${pw}px;height:${ph}px;background-image:url(chars/${who}-${charFrame}-px.png);background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
 }
 
 // Live2D: one shared WebGL canvas (a page may hold only ~16 contexts) renders each visible person's frame as a mesh the
