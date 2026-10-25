@@ -24,9 +24,10 @@ git -C "$ROOT" diff --quiet HEAD -- frontend design-system || build="$build-dirt
 ver="$build-$(date +%Y%m%d%H%M%S)"
 printf '{"build": "%s"}\n' "$ver" > "$OUT/build.json"
 
-V="$ver" perl -pi -e 's{\b((?:src|href)=")((?![a-z]+:|/|#)[^"?]+\.(?:js|css))"}{$1$2?v=$ENV{V}"}g' "$OUT/index.html"
+# the design system's own pages (preview, stories and the story canvas) too, with their inline module imports
+V="$ver" perl -pi -e 's{\b((?:src|href)=")((?![a-z]+:|/|#)[^"?]+\.(?:js|css))"}{$1$2?v=$ENV{V}"}g' "$OUT/index.html" "$OUT"/ds/*.html
 find "$OUT" -name '*.css' -exec env V="$ver" perl -pi -e 's{(\@import\s+")([^"?]+\.css)"}{$1$2?v=$ENV{V}"}g' {} +
-find "$OUT/ds" -name '*.js' -exec env V="$ver" perl -pi -e \
+find "$OUT/ds" \( -name '*.js' -o -path "$OUT/ds/*.html" ! -path "$OUT/ds/components/*" \) -exec env V="$ver" perl -pi -e \
   's{((?:\bimport\s+|\bfrom\s+|new URL\()\x27)(\.{1,2}/[^\x27?]+\.(?:js|css|svg))\x27}{$1$2?v=$ENV{V}\x27}g' {} +
 if [ -n "${DEPLOY_OUT:-}" ]; then
   cp -R "$OUT" "$DEPLOY_OUT"

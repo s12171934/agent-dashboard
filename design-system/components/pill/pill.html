@@ -3,6 +3,19 @@
      state  run | bg | wait | stalled | idle | done   (required; picks colour and the dot's look)
      title  optional: the reason for the state, shown on hover
      Content is the label text only; the element adds the leading dot. -->
+<!-- @story 실행 중 — run: 맥박 뛰는 점 -->
+<ds-pill state="run">실행 중</ds-pill>
+<!-- @story 백그라운드 — bg: 백그라운드 작업이 도는 중 -->
+<ds-pill state="bg">백그라운드 2</ds-pill>
+<!-- @story 입력 대기 — wait: 사람을 기다림, title 에 이유 -->
+<ds-pill state="wait" title="AskUserQuestion">입력 대기 · 3분 전</ds-pill>
+<!-- @story 응답 없음 — stalled: 오래 소식이 없음 -->
+<ds-pill state="stalled">응답 없음</ds-pill>
+<!-- @story 유휴 — idle -->
+<ds-pill state="idle">유휴</ds-pill>
+<!-- @story 완료 — done -->
+<ds-pill state="done">완료</ds-pill>
+<!-- @story 한 줄에 모두 — 여섯 상태를 나란히 비교 -->
 <div class="row">
   <ds-pill state="run">실행 중</ds-pill>
   <ds-pill state="bg">백그라운드 2</ds-pill>

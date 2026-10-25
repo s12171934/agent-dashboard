@@ -2,11 +2,13 @@
      <table><tr><th>…</th><th class="n">…</th></tr><tr><td>…</td><td class="n">…</td></tr></table>
      .n on a column's cells (th and td) right-aligns numbers. A table that can be wider than a phone goes in <div class="tscroll">: the wrapper scrolls sideways, the page
      never does. -->
+<!-- @story 기본 — 숫자 열은 .n 으로 오른쪽 정렬 -->
 <table>
   <tr><th>스킬·MCP</th><th class="n">호출</th><th class="n">누적 비용</th></tr>
   <tr><td>orca-work-placement</td><td class="n">1</td><td class="n">$0.02</td></tr>
   <tr><td>aplan</td><td class="n">12</td><td class="n">$0.31</td></tr>
 </table>
+<!-- @story 넓은 표 — .tscroll 이 가로로 스크롤, 페이지는 넘치지 않음 -->
 <div class="tscroll">
   <table>
     <tr><th>스킬·MCP</th><th class="n">호출</th><th class="n">주입</th><th class="n">호출당</th><th class="n">누적</th><th class="n">누적 비용</th></tr>

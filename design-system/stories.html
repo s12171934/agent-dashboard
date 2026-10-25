@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Design System · 스토리</title>
+<!-- The story viewer, served at /ds/stories.html: every component split into its cases (the @story markers in
+     components/<name>/<name>.html, read by stories.js), one case at a time in a frame of a chosen width, each with
+     its own 「점검」 result (preview-check.js, run inside the frame by story.html). 「모두 점검」 walks every case in
+     this theme and material, 「네 조합으로」 in light/dark × glass/matte; the list then marks each case 통과 or 문제 n. -->
+<script src="foundations/theme.js"></script>
+<script type="module" src="ds.js"></script>
+<link rel="stylesheet" href="ds.css">
+<style>
+  body { margin: 0; }
+  main { max-width: 1400px; margin: 0 auto; padding: 20px var(--gutter) 40px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 + .st a { color: var(--accent); }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
+  #sum { flex-basis: 100%; }
+  .ok { color: var(--done); }
+  .bad { color: var(--bad); }
+  .badge.bad { border-color: var(--bad); }
+
+  .sb { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+  nav { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; padding: 10px; }
+  nav .field { width: 100%; box-sizing: border-box; }
+  #pick { display: none; }
+  .nav-c { margin-top: 8px; }
+  .nav-c > a, .nav-s { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; color: var(--text); text-decoration: none; }
+  .nav-c > a { font-weight: 600; font-size: 13px; }
+  .nav-s { font-size: 12.5px; padding-left: 20px; color: var(--muted); }
+  .nav-c > a:hover, .nav-s:hover { background: var(--surface-2); }
+  .nav-s.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+  .nav-c .badge, .nav-s .badge { margin-left: auto; font-size: 10.5px; }
+  nav.only .nav-s.pass, nav.only .nav-c.pass, [hidden] { display: none !important; }
+
+  .head { padding: 14px 16px; }
+  .head h2 { font-size: 15px; margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .head h2 code { font-weight: 400; font-size: 11.5px; color: var(--muted); }
+  .head p { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
+  .stage { margin-top: 12px; height: clamp(340px, 62vh, 760px); overflow: auto; border: 1px solid var(--surface-edge); border-radius: 14px; background: var(--bg); }
+  .stage iframe { display: block; border: 0; width: 100%; height: 100%; margin: 0 auto; background: var(--bg); }
+  .stage.fixed iframe { border-inline: 1px dashed var(--surface-edge); }
+  .panel { margin-top: 12px; padding: 12px 16px; }
+  .panel .seg { margin-bottom: 10px; }
+  .chk { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .chk button { all: unset; display: block; cursor: pointer; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; overflow-wrap: anywhere; }
+  .chk button:hover, .chk button:focus-visible { background: var(--surface-2); }
+  .chk b { color: var(--bad); margin-right: 4px; }
+  pre { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--surface-edge); overflow: auto; font-size: 11.5px; line-height: 1.5; }
+  .doc { white-space: pre-wrap; color: var(--muted); font-size: 12px; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; }
+
+  @media (max-width: 900px) {
+    .sb { grid-template-columns: minmax(0, 1fr); }
+    nav { position: static; max-height: none; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    #find, #list { display: none; }
+    #pick { display: block; }
+    .stage { height: 70vh; }
+  }
+  @media (max-width: 700px) { h1 { font-size: 18px; } .head, .panel { padding: 12px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>스토리</h1>
+  <div class="st">컴포넌트를 상황별로 하나씩 · 마크업은 components/&lt;이름&gt;/&lt;이름&gt;.html 의 <code>@story</code> · <a href="index.html">한 페이지로 전체 보기</a></div>
+  <div class="tools">
+    <span class="st">테마</span><span class="seg" id="theme"></span>
+    <span class="st">재질</span><span class="seg" id="mat"></span>
+    <span class="st">폭</span><span class="seg" id="width"></span>
+    <span class="st" id="vw"></span>
+  </div>
+  <div class="tools">
+    <button type="button" class="act big" id="all">모두 점검</button>
+    <button type="button" class="act big" id="all4">네 조합으로 모두</button>
+    <button type="button" class="act big" id="only" aria-pressed="false">문제만 보기</button>
+    <div class="st" id="sum"></div>
+  </div>
+  <div class="sb">
+    <nav class="surface" aria-label="컴포넌트와 스토리">
+      <input class="field" id="find" type="search" placeholder="컴포넌트·스토리 찾기" aria-label="컴포넌트·스토리 찾기">
+      <select class="field" id="pick" aria-label="스토리 고르기"></select>
+      <div id="list"></div>
+    </nav>
+    <div>
+      <div class="surface head" id="head"></div>
+      <div class="stage" id="stage"><iframe id="frame" title="스토리 캔버스"></iframe></div>
+      <div class="surface panel">
+        <span class="seg" id="tabs"></span>
+        <div id="pane"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import { esc } from './stories.js';
+import { RULES, COMBOS, NAMES, label } from './preview-check.js';
+
+const $ = s => document.querySelector(s);
+const root = document.documentElement;
+const seg = (el, items, cur, pick) => {
+  const draw = () => el.innerHTML = items.map(([k, n]) => `<button type="button" data-k="${k}"${k === cur() ? ' class="on"' : ''}>${n}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('[data-k]'); if (b) { pick(b.dataset.k); draw(); } };
+  draw();
+  return draw;
+};
+
+const frameEl = $('#frame'), stage = $('#stage');
+frameEl.src = 'story.html';
+await new Promise(r => frameEl.addEventListener('load', r, { once: true }));
+const api = await frameEl.contentWindow.storyReady;
+const comps = api.lib.components;
+
+let cur = null, tab = 'chk', busy = false, width = 'fit';
+const results = new Map();  // 'name/i' → { list: [{kind, detail, label, path, combos?}], where }
+const key = (name, i) => `${name}/${i}`;
+const theme = () => root.dataset.theme, material = () => root.dataset.material;
+
+// --- the list: components, their stories, and a badge each once checked
+$('#list').innerHTML = comps.map(c => `<div class="nav-c" data-c="${c.name}"><a href="#${c.name}/0">${c.name}<span class="badge" hidden></span></a>`
+  + c.stories.map((s, i) => `<a class="nav-s" data-k="${key(c.name, i)}" href="#${c.name}/${i}">${esc(s.name)}<span class="badge" hidden></span></a>`).join('') + '</div>').join('');
+$('#pick').innerHTML = comps.map(c => `<optgroup label="${c.name}">${c.stories.map((s, i) => `<option value="${key(c.name, i)}">${c.name} · ${esc(s.name)}</option>`).join('')}</optgroup>`).join('');
+$('#pick').onchange = e => { location.hash = e.target.value; };
+$('#find').oninput = e => {
+  const q = e.target.value.trim().toLowerCase();
+  for (const el of document.querySelectorAll('.nav-c')) {
+    const c = comps.find(c => c.name === el.dataset.c), hitC = !q || (c.name + c.title).toLowerCase().includes(q);
+    let any = false;
+    el.querySelectorAll('.nav-s').forEach((a, i) => { const hit = hitC || (c.stories[i].name + c.stories[i].note).toLowerCase().includes(q); a.hidden = !hit; any ||= hit; });
+    el.hidden = !any;
+  }
+};
+const badge = (el, list) => {
+  el.hidden = !list;
+  if (!list) return;
+  el.className = 'badge ' + (list.length ? 'bad' : 'ok');
+  el.textContent = list.length ? `문제 ${list.length}` : '통과';
+};
+const drawBadges = () => {
+  for (const el of document.querySelectorAll('.nav-c')) {
+    const c = comps.find(c => c.name === el.dataset.c);
+    const rs = c.stories.map((_, i) => results.get(key(c.name, i)));
+    el.querySelectorAll('.nav-s').forEach((a, i) => { badge(a.querySelector('.badge'), rs[i]?.list); a.classList.toggle('pass', !!rs[i] && !rs[i].list.length); });
+    const done = rs.every(Boolean);
+    badge(el.querySelector(':scope > a .badge'), rs.some(Boolean) ? rs.flatMap(r => r?.list || []) : null);
+    el.classList.toggle('pass', done && rs.every(r => !r.list.length));
+  }
+  const all = comps.flatMap(c => c.stories.map((_, i) => results.get(key(c.name, i)))), checked = all.filter(Boolean), bad = checked.filter(r => r.list.length);
+  $('#sum').innerHTML = !checked.length ? '' : (bad.length ? `<b class="bad">문제 있는 스토리 ${bad.length}</b>` : '<b class="ok">모두 통과</b>')
+    + ` · 점검한 스토리 ${checked.length} / ${all.length}`;
+};
+
+// --- the panel: this story's check, its markup, the component's contract
+const drawPane = () => {
+  if (!cur) return;
+  const c = comps.find(c => c.name === cur.name), s = c.stories[cur.i], r = results.get(key(cur.name, cur.i));
+  if (tab === 'chk') {
+    $('#pane').innerHTML = !r ? '<div class="st">아직 재지 않았습니다</div>'
+      : `<div class="st" style="margin-bottom: 6px">${r.list.length ? `<b class="bad">문제 ${r.list.length}</b>` : '<b class="ok">통과</b>'} · ${esc(r.where)}</div>`
+        + (r.list.length ? `<ul class="chk">${r.list.map((p, n) => `<li><button type="button" data-n="${n}"><b>${RULES[p.kind][0]}</b> ${RULES[p.kind][1]} · ${esc(p.label)} · ${esc(p.detail)}`
+          + (p.combos ? ` <span class="st">${p.combos.join(', ')}</span>` : '') + '</button></li>').join('')}</ul>` : '');
+  } else if (tab === 'src') $('#pane').innerHTML = `<pre>${esc(s.html)}</pre>`;
+  else $('#pane').innerHTML = `<p class="doc">${esc(c.title)}\n\n${esc(c.doc)}</p>`;
+};
+$('#pane').onclick = e => {
+  const b = e.target.closest('button[data-n]');
+  if (b) api.flash(results.get(key(cur.name, cur.i)).list[+b.dataset.n].path);
+};
+seg($('#tabs'), [['chk', '점검'], ['src', '마크업'], ['doc', '계약']], () => tab, k => { tab = k; drawPane(); });
+
+const where = () => `${NAMES[theme()]}·${NAMES[material()]} · 폭 ${api.width()}`;
+const found = () => api.measure().map(p => ({ kind: p.kind, detail: p.detail, path: p.path, label: label(p.el) }));
+const live = () => {
+  if (!cur || busy) return;
+  const list = found();
+  results.set(key(cur.name, cur.i), { list, where: where() });
+  api.mark(list.map(p => p.path));
+  drawBadges(); drawPane();
+};
+
+const show = async (name, i, measure = true) => {
+  const c = comps.find(c => c.name === name) || comps[0];
+  i = c.stories[i] ? i : 0;
+  cur = { name: c.name, i };
+  const s = c.stories[i], k = key(c.name, i);
+  document.querySelectorAll('.nav-s').forEach(a => a.classList.toggle('on', a.dataset.k === k));
+  document.querySelector(`.nav-s[data-k="${k}"]`)?.scrollIntoView({ block: 'nearest' });
+  $('#pick').value = k;
+  $('#head').innerHTML = `<h2>${c.name} <span>${esc(s.name)}</span> <code>components/${c.name}/${c.name}.html</code></h2>`
+    + `<p>${esc(s.note || c.title.replace(/^[\w-]+ — /, ''))}</p>`;
+  await api.show(c.name, i);
+  if (measure) live();
+  else api.mark((results.get(k)?.list || []).map(p => p.path));
+  drawPane();
+};
+const route = () => {
+  const [name, i] = decodeURIComponent(location.hash.slice(1)).split('/');
+  show(name, +i || 0);
+};
+addEventListener('hashchange', route);
+
+// --- theme, material and width apply to this page and the canvas alike; each change measures again
+const sync = async () => { await api.theme(theme(), material()); live(); };
+seg($('#theme'), [['light', '라이트'], ['dark', '다크']], theme, t => { applyTheme(t); sync(); });
+seg($('#mat'), MATERIALS, material, m => { applyMaterial(m); sync(); });
+const step = w => w <= 500 ? '휴대폰' : w <= 700 ? '좁은 화면' : w <= 900 ? '태블릿' : '넓은 화면';
+seg($('#width'), [['fit', '맞춤'], ['390', '390'], ['669', '669'], ['820', '820'], ['1100', '1100']], () => width, w => {
+  width = w;
+  frameEl.style.width = w === 'fit' ? '' : w + 'px';
+  stage.classList.toggle('fixed', w !== 'fit');
+});
+let timer;
+new ResizeObserver(() => {
+  $('#vw').textContent = `캔버스 ${api.width()}px · ${step(api.width())}`;
+  clearTimeout(timer); timer = setTimeout(live, 250);
+}).observe(frameEl);
+
+// --- every story, in this theme and material or in all four; the result of each lands in the list
+const sweep = async combos => {
+  if (busy) return;
+  busy = true;
+  const btns = [$('#all'), $('#all4')];
+  btns.forEach(b => { b.disabled = true; });
+  const keep = [theme(), material()], merged = new Map(), total = combos.length * comps.reduce((n, c) => n + c.stories.length, 0);
+  let n = 0;
+  for (const [t, m] of combos) {
+    await api.theme(t, m);
+    const name = `${NAMES[t]}·${NAMES[m]}`;
+    for (const c of comps) for (const [i] of c.stories.entries()) {
+      $('#sum').textContent = `재는 중 ${++n} / ${total} · ${name} · ${c.name}`;
+      await api.show(c.name, i);
+      const k = key(c.name, i);
+      if (!merged.has(k)) merged.set(k, new Map());
+      for (const p of found()) {
+        const id = p.kind + ':' + p.path.join('.'), seen = merged.get(k).get(id);
+        if (seen) seen.combos.push(name);
+        else merged.get(k).set(id, combos.length > 1 ? { ...p, combos: [name] } : p);
+      }
+    }
+  }
+  const w = combos.length > 1 ? `네 조합 · 폭 ${api.width()}` : where();
+  for (const [k, m] of merged) results.set(k, { list: [...m.values()], where: w });
+  await api.theme(...keep);
+  busy = false;
+  await show(cur.name, cur.i, false);
+  drawBadges();
+  btns.forEach(b => { b.disabled = false; });
+};
+$('#all').onclick = () => sweep([[theme(), material()]]);
+$('#all4').onclick = () => sweep(COMBOS);
+$('#only').onclick = () => $('#only').setAttribute('aria-pressed', $('nav').classList.toggle('only'));
+
+route();
+</script>
+</body>
+</html>

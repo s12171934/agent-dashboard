@@ -2,8 +2,20 @@
      <span class="chip" style="--c: COLOUR">label <i>n</i></span>
      --c    a palette token (var(--c1) … var(--c7), or a state colour)
      <i>    the count; leave it out for a chip without one -->
+<!-- @story 개수 있음 — <i> 에 개수 -->
 <div class="row">
   <span class="chip" style="--c: var(--c1)">orca-cli <i>3</i></span>
   <span class="chip" style="--c: var(--c2)">MCP <i>1</i></span>
-  <span class="chip" style="--c: var(--c3)">aplan</span>
+</div>
+<!-- @story 개수 없음 — <i> 를 뺀 칩 -->
+<div class="row"><span class="chip" style="--c: var(--c3)">aplan</span></div>
+<!-- @story 팔레트 일곱 색 — --c1 … --c7 -->
+<div class="row">
+  <span class="chip" style="--c: var(--c1)">c1 <i>1</i></span>
+  <span class="chip" style="--c: var(--c2)">c2 <i>2</i></span>
+  <span class="chip" style="--c: var(--c3)">c3 <i>3</i></span>
+  <span class="chip" style="--c: var(--c4)">c4 <i>4</i></span>
+  <span class="chip" style="--c: var(--c5)">c5 <i>5</i></span>
+  <span class="chip" style="--c: var(--c6)">c6 <i>6</i></span>
+  <span class="chip" style="--c: var(--c7)">c7 <i>7</i></span>
 </div>

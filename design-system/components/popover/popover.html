@@ -6,7 +6,13 @@
      dock-pop   opens off the <ds-dock> (and closes the other dock popovers); without it, position it yourself
      hidden     toggle to open and close
      The example is shown in place (static) for the preview. -->
+<!-- @story 기본 — 머리줄과 내용 (미리보기를 위해 제자리에 펼침) -->
 <div class="popover" style="position: static; width: auto">
   <div class="pop-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장</span><button class="act">닫기</button></div>
   <div class="st">내용</div>
+</div>
+<!-- @story 입력 포함 — 설정 패널 -->
+<div class="popover" style="position: static; width: auto">
+  <div class="pop-h"><b>메트릭 서버</b><span class="st">이 기기에만 저장</span><button class="act">닫기</button></div>
+  <div class="row"><input class="field" type="text" value="http://127.0.0.1:8787" aria-label="서버 주소" style="flex: 1; min-width: 0"><button class="act accent">연결</button></div>
 </div>

@@ -1,7 +1,16 @@
 <!-- card — a tile that opens something when clicked.
      <div class="card" data-…> … </div>     (or <a class="card" href>)
      The card gives the surface, padding and hover lift; the page lays out its content and any state classes. -->
+<!-- @story 격자 — 카드 여러 개를 auto-fill 격자로 -->
 <div class="row" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))">
   <div class="card"><b>리퀴드글래스 UI</b><div class="st">opus-5-5 · $4.12</div></div>
   <div class="card"><b>대시보드 실행</b><div class="st">opus-5-5 · $0.19</div></div>
+</div>
+<!-- @story 링크 카드 — <a class="card" href> -->
+<div class="row" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))">
+  <a class="card" href="#"><b>서버 분리</b><div class="st">opus-5-5 · $2.40</div></a>
+</div>
+<!-- @story 상태 표시 — 안에 상태 필을 둔 카드 -->
+<div class="row" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))">
+  <div class="card"><b>디자인 시스템 점검</b><div class="row" style="margin-top: 6px"><ds-pill state="wait">입력 대기</ds-pill><span class="st">$1.08</span></div></div>
 </div>
