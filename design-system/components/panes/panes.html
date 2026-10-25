@@ -1,0 +1,12 @@
+<!-- panes — two equal panes side by side, the gap on the fold.
+     <div class="panes">
+       <div class="box">…</div>    first pane (list, summary)
+       <div class="box">…</div>    second pane (detail, log)
+     </div>
+     Exactly two children. They stack at max-width 700px, but stay side by side in the fold layout (an unfolded
+     foldable, GUIDELINES B8) so each half of the screen holds one pane. Put the panes where they span the page's
+     width (symmetric padding), so their gap lands on the fold. The gap is --pane-gap; nothing else to set. -->
+<div class="panes">
+  <div class="box"><h3>작업 분류 <span class="st">도구 호출 42회</span></h3><div class="st">왼쪽 칸: 목록이나 요약</div></div>
+  <div class="box"><h3>로그 <span class="st">최근 20건</span></h3><div class="st">오른쪽 칸: 상세나 로그</div></div>
+</div>

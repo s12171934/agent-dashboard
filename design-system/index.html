@@ -8,6 +8,7 @@
      Generated: every component imported by ds.css gets a section from its components/<name>/<name>.html (the
      markup contract): the rendered markup, then its source. Only the token swatches and the icon grid are written here. -->
 <script src="foundations/theme.js"></script>
+<script src="foundations/fold.js"></script>
 <script src="components/dock/dock-boot.js"></script>
 <script type="module" src="ds.js"></script>
 <link rel="stylesheet" href="ds.css">
@@ -37,6 +38,12 @@
   #c-dock .demo { display: none; }
   .vw { font-variant-numeric: tabular-nums; }
   @media (max-width: 700px) { section { padding: 12px; } h1 { font-size: 18px; } }
+  /* the fold layout (GUIDELINES B8): the component sections run in two columns, the column gap on the fold */
+  @media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
+    main { max-width: none; }
+    #components { columns: 2; column-gap: var(--pane-gap); margin-top: 16px; }
+    #components section { break-inside: avoid; margin: 0 0 16px; }
+  }
 </style>
 </head>
 <body>
@@ -63,9 +70,13 @@ const seg = (el, items, cur, pick) => {
 seg($('#theme'), [['light', '라이트'], ['dark', '다크']], () => document.documentElement.dataset.theme, applyTheme);
 seg($('#mat'), MATERIALS, () => document.documentElement.dataset.material, applyMaterial);
 
-// which layout the components are in right now (the breakpoints in foundations/tokens.css), so resizing shows it
+// which layout the components are in right now (the breakpoints and the fold layout in foundations/tokens.css), so resizing shows it
 const bp = () => { const w = innerWidth, touch = matchMedia('(pointer: coarse)').matches ? ' · 터치' : '';
-  $('#vw').textContent = `폭 ${w}px · ${w <= 500 ? '휴대폰' : w <= 700 ? '좁은 화면' : w <= 900 ? '태블릿' : '넓은 화면'}${touch}`; };
+  const css = getComputedStyle(document.documentElement), fold = css.getPropertyValue('--fold').trim() === '1';
+  const probe = document.body.appendChild(Object.assign(document.createElement('i'), { style: 'position:absolute;width:var(--hinge)' }));
+  const hinge = Math.round(probe.getBoundingClientRect().width); probe.remove();
+  $('#vw').textContent = `폭 ${w}px · ${w <= 500 ? '휴대폰' : w <= 700 ? '좁은 화면' : w <= 900 ? '태블릿' : '넓은 화면'}${touch}`
+    + (fold ? ` · 펼침 (접이식 두 칸${hinge ? `, 힌지 ${hinge}px` : ''})` : ''); };
 addEventListener('resize', bp); bp();
 
 const TOKENS = ['--bg', '--panel', '--panel2', '--line', '--text', '--muted', '--accent', '--on-accent', '--ok', '--warn', '--bad', '--done', '--idle',

@@ -113,3 +113,9 @@ ds-dock .dn[hidden] { display: none; }
 :root[data-dock="top"] .dock-pop { left: 50%; transform: translateX(-50%); top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px + var(--dock-reach) + 10px); }
 :root[data-dock="left"] .dock-pop { left: calc(12px + env(safe-area-inset-left) + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
 :root[data-dock="right"] .dock-pop { right: calc(12px + env(safe-area-inset-right) + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
+/* a hinge the browser reports: a top or bottom bar and its popovers centre on the first screen, not across the fold */
+@media (horizontal-viewport-segments: 2) {
+  :root:is([data-dock="bottom"], [data-dock="top"]) :is(ds-dock, .dock-pop) { left: calc(var(--seg-w) / 2); }
+  :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock { max-width: calc(var(--seg-w) - 16px); overflow-x: auto; scrollbar-width: none; }
+  :root:is([data-dock="bottom"], [data-dock="top"]) :is(ds-dock > a, ds-dock .dock-btn) { flex: 0 1 var(--dock-sz); width: auto; min-width: 28px; }
+}
