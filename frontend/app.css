@@ -1604,3 +1604,14 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 @media (max-width: 500px) { .ch { width: 124px; } .fig-l2d { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
 /* a tab moved into the bar's ⋯ menu (data-more) shows it is the open one */
 .dock-more a.on, .dock-more a.on svg { color: var(--accent); }
+
+/* 「새 에이전트」 panel (launch an agent through Orca, or send one a prompt) */
+#launch-panel .lp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12.5px; }
+#launch-panel .lp-row > span:first-child:not(.seg) { flex: 0 0 52px; color: var(--muted); }
+#launch-panel .lp-row .field { flex: 1; min-width: 140px; }
+#launch-panel .lp-row select[data-lp=effort] { flex: 0 0 auto; min-width: 0; }
+#launch-panel textarea.field { width: 100%; margin-bottom: 6px; }
+.lp-help { margin: -2px 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.lp-help code { font-size: 11px; }
+.lp-foot { display: flex; align-items: center; gap: 6px; }
+.lp-foot .sp-msg { flex: 1; margin: 0; }

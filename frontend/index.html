@@ -55,6 +55,7 @@
   <a href="#designs" data-v="designs" data-tip="설계문서" aria-label="설계문서"><ds-icon name="book"></ds-icon></a>
   <a href="#worktrees" data-v="worktrees" data-tip="워크트리 리뷰" aria-label="워크트리 리뷰"><ds-icon name="layers"></ds-icon></a>
   <a href="#tests" data-v="tests" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" id="k-tests" hidden>0</b></a>
+  <button class="dock-btn" id="launch-btn" data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
   <i class="dock-sep" data-label="필터"></i>
   <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
   <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
@@ -72,6 +73,7 @@
 <ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
 <div id="server-panel" class="popover dock-pop" hidden></div>
 <div id="icon-panel" class="popover dock-pop" hidden></div>
+<div id="launch-panel" class="popover dock-pop" hidden></div>
 <div id="decide-head" hidden></div>
 <div id="decisions" hidden></div>
 <div id="inbox" hidden></div>

@@ -952,14 +952,14 @@ function actBtns(s, big) {
 }
 // 「Orca 에서 열기」 only where the server found the connected Orca terminal the agent runs in.
 const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} accent" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
-// 「Orca 에서 열기」 + 「닫기」 for a session. The session page's detail object comes from /api/session, which has no
+// 「Orca 에서 열기」 + 「닫기」 for a session (the session page adds 「프롬프트」, which opens 「새 에이전트」 on it). The session page's detail object comes from /api/session, which has no
 // orca_focus; the snapshot row does. Closing a running agent is allowed; the confirm dialog warns about it.
 // A terminal being closed (closing) shows no buttons from the click on, as once it is gone; a failed close puts them back.
 function orcaBtns(s, big) {
   const focus = s.orca_focus ?? state.all?.find(x => x.path === s.path)?.orca_focus;
   if (!focus || closing.has(focus)) return '';
   const cls = big ? 'act big' : 'act';
-  return `${focusBtn(focus, big)}<button class="${cls} danger" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
+  return `${focusBtn(focus, big)}${big ? `<button class="${cls}" data-act="prompt" data-handle="${esc(focus)}" title="이 에이전트의 Orca 터미널에 프롬프트를 입력">프롬프트</button>` : ''}<button class="${cls} danger" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
 }
 // Fold a repository group of a driver plan (agents list and session page alike).
 document.addEventListener('click', e => {
@@ -980,6 +980,7 @@ document.addEventListener('click', e => {
   if (a === 'idle') pref('idle', [p], { msg: `"${cut(name, 30)}" 유휴로 표시`, action: 'unidle' });
   else if (a === 'unidle') pref('unidle', [p]);
   else if (a === 'close') closeOrca(s, name, b.dataset.handle);
+  else if (a === 'prompt') launchPanel('send', b.dataset.handle);
   else if (a === 'focus') api.focus(b.dataset.handle).then(r => toast(r.status === 200 ? 'Orca 에서 열었습니다' : r.body?.error || `Orca 전환 실패 (${r.status})`))
     .catch(() => toast('대시보드 서버에 보내지 못했습니다'));
 }, true);
@@ -4515,6 +4516,120 @@ function renderConn() {
 // The badge and the bar's server button both toggle the panel. It is a .dock-pop: opening it closes any other one.
 $('#conn').onclick = $('#srv-btn').onclick = () => { if ($('#server-panel').hidden) serverPanel(); else $('#server-panel').hidden = true; };
 setTimeout(() => { if (!srvOn().some(x => x.live) && $('#server-panel').hidden) serverPanel(); }, 4000);
+// 「새 에이전트」 panel: start an agent through Orca on a metric server's Mac — in a new worktree (its own branch off
+// the repo default, setup hook run) or in a worktree that exists — or type a prompt into a running agent's terminal.
+// The form survives re-renders in lp; places (Orca's repos and worktrees) are asked of the chosen server.
+const lp = { mode: 'worktree', server: null, places: null, placesOf: null, repo: '', worktree: '', name: '', agent: 'claude',
+  model: '', effort: '', title: '', prompt: '', handle: '', text: '', busy: false, msg: '', cls: '' };
+const lpTargets = () => (state?.all || state?.sessions || []).filter(s => s.orca_focus && !s.parent && !closing.has(s.orca_focus))
+  .sort((a, b) => (OPEN(status(b)) - OPEN(status(a))) || String(b.last_ts || '').localeCompare(String(a.last_ts || '')));
+async function lpLoad(fresh) {
+  const srv = lp.server;
+  lp.places = null; lp.placesOf = srv;
+  const p = await api.places(srv, fresh);
+  if (lp.server !== srv) return;
+  lp.places = p || { error: '이 서버는 「새 에이전트」를 지원하지 않습니다 (서버를 새 버전으로 재시작)' };
+  if (!lp.places.error) {
+    if (!lp.places.repos.some(r => r.id === lp.repo)) lp.repo = lp.places.repos[0]?.id || '';
+    if (!lp.places.worktrees.some(w => w.id === lp.worktree)) lp.worktree = '';
+  }
+  if (!$('#launch-panel').hidden) launchPanel();
+}
+function launchPanel(mode, handle) {
+  const el = $('#launch-panel'), on = srvOn();
+  if (mode) lp.mode = mode;
+  if (handle) { lp.handle = handle; lp.msg = ''; }
+  if (!on.some(x => x.id === lp.server)) lp.server = on[0]?.id || null;
+  if (lp.mode !== 'send' && lp.server && lp.placesOf !== lp.server) lpLoad();
+  const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
+  const p = lp.places, wts = p?.worktrees || [], repoName = id => p?.repos.find(r => r.id === id)?.name || '';
+  const where = lp.mode === 'send' ? '' : !p ? '<div class="sp-msg">Orca 목록을 읽는 중…</div>' : p.error ? `<div class="sp-msg bad">${esc(p.error)}</div>`
+    : lp.mode === 'worktree' ? `<label class="lp-row"><span>저장소</span><select class="field" data-lp="repo">${p.repos.map(r => opt(r.id, r.name, lp.repo)).join('')}</select></label>
+      <label class="lp-row"><span>이름</span><input class="field" data-lp="name" value="${esc(lp.name)}" placeholder="fix-login-500" spellcheck="false" autocomplete="off" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]*" maxlength="60"></label>
+      <p class="lp-help">기본 브랜치에서 새 브랜치를 따고 setup 훅을 돌린 뒤 에이전트를 띄웁니다. 이름은 영문·숫자·<code>.-_</code> (브랜치 이름이 됨).</p>`
+    : `<label class="lp-row"><span>워크트리</span><select class="field" data-lp="worktree">${opt('', '고르세요', lp.worktree)}${p.repos.map(r => {
+        const ws = wts.filter(w => w.repo === r.id);
+        return ws.length ? `<optgroup label="${esc(r.name)}">${ws.map(w => opt(w.id, `${w.name}${w.main ? ' (메인)' : ''}${w.branch && w.branch !== w.name ? ' · ' + w.branch : ''}`, lp.worktree)).join('')}</optgroup>` : '';
+      }).join('')}</select></label>
+      <p class="lp-help">고른 워크트리에 에이전트 탭을 하나 더 띄웁니다 (워커). 같은 체크아웃을 쓰므로 다른 에이전트와 같은 파일을 고치지 않게 나눠 주세요.</p>`;
+  const targets = lpTargets();
+  if (lp.mode === 'send' && !targets.some(s => s.orca_focus === lp.handle)) lp.handle = targets[0]?.orca_focus || '';
+  const body = lp.mode === 'send' ? (targets.length ? `<label class="lp-row"><span>에이전트</span><select class="field" data-lp="handle">${targets.map(s =>
+      opt(s.orca_focus, `${cut(nameOf(s), 40)} · ${wtShort(s.place)} · ${ST_LABEL[status(s)]}`, lp.handle)).join('')}</select></label>
+      <textarea class="field" data-lp="text" rows="5" placeholder="에이전트에게 보낼 말 (Enter 까지 눌러 보냄)" aria-label="보낼 프롬프트">${esc(lp.text)}</textarea>
+      <p class="lp-help">Orca 터미널에 그대로 입력하고 Enter 를 누릅니다. 에이전트가 응답 중이면 지금 턴이 끝난 뒤 읽습니다.</p>`
+      : '<div class="sp-msg">Orca 터미널에 연결된 에이전트가 없습니다.</div>')
+    : `${where}
+      <div class="lp-row"><span>에이전트</span><span class="seg" data-lp-seg="agent">${['claude', 'codex'].map(a => `<button type="button" data-k="${a}"${lp.agent === a ? ' class="on"' : ''}>${a === 'claude' ? 'Claude' : 'Codex'}</button>`).join('')}</span></div>
+      <label class="lp-row"><span>모델</span><input class="field" data-lp="model" value="${esc(lp.model)}" placeholder="기본 (${lp.agent === 'claude' ? '예: opus, sonnet' : '예: gpt-5.5'})" spellcheck="false" autocomplete="off">
+        <select class="field" data-lp="effort" aria-label="effort"${lp.model ? '' : ' disabled'}>${opt('', 'effort 기본', lp.effort)}${['low', 'medium', 'high', 'xhigh', 'max'].map(x => opt(x, x, lp.effort)).join('')}</select></label>
+      <label class="lp-row"><span>탭 이름</span><input class="field" data-lp="title" value="${esc(lp.title)}" placeholder="${esc(lp.mode === 'worktree' ? lp.name || '워크트리 이름' : wts.find(w => w.id === lp.worktree)?.name || '하는 일 (예: 로그인 500 원인 추적)')}" maxlength="60"></label>
+      <textarea class="field" data-lp="prompt" rows="5" placeholder="첫 프롬프트 (비우면 에이전트만 띄움)" aria-label="첫 프롬프트">${esc(lp.prompt)}</textarea>`;
+  const can = !lp.busy && (lp.mode === 'send' ? lp.handle && lp.text.trim()
+    : p && !p.error && (lp.mode === 'worktree' ? lp.repo && /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/.test(lp.name) : lp.worktree));
+  el.innerHTML = `<div class="pop-h"><b>새 에이전트</b><span class="st">Orca 로 띄움</span><button class="act" data-lp-close>닫기</button></div>
+    <div class="lp-row"><span class="seg" data-lp-seg="mode"><button type="button" data-k="worktree">새 워크트리</button><button type="button" data-k="agent">기존 워크트리</button><button type="button" data-k="send">프롬프트 보내기</button></span></div>
+    ${on.length > 1 && lp.mode !== 'send' ? `<label class="lp-row"><span>서버</span><select class="field" data-lp="server">${on.map(x => opt(x.id, x.name, lp.server)).join('')}</select></label>` : ''}
+    ${body}
+    <div class="lp-foot"><span class="sp-msg ${lp.cls}">${esc(lp.msg)}</span>
+      ${lp.mode === 'send' ? '' : '<button class="act" data-lp-reload title="Orca 의 저장소·워크트리 목록을 다시 읽음">새로고침</button>'}
+      <button class="act big accent" data-lp-go${can ? '' : ' disabled'}>${lp.busy ? (lp.mode === 'send' ? '보내는 중…' : '띄우는 중…') : lp.mode === 'send' ? '보내기' : '띄우기'}</button></div>`;
+  el.querySelectorAll('[data-lp-seg] button').forEach(b => {
+    const k = b.closest('[data-lp-seg]').dataset.lpSeg;
+    b.classList.toggle('on', lp[k] === b.dataset.k);
+    b.onclick = () => { lp[k] = b.dataset.k; lp.msg = ''; launchPanel(); };
+  });
+  el.querySelectorAll('[data-lp]').forEach(f => {
+    const k = f.dataset.lp;
+    f.oninput = f.onchange = e => {
+      lp[k] = f.value;
+      if (k === 'model' && !f.value) lp.effort = '';
+      // selects and the model box change what else is shown; typing elsewhere only re-checks the button
+      if (f.tagName === 'SELECT' || (k === 'model' && e.type === 'change')) { if (k === 'server') lp.placesOf = null; launchPanel(); }
+      else el.querySelector('[data-lp-go]').disabled = lp.busy || (lp.mode === 'send' ? !(lp.handle && lp.text.trim())
+        : !(p && !p.error && (lp.mode === 'worktree' ? lp.repo && /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/.test(lp.name) : lp.worktree)));
+    };
+  });
+  el.querySelector('[data-lp-reload]')?.addEventListener('click', () => lpLoad(true));
+  el.querySelector('[data-lp-close]').onclick = () => { el.hidden = true; };
+  el.querySelector('[data-lp-go]').onclick = () => lp.mode === 'send' ? lpSend() : lpLaunch();
+  el.hidden = false;
+}
+const lpSay = (msg, cls = '') => { lp.msg = msg; lp.cls = cls; if (!$('#launch-panel').hidden) launchPanel(); };
+async function lpSend() {
+  const s = lpTargets().find(x => x.orca_focus === lp.handle), who = s ? `「${cut(nameOf(s), 30)}」` : '에이전트';
+  lp.busy = true; lpSay('');
+  const r = await api.send(lp.handle, lp.text.trim()).catch(() => ({ status: 502, body: { error: '대시보드 서버에 보내지 못했습니다' } }));
+  lp.busy = false;
+  if (r.status !== 200) return lpSay(r.body?.error || `보내지 못했습니다 (${r.status})`, 'bad');
+  lp.text = '';
+  const said = r.body.started ? `${who} 에 보냈습니다` : `${who} 터미널에 넣었습니다 — 지금 턴이 끝나면 읽습니다`;
+  lpSay(said, 'ok');
+  toast(said);
+}
+async function lpLaunch() {
+  const body = { kind: lp.mode, agent: lp.agent, model: lp.model.trim(), effort: lp.model.trim() ? lp.effort : '', title: lp.title.trim(), prompt: lp.prompt.trim(),
+    ...(lp.mode === 'worktree' ? { repo: lp.repo, name: lp.name.trim() } : { worktree: lp.worktree }) };
+  lp.busy = true; lpSay(lp.mode === 'worktree' ? '워크트리를 만들고 setup 을 돌리는 중… (수십 초 걸릴 수 있음)' : '에이전트를 띄우는 중…');
+  const r = await api.launch(lp.server, body).catch(() => ({ status: 502, body: { error: '대시보드 서버에 보내지 못했습니다' } }));
+  if (r.status !== 202) { lp.busy = false; return lpSay(r.body?.error || `띄우지 못했습니다 (${r.status})`, 'bad'); }
+  const label = r.body.label, t0 = Date.now();
+  let j = null;
+  while (Date.now() - t0 < 6 * 60e3) {
+    await new Promise(res => setTimeout(res, 1500));
+    try { j = await api.closeJob(r.body.job); } catch { continue; }
+    if (!j || j.state === 'done') break;
+  }
+  lp.busy = false;
+  const err = !j ? '결과를 찾을 수 없습니다 (대시보드 서버가 재시작됨) — Orca 에서 확인하세요'
+    : j.state !== 'done' ? '6분 안에 끝나지 않았습니다 — Orca 에서 확인하세요' : j.failed?.[0]?.error;
+  if (err) return lpSay(err, 'bad');
+  Object.assign(lp, { name: '', title: '', prompt: '', placesOf: null });
+  lpSay(`「${label}」 을(를) 띄웠습니다${j.note ? ' · ' + j.note : ''}`, j.note ? '' : 'ok');
+  $('#toast').show(`「${cut(label, 30)}」 에이전트를 띄웠습니다`, j.handle ? { action: 'Orca 에서 열기', onAction: () => api.focus(j.handle)
+    .then(x => x.status !== 200 && toast(x.body?.error || 'Orca 전환 실패')) } : {});
+}
+$('#launch-btn').onclick = () => { if ($('#launch-panel').hidden) launchPanel(); else $('#launch-panel').hidden = true; };
 // ---------- projects ----------
 // Project progress from the metric servers started with --projects-dir (one progress.json per project; the servers
 // derive every figure, this only lays it out). Two views of the same list:

@@ -339,7 +339,27 @@ const api = (() => {
       if (r.body?.job) jobOwner[r.body.job] = srv.id;
       return r;
     },
-    // Progress of a close: {id, handle, total, done, closed[handle], failed[{handle, error}], state running|done}.
+    // Where 「새 에이전트」 can launch on a server: {repos[{id, name, path}], worktrees[{id, repo, name, path, branch,
+    // main}]} as Orca lists them, or {error}.
+    places: async (server, fresh) => {
+      const srv = byId(server);
+      try { return srv ? await getJson(srv, '/api/orca/places' + (fresh ? '?fresh=1' : '')) : { error: '켜진 메트릭 서버가 없습니다' }; }
+      catch (e) { return { error: String(e.message || e) }; }
+    },
+    // Start an agent on a server: body {kind worktree|agent, repo | worktree, name, agent, model, effort, prompt, title}.
+    // Resolves to {status, body}: 202 started ({job, label}; follow it with closeJob, whose handle is the agent's
+    // terminal), 400 what is wrong with the form.
+    launch: async (server, body) => {
+      const r = await post(byId(server), '/api/orca/launch', body);
+      if (r.body?.job) jobOwner[r.body.job] = server;
+      return r;
+    },
+    // Type a prompt into an agent's Orca terminal and press Enter. {status, body}: 200 {started: the agent's turn
+    // began (false: typed in, read after its current turn)}, 404 not an agent's connected terminal, 504 Orca did not
+    // answer (it may have gone in).
+    send: (handle, text) => post(ownerOf('handle', handle), '/api/orca/send', { handle, text }),
+    // Progress of a close or a launch: {id, handle, total, done, closed[handle], failed[{handle, error}], state
+    // running|done}; a launch adds kind, label, where, note.
     closeJob: id => { const srv = byId(jobOwner[id]) || enabled()[0]; return srv ? getJson(srv, '/api/orca/job?id=' + encodeURIComponent(id)) : null; },
     // Project progress from the servers started with --projects-dir (a server without it, or an older one, is left out):
     // {enabled, dirs[{dir, error, server}], projects[...], sources[{server, state}]}; each project carries `server` and,

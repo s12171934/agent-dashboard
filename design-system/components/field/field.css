@@ -8,5 +8,6 @@ select.field { -webkit-appearance: none; appearance: none; min-height: var(--tap
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%; background-size: 4px 4px; background-repeat: no-repeat; }
 .field { max-width: 100%; }
+textarea.field { display: block; resize: vertical; min-height: 4.5em; line-height: 1.45; padding: 6px 8px; }
 /* a finger device: --tap tall, and 16px text, which font: inherit above would otherwise undo (B4: smaller and iOS zooms) */
 @media (pointer: coarse) { .field { min-height: var(--tap); font-size: 16px; } }
