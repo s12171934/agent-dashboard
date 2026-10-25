@@ -100,7 +100,8 @@ def orca_loop(max_runs, hours):
                 tasks[r["id"]] = t
                 workers.extend(w)
             # Drop fast-changing fields (preview, lastOutputAt) so the snapshot only changes on real updates.
-            terminals = [{k: t.get(k) for k in ("handle", "title", "worktreePath", "branch", "connected", "tabId", "leafId")}
+            terminals = [{k: t.get(k) for k in ("handle", "title", "worktreePath", "branch", "connected", "tabId", "leafId",
+                                                    "recordedPaneKey", "agentIdentity")}
                          for t in orca("terminal", "list").get("terminals", [])]
             snapshot = {"runs": runs, "tasks": tasks, "workers": workers, "terminals": terminals, "error": None}
             dirty = record_settled(workers, [x for ts in tasks.values() for x in ts])

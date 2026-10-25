@@ -17,6 +17,7 @@ from adash.features.plans.store import EXTERNAL_PLANS, ext_plans
 from adash.features.projects.store import PROJECTS_DIRS
 from adash.features.review.store import review_state
 from adash.features.sessions.idle import apply_prefs
+from adash.features.terminals.pending import pending_sessions
 from adash.features.terminals.targets import close_tree, focus_targets
 from adash.features.tests.tests import test_progress
 import adash.core.state as core_state
@@ -71,6 +72,11 @@ def build_state(encode):
             sm["orca_close_tree"] = close_tree(sm, summaries, focus, terms) if sm["orca_focus"] else []
             if sm["orca_focus"]:
                 trees[sm["orca_focus"]] = sm["orca_close_tree"]
+        # Agents with no transcript yet (started without a prompt) are listed by their terminal; flow_check skips them.
+        pending = pending_sessions(set(focus.values()))
+        for sm in pending:
+            sm["orca_focus"], sm["orca_close_tree"] = sm["id"], []
+            focus[sm["id"]] = sm["id"]
         # Rebound, never edited in place: orca_terminal reads them without waiting for this lock.
         terminals_targets.focus_handles = {h: sid for sid, h in focus.items()}
         terminals_targets.close_trees = trees
@@ -83,7 +89,7 @@ def build_state(encode):
         design = designs_store.design
         body = encode({
             "version": core_state.version, "api": API_VERSION,
-            "sessions": sorted(summaries, key=lambda s: s["last_ts"] or "", reverse=True),
+            "sessions": sorted(summaries + pending, key=lambda s: s["last_ts"] or "", reverse=True),
             "orca": lite_orca(orca_state),
             "ext_plans": [{**plan_with_owner(p, ext_plans[p]), "design_refs": designs_store.design_ticket_refs.get(p) or {}}
                           for p in EXTERNAL_PLANS if p in ext_plans],
