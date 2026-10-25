@@ -247,7 +247,7 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide', 'chars'].includes(h) ? h : 'home' };
 }
 addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
@@ -317,6 +317,7 @@ async function renderView(navigated) {
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
   if (r.v !== 'worktrees') wtMounted = false;
+  if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
@@ -330,6 +331,7 @@ async function renderView(navigated) {
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'worktrees') await renderWorktrees();
   else if (r.v === 'decide') renderDecide();
+  else if (r.v === 'chars') renderChars();
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'designs') await renderDesigns();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
@@ -2883,7 +2885,11 @@ const CH_ART = {
   yuki: {full:{w:157,h:320,pw:48,ph:98,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,pw:51,ph:66,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]}},
 };
 const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
-const chWho = s => { const l = isBoss(s) ? CH_BOSS : CH_CREW; return l[chHash(s.id || s.path) % l.length]; };
+// 「캐릭터」 tab: a person switched off (false) is left out of the office; a list with everyone off keeps them all.
+let chPool = {};
+try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch {}
+const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.length ? k : l; };
+const chWho = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
 const chMove = (st, s) => s.decision ? 'dec' : st;
 const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
 const chSrc = (who, fr) => `chars/${who}-${fr}.webp`;
@@ -3018,7 +3024,7 @@ const L2D = (() => {
     const cs = root.querySelectorAll('canvas.fig-l2d');
     if (!cs.length) return;
     io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? shown.add(e.target) : shown.delete(e.target)); kick(); });
-    cs.forEach(c => { c.dataset.fr = charFrame; io.observe(c); });
+    cs.forEach(c => { c.dataset.fr ||= charFrame; io.observe(c); });  // the 캐릭터 tab names its own frame
   }
   return { mount };
 })();
@@ -3351,6 +3357,73 @@ function renderOffice() {
   chLayout();
   chBind();
   chSize();
+  L2D.mount($('#view'));
+}
+
+// ---------- 「캐릭터」 tab: each person's pictures, from the generated base through the pixel copy to Live2D ----------
+// One pose at a time in all three stages, so the chain reads left to right: 베이스 (frontend/chars/<who>-<fr>.webp, cut
+// from the AI sheet by char-sprites.py) → 픽셀 (<who>-<fr>-px.png, the same script's pixel copy, 「AI 생성」 in the
+// office) → Live2D (the base deformed live by L2D). A person can be left out of the office (chPool, this device only);
+// the counts are the sessions on show (liveSess) drawn as that person now. Live updates leave the page alone (chxMounted).
+const CH_INFO = {
+  aoi: ['아오이', '청록 단발 · 크림색 후드'], ren: ['렌', '검은 머리 · 둥근 안경 · 남색 카디건'],
+  hina: ['히나', '분홍빛 포니테일 · 니트 조끼'], sora: ['소라', '주황 머리 · 올리브 항공 점퍼'],
+  kaede: ['카에데', '검은 긴 머리 · 헤드셋 · 차콜 재킷'], yuki: ['유키', '은발 · 헤드셋 · 하늘색 셔츠'],
+};
+const CH_POSE_L = ['서 있기 · 입력 대기', '타이핑 · 실행 중', '커피 · 백그라운드', '걱정 · 응답 없음', '졸음 · 유휴', '브이 · 완료', '손 들기 · 결정 대기', '눈 감기 · 깜빡임'];
+const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait'];
+let chx = { fr: 'bust', pose: 1 }, chxMounted = false;
+try { Object.assign(chx, JSON.parse(localStorage.getItem('adash.chars') || '{}')); } catch {}
+function chxStages(who) {
+  const fr = chx.fr, a = CH_ART[who][fr], f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = a.pw * 2, ph = a.ph * 2;
+  const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * 8}px ${h}px;background-position:${-f * w}px 0"></span>`;
+  const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
+  const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
+  return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
+    + arr('픽셀화', `char-sprites.py 가 ${a.ph}px 높이 격자로 줄이고 40색 팔레트·1px 윤곽선을 입힘`)
+    + st('픽셀', `「AI 생성」 · ${a.pw}×${a.ph} · 2배`, spr(`chars/${who}-${fr}-px.png`, pw, ph, 'cx-px'))
+    + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
+    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f]}" data-fr="${fr}" aria-hidden="true"></canvas>`);
+}
+function chxCard(who, boss, n) {
+  const [name, look] = CH_INFO[who], on = chPool[who] !== false, a = CH_ART[who][chx.fr];
+  const thumbs = [...Array(8).keys()].map(i => `<button type="button" class="cx-pose${i === chx.pose ? ' on' : ''}" data-pose="${i}" aria-pressed="${i === chx.pose}" data-tip="${esc(CH_POSE_L[i])}" aria-label="${esc(CH_POSE_L[i])}">
+      <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(chars/${who}-${chx.fr}-px.png);background-size:${a.pw * 8}px ${a.ph}px;background-position:${-i * a.pw}px 0"></span></button>`).join('');
+  return `<section class="cx surface${on ? '' : ' off'}" data-who="${who}">
+    <div class="cx-h"><h3>${name}<span class="badge">${boss ? '코디네이터' : '워커'}</span></h3><span class="cx-look">${look}</span>
+      <span class="cx-n">${on ? `맡은 세션 <b>${n}</b>` : '배치 안 함'}</span>
+      <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
+    <div class="cx-flow">${chxStages(who)}</div>
+    <div class="cx-poses" role="group" aria-label="포즈">${thumbs}</div>
+    <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-${chx.fr}-px.png</code>
+      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button></div>
+  </section>`;
+}
+function renderChars() {
+  if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
+  const save = () => { try { localStorage.setItem('adash.chars', JSON.stringify(chx)); } catch {} };
+  const cnt = {}; state.sessions.filter(liveSess).forEach(s => { const w = chWho(s); cnt[w] = (cnt[w] || 0) + 1; });
+  const group = (title, l, boss) => `<div class="sec-h"><h2>${title}</h2><span>${l.filter(w => chPool[w] !== false).length}/${l.length}명 배치</span></div>
+    <div class="cx-list">${l.map(w => chxCard(w, boss, cnt[w] || 0)).join('')}</div>`;
+  $('#view').innerHTML = `<div class="controls">
+      <span class="seg" id="cx-fr"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>
+      <span class="st">${esc(CH_POSE_L[chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
+    </div>
+    ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
+    <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 그림은 <code>scripts/char-gen.sh</code> 로 만들고 <code>CH_ART</code>(frontend/app.js)에 크기를 적습니다.</div>`;
+  $('#cx-fr').querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
+    b.onclick = () => { chx.fr = b.dataset.k; save(); chxMounted = false; renderChars(); };
+  });
+  $('#view').querySelectorAll('.cx-pose').forEach(b => b.onclick = () => { chx.pose = +b.dataset.pose; save(); chxMounted = false; renderChars(); });
+  $('#view').querySelectorAll('[data-pool]').forEach(c => c.onchange = () => {
+    if (c.checked) delete chPool[c.dataset.pool]; else chPool[c.dataset.pool] = false;
+    try { localStorage.setItem('adash.chpool', JSON.stringify(chPool)); } catch {}
+    chxMounted = false; renderChars();
+  });
+  $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
+    .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
+  chxMounted = true;
   L2D.mount($('#view'));
 }
 
