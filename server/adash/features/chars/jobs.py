@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 
 from adash.core.config import HERE, HOME
@@ -143,7 +144,7 @@ def create(who, f, img, ext):
 
 
 def status(d, job):
-    """job.json plus where it is: steps done, state running|published|failed (failed.txt, the launch failed, or the
+    """job.json plus where it is: steps done, state running|published|removed|failed (failed.txt, the launch failed, or the
     agent's terminal closed with nothing published), the launch's outcome."""
     w = job["who"]
     done = [k for k, p in STEPS if os.path.exists(os.path.join(d, p.format(w=w)))]
@@ -168,6 +169,9 @@ def status(d, job):
             and job["handle"] not in {t["handle"] for t in orca_state["terminals"] if t.get("connected")}:
         error = "에이전트 터미널이 결과 없이 닫혔습니다"
     state = "published" if "published" in done else "failed" if error else "running"
+    rm = os.path.join(d, ".removed")
+    if os.path.exists(rm) and ("published" not in done or os.path.getmtime(rm) >= os.path.getmtime(os.path.join(d, ".published"))):
+        state = "removed"
     return {**job, "done": done, "sheets": sheets, "state": state, "error": error,
             "updated": max((os.path.getmtime(os.path.join(d, n)) for n in os.listdir(d)), default=job["created"])}
 
@@ -220,3 +224,19 @@ def remove(jid):
         raise ValueError("돌고 있는 작업은 지울 수 없습니다 — Orca 에서 에이전트를 먼저 끝내세요")
     shutil.rmtree(d, ignore_errors=True)
     return True
+
+
+def unpublish(who):
+    """Take a character down: char-publish.py --remove drops it from chars.json and deletes its strips in R2, so every
+    open page loses it on its next read. Its job folders stay (marked .removed), so the sheets can be put up again."""
+    if not (isinstance(who, str) and WHO.fullmatch(who)):
+        raise ValueError("잘못된 이름입니다")
+    py = subprocess.run([os.path.join(REPO, "scripts/char-python.sh")], capture_output=True, text=True, timeout=300).stdout.strip()
+    out = subprocess.run([py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, "--remove"],
+                         capture_output=True, text=True, timeout=180, cwd=REPO)
+    if out.returncode:
+        msg = (out.stderr.strip().splitlines() or ["삭제하지 못했습니다"])[-1]
+        raise RuntimeError(f"{who} 은(는) 올라가 있지 않습니다" if "chars.json 에 없습니다" in msg else msg)
+    for j in list_jobs():
+        if j["who"] == who and j["state"] == "published":
+            open(os.path.join(WORK, j["id"], ".removed"), "w").close()

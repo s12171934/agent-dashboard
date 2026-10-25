@@ -14,11 +14,16 @@ Each entry carries v (when it was put up), which the page adds to the picture UR
 and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
 Needs `npx wrangler login` once, and Pillow with numpy (run it with "$(scripts/char-python.sh)").
 """
-import argparse, json, os, re, subprocess, sys, tempfile, time
+import argparse, glob, json, os, re, shutil, subprocess, sys, tempfile, time
 import numpy as np
 from PIL import Image
 
 BUCKET = 'agent-dashboard-chars'
+if not shutil.which('npx'):  # started by launchd (the metric server's 「삭제」), nvm's node is not on PATH: take the newest
+    nvm = sorted(glob.glob(os.path.expanduser('~/.nvm/versions/node/v*/bin')),
+                 key=lambda d: [int(x) for x in re.findall(r'\d+', d.split('/node/')[1])])
+    if nvm:
+        os.environ['PATH'] = nvm[-1] + os.pathsep + os.environ.get('PATH', '')
 WRANGLER = ['npx', '--yes', 'wrangler@' + os.environ.get('WRANGLER_VERSION', '4.151.3')]
 FILES = {'full': '{}-full.webp', 'bust': '{}-bust.webp', 'sd': '{}-sd.png', 'sdb': '{}-sd-bust.png'}
 

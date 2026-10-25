@@ -439,6 +439,8 @@ const api = (() => {
     // is wrong with the form.
     charCreate: (server, body) => post(byId(server), '/api/chars/create', body),
     charRemove: (server, id) => post(byId(server), '/api/chars/remove', { id }),
+    // Take a character down from R2 (every page drops it on its next read). {status, body}: 200, 502 why not.
+    charUnpublish: (server, who) => post(byId(server), '/api/chars/unpublish', { who }),
     // A job's uploaded picture (f=ref) or a sheet the agent drew (full, bust, sd); t busts the browser cache.
     charFile: (server, id, f, t) => `${byId(server)?.url || ''}/api/chars/file?job=${encodeURIComponent(id)}&f=${f}&t=${t || 0}`,
     // Version streams: each server sends its state version whenever it changes (version gets "<server>:<version>"),

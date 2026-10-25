@@ -2912,7 +2912,7 @@ const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
 // redrawn one shows too. Each read starts again from the built-in six, so a person taken down leaves. Added people
 // join the lists after the six, so a session already drawn may change hands once.
 let chSeen = '', chBase = null;
-const chVer = {};
+const chVer = {}, chR2 = new Set();  // chR2: everyone chars.json lists (they can be taken down from the tab)
 async function chLoad() {
   let t, j;
   try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); t = r.ok ? await r.text() : '{}'; j = JSON.parse(t); } catch { return; }
@@ -2923,11 +2923,13 @@ async function chLoad() {
   Object.assign(CH_ART, chBase.art); Object.assign(CH_INFO, chBase.info);
   CH_BOSS.splice(0, Infinity, ...chBase.boss); CH_CREW.splice(0, Infinity, ...chBase.crew);
   for (const k of Object.keys(chVer)) delete chVer[k];
+  chR2.clear();
   for (const [who, c] of Object.entries(j?.chars || {})) {
     if (!/^[a-z0-9-]+$/.test(who) || !['full', 'bust', 'sd', 'sdb'].every(k => c?.art?.[k]?.top?.length === 8)) continue;
     CH_ART[who] = c.art;
     CH_INFO[who] = [String(c.name || who), String(c.look || '')];
     if (c.v) chVer[who] = String(c.v);
+    chR2.add(who);
     if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) (c.boss ? CH_BOSS : CH_CREW).push(who);
   }
   if (state) { chxMounted = false; render(); }
@@ -3547,7 +3549,8 @@ function chxCard(who, boss, n) {
     <div class="cx-flow">${chxStages(who)}</div>
     <div class="cx-poses" role="group" aria-label="포즈">${thumbs}</div>
     <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd${chx.fr === 'bust' ? '-bust' : ''}.png</code>
-      ${chVer[who] ? '<span class="badge" title="배포 없이 R2 에 올린 캐릭터 (scripts/char-publish.py)">R2</span>' : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
+      ${chR2.has(who) ? `<span class="badge" title="배포 없이 R2 에 올린 캐릭터 (scripts/char-publish.py)">R2</span>
+      <button type="button" class="act danger" data-cx-del="${who}" title="R2 에서 내려 모든 기기의 사무실에서 뺌">삭제</button>` : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
       <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button>`}</div>
   </section>`;
 }
@@ -3591,7 +3594,7 @@ function cnJobsHtml() {
   if (!cnJobs?.length) return '';
   const ago = t => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : `${Math.round(m / 60)}시간 전`; };
   return `<div class="cn-jobs">${cnJobs.map(j => {
-    const st = j.state === 'published' ? ['ok', '게시됨'] : j.state === 'failed' ? ['bad', '실패'] : ['run', '만드는 중'];
+    const st = j.state === 'published' ? ['ok', '게시됨'] : j.state === 'removed' ? ['', '삭제됨'] : j.state === 'failed' ? ['bad', '실패'] : ['run', '만드는 중'];
     const steps = CN_STEPS.map(([k, l], i) => {
       const d = k === 'ref' || j.done.includes(k), next = !d && j.state === 'running' && CN_STEPS.slice(0, i).every(([x]) => x === 'ref' || j.done.includes(x));
       return `<li class="${d ? 'on' : next ? 'now' : ''}">${l}</li>`;
@@ -3679,6 +3682,22 @@ async function cnPoll() {
   }
   if (jobs.some(j => j.state === 'running')) cnTimer = setTimeout(cnPoll, 5000);
 }
+// 「삭제」 on a person put up without a deploy (R2): a metric server runs char-publish.py --remove, then this page reads
+// chars.json again at once (other pages within a minute). The built-in six live in the deploy and are only switched off.
+async function chDelete(who, b) {
+  const name = CH_INFO[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id;
+  if (!srv) return toast('연결된 메트릭 서버가 없습니다');
+  if (!await uiConfirm(`「${name}」(${who}) 캐릭터를 삭제할까요?\n\nR2 에서 그림과 목록 항목을 지워 모든 기기의 사무실에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다. 작업 폴더의 원본·시트는 남습니다.`, { ok: '삭제', danger: true })) return;
+  b.disabled = true; b.textContent = '삭제 중…';
+  const r = await api.charUnpublish(srv, who);
+  if (r.status !== 200) { b.disabled = false; b.textContent = '삭제'; return toast(r.body?.error || `삭제하지 못했습니다 (${r.status})`); }
+  delete chPool[who];
+  try { localStorage.setItem('adash.chpool', JSON.stringify(chPool)); } catch {}
+  chSeen = '';
+  await chLoad();
+  cnPoll();
+  toast(`「${cut(name, 20)}」 캐릭터를 삭제했습니다`);
+}
 function renderChars() {
   if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
   const save = () => { try { localStorage.setItem('adash.chars', JSON.stringify(chx)); } catch {} };
@@ -3702,6 +3721,7 @@ function renderChars() {
     try { localStorage.setItem('adash.chpool', JSON.stringify(chPool)); } catch {}
     chxMounted = false; renderChars();
   });
+  $('#view').querySelectorAll('[data-cx-del]').forEach(b => b.onclick = () => chDelete(b.dataset.cxDel, b));
   $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
     .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
   cnBind();

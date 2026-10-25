@@ -26,7 +26,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `history/` | 비교 탭의 일주일 사용량 (5분 칸) | `/api/history` |
 | `orca_runs/` | Orca Run·태스크·워커·터미널 수집, 끝난 디스패치 보관 | `/api/run` |
 | `terminals/` | 세션이 도는 터미널 찾기, 아래 터미널까지 닫기 작업, 에이전트 띄우기(새 워크트리·기존 워크트리)와 프롬프트 보내기 | `/api/orca/job`, `/api/orca/places`, `POST /api/orca/focus·close·launch·send` |
-| `chars/` | 「새 캐릭터」: 올린 원본 그림과 브리프로 Orca 에이전트를 띄워 캐릭터를 그리고 R2 에 올리게 함, 작업 폴더의 파일로 진행 판정 | `/api/chars/jobs`, `/api/chars/file`, `POST /api/chars/create·remove` |
+| `chars/` | 「새 캐릭터」: 올린 원본 그림과 브리프로 Orca 에이전트를 띄워 캐릭터를 그리고 R2 에 올리게 함, 작업 폴더의 파일로 진행 판정 | `/api/chars/jobs`, `/api/chars/file`, `POST /api/chars/create·remove·unpublish` |
 | `interactions/` | 에이전트 사이 메시지 (Orca 오케스트레이션 수신함) | `/api/interactions` |
 | `plans/` | 외부(드라이버) 계획 파일, 계획의 주인 세션, 추가 상자 사유 | (스냅숏에 실림) |
 | `tests/` | 긴 테스트 실행 진행과 끝난 기록 | `/api/tests` |
