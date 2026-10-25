@@ -57,13 +57,15 @@
    and the gap between them sits on the fold. Folded, the cover screen (466 × 678) is the phone layout.
      --fold      1 in the fold layout, else 0 (scripts read it: getComputedStyle(…).getPropertyValue('--fold'))
      --hinge     width the hardware hides between two screens (0 on a seamless panel)
-     --seg-w     width of the first screen segment: what a modal or popover keeps to so the fold does not cut it
+     --seg-w     width of the first screen segment: what a modal or popover keeps to so the fold does not cut it. Only
+                 fixed and top-layer boxes use it, so the default 100% is the layout viewport; 100vw can be wider
+                 (iPhone Duo's sideways PWA lays out 867px under a 951px screen)
      --pane-gap  the gap between two panes; at least the hinge plus a gutter on each side
      --fold-off  how far right of the viewport's middle the fold falls (fold.js; 42px in iPhone Duo's sideways PWA,
                  whose status bar is cut from the viewport's right; else 0)
      --fold-cols the two columns of a fold split, for grid-template-columns: equal halves moved by --fold-off, so the
                  gap stays on the fold when the grid spans the page */
-:root { --fold: 0; --hinge: 0px; --seg-w: 100vw; --pane-gap: 14px; --fold-off: 0px;
+:root { --fold: 0; --hinge: 0px; --seg-w: 100%; --pane-gap: 14px; --fold-off: 0px;
   --fold-cols: minmax(0, calc(50% - var(--pane-gap) / 2 + var(--fold-off))) minmax(0, 1fr); }
 @media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) { :root { --fold: 1; } }
 @media (horizontal-viewport-segments: 2) {
