@@ -3401,12 +3401,8 @@ function chSize() {
   // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the viewport's bottom
   // (down to the bar's sheet when that is the lower half)
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
-  // It stays clear of the status bar and the home bar (the safe area, filled by the page's corridor colour): drawn
-  // under the status bar held upright, the canvas made iOS take the status bar's thickness off the viewport's height
-  // from then on once turned sideways (iPhone Duo: 587 of 669, a strip below), until the app was restarted.
   const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight;
-  const top = `max(${v.top}px, env(safe-area-inset-top))`, end = sheet ? `${bottom}px` : `calc(${bottom}px - env(safe-area-inset-bottom))`;
-  Object.assign(cv.style, { left: v.left + 'px', top, width: v.width + 'px', height: `max(240px, calc(${end} - ${top}))` });
+  Object.assign(cv.style, { left: v.left + 'px', top: v.top + 'px', width: v.width + 'px', height: Math.max(240, bottom - v.top) + 'px' });
   chApply();
 }
 // the bar's zoom figure: pressed, 맞춤 (the view is zoomed by a pinch, Ctrl/⌘ + wheel or the trackpad; no buttons)

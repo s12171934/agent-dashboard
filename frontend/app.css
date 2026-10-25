@@ -1544,10 +1544,14 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .w3-note.a { fill: var(--lamp); } .w3-note.b { fill: var(--c5); } .w3-tray { fill: var(--alu); }
 /* 픽셀: a 32-unit sprite, so the bob is one pixel and moves in steps */
 /* the office canvas (renderOffice) is the page's background: fixed over the whole screen below anything shown above the
-   view (a decision, the inbox) — edge to edge across, clear of the status bar and the home bar (chSize), no frame — with the bar floating
+   view (a decision, the inbox) — under the status bar and the home bar, edge to edge, no frame — with the bar floating
    on it; chSize sets its box (the first half when half folded). The page does not scroll. .ch-world is the plane of
    rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
-:root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
+/* The page is not made overflow: hidden: on an installed PWA, iOS answered a root that cannot scroll by taking the status
+   bar's thickness off the viewport's height (iPhone Duo: 587 of 669, upright and sideways, a strip left below) and kept
+   it until the app restarted — once the office had been shown, every view had the strip. Nothing overflows anyway (the
+   canvas is fixed), overscroll-behavior stops the rubber band and the canvas takes every gesture (touch-action). */
+:root.ch-full, :root.ch-full body { overscroll-behavior: none; }
 /* iOS can lay an installed PWA out shorter than its screen (iPhone Duo sideways: 587 of 669 high, the status bar's
    thickness taken off the height too). Nothing of the page is drawn below the viewport, so that strip
    takes the corridor floor's colour and the office still reaches the edge to the eye; the bar stays in the viewport. */
