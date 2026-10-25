@@ -3102,17 +3102,22 @@ const WALL_ORDER = ['window', 'shelf', 'window', 'clock', 'poster', 'window', 'b
 const wallHtml = key => { const k = chHash(key) % WALL_ORDER.length;
   return `<div class="room-wall" aria-hidden="true">${[...WALL_ORDER.slice(k), ...WALL_ORDER.slice(0, k)].map(w => `<span class="wall-item">${WALL[w]()}</span>`).join('')}</div>`; };
 
+// A bubble's text: home and long paths cut to their last two parts (~/…/a/b), a break allowed after each slash, at most
+// 60 characters.
+const sayWrap = t => esc(cut(t.replace(/(^|[\s'"=])(\/Users\/[^/\s]+|~)?((?:\/[^/\s]+){3,})/g, (m, pre, home, rest) => `${pre}${home ? '~' : ''}/…${rest.split('/').slice(-2).map(x => '/' + x).join('')}`), 60)).replace(/\//g, '/<wbr>');
 function charHtml(s) {
   const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`;
   // 입력 대기 is not the user's to do: no bubble (it would read as a call for attention)
   const say = s.decision ? '결정을 기다려요' : st === 'wait' ? '' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
+  // 「유휴 · 8시간 전」 breaks only at its dot; an action's text gets short paths that break at their slashes
+  const sayHtml = !say ? '' : st !== 'run' || s.decision || !la ? say.split(' · ').map(x => `<span class="nw">${esc(x)}</span>`).join(' · ') : sayWrap(say);
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
   const fam = chFam.get(s.path);
   return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"${fam ? ` data-fam="${esc(fam.keys.join(' '))}"` : ''}
       style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m}"
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
-    <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
+    <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${sayHtml}</span></span>
     ${chFig(st, s)}
     <span class="ch-tag"><span class="ch-name"><i class="ch-dot" title="${ST_LABEL[st]}"></i><span class="ch-nm">${esc(nameOf(s))}</span></span>
       <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}</span>${srvBadge(s)}
@@ -3193,7 +3198,7 @@ function famChips(s) {
   const m = chFam.get(s.path);
   if (!m) return '';
   const chip = (hue, txt, tip) => `<span class="ch-fam" style="--fh:${hue}" title="${esc(tip)}">${txt}</span>`;
-  return (m.boss ? chip(m.boss.hue, `★ ${m.boss.team} 팀장 · ${m.boss.n}명`, `${m.boss.team} 팀장 — 이 코디네이터의 워커 ${m.boss.n}명${m.boss.away ? `, 그중 ${m.boss.away}명은 다른 워크트리 방 (선으로 이어짐)` : ''}`) : '')
+  return (m.boss ? chip(m.boss.hue, `★ ${m.boss.team}<span class="ch-far-x"> 팀장 · ${m.boss.n}명</span>`, `${m.boss.team} 팀장 — 이 코디네이터의 워커 ${m.boss.n}명${m.boss.away ? `, 그중 ${m.boss.away}명은 다른 워크트리 방 (선으로 이어짐)` : ''}`) : '')
     + (m.of ? chip(m.of.hue, `◆ ${m.of.team}`, `${m.of.team} 팀원 — 팀장(코디네이터) ${nameOf(m.of.c)}${m.of.room ? `, ▣ ${m.of.room} 방` : ', 같은 방'}`) : '');
 }
 // The family lines, over the plane: a dotted thread in the family's colour from the coordinator's side to the side of
@@ -3358,11 +3363,11 @@ function chApply() {
   w.style.transform = `translate(${chView.x}px, ${chView.y}px) scale(${chView.z})`;
   // the corridor floor moves and scales with the plane (the backdrop in app.css)
   cv.style.setProperty('--bx', chView.x + 'px'); cv.style.setProperty('--by', chView.y + 'px'); cv.style.setProperty('--bz', chView.z);
-  // labels grow back as the view shrinks, so names and bubbles stay readable when zoomed out (up to 1.8×; .ch-far hides
-  // the role line). Rows open up to make room, so the layout is redone when the growth changes noticeably.
-  const lz = Math.min(1.8, Math.max(1, .9 / chView.z));
+  // labels grow back as the view shrinks, so names and bubbles stay readable when zoomed out (up to 1.5×; .ch-far hides
+  // the role line and the chips' counts). Rows open up to make room, so the layout is redone when the growth changes noticeably.
+  const lz = Math.min(1.5, Math.max(1, .9 / chView.z));
   cv.style.setProperty('--lz', lz);
-  cv.classList.toggle('ch-far', lz > 1.3);
+  cv.classList.toggle('ch-far', lz > 1.25);
   if (Math.abs(lz - chLz) > .1) { chLz = lz; chLayout(); }
   const zl = $('#ch-zl');
   if (zl) zl.textContent = Math.round(chView.z * 100) + '%';
