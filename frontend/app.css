@@ -1396,24 +1396,45 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-qa-a { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .hw-qa-a .rv-acts { display: contents; }
 
-/* 캐릭터 모드 (renderOffice): the agents tab as rooms of characters. --c is the model colour (--m-*), --ph the motion
-   phase the page sets so live re-renders do not restart it. The face and the bubble's sign carry the state; .ch-3d and .ch-px
-   are the two drawing styles (renderOffice's 「3D 렌더」·「픽셀」). */
-.office { display: flex; flex-direction: column; gap: 12px; }
+/* 캐릭터 모드 (renderOffice): each room is one scene — .room-wall (decorations) over the wall band, the floor below —
+   and the people (.ch) sit on it at places chLayout sets (left, top; z-index grows downward so nearer people overlap).
+   --c is the model colour, --ph the motion phase the page sets so live re-renders do not restart it. The face and the
+   bubble's sign carry the state; .ch-3d and .ch-px are the two drawing styles. */
+.office { display: flex; flex-direction: column; gap: 12px;
+  /* page-only palette for people and props: a skin, a leaf or a wooden desk is the same in light and dark */
+  --skin-0: #f3cfb3; --skin-1: #e2b08a; --skin-2: #c68a5e; --skin-3: #8d5a3b; --hair-0: #2b2321; --hair-1: #5b3a26; --hair-2: #a5703d; --hair-3: #d8b26a;
+  --ink: #231c1f; --iris: #6b4a2e; --mouth: #8a3a3a; --blush: #f08f8f; --leaf: #4f9a5a; --pot: #b8673f; --wood: #b98152; --chair: #3d4452; --alu: #c5ccd6;
+  --mug: #f1ede6; --lamp: #ffd56a; --sweat: #8fd0ff; --sky: #9fd0f5; --night: #1b2a4a; --collar: #f4f1ea; --coffee: #6b4430;
+  --wall: color-mix(in srgb, var(--accent) 9%, var(--panel2)); --floor: color-mix(in srgb, var(--wood) 26%, var(--panel2)); --wall-h: 118px; }
 .room-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
 .room-h .room-n { margin-left: auto; color: var(--muted); font-size: 12px; }
 .room-h .room-n b { color: var(--text); font-variant-numeric: tabular-nums; }
-.room-floor { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px 0; }
-/* page-only palette for people and props (not theme colours: a skin or a leaf is the same in light and dark) */
-.office { --skin-0: #f3cfb3; --skin-1: #e2b08a; --skin-2: #c68a5e; --skin-3: #8d5a3b; --hair-0: #2b2321; --hair-1: #5b3a26; --hair-2: #a5703d; --hair-3: #d8b26a;
-  --leaf: #4f9a5a; --pot: #b8673f; --blush: #f08f8f; --wall: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
-.ch { display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-width: 0; padding: 0 0 8px; border: 0; border-radius: 0; background: none;
-  color: var(--text); font: inherit; text-align: center; cursor: pointer; }
+.room-floor { position: relative; min-height: 220px; overflow: hidden; border-radius: calc(var(--radius) - 4px);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--text) 10%, transparent), transparent 18px) 0 var(--wall-h) / 100% 100% no-repeat,
+    linear-gradient(to bottom, var(--wall) 0 calc(var(--wall-h) - 5px), color-mix(in srgb, var(--wood) 55%, var(--panel)) 0 var(--wall-h), var(--floor) 0); }
+.ch-3d .room-floor { background: linear-gradient(to bottom, color-mix(in srgb, var(--text) 12%, transparent), transparent 22px) 0 var(--wall-h) / 100% 100% no-repeat,
+    repeating-linear-gradient(to bottom, transparent 0 27px, color-mix(in srgb, var(--wood) 42%, var(--panel2)) 27px 28px) 0 var(--wall-h) / 100% 100% no-repeat,
+    linear-gradient(to bottom, color-mix(in srgb, var(--panel) 50%, var(--wall)), var(--wall) calc(var(--wall-h) - 5px), color-mix(in srgb, var(--wood) 55%, var(--panel)) 0 var(--wall-h),
+      color-mix(in srgb, var(--floor) 80%, var(--panel)) 0, var(--floor)); }
+.ch-px .room-floor { border-radius: 0; background: linear-gradient(to bottom, var(--wall) 0 calc(var(--wall-h) - 4px), color-mix(in srgb, var(--wood) 60%, var(--ink)) 0 var(--wall-h), transparent 0),
+    repeating-linear-gradient(90deg, transparent 0 16px, color-mix(in srgb, var(--wall) 85%, var(--ink)) 16px 20px) 0 0 / 100% calc(var(--wall-h) - 4px) no-repeat,
+    repeating-conic-gradient(var(--floor) 0 25%, color-mix(in srgb, var(--floor) 86%, var(--ink)) 0 50%) 0 var(--wall-h) / 32px 32px; }
+.room-wall { position: absolute; inset: 0 0 auto; height: calc(var(--wall-h) - 56px); display: flex; justify-content: space-around; align-items: flex-end; pointer-events: none; }
+.wall-item { flex: none; display: flex; }
+.wall-item[hidden] { display: none; }
+.wall-item svg { display: block; }
+.ch { position: absolute; left: 0; top: 0; width: 150px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0 0 6px; border: 0; background: none;
+  color: var(--text); font: inherit; text-align: center; cursor: grab; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.homing .ch { transition: left .45s ease, top .45s ease; }
+.ch.dragging { cursor: grabbing; z-index: 999; }
+.ch.lift, .ch.dragging { filter: drop-shadow(0 10px 12px color-mix(in srgb, var(--text) 28%, transparent)); }
+.ch.lift .ch-svg, .ch.dragging .ch-svg { transform: translateY(-4px) scale(1.03); }
+.ch-svg { transition: transform .15s; }
 .ch:hover .ch-name { color: var(--accent); }
-.ch:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.ch-stage { position: relative; display: block; overflow: hidden; padding-top: 46px; background: var(--wall); }
-.ch-say { position: absolute; top: 4px; left: 6px; right: 6px; width: fit-content; margin: 0 auto; box-sizing: border-box; height: 36px; display: flex; align-items: center;
-  padding: 3px 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--muted); font-size: 11px; line-height: 1.3; }
+.ch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+.ch-say { position: relative; box-sizing: border-box; max-width: 100%; height: 36px; display: flex; align-items: center; margin-bottom: 2px; padding: 3px 9px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--muted); font-size: 11px; line-height: 1.3;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--text) 10%, transparent); }
 .ch-say > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .ch-say::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: var(--panel); border: solid var(--line); border-width: 0 1px 1px 0;
   transform: translateX(-50%) rotate(45deg); }
@@ -1425,76 +1446,123 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.dec .ch-say, .ch.dec .ch-say::after { border-color: var(--warn); }
 .ch.dec .ch-say { color: var(--text); }
 .ch.dec .ch-say b { color: var(--warn); animation: pulse 1.6s infinite; }
-.ch-svg { display: block; width: 100%; height: 118px; }
+.ch-px .ch-say { border-radius: 0; border-width: 2px; border-color: var(--ink); box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink) 25%, transparent); }
+.ch-px .ch-say::after { border-width: 0 2px 2px 0; border-color: var(--ink); }
+.ch-svg { display: block; width: 128px; height: 128px; overflow: visible; }
+.ch-name, .ch-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent); }
+.ch-name { font-size: 12px; font-weight: 600; }
+.ch-meta { color: var(--muted); font-size: 11px; }
+.ch .badge { margin-top: 2px; }
+/* motion: the upper body breathes, the hands type while running */
 .ch-me { animation: bob 2.4s ease-in-out infinite var(--ph, 0s); --bob: -1.5px; }
 .ch.st-run .ch-me { animation-duration: 1.2s; }
-.ch.st-run .ch-arm { animation: bob .36s infinite var(--ph, 0s); }
+.ch.st-run .ch-arm { animation: bob .36s infinite var(--ph, 0s); --bob: -2px; }
 .ch.st-run .ch-arm.r { animation-delay: calc(var(--ph, 0s) - .18s); }
 .ch.st-idle .ch-me, .ch.st-stalled .ch-me { animation: none; transform: translateY(3px); }
-.ch.st-idle :is(.ch-me, .ch-arm) { opacity: .78; }
-/* the room: wall, skirting, floor and props, tinted from the theme */
-.sc-wall { fill: var(--wall); }
-.sc-base { fill: color-mix(in srgb, var(--muted) 45%, var(--panel)); }
-.sc-floor { fill: color-mix(in srgb, var(--pot) 22%, var(--panel2)); }
-.sc-plank { stroke: color-mix(in srgb, var(--pot) 32%, var(--panel2)); stroke-width: .8; }
-.sc-win rect, .sc-frame { fill: color-mix(in srgb, var(--muted) 30%, var(--panel)); }
-.sc-glass, .sc-glasspx { fill: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
-.sc-leaf { fill: var(--leaf); }
-.sc-leafpx { fill: var(--leaf); }
-.sc-pot, .sc-potpx { fill: var(--pot); }
-.sc-board, .sc-boardpx { fill: color-mix(in srgb, var(--pot) 60%, var(--text)); }
-.sc-book.a, .sc-bookpx.a { fill: var(--c1); } .sc-book.b, .sc-bookpx.b { fill: var(--c4); } .sc-book.c, .sc-bookpx.c { fill: var(--c3); }
-.sc-clock circle, .sc-facepx { fill: var(--panel); }
-.sc-clock circle { stroke: color-mix(in srgb, var(--muted) 70%, var(--text)); stroke-width: 1.6; }
-.sc-clock path { fill: none; stroke: var(--text); stroke-width: 1.2; stroke-linecap: round; }
-.sc-clockpx { fill: color-mix(in srgb, var(--muted) 70%, var(--text)); }
-.sc-mug path, .sc-mugpx { fill: var(--c5); }
-.sc-mug .sc-mug-h { fill: none; stroke: var(--c5); stroke-width: 1.6; }
-.sc-poster rect { fill: var(--panel); stroke: color-mix(in srgb, var(--muted) 40%, var(--panel)); }
-.sc-poster-art { fill: var(--c7); }
-.c3-chair { fill: color-mix(in srgb, var(--text) 62%, var(--panel)); }
-/* 3D 렌더: lighter and darker steps of each colour in OKLCH make the shading, --on-accent (white) the gloss */
-.c3-skin-hi { stop-color: oklch(from var(--skin) calc(l + (1 - l) * .45) c h); } .c3-skin { stop-color: var(--skin); } .c3-skin-lo { stop-color: oklch(from var(--skin) calc(l * .78) c h); }
-.c3-hair-hi { stop-color: oklch(from var(--hair) calc(l + (1 - l) * .3) c h); } .c3-hair { stop-color: var(--hair); } .c3-hair-lo { stop-color: oklch(from var(--hair) calc(l * .7) c h); }
-.c3-shirt-hi { stop-color: oklch(from var(--c) calc(l + (1 - l) * .5) calc(c * .7) h); } .c3-shirt { stop-color: var(--c); } .c3-shirt-lo { stop-color: oklch(from var(--c) calc(l * .62) c h); }
-.c3-neck { fill: oklch(from var(--skin) calc(l * .82) c h); }
-.c3-collar { fill: none; stroke: oklch(from var(--c) calc(l + (1 - l) * .6) calc(c * .5) h); stroke-width: 1.4; stroke-linejoin: round; }
-.c3-arm { fill: none; stroke-width: 6; stroke-linecap: round; }
-.c3-ink { fill: var(--hair-0); stroke: var(--hair-0); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-.c3-ink path { fill: none; }
-.c3-brow { stroke: oklch(from var(--hair) calc(l * .8) c h); stroke-width: 1.2; }
-.c3-blush { fill: var(--blush); opacity: .5; }
-.c3-gloss { fill: var(--on-accent); opacity: .3; }
-.c3-headset rect, .c3-headset circle { fill: var(--coord); }
-.c3-band { fill: none; stroke: var(--coord); stroke-width: 2; stroke-linecap: round; }
-.c3-sweat { fill: color-mix(in srgb, var(--accent) 45%, var(--panel)); }
-.c3-desk-hi { stop-color: color-mix(in srgb, var(--pot) 30%, var(--panel)); }
-.c3-desk { stop-color: color-mix(in srgb, var(--pot) 48%, var(--panel)); }
-.c3-desk-front { fill: color-mix(in srgb, var(--pot) 62%, var(--hair-0)); }
-.c3-desk-edge { stroke: var(--on-accent); stroke-opacity: .45; stroke-width: 1; }
-.c3-shadow { fill: color-mix(in srgb, var(--text) 14%, transparent); }
-.c3-lap-hi { stop-color: color-mix(in srgb, var(--muted) 30%, var(--panel)); }
-.c3-lap { stop-color: color-mix(in srgb, var(--muted) 85%, var(--text)); }
-.c3-logo { fill: color-mix(in srgb, var(--muted) 60%, var(--panel)); }
+.ch.st-idle :is(.ch-me, .ch-arm) { opacity: .8; }
+/* 3D 렌더: lighter and darker steps of each colour in OKLCH make the shading; white is the light */
+.c3-skin-hi { stop-color: oklch(from var(--skin) calc(l + (1 - l) * .45) c h); } .c3-skin { stop-color: var(--skin); } .c3-skin-lo { stop-color: oklch(from var(--skin) calc(l * .76) calc(c * 1.1) h); }
+.c3-hair-hi { stop-color: oklch(from var(--hair) calc(l + (1 - l) * .32) c h); } .c3-hair { stop-color: var(--hair); } .c3-hair-lo { stop-color: oklch(from var(--hair) calc(l * .62) c h); }
+.c3-shirt-hi { stop-color: oklch(from var(--c) calc(l + (1 - l) * .5) calc(c * .7) h); } .c3-shirt { stop-color: var(--c); } .c3-shirt-lo { stop-color: oklch(from var(--c) calc(l * .6) c h); }
+.c3-chair-hi { stop-color: oklch(from var(--chair) calc(l + .2) c h); } .c3-chair { stop-color: var(--chair); } .c3-chair-lo { stop-color: oklch(from var(--chair) calc(l * .6) c h); }
+.c3-wood-hi { stop-color: oklch(from var(--wood) calc(l + .1) c h); } .c3-wood-lo { stop-color: var(--wood); }
+.c3-woodf-hi { stop-color: oklch(from var(--wood) calc(l * .78) c h); } .c3-woodf-lo { stop-color: oklch(from var(--wood) calc(l * .58) c h); }
+.c3-alu-hi { stop-color: oklch(from var(--alu) calc(l + .08) c h); } .c3-alu-lo { stop-color: oklch(from var(--alu) calc(l * .74) c h); }
+.c3-mug-hi { stop-color: var(--mug); } .c3-mug-lo { stop-color: oklch(from var(--mug) calc(l * .8) c h); }
+.c3-pot-hi { stop-color: oklch(from var(--pot) calc(l + .08) c h); } .c3-pot-lo { stop-color: oklch(from var(--pot) calc(l * .7) c h); }
+.c3-leaf-hi { stop-color: oklch(from var(--leaf) calc(l + .12) c h); } .c3-leaf-lo { stop-color: oklch(from var(--leaf) calc(l * .7) c h); }
+.c3-sh { stop-color: var(--ink); stop-opacity: .3; }
+.c3-blushc { stop-color: var(--blush); stop-opacity: .65; }
+.c3-glowc { stop-color: var(--ok); stop-opacity: .5; }
+.c3-glow, .c3-halo { display: none; }
+.ch.st-run :is(.c3-glow, .c3-halo), .ch.st-bg :is(.c3-glow, .c3-halo) { display: inline; }
+.c3-glow { opacity: .4; }
+.c3-halo { fill: var(--ok); opacity: .25; }
+.c3-chairhi { stroke: var(--on-accent); stroke-opacity: .3; stroke-width: 1.4; stroke-linecap: round; }
+.c3-fold { fill: oklch(from var(--c) calc(l * .6) c h); opacity: .35; }
+.c3-neck { fill: oklch(from var(--skin) calc(l * .84) c h); }
+.c3-chin, .c3-jaw { fill: oklch(from var(--skin) calc(l * .7) c h); opacity: .3; }
+.c3-ear, .c3-nose { fill: none; stroke: oklch(from var(--skin) calc(l * .72) c h); stroke-width: 1.2; stroke-linecap: round; }
+.c3-crew { fill: none; stroke: oklch(from var(--c) calc(l * .6) c h); stroke-width: 1.8; stroke-linecap: round; }
+.c3-collarw { fill: var(--collar); stroke: oklch(from var(--collar) calc(l * .8) c h); stroke-width: .6; stroke-linejoin: round; }
+.c3-placket { stroke: oklch(from var(--c) calc(l * .65) c h); stroke-width: 1; }
+.c3-button { fill: var(--collar); }
+.c3-string { stroke: var(--collar); stroke-width: 1.2; stroke-linecap: round; }
+.c3-tip { fill: oklch(from var(--collar) calc(l * .75) c h); }
+.c3-white { fill: var(--on-accent); }
+.c3-iris { fill: var(--iris); }
+.c3-pupil { fill: var(--ink); }
+.c3-lid { fill: none; stroke: var(--ink); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.c3-lid.thin { stroke-width: .9; }
+.c3-lidskin { fill: var(--skin); }
+.c3-brow { fill: none; stroke: oklch(from var(--hair) calc(l * .8) c h); stroke-width: 1.6; stroke-linecap: round; }
+.c3-mouth { fill: var(--mouth); }
+.c3-teeth { fill: none; stroke: var(--on-accent); stroke-width: 1; stroke-linecap: round; opacity: .9; }
+.c3-strand { fill: none; stroke: oklch(from var(--hair) calc(l * .62) c h); stroke-width: .9; stroke-linecap: round; opacity: .7; }
+.c3-shine { fill: none; stroke: var(--on-accent); stroke-width: 2.2; stroke-linecap: round; opacity: .32; }
+.c3-band { fill: none; stroke: var(--coord); stroke-width: 2.4; stroke-linecap: round; }
+.c3-band.thin { stroke-width: 1.4; }
+.c3-cup { fill: var(--coord); }
+.c3-sweat { fill: var(--sweat); }
+.c3-sleeve { fill: none; stroke-width: 8.6; stroke-linecap: round; }
+.c3-knuckle { stroke: oklch(from var(--skin) calc(l * .72) c h); stroke-width: .8; stroke-linecap: round; }
+.c3-grain { stroke: oklch(from var(--wood) calc(l * .82) c h); stroke-width: .7; stroke-linecap: round; opacity: .6; }
+.c3-edge { stroke: var(--on-accent); stroke-opacity: .45; stroke-width: .8; }
+.c3-drawer { fill: none; stroke: oklch(from var(--wood) calc(l * .48) c h); stroke-width: .9; }
+.c3-handle { stroke: oklch(from var(--alu) calc(l * .9) c h); stroke-width: 1.8; stroke-linecap: round; }
+.c3-lidrim { stroke: var(--on-accent); stroke-opacity: .6; stroke-width: .9; }
+.c3-logo { fill: oklch(from var(--alu) calc(l * .86) c h); }
 .ch.st-run .c3-logo, .ch.st-bg .c3-logo { fill: var(--ok); }
-/* 픽셀: a 30-unit sprite, so the bob is one pixel and moves in steps */
+.c3-mugh { fill: none; stroke: oklch(from var(--mug) calc(l * .82) c h); stroke-width: 1.8; }
+.c3-coffee { fill: var(--coffee); }
+.c3-steam { fill: none; stroke: var(--on-accent); stroke-width: 1.2; stroke-linecap: round; opacity: .8; animation: pulse 2.4s infinite; }
+:root[data-theme="light"] .c3-steam { stroke: var(--muted); opacity: .5; }
+.c3-vein { fill: none; stroke: oklch(from var(--leaf) calc(l * .7) c h); stroke-width: .7; }
+.c3-potrim { fill: oklch(from var(--pot) calc(l + .06) c h); }
+.c3-paper { fill: var(--mug); stroke: oklch(from var(--mug) calc(l * .8) c h); stroke-width: .5; }
+.c3-paper.b { fill: oklch(from var(--mug) calc(l * .9) c h); }
+.c3-ink2 { stroke: var(--muted); stroke-width: .8; }
+.c3-pen { stroke: var(--c1); stroke-width: 1.6; stroke-linecap: round; }
+.c3-lampm { fill: var(--chair); }
+.c3-lampa { fill: none; stroke: var(--chair); stroke-width: 2; stroke-linejoin: round; }
+.c3-lampl { fill: var(--lamp); opacity: .22; }
+.c3-bulb { fill: var(--lamp); }
+/* the 3D wall */
+.w3-frame { fill: color-mix(in srgb, var(--panel) 70%, var(--wood)); stroke: color-mix(in srgb, var(--wood) 60%, var(--ink)); stroke-width: 1; }
+.w3-frame.dark { fill: color-mix(in srgb, var(--wood) 70%, var(--ink)); }
+.w3-sky { fill: var(--sky); }
+:root[data-theme="dark"] .w3-sky { fill: color-mix(in srgb, var(--sky) 30%, var(--night)); }
+.w3-cloud { fill: var(--on-accent); opacity: .85; }
+.w3-glint { stroke: var(--on-accent); stroke-width: 2; opacity: .35; }
+.w3-sill { fill: color-mix(in srgb, var(--panel) 60%, var(--wood)); }
+.w3-board { fill: color-mix(in srgb, var(--wood) 85%, var(--ink)); }
+.w3-book.a, .pw-b1 { fill: var(--c1); } .w3-book.b, .pw-b2 { fill: var(--c4); } .w3-book.c, .pw-b3 { fill: var(--c3); } .w3-book.d, .pw-b4 { fill: var(--c7); }
+.w3-pot { fill: var(--pot); } .w3-leaf { fill: var(--leaf); }
+.w3-rim { fill: color-mix(in srgb, var(--wood) 70%, var(--ink)); } .w3-face, .w3-white { fill: var(--mug); }
+.w3-tick, .w3-hand { stroke: var(--ink); stroke-width: 1.4; stroke-linecap: round; } .w3-hand.thin { stroke-width: .9; } .w3-pin { fill: var(--bad); }
+.w3-art { fill: color-mix(in srgb, var(--sky) 60%, var(--mug)); } .w3-sun { fill: var(--lamp); } .w3-hill { fill: color-mix(in srgb, var(--leaf) 70%, var(--panel)); } .w3-hill2 { fill: var(--leaf); }
+.w3-pen { fill: none; stroke-width: 1.6; stroke-linecap: round; } .w3-pen.a { stroke: var(--c1); } .w3-pen.b { stroke: var(--c2); }
+.w3-note.a { fill: var(--lamp); } .w3-note.b { fill: var(--c5); } .w3-tray { fill: var(--alu); }
+/* 픽셀: a 32-unit sprite, so the bob is one pixel and moves in steps */
 .ch-px .ch-me { --bob: -1px; animation-timing-function: steps(1, end); }
 .ch.st-idle .ch-px .ch-me, .ch.st-stalled .ch-px .ch-me { transform: translateY(1px); }
-.ch-px .ch-arm { --bob: -1px; }
-.ch.st-run .ch-px .ch-arm { animation-timing-function: steps(1, end); }
-.px-skin { fill: var(--skin); }
-.px-hair { fill: var(--hair); }
-.px-eye { fill: var(--hair-0); }
-.px-mouth { fill: oklch(from var(--blush) calc(l * .75) c h); }
-.px-blush { fill: color-mix(in srgb, var(--blush) 60%, var(--skin)); }
-.px-s { fill: var(--c); }
-.px-l { fill: color-mix(in srgb, var(--muted) 70%, var(--text)); }
-.px-g { fill: color-mix(in srgb, var(--muted) 40%, var(--panel)); }
-.ch.st-run .px-g, .ch.st-bg .px-g { fill: var(--ok); }
-.px-d { fill: color-mix(in srgb, var(--pot) 40%, var(--panel)); }
-.px-dd { fill: color-mix(in srgb, var(--pot) 55%, var(--panel)); }
-.px-df { fill: color-mix(in srgb, var(--pot) 62%, var(--hair-0)); }
-.px-h { fill: var(--coord); }
-.ch-name { max-width: 100%; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ch-meta { max-width: 100%; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 500px) { .room-floor { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); } .ch-svg { height: 104px; } }
+.ch-px .ch-arm, .ch.st-run .ch-px .ch-arm { --bob: -1px; animation-timing-function: steps(1, end); }
+.px-line { fill: oklch(from var(--c) .2 .03 h); }
+.wall-item .px-line { fill: var(--ink); }
+.px-skin { fill: var(--skin); } .px-skin2 { fill: oklch(from var(--skin) calc(l * .82) c h); }
+.px-hair { fill: var(--hair); } .px-hair1 { fill: oklch(from var(--hair) calc(l + (1 - l) * .35) c h); } .px-hair2 { fill: oklch(from var(--hair) calc(l * .7) c h); }
+.px-ink { fill: var(--ink); } .px-white { fill: var(--on-accent); } .px-mouth { fill: var(--mouth); } .px-blush { fill: color-mix(in srgb, var(--blush) 70%, var(--skin)); }
+.px-s { fill: var(--c); } .px-s1 { fill: oklch(from var(--c) calc(l + (1 - l) * .4) c h); } .px-s2 { fill: oklch(from var(--c) calc(l * .7) c h); }
+.px-chair { fill: var(--chair); } .px-chair2 { fill: oklch(from var(--chair) calc(l * .75) c h); }
+.px-alu { fill: var(--alu); } .px-alu1 { fill: oklch(from var(--alu) calc(l + .08) c h); } .px-alu2 { fill: oklch(from var(--alu) calc(l * .8) c h); }
+.px-logo { fill: oklch(from var(--alu) calc(l * .7) c h); }
+.ch.st-run .px-logo, .ch.st-bg .px-logo { fill: var(--ok); }
+.px-wood1 { fill: oklch(from var(--wood) calc(l + .1) c h); } .px-wood { fill: var(--wood); } .px-woodf { fill: oklch(from var(--wood) calc(l * .72) c h); } .px-woodf2 { fill: oklch(from var(--wood) calc(l * .55) c h); }
+.px-mug { fill: var(--c5); } .px-steam { fill: var(--muted); opacity: .5; animation: pulse 2.4s infinite; }
+.px-pot { fill: var(--pot); } .px-leaf { fill: var(--leaf); } .px-lamp { fill: var(--chair); } .px-light { fill: var(--lamp); opacity: .7; }
+.px-sweat { fill: var(--sweat); } .px-headset { fill: var(--coord); } .px-paper { fill: var(--mug); }
+.pw-frame { fill: color-mix(in srgb, var(--wood) 80%, var(--panel)); } .pw-sky { fill: var(--sky); } .pw-sky2 { fill: color-mix(in srgb, var(--sky) 75%, var(--panel)); }
+:root[data-theme="dark"] :is(.pw-sky, .pw-sky2) { fill: color-mix(in srgb, var(--sky) 30%, var(--night)); }
+.pw-white { fill: var(--mug); } .pw-sill { fill: color-mix(in srgb, var(--wood) 60%, var(--panel)); } .pw-board { fill: color-mix(in srgb, var(--wood) 85%, var(--ink)); }
+@media (max-width: 500px) { .ch { width: 124px; } .ch-svg { width: 108px; height: 108px; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }

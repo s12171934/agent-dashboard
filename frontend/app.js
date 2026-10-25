@@ -2846,159 +2846,342 @@ function agViewBind() {
 }
 // ---------- 캐릭터 모드: the agents tab as an office ----------
 // Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
-// sessions share the last one. Each agent is a person at a desk wearing its model's colour, drawn in one of two styles
-// (charStyle: 「3D」 shaded like a render, 「픽셀」 a pixel sprite); its face and speech bubble carry the state (a sign and
-// words, not motion alone — A3), and it is a button that opens the session like a card.
+// sessions share the last one. A room is one scene (wall with decorations, floor); each agent is a person at their own
+// desk wearing the model's colour, drawn in one of two styles (charStyle: 「3D」 shaded like a render, 「픽셀」 a pixel
+// sprite). The face and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button:
+// a click opens the session like a card, a drag (a long press on touch) or the arrow keys move them anywhere in the room.
+// Moved places are kept on this device (adash.chpos); 「원래 자리로」 puts everyone back on the grid.
 let charStyle = '3d';  // 3d | px
 try { charStyle = localStorage.getItem('adash.charstyle') === 'px' ? 'px' : '3d'; } catch {}
 const CH_FACE = { run: ['down', 'flat'], bg: ['open', 'smile'], wait: ['open', 'smile'], stalled: ['dizzy', 'frown'], idle: ['shut', 'flat'], done: ['happy', 'smile'] };
 const CH_SIGN = { bg: '◍', wait: '…', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chFace = (st, s) => s.decision ? ['open', 'o'] : CH_FACE[st] || CH_FACE.idle;
-// Each character is a person at a desk in a strip of office: wall, window or shelf, floor. The look (skin, hair style
-// and colour, the wall decoration) comes from a hash of the session, so a person keeps theirs across refreshes; the shirt
-// is the model colour (--c). The wall and floor are drawn past the viewBox, so side-by-side cells join into one room;
-// the stage above the picture (.ch-stage, where the speech bubble sits) is the same wall colour.
+// The look (skin, hair cut and colour, top, desk props) comes from a hash of the session, so a person keeps theirs
+// across refreshes.
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const HAIRS = ['short', 'long', 'bun', 'spiky'];
-const chLook = s => { const h = chHash(s.id || s.path); return { skin: h % 4, hair: (h >>> 2) % 4, cut: HAIRS[(h >>> 4) % 4], deco: (h >>> 6) % 4 }; };
-// 3D: shaded like a render. Gradients read --c, --skin and --hair from the button, so each SVG carries its own, named
+const chLook = s => { const h = chHash(s.id || s.path); return { skin: h % 4, hair: (h >>> 2) % 4, cut: HAIRS[(h >>> 4) % 4], prop: (h >>> 6) % 4, top: (h >>> 8) % 3 }; };
+const worried = (st, s) => st === 'stalled' || !!s.decision;
+
+// 3D: shaded like a render. Gradients read --c, --skin and --hair from the person, so each SVG carries its own, named
 // with a running number.
 let chSeq = 0;
-const C3_EYES = {
-  open: '<ellipse cx="55" cy="61" rx="1.7" ry="2.2"/><ellipse cx="65" cy="61" rx="1.7" ry="2.2"/>',
-  down: '<path d="M53 62.5q2 1.6 4 0M63 62.5q2 1.6 4 0"/>',
-  shut: '<path d="M53 61.5q2 1.6 4 0M63 61.5q2 1.6 4 0"/>',
-  happy: '<path d="M53 62q2-2.6 4 0M63 62q2-2.6 4 0"/>',
-  dizzy: '<path d="M53.5 59.5l3 3M56.5 59.5l-3 3M63.5 59.5l3 3M66.5 59.5l-3 3"/>',
+const C3_EYE = {
+  open: x => `<ellipse class="c3-white" cx="${x}" cy="51.6" rx="2.9" ry="3.3"/><circle class="c3-iris" cx="${x + .3}" cy="52.1" r="2.2"/><circle class="c3-pupil" cx="${x + .3}" cy="52.1" r="1.1"/><circle class="c3-white" cx="${x + 1.1}" cy="51" r=".75"/><path class="c3-lid" d="M${x - 3.2} 50.4q3.2-3 6.4 0"/>`,
+  down: x => `<ellipse class="c3-white" cx="${x}" cy="51.8" rx="2.9" ry="3.1"/><circle class="c3-iris" cx="${x + .2}" cy="53.4" r="2"/><circle class="c3-pupil" cx="${x + .2}" cy="53.6" r="1"/><path class="c3-lidskin" d="M${x - 3.4} 52.2a3.4 3.4 0 0 1 6.8 0z"/><path class="c3-lid" d="M${x - 3.3} 52.2h6.6"/>`,
+  shut: x => `<path class="c3-lid" d="M${x - 3} 52q3 2.6 6 0"/><path class="c3-lid thin" d="M${x + 2.8} 52.2l1.3-.9"/>`,
+  happy: x => `<path class="c3-lid" d="M${x - 3} 53.4q3-4.2 6 0"/>`,
+  dizzy: x => `<path class="c3-lid thin" d="M${x - 2.6} 52a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0-5.2 0m1.4 0a1.2 1.2 0 1 0 2.4 0"/>`,
 };
-const C3_MOUTH = { flat: '<path d="M57.5 67.5h5"/>', smile: '<path d="M56.5 66.5q3.5 3 7 0"/>', o: '<ellipse cx="60" cy="67.5" rx="1.6" ry="2"/>', frown: '<path d="M56.5 68.5q3.5-2.6 7 0"/>' };
+const C3_MOUTH = {
+  flat: '<path class="c3-lid" d="M57.4 60.4q2.6 .8 5.2 0"/>',
+  smile: '<path class="c3-mouth" d="M55.6 59.2q4.4 4.8 8.8 0q-4.4 1.8-8.8 0z"/><path class="c3-teeth" d="M56.8 59.7q3.2 .9 6.4 0"/>',
+  o: '<ellipse class="c3-mouth" cx="60" cy="60.6" rx="2" ry="2.5"/>',
+  frown: '<path class="c3-lid" d="M56.4 61.6q3.6-2.6 7.2 0"/>',
+};
+const C3_FRINGE = 'M45.2 50C44 36 51 31.5 60 31.5S76 36 74.8 50C73 44 70 41.5 66 41C62 44 54 44.5 49 42.8C47 44.5 45.8 47 45.2 50z';
 const C3_HAIR = {
-  short: '<path d="M47.6 59q-1.6-15 12.4-15.4q14 .4 12.4 15.4q-3.6-8.4-12.4-8.6q-8.8.2-12.4 8.6z"/>',
-  long: '<path d="M47.6 59q-1.6-15 12.4-15.4q14 .4 12.4 15.4q-3.6-8.4-12.4-8.6q-8.8.2-12.4 8.6z"/>',
-  bun: '<circle cx="60" cy="43" r="5.5"/><path d="M47.6 59q-1.6-15 12.4-15.4q14 .4 12.4 15.4q-4-7-12.4-7.4q-8.4.4-12.4 7.4z"/>',
-  spiky: '<path d="M47.4 59l-.6-9 3.4 2 1.4-6.4 3.6 4 3.2-6.4 3 5.6 3.8-4.6 1.2 6.4 3.6-1.6-.4 10q-3.8-8-12.6-8.2q-8.8.2-12.6 8.2z"/>',
+  short: C3_FRINGE, long: C3_FRINGE, bun: C3_FRINGE,
+  spiky: 'M45.2 50C44.6 42 46 37 48 35L48.6 29.6L52.6 33L55 27.5L58.6 32L62 26.8L64.6 32L68.4 28.6L69.6 34L73.6 33C75.4 37.5 75.6 44 74.8 50C72.8 44 68 41 60 41S47.2 44 45.2 50z',
 };
-const C3_DECO = [
-  '<g class="sc-win"><rect x="6" y="40" width="28" height="34" rx="2"/><path class="sc-glass" d="M9 43h10v13H9zM21 43h10v13H21zM9 58h10v13H9zM21 58h10v13H21z"/></g>'
-    + '<g class="sc-plant"><path class="sc-leaf" d="M98 82q-8-6-4-14q5 4 4 14M99 82q2-12 9-13q0 9-9 13M98.5 82q-1-10 1-16q4 7-1 16"/><path class="sc-pot" d="M93 82h12l-1.6 9h-8.8z"/></g>',
-  '<g class="sc-shelf"><path class="sc-board" d="M4 58h30v2H4zM4 74h30v2H4z"/><path class="sc-book a" d="M6 46h4v12H6zM20 64h4v10h-4z"/><path class="sc-book b" d="M11 48h3v10h-3zM25 62h3v12h-3z"/><path class="sc-book c" d="M15 45h4v13h-4zM8 65h5v9H8z"/></g>'
-    + '<g class="sc-clock"><circle cx="103" cy="50" r="8"/><path d="M103 45v5l3.4 2"/></g>',
-  '<g class="sc-win"><rect x="86" y="40" width="28" height="34" rx="2"/><path class="sc-glass" d="M89 43h10v13H89zM101 43h10v13h-10zM89 58h10v13H89zM101 58h10v13h-10z"/></g>'
-    + '<g class="sc-mug"><path d="M17 86h8v9h-8z"/><path class="sc-mug-h" d="M25 88q4 0 4 2.5t-4 2.5"/></g>',
-  '<g class="sc-poster"><rect x="8" y="42" width="22" height="28" rx="1.5"/><path class="sc-poster-art" d="M11 63l6-9 4 5 3-3 4 7z"/><circle class="sc-poster-art" cx="24" cy="49" r="2.5"/></g>'
-    + '<g class="sc-plant"><path class="sc-leaf" d="M100 82q-9-5-6-15q6 4 6 15M100.5 82q1-12 9-14q0 10-9 14"/><path class="sc-pot" d="M95 82h11l-1.4 9h-8.2z"/></g>',
-];
+const C3_PROP = {
+  mug: g => `<path d="M17 86.4h10.4v9.4q0 2.2-2.2 2.2h-6q-2.2 0-2.2-2.2z" fill="${g('m')}"/><path class="c3-mugh" d="M27.4 88.6q4.4 0 4.4 3t-4.4 3"/><ellipse class="c3-coffee" cx="22.2" cy="86.4" rx="5.2" ry="1.4"/><path class="c3-steam" d="M20.4 83q-2-3 0-5.6t0-5.6M24.4 82.4q-2-3 0-5.4"/>`,
+  plant: g => `<path class="c3-leafv" d="M100 88C92 85 90 77 92 72C97 75 100 81 100 88zM100 88C101 79 104 72 110 70C111 77 107 85 100 88zM100 88C98 80 99 73 101 68C104 74 103 82 100 88z" fill="${g('v')}"/><path class="c3-vein" d="M100 87C96 82 94 78 93 74M100 87C103 80 106 75 108.6 72"/><path d="M93.4 89h13.2l-1.8 8.8h-9.6z" fill="${g('p')}"/><rect class="c3-potrim" x="92.6" y="87.4" width="14.8" height="3" rx="1"/>`,
+  papers: () => `<path class="c3-paper b" d="M9 97l3.4-6.4h20l-3.4 6.4z"/><path class="c3-paper" d="M8 95.6l3.4-6.4h20l-3.4 6.4z"/><path class="c3-ink2" d="M13.4 91.4h12M12.6 93h10"/><path class="c3-pen" d="M12 98.2l18-4.4"/>`,
+  lamp: () => `<path class="c3-lampl" d="M107.6 80.4L96 97h23z"/><ellipse class="c3-lampm" cx="106" cy="96.8" rx="7.4" ry="2"/><path class="c3-lampa" d="M106 96L99.6 82L108.6 75"/><path class="c3-lampm" d="M103.6 71.6l11.4 6.4-3.6 4.8-11-6.6z"/><circle class="c3-bulb" cx="109.4" cy="80.6" r="1.6"/>`,
+};
+const C3_PROPS = [['mug', 'plant'], ['papers', 'lamp'], ['mug', 'lamp'], ['papers', 'plant']];
 function charSvg3d(st, s) {
   const n = ++chSeq, g = k => `url(#c3${k}${n})`, [eyes, mouth] = chFace(st, s), L = chLook(s);
-  const grad = (k, cls) => `<radialGradient id="c3${k}${n}" cx=".38" cy=".3" r=".8"><stop offset="0" class="${cls}-hi"/><stop offset=".5" class="${cls}"/><stop offset="1" class="${cls}-lo"/></radialGradient>`;
-  return `<svg class="ch-svg ch-3d" viewBox="4 38 112 86" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-    <defs>${grad('k', 'c3-skin')}${grad('h', 'c3-hair')}${grad('s', 'c3-shirt')}
-      <linearGradient id="c3d${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="c3-desk-hi"/><stop offset="1" class="c3-desk"/></linearGradient>
-      <linearGradient id="c3l${n}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="c3-lap-hi"/><stop offset="1" class="c3-lap"/></linearGradient>
-    </defs>
-    <rect class="sc-wall" x="-400" y="-300" width="920" height="404"/>
-    <rect class="sc-base" x="-400" y="104" width="920" height="3"/>
-    <rect class="sc-floor" x="-400" y="107" width="920" height="300"/>
-    <path class="sc-plank" d="M-400 113h920M-400 122h920"/>
-    <g class="sc-deco">${C3_DECO[L.deco]}</g>
-    <rect class="c3-chair" x="42" y="62" width="36" height="42" rx="9"/>
+  const rg = (k, cls, cx = .38, cy = .3, r = .8) => `<radialGradient id="c3${k}${n}" cx="${cx}" cy="${cy}" r="${r}"><stop offset="0" class="${cls}-hi"/><stop offset=".55" class="${cls}"/><stop offset="1" class="${cls}-lo"/></radialGradient>`;
+  const lg = (k, cls, x2 = 0, y2 = 1) => `<linearGradient id="c3${k}${n}" x1="0" y1="0" x2="${x2}" y2="${y2}"><stop offset="0" class="${cls}-hi"/><stop offset="1" class="${cls}-lo"/></linearGradient>`;
+  const fade = (k, cls) => `<radialGradient id="c3${k}${n}"><stop offset="0" class="${cls}"/><stop offset="1" class="${cls}" stop-opacity="0"/></radialGradient>`;
+  const brows = worried(st, s) ? '<path class="c3-brow" d="M50.6 47.2L57 45.2M69.4 47.2L63 45.2"/>' : '<path class="c3-brow" d="M50.8 46.4q3.2-2.2 6.4 0M62.8 46.4q3.2-2.2 6.4 0"/>';
+  const top = [`<path class="c3-crew" d="M53.6 74.8Q60 80.4 66.4 74.8"/>`,
+    `<path class="c3-collarw" d="M53 74l7 6.4-3.4 4.6-5.8-8zM67 74l-7 6.4 3.4 4.6 5.8-8z"/><path class="c3-placket" d="M60 81v18"/><circle class="c3-button" cx="60" cy="88" r=".9"/><circle class="c3-button" cx="60" cy="94" r=".9"/>`,
+    `<path class="c3-string" d="M56.4 79v9.6M63.6 79v9.6"/><circle class="c3-tip" cx="56.4" cy="89" r="1.1"/><circle class="c3-tip" cx="63.6" cy="89" r="1.1"/>`][L.top];
+  const hood = L.top === 2 ? `<path d="M48.6 77Q60 64 71.4 77Q60 72.4 48.6 77z" fill="${g('s')}"/>` : '';
+  return `<svg class="ch-svg ch-3d" viewBox="0 0 120 120" aria-hidden="true">
+    <defs>${rg('k', 'c3-skin')}${rg('h', 'c3-hair', .4, .2, .9)}${rg('s', 'c3-shirt', .35, .2, .9)}${rg('c', 'c3-chair', .4, .15, .9)}${lg('d', 'c3-wood')}${lg('f', 'c3-woodf')}
+      ${lg('l', 'c3-alu', 1, 1)}${lg('m', 'c3-mug', 1, 0)}${lg('p', 'c3-pot', 1, 0)}${lg('v', 'c3-leaf', 1, 1)}${fade('o', 'c3-sh')}${fade('b', 'c3-blushc')}${fade('g', 'c3-glowc')}</defs>
+    <ellipse cx="60" cy="116" rx="60" ry="5" fill="${g('o')}"/>
+    <rect x="37" y="44" width="46" height="54" rx="13" fill="${g('c')}"/><path class="c3-chairhi" d="M45 46.6H75"/>
     <g class="ch-me">
-      ${L.cut === 'long' ? `<path d="M46.5 58q-3 26 4 30h19q7-4 4-30z" fill="${g('h')}"/>` : ''}
-      <path d="M39 106q0-28 21-28t21 28z" fill="${g('s')}"/>
-      <path class="c3-collar" d="M54.5 78.6l5.5 6 5.5-6"/>
-      <rect x="56" y="69" width="8" height="11" rx="3" class="c3-neck"/>
-      <ellipse cx="48" cy="61" rx="2.6" ry="3.6" fill="${g('k')}"/><ellipse cx="72" cy="61" rx="2.6" ry="3.6" fill="${g('k')}"/>
-      <ellipse cx="60" cy="60" rx="12" ry="13.4" fill="${g('k')}"/>
-      ${['happy'].includes(eyes) || mouth === 'smile' ? '<ellipse class="c3-blush" cx="52.5" cy="65.5" rx="2.6" ry="1.5"/><ellipse class="c3-blush" cx="67.5" cy="65.5" rx="2.6" ry="1.5"/>' : ''}
-      <g class="c3-ink">${C3_EYES[eyes]}${C3_MOUTH[mouth]}<path class="c3-brow" d="M52.5 56.4q2.5-1.4 5 0M62.5 56.4q2.5-1.4 5 0"/></g>
-      <g fill="${g('h')}">${C3_HAIR[L.cut]}</g>
-      <ellipse class="c3-gloss" cx="54" cy="49" rx="5" ry="2" transform="rotate(-20 54 49)"/>
-      ${isBoss(s) ? '<g class="c3-headset"><path class="c3-band" d="M47 58q13-22 26 0"/><rect x="44.5" y="56" width="5" height="9" rx="2.4"/><rect x="70.5" y="56" width="5" height="9" rx="2.4"/><path class="c3-band" d="M73 63q0 8-8 8.6"/><circle cx="64.4" cy="71.6" r="1.6"/></g>' : ''}
-      ${st === 'stalled' ? '<path class="c3-sweat" d="M75 47q-2.6 3.6-2.6 5.2a2.6 2.6 0 0 0 5.2 0q0-1.6-2.6-5.2z"/>' : ''}
+      ${L.cut === 'bun' ? `<circle cx="60" cy="29.6" r="6.6" fill="${g('h')}"/><path class="c3-strand" d="M56 27q4-3 8 0"/>` : ''}
+      <path d="M32 106C32 86 40 76.4 54 74.6Q60 77.4 66 74.6C80 76.4 88 86 88 106z" fill="${g('s')}"/>
+      <path class="c3-fold" d="M76 81C84 87 88 96 88 106H75C77 97 78 89 76 81zM44 88q3 8 1 18"/>
+      ${hood}
+      ${L.cut === 'long' ? `<path d="M44.6 47C41.6 63 43.4 79 49.6 84.6H70.4C76.6 79 78.4 63 75.4 47z" fill="${g('h')}"/>` : ''}
+      <path class="c3-neck" d="M54.4 61h11.2v13q-5.6 3.2-11.2 0z"/><ellipse class="c3-chin" cx="60" cy="66.6" rx="6" ry="2.2"/>
+      ${top}
+      <ellipse cx="45.6" cy="52" rx="3.2" ry="4.4" fill="${g('k')}"/><ellipse cx="74.4" cy="52" rx="3.2" ry="4.4" fill="${g('k')}"/>
+      <path class="c3-ear" d="M45.6 50q-1.4 2 0 4M74.4 50q1.4 2 0 4"/>
+      <ellipse cx="60" cy="50" rx="14.5" ry="16" fill="${g('k')}"/>
+      <ellipse class="c3-jaw" cx="60" cy="62.6" rx="10" ry="3.6"/><ellipse class="c3-jaw" cx="60" cy="43.4" rx="12" ry="3"/>
+      ${eyes === 'happy' || mouth === 'smile' ? `<ellipse cx="50.4" cy="57.4" rx="4" ry="2.6" fill="${g('b')}"/><ellipse cx="69.6" cy="57.4" rx="4" ry="2.6" fill="${g('b')}"/>` : ''}
+      ${C3_EYE[eyes](54)}${C3_EYE[eyes](66)}${brows}
+      <path class="c3-nose" d="M60.4 53.4q1.8 3.4-.8 4.6"/>
+      ${C3_MOUTH[mouth]}
+      <path d="${C3_HAIR[L.cut]}" fill="${g('h')}"/>
+      <path class="c3-strand" d="M56 32.6C54 37 52 40 49.4 42.4M63 32.8C64.4 36 65.4 39 66.4 41M59.6 32.4C59 36.4 57.6 40.6 55 43.6"/>
+      <path class="c3-shine" d="M50.4 37C54 34.2 59.6 33.4 64 34.6"/>
+      ${isBoss(s) ? `<path class="c3-band" d="M44.4 50C44 32.4 76 32.4 75.6 50"/><rect class="c3-cup" x="41.4" y="45.6" width="6.2" height="11" rx="3.1"/><rect class="c3-cup" x="72.4" y="45.6" width="6.2" height="11" rx="3.1"/><path class="c3-band thin" d="M76 54.4C76 62 71.4 64.6 66.2 64.8"/><circle class="c3-cup" cx="65.4" cy="64.8" r="1.9"/>` : ''}
+      ${st === 'stalled' ? '<path class="c3-sweat" d="M78.4 37.6C76.4 41.2 75.8 42.6 75.8 43.8a2.6 2.6 0 0 0 5.2 0C81 42.6 80.4 41.2 78.4 37.6z"/><circle class="c3-white" cx="77.4" cy="43.4" r=".7"/>' : ''}
+      <ellipse class="c3-glow" cx="60" cy="76" rx="26" ry="22" fill="${g('g')}"/>
     </g>
-    <path d="M12 96H108L114 101H6z" fill="${g('d')}"/>
-    <path d="M46 98l3.4-16h21.2l3.4 16z" fill="${g('l')}"/>
-    <circle class="c3-logo" cx="60" cy="89" r="2.2"/>
-    <g class="ch-arm l"><path d="M43 86q-3 8 2.6 11.4" class="c3-arm" stroke="${g('s')}"/><ellipse cx="47" cy="97.6" rx="4.6" ry="3" fill="${g('k')}"/></g>
-    <g class="ch-arm r"><path d="M77 86q3 8-2.6 11.4" class="c3-arm" stroke="${g('s')}"/><ellipse cx="73" cy="97.6" rx="4.6" ry="3" fill="${g('k')}"/></g>
-    <rect class="c3-desk-front" x="6" y="101" width="108" height="15"/>
-    <path class="c3-desk-edge" d="M6 101h108"/>
-    <ellipse class="c3-shadow" cx="60" cy="119" rx="54" ry="3"/>
+    <path d="M5 97H115L119.4 104H.6z" fill="${g('d')}"/>
+    <path class="c3-grain" d="M14 99.6H42M80 101.6H108M22 102.6H36"/>
+    ${C3_PROPS[L.prop].map(p => C3_PROP[p](g)).join('')}
+    <circle class="c3-halo" cx="60" cy="88.4" r="6"/>
+    <path d="M42.6 99.4L46.4 79H73.6L77.4 99.4z" fill="${g('l')}"/><path class="c3-lidrim" d="M46.6 79.4H73.4"/>
+    <circle class="c3-logo" cx="60" cy="88.4" r="2.4"/>
+    <g class="ch-arm l"><path class="c3-sleeve" d="M38.6 84C35.6 90 37 96 43 98.8" stroke="${g('s')}"/><ellipse cx="46" cy="99.2" rx="5.4" ry="3.5" fill="${g('k')}"/><path class="c3-knuckle" d="M44 98.2h4.4"/></g>
+    <g class="ch-arm r"><path class="c3-sleeve" d="M81.4 84C84.4 90 83 96 77 98.8" stroke="${g('s')}"/><ellipse cx="74" cy="99.2" rx="5.4" ry="3.5" fill="${g('k')}"/><path class="c3-knuckle" d="M71.6 98.2h4.4"/></g>
+    <rect x=".6" y="104" width="118.8" height="13" fill="${g('f')}"/><path class="c3-edge" d="M.6 104.2H119.4"/>
+    <rect class="c3-drawer" x="84" y="106.6" width="28" height="7.8" rx="1.4"/><path class="c3-handle" d="M93 110.5h10"/>
   </svg>`;
 }
-// 픽셀: the same scene as a 30×32 sprite. Letters are pixel classes; a row's runs of one letter become one rect.
-const PX_CLS = { S: 'px-skin', H: 'px-hair', E: 'px-eye', M: 'px-mouth', R: 'px-blush', C: 'px-s', L: 'px-l', G: 'px-g', P: 'px-h', T: 'px-d', t: 'px-dd', D: 'px-df',
-  F: 'sc-frame', g: 'sc-glasspx', l: 'sc-leafpx', p: 'sc-potpx', b: 'sc-boardpx', x: 'sc-bookpx a', y: 'sc-bookpx b', z: 'sc-bookpx c', K: 'sc-clockpx', W: 'sc-facepx', m: 'sc-mugpx',
-  A: 'px-skin', B: 'px-skin' };
-function pxRects(rows, y0, x0 = 0) {
-  let h = '';
-  rows.forEach((row, y) => { for (let x = 0; x < row.length;) { const c = row[x]; let w = 1; while (row[x + w] === c) w++; if (PX_CLS[c]) h += `<rect class="${PX_CLS[c]}" x="${x + x0}" y="${y + y0}" width="${w}" height="1"/>`; x += w; } });
-  return h;
+
+// 픽셀: painted on a 32×32 grid and then outlined (every empty pixel next to a painted one becomes the outline). Each
+// pixel belongs to a layer: me (head and body, which bob), l and r (the hands, which type), base (the rest). Sprites
+// are cached by everything that shapes them.
+const PX_CLS = { s: 'px-skin', S: 'px-skin2', h: 'px-hair', H: 'px-hair1', j: 'px-hair2', e: 'px-ink', w: 'px-white', m: 'px-mouth', b: 'px-blush', u: 'px-s', U: 'px-s2', V: 'px-s1',
+  c: 'px-chair', C: 'px-chair2', l: 'px-alu', L: 'px-alu1', k: 'px-alu2', g: 'px-logo', D: 'px-wood1', d: 'px-wood', f: 'px-woodf', F: 'px-woodf2', q: 'px-mug', t: 'px-steam',
+  p: 'px-pot', v: 'px-leaf', K: 'px-lamp', y: 'px-light', z: 'px-sweat', P: 'px-headset', o: 'px-line', n: 'px-paper' };
+const pxMemo = new Map();
+function pxSprite(st, s) {
+  const [eyes, mouth] = chFace(st, s), L = chLook(s), boss = isBoss(s), key = [eyes, mouth, L.cut, L.prop, L.top, boss, st === 'stalled'].join('|');
+  if (pxMemo.has(key)) return pxMemo.get(key);
+  const N = 32, G = Array.from({ length: N }, () => Array(N).fill(null));
+  const put = (x, y, c, ly = 'base') => { if (x >= 0 && y >= 0 && x < N && y < N) G[y][x] = { c, ly }; };
+  const rect = (x, y, w, h, c, ly) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) put(i, j, c, ly); };
+  const ell = (cx, cy, rx, ry, c, ly, keep = () => true) => { for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (((i + .5 - cx) / rx) ** 2 + ((j + .5 - cy) / ry) ** 2 <= 1 && keep(i, j)) put(i, j, c, ly); };
+  const pts = (list, c, ly) => list.forEach(([x, y]) => put(x, y, c, ly));
+  const mirror = list => list.flatMap(([x, y]) => [[x, y], [31 - x, y]]);
+  // chair, then the person front to back
+  rect(10, 13, 12, 12, 'c'); rect(20, 13, 2, 12, 'C'); rect(11, 13, 9, 1, 'C');
+  if (L.cut === 'bun') { ell(16, 2.6, 2.4, 2.2, 'h', 'me'); put(15, 1, 'H', 'me'); }
+  if (L.cut === 'long') { rect(8, 7, 3, 12, 'h', 'me'); rect(21, 7, 3, 12, 'j', 'me'); }
+  rect(11, 17, 10, 1, 'u', 'me'); rect(10, 18, 12, 1, 'u', 'me'); rect(9, 19, 14, 6, 'u', 'me');
+  for (let j = 17; j < 25; j++) for (let i = 9; i < 23; i++) if (G[j][i]?.c === 'u' && (i >= 20 || j >= 23)) put(i, j, 'U', 'me');
+  pts([[10, 18], [10, 19], [10, 20], [11, 18]], 'V', 'me');
+  rect(8, 19, 2, 5, 'u', 'me'); rect(22, 19, 2, 5, 'U', 'me');
+  rect(14, 15, 4, 2, 'S', 'me');
+  if (L.top === 1) pts(mirror([[13, 17], [14, 17], [14, 18]]), 'w', 'me');
+  else if (L.top === 2) { pts(mirror([[12, 16], [13, 16]]), 'u', 'me'); pts(mirror([[14, 19], [14, 20], [14, 21]]), 'w', 'me'); }
+  else pts([[15, 17], [16, 17]], 'S', 'me');
+  ell(16, 10, 6.2, 6.1, 's', 'me');
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (G[j][i]?.c === 's' && (i >= 20 || j >= 15)) put(i, j, 'S', 'me');
+  pts([[9, 10]], 's', 'me'); pts([[9, 11]], 'S', 'me'); pts([[22, 10], [22, 11]], 'S', 'me');
+  // hair: a cap with a side-swept fringe, highlight and shade
+  ell(16, 7.2, 6.9, 4.4, 'h', 'me', (i, j) => j <= 7);
+  rect(10, 8, 4, 1, 'h', 'me'); rect(20, 8, 2, 1, 'h', 'me'); put(10, 9, 'h', 'me'); put(21, 9, 'h', 'me');
+  if (L.cut === 'spiky') pts([[11, 2], [14, 1], [14, 2], [17, 2], [20, 2], [12, 2], [18, 1]], 'h', 'me');
+  for (let j = 0; j < 10; j++) for (let i = 0; i < N; i++) if (G[j][i]?.c === 'h' && G[j][i].ly === 'me' && (i >= 19 || (j === 7 && i >= 14))) put(i, j, 'j', 'me');
+  pts([[12, 4], [13, 4], [14, 4], [11, 5], [12, 5]], 'H', 'me');
+  if (L.cut === 'long') { rect(9, 9, 1, 9, 'h', 'me'); rect(22, 9, 1, 9, 'j', 'me'); }
+  // face
+  const brow = worried(st, s) ? [[12, 9], [13, 8]] : [[12, 9], [13, 9]];
+  pts([...brow, ...brow.map(([x, y]) => [31 - x, y])], 'j', 'me');
+  ({ open: () => { pts([[12, 10], [12, 11], [13, 11], [18, 10], [18, 11], [19, 11]], 'e', 'me'); pts([[13, 10], [19, 10]], 'w', 'me'); },
+    down: () => pts([[12, 11], [13, 11], [18, 11], [19, 11]], 'e', 'me'),
+    shut: () => pts([[11, 11], [12, 12], [13, 12], [14, 11], [17, 11], [18, 12], [19, 12], [20, 11]], 'e', 'me'),
+    happy: () => pts(mirror([[11, 11], [12, 10], [13, 11]]), 'e', 'me'),
+    dizzy: () => pts(mirror([[11, 10], [13, 10], [12, 11], [11, 12], [13, 12]]), 'e', 'me') })[eyes]();
+  put(16, 12, 'S', 'me');
+  ({ flat: () => pts([[15, 13], [16, 13]], 'e', 'me'),
+    smile: () => { pts([[14, 13], [17, 13]], 'e', 'me'); pts([[15, 14], [16, 14]], 'm', 'me'); },
+    o: () => pts([[15, 13], [16, 13], [15, 14], [16, 14]], 'm', 'me'),
+    frown: () => { pts([[15, 13], [16, 13]], 'e', 'me'); pts([[14, 14], [17, 14]], 'e', 'me'); } })[mouth]();
+  if (mouth === 'smile' || eyes === 'happy') pts(mirror([[11, 13]]), 'b', 'me');
+  if (boss) { pts(mirror([[9, 8], [9, 9], [9, 10], [9, 11], [8, 9], [8, 10]]), 'P', 'me'); pts(mirror([[10, 6], [10, 7], [11, 4], [11, 5], [12, 3], [13, 3]]), 'P', 'me'); pts([[14, 2], [15, 2], [16, 2], [17, 2], [21, 12], [20, 13], [19, 13]], 'P', 'me'); }
+  if (st === 'stalled') pts([[24, 5], [24, 6], [23, 6]], 'z', 'me');
+  // laptop (its back), hands, desk and props
+  rect(11, 19, 10, 6, 'l'); rect(11, 19, 10, 1, 'L'); rect(19, 20, 2, 5, 'k'); pts([[15, 21], [16, 21], [15, 22], [16, 22]], 'g');
+  rect(8, 24, 3, 1, 's', 'l'); rect(21, 24, 3, 1, 's', 'r');
+  rect(0, 25, 32, 1, 'D'); rect(0, 26, 32, 1, 'd'); rect(1, 27, 30, 5, 'f'); rect(1, 31, 30, 1, 'F'); rect(21, 28, 8, 1, 'F'); rect(23, 29, 4, 1, 'F');
+  const prop = { mug: () => { rect(3, 21, 3, 4, 'q'); put(6, 22, 'q'); put(6, 23, 'q'); pts([[4, 19], [3, 18], [5, 17]], 't'); },
+    plant: () => { rect(26, 22, 3, 3, 'p'); pts([[25, 19], [26, 18], [27, 17], [28, 18], [29, 19], [26, 20], [27, 19], [27, 20], [28, 20], [27, 21], [26, 21], [28, 21]], 'v'); },
+    papers: () => { rect(2, 23, 6, 2, 'n'); rect(3, 22, 5, 1, 'n'); pts([[3, 23], [4, 23], [5, 23]], 'L'); pts([[8, 21], [7, 22]], 'q'); },
+    lamp: () => { rect(25, 24, 4, 1, 'K'); pts([[27, 23], [27, 22], [26, 21], [25, 20]], 'K'); rect(23, 18, 4, 2, 'K'); pts([[23, 20], [24, 20], [24, 21]], 'y'); } };
+  C3_PROPS[L.prop].forEach(p => prop[p]());
+  // outline: chair pixels against the person, then empty pixels around everything (not the steam or lamp light)
+  const soft = c => c === 't' || c === 'y';
+  const near = (i, j, f) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => { const q = G[j + b]?.[i + a]; return q && f(q); });
+  const edge = [];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const p = G[j][i];
+    if (p && (p.c === 'c' || p.c === 'C') && near(i, j, q => q.ly === 'me')) edge.push([i, j, 'base']);
+    if (!p) { let ly = null; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([a, b]) => { const q = G[j + b]?.[i + a]; if (q && !soft(q.c) && !ly) ly = q.ly; }); if (ly) edge.push([i, j, ly]); }
+  }
+  edge.forEach(([i, j, ly]) => put(i, j, 'o', ly));
+  const layers = { base: '', me: '', l: '', r: '' };
+  for (let j = 0; j < N; j++) for (let i = 0; i < N;) {
+    const p = G[j][i]; let w = 1;
+    while (p && G[j][i + w] && G[j][i + w].c === p.c && G[j][i + w].ly === p.ly) w++;
+    if (p) layers[p.ly] += `<rect class="${PX_CLS[p.c]}" x="${i}" y="${j}" width="${w}" height="1"/>`;
+    i += w;
+  }
+  const svg = `<svg class="ch-svg ch-px" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">${layers.base}<g class="ch-me">${layers.me}</g><g class="ch-arm l">${layers.l}</g><g class="ch-arm r">${layers.r}</g></svg>`;
+  pxMemo.set(key, svg);
+  return svg;
 }
-const PX_EYES = { open: ['SESSES', 'SESSES'], down: ['SSSSSS', 'SESSES'], shut: ['SSSSSS', 'EESSEE'], happy: ['SESSES', 'ESEESE'], dizzy: ['ESEESE', 'SESSES'] };
-const PX_MOUTH = { flat: 'SSEESS', smile: 'RMMMMR', o: 'SSMMSS', frown: 'SEEEES' };
-const PX_WIN = ['FFFFFFF', 'FggFggF', 'FggFggF', 'FFFFFFF', 'FggFggF', 'FggFggF', 'FFFFFFF'];
-const PX_PLANT = ['.l.l.', 'lllll', '.lll.', '..l..', '.ppp.', '.ppp.'];
-const PX_SHELF = ['x.yz.', 'bbbbbbb', '.zx.yx.', 'bbbbbbb'].map(r => r.padEnd(7, '.'));
-const PX_CLOCK = ['.KKK.', 'KWWWK', 'KWKWK', 'KWWWK', '.KKK.'];
-const PX_MUG = ['mmm', 'mm.'];
-const PX_DECO = [[[PX_WIN, 1, 10], [PX_PLANT, 23, 18]], [[PX_SHELF, 1, 13], [PX_CLOCK, 23, 11]], [[PX_WIN, 22, 10], [PX_MUG, 5, 22]], [[PX_CLOCK, 2, 11], [PX_PLANT, 23, 18]]];
-function charSvgPx(st, s) {
-  const [eyes, mouth] = chFace(st, s), L = chLook(s), mid = r => '.........' + r + '.........';
-  const set = (r, i, c) => r.slice(0, i) + c + r.slice(i + 1);
-  let me = [L.cut === 'bun' ? '.....HH.....' : '............', L.cut === 'spiky' ? '..H.HHHH.H..' : '...HHHHHH...', '..HHHHHHHH..', '..HHHHHHHH..', '..HSSSSSSH..',
-    '.SS' + PX_EYES[eyes][0] + 'SS.', '.SS' + PX_EYES[eyes][1] + 'SS.', '..S' + PX_MOUTH[mouth] + 'S..', '...SSSSSS...', '.....SS.....', '...CCCCCC...', '..CCCCCCCC..'];
-  if (L.cut === 'long') me = me.map((r, i) => i >= 4 && i <= 10 ? set(set(r, 1, 'H'), 10, 'H') : r);
-  if (isBoss(s)) me = me.map((r, i) => i >= 2 && i <= 6 ? set(set(r, 1, 'P'), 10, 'P') : i === 7 ? set(r, 9, 'P') : r);
-  const desk = [mid('.CCLLLLLLCC.'), mid('.CCLLGGLLCC.'), '.'.repeat(30), '.' + 'T'.repeat(28) + '.', '.' + 't'.repeat(28) + '.', ...Array(4).fill('..' + 'D'.repeat(26) + '..')];
-  return `<svg class="ch-svg ch-px" viewBox="1 9 28 22" preserveAspectRatio="xMidYMax meet" shape-rendering="crispEdges" aria-hidden="true">
-    <rect class="sc-wall" x="-100" y="-80" width="230" height="106"/><rect class="sc-base" x="-100" y="26" width="230" height="1"/><rect class="sc-floor" x="-100" y="27" width="230" height="80"/>
-    <g class="sc-deco">${PX_DECO[L.deco].map(([rows, x, y]) => pxRects(rows, y, x)).join('')}</g>
-    <rect class="c3-chair" x="10" y="15" width="10" height="11"/>
-    <g class="ch-me">${pxRects(me.map(mid), 9)}</g>
-    ${pxRects(desk, 21)}
-    <g class="ch-arm l">${pxRects(['A'], 23, 10)}</g><g class="ch-arm r">${pxRects(['B'], 23, 19)}</g>
-  </svg>`;
-}
+
+// The room's wall: decorations in a row (hidden past what the width holds — chLayout). 3D items are shaded SVG; pixel
+// items are letter sprites like the people.
+const WALL3D = {
+  window: () => `<svg viewBox="0 0 60 52" width="60" height="52"><rect class="w3-frame" x="2" y="2" width="56" height="42" rx="3"/><rect class="w3-sky" x="6" y="6" width="22" height="34"/><rect class="w3-sky" x="32" y="6" width="22" height="34"/>
+    <ellipse class="w3-cloud" cx="16" cy="16" rx="7" ry="3"/><ellipse class="w3-cloud" cx="21" cy="14" rx="4.6" ry="3.4"/><ellipse class="w3-cloud" cx="44" cy="26" rx="6" ry="2.4"/><path class="w3-glint" d="M10 36L22 10M36 36L44 18"/><rect class="w3-sill" x="0" y="44" width="60" height="5" rx="1.6"/></svg>`,
+  shelf: () => `<svg viewBox="0 0 70 52" width="70" height="52"><path class="w3-board" d="M2 22h66v4H2zM2 46h66v4H2z"/><path class="w3-book a" d="M6 6h6v16H6zM40 32h6v14h-6z"/><path class="w3-book b" d="M13 9h5v13h-5zM47 30h5v16h-5z"/>
+    <path class="w3-book c" d="M19 4h7v18h-7zM8 34h7v12H8z"/><path class="w3-book d" d="M27 12l5-1 3 11h-5zM16 36h6v10h-6z"/><path class="w3-pot" d="M54 14h10l-1.4 8h-7.2z"/><path class="w3-leaf" d="M59 14C55 12 54 7 56 4C58 6 59 9 59 14zM59 14C60 9 62 6 66 5C66 9 63 13 59 14z"/></svg>`,
+  clock: () => { const d = new Date(), hr = (d.getHours() % 12 + d.getMinutes() / 60) * 30, mn = d.getMinutes() * 6;
+    return `<svg viewBox="0 0 34 52" width="34" height="52"><circle class="w3-rim" cx="17" cy="20" r="14"/><circle class="w3-face" cx="17" cy="20" r="11.4"/><path class="w3-tick" d="M17 10.6v2M17 27.4v2M7.6 20h2M24.4 20h2"/>
+      <path class="w3-hand" d="M17 20v-6" transform="rotate(${hr} 17 20)"/><path class="w3-hand thin" d="M17 20v-8.4" transform="rotate(${mn} 17 20)"/><circle class="w3-pin" cx="17" cy="20" r="1.4"/></svg>`; },
+  poster: () => `<svg viewBox="0 0 42 52" width="42" height="52"><rect class="w3-frame dark" x="2" y="3" width="38" height="44" rx="1.6"/><rect class="w3-art" x="5" y="6" width="32" height="38"/><circle class="w3-sun" cx="28" cy="16" r="4.4"/>
+    <path class="w3-hill" d="M5 44V33l9-10 7 7 6-5 10 10v9z"/><path class="w3-hill2" d="M5 44v-5l10-7 10 7 12-4v9z"/></svg>`,
+  board: () => `<svg viewBox="0 0 74 52" width="74" height="52"><rect class="w3-frame" x="1" y="3" width="72" height="42" rx="2"/><rect class="w3-white" x="4" y="6" width="66" height="36"/><path class="w3-pen a" d="M9 13h22M9 19h16M9 25h20"/>
+    <path class="w3-pen b" d="M36 30l6-8 6 5 7-11"/><rect class="w3-note a" x="54" y="9" width="11" height="10" transform="rotate(4 59 14)"/><rect class="w3-note b" x="12" y="31" width="10" height="9" transform="rotate(-5 17 35)"/><rect class="w3-tray" x="20" y="44" width="34" height="3" rx="1"/></svg>`,
+};
+const PXW = {
+  window: ['oooooooooooo', 'oFFFFFFFFFFo', 'oFAAWAFAAAFo', 'oFAWWWFAAAFo', 'oFAAAAFAAWFo', 'oFFFFFFFFFFo', 'oFaaaaFaaaFo', 'oFaaaaFaaaFo', 'oFFFFFFFFFFo', 'oSSSSSSSSSSo', 'oooooooooooo'],
+  shelf: ['.o..........v.', '.xo.y....ovvvo', '.xzoyy.X..opo.', '.xzyyyXX..ppp.', 'bbbbbbbbbbbbbb', '.o..........o.'],
+  clock: ['..ooooo..', '.oWWWWWo.', 'oWWWeWWWo', 'oWWWeWWWo', 'oWWWeeWWo', 'oWWWWWWWo', '.oWWWWWo.', '..ooooo..'],
+  poster: ['ooooooooo', 'oAAAAAyAo', 'oAAAAAAAo', 'oAAvAAAAo', 'oAvvvAvAo', 'ovvvvvvvo', 'ooooooooo'],
+  board: ['oooooooooooooooo', 'oWWWWWWWWWWWyyWo', 'oWxxxxWWWWWWyyWo', 'oWWWWWWzzzWWWWWo', 'oWxxxWWWWWWXXWWo', 'oWWWWWWWWWWXXWWo', 'oooooooooooooooo'],
+};
+const PXW_CLS = { o: 'px-line', F: 'pw-frame', A: 'pw-sky', a: 'pw-sky2', W: 'pw-white', S: 'pw-sill', x: 'pw-b1', y: 'pw-b2', z: 'pw-b3', X: 'pw-b4', b: 'pw-board', v: 'px-leaf', p: 'px-pot', e: 'px-ink' };
+const pxWall = rows => `<svg viewBox="0 0 ${rows[0].length} ${rows.length}" width="${rows[0].length * 4}" height="${rows.length * 4}" shape-rendering="crispEdges">${rows.map((row, y) => {
+  let h = ''; for (let x = 0; x < row.length;) { const c = row[x]; let w = 1; while (row[x + w] === c) w++; if (PXW_CLS[c]) h += `<rect class="${PXW_CLS[c]}" x="${x}" y="${y}" width="${w}" height="1"/>`; x += w; } return h; }).join('')}</svg>`;
+const WALL_ORDER = ['window', 'shelf', 'window', 'clock', 'poster', 'window', 'board', 'shelf', 'window', 'poster', 'clock', 'window'];
+const wallHtml = key => { const k = chHash(key) % WALL_ORDER.length;
+  return `<div class="room-wall" aria-hidden="true">${[...WALL_ORDER.slice(k), ...WALL_ORDER.slice(0, k)].map(w => `<span class="wall-item">${charStyle === 'px' ? pxWall(PXW[w]) : WALL3D[w]()}</span>`).join('')}</div>`; };
+
 function charHtml(s) {
   const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`, L = chLook(s);
   const say = s.decision ? '결정을 기다려요' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
-  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}"
+  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"
       style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m};--skin:var(--skin-${L.skin});--hair:var(--hair-${L.hair})"
-      title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}`)}">
-    <span class="ch-stage">${(charStyle === 'px' ? charSvgPx : charSvg3d)(st, s)}<span class="ch-say"><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span></span>
+      title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
+    <span class="ch-say"><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
+    ${charStyle === 'px' ? pxSprite(st, s) : charSvg3d(st, s)}
     <span class="ch-name">${esc(nameOf(s))}</span>
     <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
   </button>`;
 }
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
   return [['일하는 중', n(['run', 'bg'])], ['대기', n(['wait'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
+const roomBox = (title, key, ms, extra = '') => `<section class="box room"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
+    <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
 function roomHtml(f) {
   const ms = f.members.filter(m => !filtering() || liveSess(m)).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y));
   if (!ms.length) return '';
   const c = f.coord || ms[0];
-  return `<section class="box room"><div class="room-h"><b>${esc(f.coord ? nameOf(f.coord) : termOwner(f.handle).title || '코디네이터 미상')}</b><span class="st">▣ ${esc(wtShort(c.place))}</span>${srvBadge(c)}<span class="room-n">${roomCount(ms)}</span></div>
-    <div class="room-floor">${ms.map(charHtml).join('')}</div></section>`;
+  return roomBox(esc(f.coord ? nameOf(f.coord) : termOwner(f.handle).title || '코디네이터 미상'), f.key || c.path, ms, `<span class="st">▣ ${esc(wtShort(c.place))}</span>${srvBadge(c)}`);
 }
+
+// Places: a moved person keeps {x: share of the free width, y: px from the room's top}; the rest sit on the grid.
+let chPos = {};
+try { chPos = JSON.parse(localStorage.getItem('adash.chpos') || '{}') || {}; } catch {}
+const chPosSave = () => { try { localStorage.setItem('adash.chpos', JSON.stringify(chPos)); } catch {} };
+let chDrag = false, chStale = false;  // a live update during a drag waits for the drop
+const CH_GAP = 6;
+function chLayout() {
+  $('#view').querySelectorAll('.room-floor').forEach(fl => {
+    const us = [...fl.querySelectorAll('.ch')], W = fl.clientWidth;
+    fl.querySelectorAll('.wall-item').forEach((it, i) => it.hidden = i >= Math.max(2, Math.floor(W / 130)));
+    if (!us.length) return;
+    // the first row's bubbles sit on the lower wall, below its decorations
+    const uw = us[0].offsetWidth, uh = us[0].offsetHeight, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
+    let H = top + Math.ceil(us.length / cols) * (uh + CH_GAP) + CH_GAP;
+    us.forEach((u, i) => {
+      const p = chPos[u.dataset.id];
+      const x = p ? p.x * Math.max(0, W - uw) : slot * (i % cols) + (slot - uw) / 2, y = p ? Math.max(0, p.y) : top + Math.floor(i / cols) * (uh + CH_GAP);
+      chPlace(u, x, y);
+      H = Math.max(H, y + uh + CH_GAP);
+    });
+    fl.style.height = H + 'px';
+  });
+  const rb = $('#ch-reset');
+  if (rb) rb.disabled = ![...$('#view').querySelectorAll('.ch')].some(u => chPos[u.dataset.id]);
+}
+const chPlace = (u, x, y) => { u.style.left = x + 'px'; u.style.top = y + 'px'; u.style.zIndex = 10 + Math.round(y); };
+function chKeep(u) {
+  const fl = u.parentElement, free = Math.max(1, fl.clientWidth - u.offsetWidth);
+  chPos[u.dataset.id] = { x: Math.min(1, Math.max(0, u.offsetLeft / free)), y: u.offsetTop };
+  chPosSave();
+  if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px';
+  $('#ch-reset').disabled = false;
+}
+function chBind() {
+  $('#view').querySelectorAll('.ch').forEach(u => {
+    let dragged = false;
+    u.onclick = () => { if (dragged) { dragged = false; return; } openSession(u.dataset.path); };
+    u.onpointerdown = e => {
+      if (e.button) return;
+      const fl = u.parentElement, x0 = u.offsetLeft, y0 = u.offsetTop, px = e.clientX, py = e.clientY;
+      // a mouse drags at once; a finger holds still first, so a swipe over the room still scrolls the page
+      let armed = e.pointerType !== 'touch', moved = false;
+      const hold = armed ? 0 : setTimeout(() => { armed = true; u.classList.add('lift'); }, 280);
+      const move = ev => {
+        const dx = ev.clientX - px, dy = ev.clientY - py;
+        if (!armed) { if (Math.hypot(dx, dy) > 8) end(); return; }
+        if (!moved && Math.hypot(dx, dy) < 4) return;
+        if (!moved) { moved = chDrag = true; u.classList.add('dragging'); }
+        const x = Math.min(Math.max(0, x0 + dx), fl.clientWidth - u.offsetWidth), y = Math.min(Math.max(0, y0 + dy), fl.clientHeight - u.offsetHeight + 60);
+        chPlace(u, x, y);
+        if (y + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = y + u.offsetHeight + CH_GAP + 'px';
+      };
+      const end = () => {
+        clearTimeout(hold);
+        removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
+        u.classList.remove('lift', 'dragging');
+        if (moved) { dragged = true; chDrag = false; chKeep(u); if (chStale) { chStale = false; renderOffice(); } }
+      };
+      addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
+    };
+    u.addEventListener('touchmove', ev => { if (u.classList.contains('lift')) ev.preventDefault(); }, { passive: false });
+    u.addEventListener('contextmenu', ev => { if (u.classList.contains('lift')) ev.preventDefault(); });
+    u.onkeydown = e => {
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      const fl = u.parentElement, step = e.shiftKey ? 40 : 10;
+      chPlace(u, Math.min(Math.max(0, u.offsetLeft + d[0] * step), fl.clientWidth - u.offsetWidth), Math.max(0, u.offsetTop + d[1] * step));
+      chKeep(u);
+    };
+  });
+}
+addEventListener('resize', () => { if ($('#view .office')) chLayout(); });
+
 function renderOffice() {
+  if (chDrag) { chStale = true; return; }
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
   chSeq = 0;
-  const rooms = fv.map(roomHtml).join('') + (sv.length ? `<section class="box room"><div class="room-h"><b>단독 자리</b><span class="room-n">${roomCount(sv)}</span></div><div class="room-floor">${sv.map(charHtml).join('')}</div></section>` : '');
+  const rooms = fv.map(roomHtml).join('') + (sv.length ? roomBox('단독 자리', 'solo', sv) : '');
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  $('#view').innerHTML = `<div class="controls ag-controls"><span class="seg" id="ch-style"><button data-k="3d">3D 렌더</button><button data-k="px">픽셀</button></span></div>
-    <div class="sec-h"><h2>사무실</h2><span>캐릭터를 누르면 세션을 엽니다. 끄려면 바의 「캐릭터 모드」</span></div>
+  $('#view').innerHTML = `<div class="controls ag-controls"><span class="seg" id="ch-style"><button data-k="3d">3D 렌더</button><button data-k="px">픽셀</button></span>
+      <button type="button" class="act big" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button></div>
+    <div class="sec-h"><h2>사무실</h2><span>누르면 세션을 엽니다 · 끌어서(휴대폰은 길게 눌러) 옮깁니다 · 끄려면 바의 「캐릭터 모드」</span></div>
     ${rooms ? `<div class="office ch-${charStyle}" style="--ph:${-(Date.now() % 2400) / 1000}s">${rooms}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}`;
   $('#ch-style').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === charStyle);
     b.setAttribute('aria-pressed', b.dataset.k === charStyle);
     b.onclick = () => { charStyle = b.dataset.k; try { localStorage.setItem('adash.charstyle', charStyle); } catch {} renderOffice(); };
   });
-  $('#view').querySelectorAll('.ch[data-path]').forEach(b => b.onclick = () => openSession(b.dataset.path));
+  $('#ch-reset').onclick = () => {
+    chPos = {}; chPosSave();
+    const o = $('#view .office');
+    o?.classList.add('homing');  // glide back instead of jumping
+    chLayout();
+    setTimeout(() => o?.classList.remove('homing'), 500);
+  };
+  chLayout();
+  chBind();
 }
 
 function renderAgents() {
