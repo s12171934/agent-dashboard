@@ -2897,12 +2897,12 @@ const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.char
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
 // The coordinators (kaede, yuki) wear a headset; a session's hash picks the person, so they keep theirs across refreshes.
 const CH_ART = {
-  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]},sd:{pw:42,ph:58,top:[0.034,0.017,0.034,0.017,0.034,0.017,0.034,0.017]},sdb:{pw:56,ph:58,top:[0.034,0.034,0.034,0.034,0.052,0.017,0.034,0.017]}},
-  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]},sd:{pw:41,ph:57,top:[0.035,0.053,0.053,0.035,0.035,0.053,0.053,0.035]},sdb:{pw:54,ph:57,top:[0.053,0.053,0.053,0.053,0.053,0.053,0.07,0.053]}},
-  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]},sd:{pw:41,ph:57,top:[0.018,0.018,0.018,0.018,0.035,0.035,0.035,0.035]},sdb:{pw:54,ph:57,top:[0.018,0.035,0.018,0.018,0.053,0.053,0.035,0.035]}},
-  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]},sd:{pw:40,ph:57,top:[0.035,0.035,0.035,0.035,0.053,0.053,0.053,0.053]},sdb:{pw:54,ph:57,top:[0.035,0.053,0.035,0.035,0.07,0.07,0.088,0.07]}},
-  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]},sd:{pw:42,ph:57,top:[0.018,0.018,0.018,0.018,0.018,0.018,0.035,0.018]},sdb:{pw:57,ph:57,top:[0.018,0.018,0.018,0.018,0.035,0.018,0.035,0.018]}},
-  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]},sd:{pw:42,ph:59,top:[0.051,0.034,0.034,0.034,0.051,0.017,0.034,0.034]},sdb:{pw:56,ph:59,top:[0.068,0.017,0.017,0.034,0.068,0.017,0.017,0.034]}},
+  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]},sd:{pw:60,ph:83,top:[0.024,0.024,0.024,0.024,0.036,0.012,0.036,0.012]},sdb:{pw:81,ph:83,top:[0.036,0.036,0.036,0.036,0.06,0.024,0.048,0.024]}},
+  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]},sd:{pw:58,ph:81,top:[0.037,0.037,0.037,0.025,0.037,0.037,0.037,0.037]},sdb:{pw:77,ph:81,top:[0.049,0.049,0.049,0.037,0.049,0.049,0.049,0.037]}},
+  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]},sd:{pw:58,ph:81,top:[0.012,0.012,0.012,0.012,0.037,0.037,0.025,0.025]},sdb:{pw:77,ph:81,top:[0.025,0.025,0.025,0.025,0.049,0.049,0.049,0.049]}},
+  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]},sd:{pw:57,ph:82,top:[0.049,0.037,0.024,0.037,0.061,0.061,0.073,0.049]},sdb:{pw:77,ph:81,top:[0.037,0.049,0.037,0.037,0.074,0.086,0.086,0.062]}},
+  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]},sd:{pw:61,ph:82,top:[0.024,0.012,0.024,0.012,0.024,0.012,0.024,0.012]},sdb:{pw:81,ph:82,top:[0.024,0.024,0.024,0.024,0.037,0.024,0.037,0.024]}},
+  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]},sd:{pw:60,ph:84,top:[0.048,0.012,0.012,0.036,0.048,0.024,0.012,0.024]},sdb:{pw:80,ph:85,top:[0.059,0.024,0.012,0.035,0.071,0.024,0.024,0.035]}},
 };
 const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
 // More people without a deploy: chars/chars.json (the R2 bucket behind functions/chars, written by
@@ -2949,11 +2949,12 @@ const chV = who => chVer[who] ? '?v=' + chVer[who] : '';
 const chSrc = (who, fr) => `chars/${who}-${fr}.webp${chV(who)}`;
 const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png${chV(who)}`;
 const CH_H = { bust: 132, full: 196 };
-function chFig(st, s, small) {  // small: the session detail's header (2× pixels, a shorter canvas)
+function chFig(st, s, small) {  // small: the session detail's header (1.5× pixels on a 2× screen, a shorter canvas)
   const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
-  const H = Math.round(CH_H[charFrame] * (small ? .72 : 1)), W = Math.round(a.w * H / a.h), x = small ? 2 : 3;
+  const H = Math.round(CH_H[charFrame] * (small ? .72 : 1)), W = Math.round(a.w * H / a.h), x = small ? (devicePixelRatio >= 2 ? 1.5 : 1) : 2;
   if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
-  // AI 생성: the SD pixel sprite at a whole 3× (2× in the detail), so every sprite pixel is a crisp block
+  // AI 생성: the SD pixel sprite at a whole 2× (in the detail 1.5×, a whole 3 device pixels on a 2× screen), so every
+  // sprite pixel is a crisp block
   const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * x, ph = sd.ph * x;
   return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
 }
@@ -3541,13 +3542,13 @@ const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait
 let chx = { fr: 'bust', pose: 1 }, chxMounted = false;
 try { Object.assign(chx, JSON.parse(localStorage.getItem('adash.chars') || '{}')); } catch {}
 function chxStages(who) {
-  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 3, ph = sd.ph * 3;
+  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 2, ph = sd.ph * 2;
   const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * 8}px ${h}px;background-position:${-f * w}px 0"></span>`;
   const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
   return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
     + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(aoi 외는 aoi 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
-    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 3배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
+    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
     + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
     + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f]}" data-fr="${fr}" aria-hidden="true"></canvas>`);
 }

@@ -11,7 +11,7 @@ from PIL import Image
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 strip = Image.open(os.path.join(ROOT, 'frontend/chars/aoi-sd.png')).convert('RGBA')
 fw, fh = strip.width // 8, strip.height
-CW, CH, S = 384, 512, 7  # cell size, and how many sheet pixels one sprite pixel takes (about 48 tall, chunky)
+CW, CH, S = 384, 512, 5  # cell size, and how many sheet pixels one sprite pixel takes (about the generator's own grid)
 sheet = Image.new('RGBA', (CW * 4, CH * 2), (255, 255, 255, 255))
 for i in range(8):
     f = strip.crop((i * fw, 0, (i + 1) * fw, fh)).resize((fw * S, fh * S), Image.NEAREST)
