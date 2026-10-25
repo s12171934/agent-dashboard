@@ -1466,6 +1466,37 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
 @keyframes shake { 50% { transform: translateX(2px); } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
+/* 「캐릭터」 tab: a card per person; its three stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows */
+.cx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 12px; margin-bottom: 14px; }
+.cx { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; min-width: 0; }
+.cx.off .cx-flow, .cx.off .cx-poses { opacity: .45; }
+.cx-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.cx-h h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.cx-look { color: var(--muted); font-size: 12px; }
+.cx-n { margin-left: auto; font-size: 12px; color: var(--muted); }
+.cx-n b { color: var(--text); }
+.cx-on { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.cx-flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 2px; }
+.cx-st { margin: 0; flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.cx-pic { height: 210px; min-width: 120px; padding: 0 8px; display: flex; align-items: flex-end; justify-content: center; border-radius: 10px;
+  background: repeating-conic-gradient(color-mix(in srgb, var(--text) 6%, transparent) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.cx-spr { display: block; background-repeat: no-repeat; }
+.cx-px { image-rendering: pixelated; }
+.cx-st figcaption { display: flex; flex-direction: column; align-items: center; font-size: 11px; color: var(--muted); text-align: center; }
+.cx-st figcaption b { font-size: 12.5px; color: var(--text); }
+.cx-arr { flex: 1 0 64px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 0 4px 30px; color: var(--accent); font-size: 11px; cursor: help; }
+.cx-arr i { position: relative; display: block; width: 100%; height: 2px; background: currentColor; border-radius: 2px; }
+.cx-arr i::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left: 7px solid currentColor; border-right: 0; }
+.cx-poses { display: flex; flex-wrap: wrap; gap: 4px; }
+.cx-pose { display: flex; align-items: flex-end; justify-content: center; width: 60px; height: 104px; padding: 2px; border: 1px solid var(--surface-edge); border-radius: 8px;
+  background: var(--control-fill); cursor: pointer; overflow: hidden; }
+.cx-pose:hover { border-color: var(--muted); }
+.cx-pose.on { border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: -2px; }
+.cx-pose span { display: block; flex: none; background-repeat: no-repeat; image-rendering: pixelated; max-width: none; }
+.cx-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.cx-files .act { margin-left: auto; }
+@media (max-width: 700px) { .cx-flow { flex-direction: column; align-items: center; } .cx-arr { padding: 2px 0; flex: none; } .cx-arr i { width: 2px; height: 22px; }
+  .cx-arr i::after { right: -4px; top: auto; bottom: -1px; border: 5px solid transparent; border-top: 7px solid currentColor; border-bottom: 0; } }
 /* 3D 렌더: lighter and darker steps of each colour in OKLCH make the shading; white is the light */
 /* the 3D wall */
 .w3-frame { fill: color-mix(in srgb, var(--panel) 70%, var(--wood)); stroke: color-mix(in srgb, var(--wood) 60%, var(--ink)); stroke-width: 1; }
