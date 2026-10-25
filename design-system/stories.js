@@ -25,7 +25,8 @@ export function parse(name, src) {
 // a redirect (to the extensionless URL), so one by one the page took ~20s to fill in.
 export async function load() {
   const css = await text('ds.css');
-  const names = [...css.matchAll(/@import "components\/([\w-]+)\/\1\.css"/g)].map(m => m[1]);
+  // the deploy stamps each @import with ?v=<build>
+  const names = [...css.matchAll(/@import "components\/([\w-]+)\/\1\.css(?:\?[^"]*)?"/g)].map(m => m[1]);
   const [sprite, ...srcs] = await Promise.all(['components/icon/icons.svg', ...names.map(n => `components/${n}/${n}.html`)].map(text));
   return { sprite, components: names.map((n, i) => parse(n, srcs[i])) };
 }
