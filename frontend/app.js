@@ -89,6 +89,13 @@ $('#only-orca').checked = onlyOrca;
 $('#only-orca').onchange = e => { onlyOrca = e.target.checked; try { localStorage.setItem('adash.orca', onlyOrca ? '1' : '0'); } catch {} gKey = ''; render(); };
 // 「캐릭터 모드」: the agents tab drawn as an office of characters (renderOffice) instead of cards. This device only.
 let charMode = false;
+// 홈: the office canvas of characters (default) or the widget board. Kept on this device (adash.homeview).
+let homeView = 'office';
+try { homeView = localStorage.getItem('adash.homeview') === 'widgets' ? 'widgets' : 'office'; } catch {}
+const homeViewSeg = () => `<span class="seg" id="home-view"><button data-k="office"${homeView === 'office' ? ' class="on"' : ''}>사무실</button><button data-k="widgets"${homeView === 'widgets' ? ' class="on"' : ''}>위젯</button></span>`;
+const homeViewBind = () => $('#home-view')?.querySelectorAll('button').forEach(b => b.onclick = () => {
+  homeView = b.dataset.k; try { localStorage.setItem('adash.homeview', homeView); } catch {} hmEdit = false; render(true);
+});
 try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
 $('#char-mode').checked = charMode;
 $('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
@@ -314,8 +321,9 @@ async function renderView(navigated) {
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
   if (r.v !== 'home') hmEdit = false;
-  if (r.v !== 'agents' || !charMode) document.documentElement.classList.remove('ch-full');
-  if (r.v === 'home') renderHome();
+  const office = (r.v === 'agents' && charMode) || (r.v === 'home' && homeView === 'office');
+  if (!office) document.documentElement.classList.remove('ch-full');
+  if (r.v === 'home') { if (homeView === 'office') renderOffice(); else renderHome(); }
   else if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
   else if (r.v === 'talk') await renderTalk();
@@ -3202,7 +3210,7 @@ function chSize() {
 }
 const chPts = new Map();
 document.addEventListener('pointerdown', e => {
-  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools')) return;
+  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools, .ch-mine')) return;
   if (e.pointerType === 'mouse' && (e.button || e.target.closest('.ch'))) return;  // a mouse on a person drags the person
   chPts.set(e.pointerId, [e.clientX, e.clientY]);
 });
@@ -3233,7 +3241,7 @@ const chUp = e => {
 addEventListener('pointerup', chUp); addEventListener('pointercancel', chUp);
 document.addEventListener('wheel', e => {
   const cv = e.target.closest?.('#ch-canvas');
-  if (!cv) return;
+  if (!cv || e.target.closest('.ch-mine')) return;  // the 내 차례 card scrolls itself
   e.preventDefault();
   const r = cv.getBoundingClientRect(), u = e.deltaMode === 1 ? 16 : 1;
   if (e.ctrlKey || e.metaKey) return chZoom(Math.exp(-Math.max(-60, Math.min(60, e.deltaY * u)) * .006), e.clientX - r.left, e.clientY - r.top);
@@ -3255,13 +3263,15 @@ function renderOffice() {
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
+  const home = route().v === 'home', mine = home ? hmMine() : [];
   $('#view').innerHTML = `<div class="ch-canvas" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
-      <div class="ch-tools surface">
+      <div class="ch-tools surface">${home ? homeViewSeg() : ''}
         <span class="seg" id="ch-style"><button data-k="3d">3D</button><button data-k="px">픽셀</button></span>
         <span class="ch-zoom"><button type="button" class="act" id="ch-out" aria-label="축소">−</button><button type="button" class="act" id="ch-zl" title="100%로">100%</button><button type="button" class="act" id="ch-in" aria-label="확대">+</button></span>
         <button type="button" class="act" id="ch-fit" aria-pressed="false" title="모든 방이 한눈에 들어오게">맞춤</button>
         <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
       </div>
+      ${mine.length ? `<div class="ch-mine surface"><div class="ch-mine-h"><b>내 차례 <span class="badge">${mine.length}</span></b><a href="#decide" class="st">결정 화면 →</a></div>${hmMineHtml({ size: 'S' }).body}</div>` : ''}
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   $('#ch-style').querySelectorAll('button').forEach(b => {
@@ -3281,6 +3291,7 @@ function renderOffice() {
   $('#ch-out').onclick = () => chZoom(.8, ...mid());
   $('#ch-zl').onclick = () => chZoom(1 / chView.z, ...mid());
   $('#ch-fit').onclick = () => { chView.fit = true; chApply(); chViewSave(); };
+  if (home) { homeViewBind(); hmDecBind($('#view')); }
   chLayout();
   chBind();
   chSize();
@@ -5533,11 +5544,26 @@ function renderHome() {
   needReviews();
   const left = Object.keys(HM_W).filter(id => !hmLay.widgets.some(w => w.id === id));
   $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span>
-      <span class="hm-tools">${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
+      <span class="hm-tools">${hmEdit ? '' : homeViewSeg()}${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
         : '<button type="button" class="act big" data-hm-act="edit">편집</button>'}</span></div>
     ${hmEdit && left.length ? `<div class="box hm-cat"><b>위젯 추가</b>${left.map(id => `<button type="button" class="hm-add" data-hm-add="${id}"><span>+</span>${HM_W[id].name}<small>${HM_W[id].desc}</small></button>`).join('')}</div>` : ''}
     <div class="hm-grid${hmEdit ? ' editing' : ''}">${hmLay.widgets.map(hmWidget).join('')}</div>`;
   hmBind();
+  homeViewBind();
+}
+
+// A single-choice question answers on click, as its card on 결정 대기 does; anything else opens that screen.
+function hmDecBind(v) {
+  v.querySelectorAll('[data-hm-dec]').forEach(b => b.onclick = async () => {
+    const q = (state.decisions?.pending || []).find(x => x.id === b.dataset.hmDec), o = q?.questions?.[0]?.options?.[+b.dataset.i];
+    if (!o) return;
+    b.closest('.hw-item').classList.add('sent');
+    let r;
+    try { r = await api.decide(q.id, [o.label]); } catch { r = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
+    toast(r.status === 200 ? `「${cut(o.label, 30)}」 — 터미널에 답을 넣었습니다` : r.body?.error || `전송 실패 (${r.status})`);
+    if (r.status !== 200) b.closest('.hw-item')?.classList.remove('sent');
+    refresh();
+  });
 }
 
 function hmBind() {
@@ -5561,17 +5587,7 @@ function hmBind() {
     w.opts = { ...w.opts, [k]: k === 'h' ? +v : v !== undefined ? (w.opts?.[k] === v ? '' : v) : !w.opts?.[k] };
     hmSave(); renderHome();
   });
-  // A single-choice question answers on click, as its card on 결정 대기 does; anything else opens that screen.
-  v.querySelectorAll('[data-hm-dec]').forEach(b => b.onclick = async () => {
-    const q = (state.decisions?.pending || []).find(x => x.id === b.dataset.hmDec), o = q?.questions?.[0]?.options?.[+b.dataset.i];
-    if (!o) return;
-    b.closest('.hw-item').classList.add('sent');
-    let r;
-    try { r = await api.decide(q.id, [o.label]); } catch { r = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
-    toast(r.status === 200 ? `「${cut(o.label, 30)}」 — 터미널에 답을 넣었습니다` : r.body?.error || `전송 실패 (${r.status})`);
-    if (r.status !== 200) b.closest('.hw-item')?.classList.remove('sent');
-    refresh();
-  });
+  hmDecBind(v);
   v.querySelectorAll('[data-hm-wtqa]').forEach(a => a.onclick = () => { wtf.qa = a.dataset.hmWtqa; try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} });
   v.querySelectorAll('[data-hm-wtreset]').forEach(a => a.onclick = e => { e.preventDefault(); Object.assign(wtf, { f: 'all', q: '', qa: '' }); try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} renderHome(); });
   // The QA tickets' buttons are the 워크트리 tab's, handled as there (confirmations included).
