@@ -14,6 +14,8 @@ def focus_targets(summaries):
     fallback, unless the hook places another session in that terminal. Subagents run in their parent's pane."""
     terms = {t["handle"]: t for t in orca_state.get("terminals", []) if t.get("connected")}
     by_pane = {f'{t["tabId"]}:{t["leafId"]}': h for h, t in terms.items() if t.get("tabId") and t.get("leafId")}
+    # A terminal started from the CLI is listed with a "pty:" tab until Orca adopts it; the hook names its real pane.
+    by_pane.update({t["recordedPaneKey"]: h for h, t in terms.items() if t.get("recordedPaneKey")})
     out = {}
     for sm in summaries:
         h = by_pane.get((hooks.get(sm["id"]) or {}).get("pane"))

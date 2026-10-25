@@ -11,6 +11,7 @@ from adash.features.designs.store import design_bases
 from adash.features.plans.owners import with_plan_terms
 from adash.features.sessions.archive import archived_session
 from adash.features.sessions.idle import apply_prefs
+from adash.features.terminals.pending import pending_detail
 from adash.features.vault.vault import vault_notes
 import adash.features.vault.vault as vault_vault
 
@@ -19,6 +20,9 @@ def get_session(h, url):
     path = parse_qs(url.query).get("path", [""])[0]
     with lock:
         s = sessions.get(path)
+        waiting = not s and pending_detail(path)  # an agent with no transcript yet
+    if waiting:
+        return h.send_json(waiting)
     extra = {}
     if not s:
         s = archived_session(path)  # a session the 「설계문서」 tab links to, outside --hours
@@ -38,7 +42,7 @@ def get_chat(h, url):
     path = parse_qs(url.query).get("path", [""])[0]
     with lock:
         s = sessions.get(path)
-        chat = list(s.chat) if s else None
+        chat = list(s.chat) if s else [] if pending_detail(path) else None
     if chat is None:
         s = archived_session(path)
         chat = s and list(s.chat)

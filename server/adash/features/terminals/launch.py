@@ -11,6 +11,7 @@ from adash.core.state import bump, lock
 from adash.core.util import short
 from adash.features.orca_runs.store import orca_state
 from adash.features.terminals.close import close_jobs, jobs_lock
+from adash.features.terminals.pending import models
 import adash.features.terminals.targets as terminals_targets
 
 
@@ -95,6 +96,8 @@ def run_launch(jid, args, label):
             note = f"프롬프트 전달 상태: {sent}"
         if handle:
             launched.add(handle)
+            if "--model" in args:  # shown on the pending card until the transcript names the model
+                models[handle] = args[args.index("--model") + 1]
             try:  # the tab says what the agent owns (house rule), not an opaque handle
                 orca("terminal", "rename", "--terminal", handle, "--title", label, timeout=15)
             except Exception as e:
