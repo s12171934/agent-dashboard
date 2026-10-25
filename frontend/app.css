@@ -1545,6 +1545,22 @@ a.hw-row:hover .hw-t { color: var(--accent); }
    plane of rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
 :root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
 :root.ch-full main { padding-bottom: 0; }
+/* phone: the canvas is the whole screen — no page margins, frame or corners, under the status bar and the home bar (the
+   tools and the staff panel keep clear of them); the status bar's padding stays while a decision or inbox sits above */
+@media (max-width: 700px) {
+  :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
+  :root.ch-full main { padding: 0; }
+  :root.ch-full .ch-canvas { border: 0; border-radius: 0; }
+  :root.ch-full .ch-tools { top: calc(10px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); }
+}
+/* half folded (<html data-posture>, ds fold.js): the page keeps to the first half, laid out as on the cover screen,
+   and the bar's sheet has the second (ds dock.css); the office canvas fills its half as on a phone */
+:root[data-posture="book"] main { max-width: var(--seg-w); margin: 0; padding-inline: max(12px, env(safe-area-inset-left)) 12px; }
+:root[data-posture="laptop"] main { padding-inline: 12px; padding-bottom: calc(50vh + var(--pane-gap)); }
+:root[data-posture] :is(#decide-head, #decisions, #inbox) { max-width: var(--seg-w); }
+:root.ch-full[data-posture] main { padding: 0; }
+:root.ch-full[data-posture] .ch-canvas { border: 0; border-radius: 0; }
+:root.ch-full[data-posture] .ch-tools { top: calc(10px + env(safe-area-inset-top)); }
 .ch-canvas { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
   border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--text) 4%, var(--bg)); }
 .ch-canvas:active { cursor: grabbing; }
@@ -1642,7 +1658,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-panel-h > b { margin-right: auto; }
 .ch-panel-note { margin-bottom: 8px; }
 .ch-panel .hw { border: 0; padding: 0; background: none; box-shadow: none; }
-@media (max-width: 700px) { .ch-panel { top: auto; height: 62%; } }  /* keeps the bubble's room so people stay on one line */
+@media (max-width: 700px) { .ch-panel { top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); height: 62%; } }  /* keeps the bubble's room so people stay on one line */
 @media (max-width: 700px) { .ch-world { padding: 12px; } }
 @media (max-width: 500px) { .ch { width: 124px; } .fig-l2d { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
 /* a tab moved into the bar's ⋯ menu (data-more) shows it is the open one */

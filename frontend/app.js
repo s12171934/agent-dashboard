@@ -3357,8 +3357,8 @@ function chApply() {
   if (!w) return;
   const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
   if (chView.fit) {  // below the tools, which float over the top left, and beside an open staff panel
-    const top = (cv.querySelector('.ch-tools')?.offsetHeight || 0) + 14, room = ch - top - 8;
-    const pn = cv.querySelector('.ch-panel'), side = pn && innerWidth > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
+    const t = cv.querySelector('.ch-tools'), top = (t ? t.offsetTop + t.offsetHeight : 10) + 4, room = ch - top - 8;
+    const pn = cv.querySelector('.ch-panel'), side = pn && cw > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
     let z = Math.min(1, (fw - 24) / ww, room / wh);
     if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
     chView.z = z;
@@ -3387,11 +3387,14 @@ function chZoom(k, px, py) {
   chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = false;
   chApply(); chViewSave();
 }
-// the canvas takes the screen below its top; the page itself does not scroll
+// the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
+// when that is the lower half); the page itself does not scroll
 function chSize() {
   const cv = $('#ch-canvas');
   if (!cv) return;
-  cv.style.height = Math.max(240, innerHeight - cv.getBoundingClientRect().top - 12) + 'px';
+  const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
+  const bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight - (innerWidth <= 700 || posture ? 0 : 12);
+  cv.style.height = Math.max(240, bottom - cv.getBoundingClientRect().top) + 'px';
   chApply();
 }
 const chPts = new Map();
@@ -3435,6 +3438,15 @@ document.addEventListener('wheel', e => {
   chApply(); chViewSave();
 }, { passive: false });
 addEventListener('resize', () => chSize());
+addEventListener('ds-posture', () => requestAnimationFrame(() => { if ($('#view .office')) { chSize(); chLayout(); } }));  // after the bar's sheet has moved
+// iOS: the on-screen keyboard pans the page up to the field, and closing it can leave the page there — the floating bar
+// and the office then sit too high, and the office (its page cannot scroll) has no way back. Once the keyboard is gone,
+// put the office back at the top and re-anchor the fixed layer elsewhere.
+window.visualViewport?.addEventListener('resize', () => {
+  if (document.activeElement?.matches('input, textarea, [contenteditable="true"]')) return;  // still typing
+  if (document.documentElement.classList.contains('ch-full')) { if (scrollY || visualViewport.offsetTop) scrollTo(0, 0); chSize(); }
+  else if (visualViewport.offsetTop) scrollTo(scrollX, scrollY);
+});
 
 // 운영실: on 홈 each widget of this device's home layout (hmLay — 위젯 홈's 편집 picks them) is a staff member who does
 // its job. The bubble is the widget's one-line note, the state its urgency (something to look at: busy; bad: stalled);
@@ -3503,7 +3515,7 @@ function renderOffice() {
   const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
   const rooms = [home ? staffRoom() : ''].concat(officeRooms(people)).filter(Boolean);
   // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
-  const narrow = innerWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
+  const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);

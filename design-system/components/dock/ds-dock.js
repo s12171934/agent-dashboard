@@ -17,9 +17,12 @@
 // id, href or data-tip). A separator left with nothing visible beside it on the bar hides itself ([data-empty]).
 // 「바 숨기기」 folds the bar to one button that brings it back (adash.dock.hidden, <html data-dock-hidden> set by
 // dock-boot.js's applyDock, before the first paint); a phone keeps its launcher.
+// Half folded (<html data-posture>, fold.js), the sheet is always open and fills the screen's second half, the page
+// keeping to the first as on the cover screen: no scrim, no close button, and following a tab leaves it open.
 const SIDES = [['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const PHONE = matchMedia('(max-width: 500px)');
+const HALF = () => !!document.documentElement.dataset.posture;  // half folded (fold.js): the sheet stays open on the second half
 const ITEMS = 'adash.dock.items';
 const prefs = () => { try { return JSON.parse(localStorage.getItem(ITEMS)) || {}; } catch { return {}; } };
 const keyOf = e => e.dataset.key || e.id || e.querySelector('input')?.id || e.getAttribute('href') || e.dataset.tip;
@@ -88,6 +91,9 @@ class DsDock extends HTMLElement {
     this.picks();
     this.place();
     PHONE.addEventListener('change', () => this.place());
+    const half = () => { this.place(); this.open(HALF()); };
+    addEventListener('ds-posture', half);
+    if (HALF()) half();
   }
   // menu items (data-more, or moved there in 「바에 둘 항목」): in the ⋯ menu above the phone width, back in the bar
   // (its sheet) on a phone
@@ -99,7 +105,7 @@ class DsDock extends HTMLElement {
   place() {
     const box = this.menu.querySelector('.dock-more');
     for (const [el, mark] of this.more) {
-      if (PHONE.matches || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
+      if (PHONE.matches || HALF() || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
     }
     this.seps();
   }
@@ -157,12 +163,13 @@ class DsDock extends HTMLElement {
     this.mark();
   }
   open(on) {
-    if (!this.launch || on === this.hasAttribute('open')) return;
+    if (!this.launch || on === this.hasAttribute('open') || !on && HALF()) return;
     // the sheet holds every popover's button, so it is one of the group: opening it closes them
     if (on) document.querySelectorAll('.dock-pop').forEach(o => { o.hidden = true; });
     this.toggleAttribute('open', on);
-    this.scrim.hidden = !on;
+    this.scrim.hidden = !on || HALF();
     this.launch.setAttribute('aria-expanded', on);
+    if (HALF()) return;
     if (on) this.head.querySelector('.dock-close').focus({ preventScroll: true });
     else if (this.contains(document.activeElement)) this.launch.focus({ preventScroll: true });
   }
