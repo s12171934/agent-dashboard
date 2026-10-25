@@ -1,5 +1,6 @@
 """Every endpoint, by path. Each one is a function (handler, parsed url) in its feature's api.py."""
 
+from adash.features.chars import api as chars
 from adash.features.decisions import api as decisions
 from adash.features.designs import api as designs
 from adash.features.flow import api as flow
@@ -37,6 +38,8 @@ GET = {
     "/api/design": designs.get_design,
     "/api/design/file": designs.get_design_file,
     "/api/design/refs": designs.get_design_refs,
+    "/api/chars/jobs": chars.get_jobs,
+    "/api/chars/file": chars.get_file,
 }
 
 # The endpoint reads its action from the last path segment where one function serves several paths.
@@ -52,6 +55,8 @@ POST = {
     "/api/review/ship": review.post_review,
     "/api/qa/automation": review.post_qa,
     "/api/qa/ticket": review.post_qa,
+    "/api/chars/create": chars.post_char,
+    "/api/chars/remove": chars.post_char,
     **{f"/api/decision/{a}": decisions.post_decision
        for a in ("ask", "answer", "release", "mode", "inbox", "guard", "dismiss")},
 }

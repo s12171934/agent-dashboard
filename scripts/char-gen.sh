@@ -7,7 +7,10 @@
 # A name not listed below is a new character: describe them in CHAR_DESC (English, like the lines below); the strips go
 # to the work dir instead of frontend/chars, and scripts/char-publish.py puts them online without a deploy.
 #   CHAR_DESC='young woman ..., short red hair, ...' scripts/char-gen.sh mio full ~/chars-work
-# Needs `codex` logged in, and Python with Pillow, numpy and scipy for the cut (PYTHON, default python3).
+# CHAR_REF=<image> gives full a picture to take the look from (the 「캐릭터」 tab's upload): it is redrawn as an original
+# character in this style, CHAR_DESC still naming what to keep. sd copies aoi's SD sheet (aoi_sd.png in the work dir,
+# rebuilt from frontend/chars by char-sd-template.py when it is missing).
+# Needs `codex` logged in; the cut uses PYTHON, or the Python char-python.sh finds or makes (Pillow, numpy, scipy).
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 name=$1; kind=$2; work=${3:-$PWD}
@@ -22,11 +25,17 @@ CHARS=(
 )
 desc=${CHARS[$name]:-${CHAR_DESC:-}}
 [ -n "$desc" ] || { echo "새 캐릭터 $name: CHAR_DESC 에 생김새를 적어 주세요" >&2; exit 2; }
+[ -z "${CHAR_REF:-}" ] || CHAR_REF=${CHAR_REF:A}  # absolute: the rest runs in the work dir
 cd "$work"
+PY=${PYTHON:-$("$ROOT/scripts/char-python.sh")}
 out="$ROOT/frontend/chars"; (( ${+CHARS[$name]} )) || out=$PWD
 style='modern Japanese anime style (clean cel shading, crisp dark lineart, TV-anime look)'
 if [ "$kind" = full ]; then
   frame='FULL BODY from head to shoes, standing, facing the viewer, same scale, centered, feet on the same baseline, nothing cropped'; ref=()
+  if [ -n "${CHAR_REF:-}" ]; then
+    frame="$frame; the attached image is the reference for this character's look (hair, face, eyes, clothes, colours, accessories): redraw that look as an original character in the style above, never copying its art style, background or a real person's likeness"
+    ref=(-i "$CHAR_REF")
+  fi
 elif [ "$kind" = sd ]; then
   # 「AI 생성」: a super-deformed (chibi) pixel art version of the full sheet
   style='SD (super deformed) chibi pixel art: a 16-bit game sprite look with big clearly visible square pixels, a limited palette, a 1-pixel dark outline, no anti-aliasing, no gradients'
@@ -36,6 +45,7 @@ elif [ "$kind" = sd ]; then
   if [ "$name" != aoi ]; then
     frame="FULL BODY SD chibi, standing, facing the viewer, centered, feet on the same baseline, nothing cropped, chunky pixels as big as the template's. TWO attached images: the FIRST is the proportion template — copy its body exactly: the same head size, the same total height in pixels, the same 2-heads-tall proportions, the same width of shoulders and length of arms and legs, the same placement in each cell and the same pose for each of the 8 cells. The SECOND is the reference for this character's design (hair, eyes, clothes, colours, accessories) — use it only for the design, never for proportions. Long hair or a ponytail may extend beyond the template's outline, but the head, body and legs must match the template"
     ref=(-i aoi_sd.png -i "${name}_full.png")
+    [ -f aoi_sd.png ] || "$PY" "$ROOT/scripts/char-sd-template.py" aoi_sd.png
   fi
 else
   frame="UPPER BODY portrait from the top of the head down to the waist (bust shot), facing the viewer, same scale, head at the same height in every cell, centered, nothing cropped at the top or sides; the attached image is the reference for the character's exact design"
@@ -59,4 +69,4 @@ Cells (left to right, top row then bottom row):
 P
 # the prompt goes in on stdin: --image takes every argument after it
 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C . $ref < "p_${name}_${kind}.txt" > "log_${name}_${kind}.txt" 2>&1
-"${PYTHON:-python3}" "$ROOT/scripts/char-sprites.py" "${name}_${kind}.png" "$kind" "$out/${name}-${kind}.$([ "$kind" = sd ] && echo png || echo webp)"
+"$PY" "$ROOT/scripts/char-sprites.py" "${name}_${kind}.png" "$kind" "$out/${name}-${kind}.$([ "$kind" = sd ] && echo png || echo webp)"

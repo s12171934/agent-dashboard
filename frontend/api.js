@@ -430,6 +430,17 @@ const api = (() => {
     },
     // The address of a picture or PDF in a design folder (for <img>, <iframe>).
     designFile: (server, key) => (byId(server)?.url || '') + '/api/design/file?path=' + encodeURIComponent(key),
+    // Characters made from an uploaded picture (an Orca agent draws and publishes them): every server's jobs, newest
+    // first, each with server — {id, who, name, look, boss, notes, agent, created, updated, handle, done[desc|full|bust|
+    // sd|published], sheets[ref|full|bust|sd], state running|published|failed, error}. A server without the API is left out.
+    charJobs: async () => (await fromAll('/api/chars/jobs')).flatMap(([srv, d]) => tag(d.jobs, srv.id))
+      .sort((a, b) => b.created - a.created),
+    // Start one: body {who, name, look, boss, notes, agent, model, image (base64)}. {status, body}: 202 {job}, 400 what
+    // is wrong with the form.
+    charCreate: (server, body) => post(byId(server), '/api/chars/create', body),
+    charRemove: (server, id) => post(byId(server), '/api/chars/remove', { id }),
+    // A job's uploaded picture (f=ref) or a sheet the agent drew (full, bust, sd); t busts the browser cache.
+    charFile: (server, id, f, t) => `${byId(server)?.url || ''}/api/chars/file?job=${encodeURIComponent(id)}&f=${f}&t=${t || 0}`,
     // Version streams: each server sends its state version whenever it changes (version gets "<server>:<version>"),
     // and the page refetches state(). change fires when a server's connection opens or drops; projects when a server's
     // project progress changes ("<server>:<version>").

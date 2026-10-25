@@ -2906,20 +2906,31 @@ const CH_ART = {
 };
 const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
 // More people without a deploy: chars/chars.json (the R2 bucket behind functions/chars, written by
-// scripts/char-publish.py) is { chars: { <who>: { name, look, boss, art: { full, bust, sd, sdb } } } }, the strips beside it.
-// Added people join the lists after the built-in six, so a session already drawn may change hands once.
+// scripts/char-publish.py) is { chars: { <who>: { name, look, boss, v, art: { full, bust, sd, sdb } } } }, the strips
+// beside it. Read on load and again with every build check (each minute, and when the page comes back), so a person
+// put up — from the 「캐릭터」 tab's 「새 캐릭터」 or by hand — shows without a reload; v goes on their picture URLs, so a
+// redrawn one shows too. Each read starts again from the built-in six, so a person taken down leaves. Added people
+// join the lists after the six, so a session already drawn may change hands once.
+let chSeen = '', chBase = null;
+const chVer = {};
 async function chLoad() {
-  let j;
-  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); if (!r.ok) return; j = await r.json(); } catch { return; }
-  let added = 0;
+  let t, j;
+  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); t = r.ok ? await r.text() : '{}'; j = JSON.parse(t); } catch { return; }
+  if (t === chSeen) return;
+  chSeen = t;
+  chBase ||= { art: { ...CH_ART }, info: { ...CH_INFO }, boss: [...CH_BOSS], crew: [...CH_CREW] };
+  for (const k of Object.keys(CH_ART)) if (!(k in chBase.art)) { delete CH_ART[k]; delete CH_INFO[k]; }
+  Object.assign(CH_ART, chBase.art); Object.assign(CH_INFO, chBase.info);
+  CH_BOSS.splice(0, Infinity, ...chBase.boss); CH_CREW.splice(0, Infinity, ...chBase.crew);
+  for (const k of Object.keys(chVer)) delete chVer[k];
   for (const [who, c] of Object.entries(j?.chars || {})) {
     if (!/^[a-z0-9-]+$/.test(who) || !['full', 'bust', 'sd', 'sdb'].every(k => c?.art?.[k]?.top?.length === 8)) continue;
     CH_ART[who] = c.art;
     CH_INFO[who] = [String(c.name || who), String(c.look || '')];
-    const l = c.boss ? CH_BOSS : CH_CREW;
-    if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) { l.push(who); added++; }
+    if (c.v) chVer[who] = String(c.v);
+    if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) (c.boss ? CH_BOSS : CH_CREW).push(who);
   }
-  if (added && state) { chxMounted = false; render(); }
+  if (state) { chxMounted = false; render(); }
 }
 // 「캐릭터」 tab: a person switched off (false) is left out of the office; a list with everyone off keeps them all.
 let chPool = {};
@@ -2928,8 +2939,9 @@ const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.lengt
 const chWho = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
 const chMove = (st, s) => s.decision ? 'dec' : st;
 const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
-const chSrc = (who, fr) => `chars/${who}-${fr}.webp`;
-const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png`;
+const chV = who => chVer[who] ? '?v=' + chVer[who] : '';
+const chSrc = (who, fr) => `chars/${who}-${fr}.webp${chV(who)}`;
+const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png${chV(who)}`;
 const CH_H = { bust: 132, full: 196 };
 function chFig(st, s) {
   const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
@@ -3423,10 +3435,138 @@ function chxCard(who, boss, n) {
       <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
     <div class="cx-flow">${chxStages(who)}</div>
     <div class="cx-poses" role="group" aria-label="포즈">${thumbs}</div>
-    <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>${chSdSrc(who, chx.fr)}</code>
-      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
-      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button></div>
+    <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd${chx.fr === 'bust' ? '-bust' : ''}.png</code>
+      ${chVer[who] ? '<span class="badge" title="배포 없이 R2 에 올린 캐릭터 (scripts/char-publish.py)">R2</span>' : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
+      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button>`}</div>
   </section>`;
+}
+// 「새 캐릭터」: one picture (and a name) from this device goes to a metric server, which hands it with a brief to an Orca
+// agent in the agent-dashboard repo: the agent writes the description, draws the full sheet from the picture, then bust
+// and the SD sheet from that (scripts/char-gen.sh), and puts them up (scripts/char-publish.py). The job list below the
+// form reads how far each got from the files the agent leaves (/api/chars/jobs), every few seconds while one runs; a
+// job turning 「게시됨」 reloads chars.json, so the new person joins without a reload. The form survives re-renders (cn).
+const cn = { img: '', fname: '', who: '', name: '', look: '', boss: false, notes: '', agent: 'claude', server: null, busy: false, msg: '', cls: '' };
+let cnJobs = null, cnSeen = '', cnTimer = 0;
+const CN_STEPS = [['ref', '원본'], ['desc', '설명'], ['full', '전신'], ['bust', '상반신'], ['sd', 'SD'], ['published', '게시']];
+const CN_WHO = /^[a-z][a-z0-9-]{1,23}$/;
+const cnCan = () => !cn.busy && cn.img && CN_WHO.test(cn.who) && cn.name.trim() && !/'/.test(cn.name + cn.look) && cn.server;
+function cnHtml() {
+  const on = srvOn();
+  if (!on.some(x => x.id === cn.server)) cn.server = on[0]?.id || null;
+  const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
+  return `<section class="cn surface" id="cn" aria-labelledby="cn-h">
+    <div class="cx-h"><h3 id="cn-h">새 캐릭터</h3><span class="cx-look">원본 그림 한 장 → Orca 에이전트가 설명을 쓰고 전신·상반신(Live2D)·SD 픽셀을 그려 배포 없이 올립니다 · 20~40분</span></div>
+    <div class="cn-body">
+      <label class="cn-drop${cn.img ? ' has' : ''}" title="PNG·JPEG·WebP, 10MB 까지 — 사람 사진이면 얼굴은 닮게 그리지 않고 머리·옷·색만 가져옵니다">
+        ${cn.img ? `<img src="${cn.img}" alt="고른 원본 그림">` : '<span>원본 그림 고르기<br><small>또는 여기에 끌어 놓기</small></span>'}
+        <input type="file" accept="image/png,image/jpeg,image/webp" data-cn-file hidden></label>
+      <div class="cn-form">
+        <label class="lp-row"><span>표시 이름</span><input class="field" data-cn="name" value="${esc(cn.name)}" placeholder="미오" maxlength="20" autocomplete="off"></label>
+        <label class="lp-row"><span>영문 이름</span><input class="field" data-cn="who" value="${esc(cn.who)}" placeholder="mio" maxlength="24" spellcheck="false" autocomplete="off" pattern="[a-z][a-z0-9\\-]{1,23}"></label>
+        <div class="lp-row"><span>역할</span><span class="seg" data-cn-seg="boss"><button type="button" data-k="">워커</button><button type="button" data-k="1">코디네이터 (헤드셋)</button></span></div>
+        <label class="lp-row"><span>생김새</span><input class="field" data-cn="look" value="${esc(cn.look)}" placeholder="비우면 에이전트가 원본을 보고 씀 (예: 빨간 단발 · 노란 우비)" maxlength="80" autocomplete="off"></label>
+        <textarea class="field" data-cn="notes" rows="2" maxlength="1000" placeholder="요청 (선택) — 예: 안경은 빼고, 머리는 더 길게" aria-label="요청">${esc(cn.notes)}</textarea>
+        <div class="lp-row"><span>에이전트</span><span class="seg" data-cn-seg="agent"><button type="button" data-k="claude">Claude</button><button type="button" data-k="codex">Codex</button></span>
+          ${on.length > 1 ? `<select class="field" data-cn="server" aria-label="서버">${on.map(x => opt(x.id, x.name, cn.server)).join('')}</select>` : ''}</div>
+        <p class="lp-help">영문 이름은 파일 이름이 됩니다(소문자·숫자·<code>-</code>). 그림은 그 서버의 Mac 에서 Codex 이미지 생성으로 그리고, 에이전트는 Orca 의 agent-dashboard 탭에 뜹니다.</p>
+        <div class="lp-foot"><span class="sp-msg ${cn.cls}">${esc(cn.msg)}</span>
+          <button class="act big accent" data-cn-go${cnCan() ? '' : ' disabled'}>${cn.busy ? '맡기는 중…' : 'Orca 에 맡기기'}</button></div>
+      </div>
+    </div>
+    <div id="cn-jobs">${cnJobsHtml()}</div>
+  </section>`;
+}
+function cnJobsHtml() {
+  if (!cnJobs?.length) return '';
+  const ago = t => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : `${Math.round(m / 60)}시간 전`; };
+  return `<div class="cn-jobs">${cnJobs.map(j => {
+    const st = j.state === 'published' ? ['ok', '게시됨'] : j.state === 'failed' ? ['bad', '실패'] : ['run', '만드는 중'];
+    const steps = CN_STEPS.map(([k, l], i) => {
+      const d = k === 'ref' || j.done.includes(k), next = !d && j.state === 'running' && CN_STEPS.slice(0, i).every(([x]) => x === 'ref' || j.done.includes(x));
+      return `<li class="${d ? 'on' : next ? 'now' : ''}">${l}</li>`;
+    }).join('');
+    const pic = (f, l) => `<a href="${api.charFile(j.server, j.id, f, j.updated)}" target="_blank" rel="noopener" title="${l} — 새 탭에서 크게"><img src="${api.charFile(j.server, j.id, f, j.updated)}" alt="${l}" loading="lazy"></a>`;
+    return `<article class="cn-job" data-job="${esc(j.id)}">
+      <div class="cn-pics">${pic('ref', '원본')}${['full', 'bust', 'sd'].filter(f => j.sheets.includes(f)).map(f => pic(f, CN_STEPS.find(x => x[0] === f)[1] + ' 시트')).join('')}</div>
+      <div class="cn-meta"><div class="cx-h"><h3>${esc(j.name)}<span class="badge">${j.boss ? '코디네이터' : '워커'}</span></h3><code>${esc(j.who)}</code>
+        <span class="cn-st ${st[0]}">${st[1]}</span><span class="cx-n">${esc(j.agent)} · ${ago(j.created)} 시작</span></div>
+        <ol class="cn-steps" aria-label="진행">${steps}</ol>
+        ${j.error ? `<p class="sp-msg bad">${esc(j.error)}</p>` : ''}
+        <div class="cx-files">${j.handle && j.state === 'running' ? `<button type="button" class="act" data-cn-focus="${esc(j.handle)}">Orca 에서 보기</button>` : ''}
+          ${j.state !== 'running' ? `<button type="button" class="act" data-cn-rm="${esc(j.id)}" data-srv="${esc(j.server)}" title="작업 폴더를 지움 (올린 캐릭터는 그대로 — 내리려면 char-publish.py --remove)">목록에서 지우기</button>` : ''}</div>
+      </div></article>`;
+  }).join('')}</div>`;
+}
+function cnBind() {
+  const el = $('#cn');
+  if (!el) return;
+  const redraw = () => { el.outerHTML = cnHtml(); cnBind(); };
+  const pick = f => {
+    if (!f) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { cn.msg = 'PNG·JPEG·WebP 만 됩니다'; cn.cls = 'bad'; return redraw(); }
+    if (f.size > 10 << 20) { cn.msg = '10MB 까지입니다'; cn.cls = 'bad'; return redraw(); }
+    const r = new FileReader();
+    r.onload = () => { cn.img = r.result; cn.fname = f.name; cn.msg = ''; redraw(); };
+    r.readAsDataURL(f);
+  };
+  const drop = el.querySelector('.cn-drop');
+  el.querySelector('[data-cn-file]').onchange = e => pick(e.target.files[0]);
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
+  el.querySelectorAll('[data-cn-seg] button').forEach(b => {
+    const k = b.closest('[data-cn-seg]').dataset.cnSeg, v = k === 'boss' ? !!b.dataset.k : b.dataset.k;
+    b.classList.toggle('on', cn[k] === v); b.setAttribute('aria-pressed', cn[k] === v);
+    b.onclick = () => { cn[k] = v; redraw(); };
+  });
+  el.querySelectorAll('[data-cn]').forEach(f => f.oninput = f.onchange = () => {
+    cn[f.dataset.cn] = f.value;
+    el.querySelector('[data-cn-go]').disabled = !cnCan();
+  });
+  el.querySelector('[data-cn-go]').onclick = cnCreate;
+  cnJobsBind();
+}
+function cnJobsBind() {
+  $('#cn-jobs')?.querySelectorAll('[data-cn-focus]').forEach(b => b.onclick = () => api.focus(b.dataset.cnFocus)
+    .then(x => x.status !== 200 && toast(x.body?.error || 'Orca 전환 실패')));
+  $('#cn-jobs')?.querySelectorAll('[data-cn-rm]').forEach(b => b.onclick = async () => {
+    const r = await api.charRemove(b.dataset.srv, b.dataset.cnRm);
+    if (r.status !== 200) return toast(r.body?.error || '지우지 못했습니다');
+    cnPoll();
+  });
+}
+async function cnCreate() {
+  if (!cnCan()) return;
+  const say = (msg, cls = '') => { cn.msg = msg; cn.cls = cls; const el = $('#cn'); if (el) { el.outerHTML = cnHtml(); cnBind(); } };
+  cn.busy = true; say('원본을 보내고 에이전트를 띄우는 중…');
+  const r = await api.charCreate(cn.server, { who: cn.who, name: cn.name.trim(), look: cn.look.trim(), boss: cn.boss, notes: cn.notes.trim(),
+    agent: cn.agent, image: cn.img.slice(cn.img.indexOf(',') + 1) });
+  cn.busy = false;
+  if (r.status !== 202) return say(r.body?.error || `맡기지 못했습니다 (${r.status})`, 'bad');
+  const name = cn.name.trim();
+  Object.assign(cn, { img: '', fname: '', who: '', name: '', look: '', notes: '' });
+  say(`「${name}」 을(를) Orca 에 맡겼습니다 — 아래에서 진행을 봅니다`, 'ok');
+  toast(`「${cut(name, 20)}」 캐릭터 생성을 Orca 에 맡겼습니다`);
+  cnPoll();
+}
+// The job list, refreshed in place (the form keeps its focus): every 5 s while a job runs and this tab is shown.
+async function cnPoll() {
+  clearTimeout(cnTimer);
+  if (route().v !== 'chars') return;
+  if (document.hidden) { cnTimer = setTimeout(cnPoll, 5000); return; }
+  let jobs;
+  try { jobs = await api.charJobs(); } catch { jobs = cnJobs || []; }
+  const before = new Set((cnJobs || []).filter(j => j.state === 'published').map(j => j.id));
+  const key = JSON.stringify(jobs);
+  if (key !== cnSeen) {
+    cnSeen = key;
+    const first = cnJobs === null;
+    cnJobs = jobs;
+    const el = $('#cn-jobs');
+    if (el) { el.innerHTML = cnJobsHtml(); cnJobsBind(); }
+    if (!first && jobs.some(j => j.state === 'published' && !before.has(j.id))) chLoad();
+  }
+  if (jobs.some(j => j.state === 'running')) cnTimer = setTimeout(cnPoll, 5000);
 }
 function renderChars() {
   if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
@@ -3438,8 +3578,9 @@ function renderChars() {
       <span class="seg" id="cx-fr"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>
       <span class="st">${esc(CH_POSE_L[chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
     </div>
+    ${cnHtml()}
     ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
-    <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 그림은 <code>scripts/char-gen.sh</code> 로 만들고, 새 캐릭터는 <code>scripts/char-publish.py</code> 로 올리면 배포 없이 더해집니다.</div>`;
+    <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 기본 캐릭터 그림은 <code>scripts/char-gen.sh</code> 로 만듭니다. 새 캐릭터는 위 「새 캐릭터」나 <code>scripts/char-publish.py</code> 로 올리면 배포 없이 더해집니다.</div>`;
   $('#cx-fr').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
     b.onclick = () => { chx.fr = b.dataset.k; save(); chxMounted = false; renderChars(); };
@@ -3452,8 +3593,10 @@ function renderChars() {
   });
   $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
     .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
+  cnBind();
   chxMounted = true;
   L2D.mount($('#view'));
+  cnPoll();
 }
 
 function renderAgents() {
@@ -4453,6 +4596,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && st
 let pageBuild, buildChecked = 0;
 async function checkBuild() {
   buildChecked = Date.now();
+  chLoad();  // characters put up since: no deploy, so no reload either
   const b = await api.build();
   if (pageBuild === undefined) pageBuild = b;
   else if (b && b !== pageBuild) {
@@ -5918,7 +6062,6 @@ function connect() {
   });
 }
 connect();
-chLoad();
 setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests'].includes(route().v) || onlyLive && route().v === 'compare')) render(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => {
   if (route().v === 'session' && detail) renderSession();
