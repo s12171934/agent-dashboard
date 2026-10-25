@@ -1473,6 +1473,26 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
 .ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
 @keyframes shake { 50% { transform: translateX(3px); } }
+/* session detail: the office's person beside the title (.d-ch reuses .ch's pose motion, not its absolute placement),
+   and the picker under it */
+.d-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "fig head" "fig top"; align-items: end; column-gap: 14px; margin-bottom: 12px; }
+.d-hero > .d-ch { grid-area: fig; }
+.d-hero > .d-head { grid-area: head; align-self: center; }
+.d-hero > .c-top { grid-area: top; margin: 0 !important; }
+.ch.d-ch { position: relative; width: auto; flex: none; cursor: pointer; padding: 0 4px 4px; border-radius: 12px;
+  background: linear-gradient(to bottom, transparent 55%, color-mix(in srgb, var(--wood, #b98152) 18%, var(--panel2)) 55%);
+  --ink: #231c1f; --wood: #b98152; }
+.ch.d-ch[aria-expanded="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.d-chpick-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
+.d-chpick-h .act { margin-left: auto; }
+.d-chgrp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.d-chgrp > .st { width: 64px; flex: none; }
+.d-chopt { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.d-chopt:hover { border-color: var(--accent); }
+.d-chopt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); font-weight: 600; }
+.d-chspr { display: block; background-repeat: no-repeat; image-rendering: pixelated; }
+@media (max-width: 520px) { .d-hero { grid-template-areas: "fig head" "top top"; column-gap: 10px; row-gap: 8px; } .d-chgrp > .st { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
 /* 「캐릭터」 tab: a card per person; its three stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows */
 .cx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 12px; margin-bottom: 14px; }
