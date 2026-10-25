@@ -1,4 +1,5 @@
-"""Orca terminal endpoints: focus one, close one (with what runs below it) as a background job, and the job's state."""
+"""Orca terminal endpoints: focus one, close one (with what runs below it) as a background job, and the job's state;
+start an agent (in a new worktree or one that exists) and send a prompt to an agent's terminal."""
 
 import json
 import subprocess
@@ -12,6 +13,7 @@ from adash.features.orca_runs.loop import ORCA_ACTION_TIMEOUT
 from adash.features.orca_runs.store import orca_state
 from adash.features.sessions.patterns import HANDLE
 from adash.features.terminals.close import close_jobs, jobs_lock, run_close
+from adash.features.terminals.launch import PROMPT_MAX, check_launch, places, send_prompt, sendable, start_launch
 import adash.features.terminals.targets as terminals_targets
 
 
@@ -66,3 +68,55 @@ def post_terminal(h, url):
     # switch changes the tab inside Orca; bring the window itself forward too (the click asked for it)
     subprocess.run(["open", "-a", "Orca"], capture_output=True, timeout=5)
     h.send_json({"ok": True})
+
+
+def read_body(h):
+    body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))
+    if not isinstance(body, dict):
+        raise ValueError
+    return body
+
+
+def get_places(h, url):
+    """Where a launch can go: Orca's repos and worktrees ({repos, worktrees}), for the 「새 에이전트」 form."""
+    try:
+        h.send_json(places(fresh=parse_qs(url.query).get("fresh") == ["1"]))
+    except Exception as e:
+        h.send_json({"error": "Orca 목록을 읽지 못했습니다: " + short(e, 200)}, 502)
+
+
+def post_launch(h, url):
+    """{kind worktree|agent, repo | worktree, name, agent claude|codex, model, effort, prompt, title} -> 202 {job}: a
+    new Orca worktree (own branch off the repo default, setup hook run) with its agent, or a fresh agent in a worktree
+    that exists. The agent opens in a terminal tab named `title` (the worktree name by default); /api/orca/job reports
+    its handle."""
+    try:
+        args, label, where = check_launch(read_body(h))
+    except ValueError as e:
+        return h.send_json({"error": str(e) or "잘못된 요청입니다"}, 400)
+    except (KeyError, TypeError, AttributeError):
+        return h.send_json({"error": "잘못된 요청입니다"}, 400)
+    except Exception as e:
+        return h.send_json({"error": "Orca 목록을 읽지 못했습니다: " + short(e, 200)}, 502)
+    h.send_json({"ok": True, "job": start_launch(args, label, where), "label": label}, 202)
+
+
+def post_send(h, url):
+    """{"handle", "text"} -> types the prompt into an agent's Orca terminal and presses Enter. Only a session's
+    terminal (as the last snapshot mapped it) or one this server launched is accepted. -> {ok, started}: started is
+    false when Orca only saw the input accepted (the agent reads it after its current turn)."""
+    try:
+        body = read_body(h)
+        handle, text = body["handle"], body["text"].strip()
+        assert isinstance(handle, str) and HANDLE.fullmatch(handle) and 0 < len(text) <= PROMPT_MAX
+    except (ValueError, KeyError, AssertionError, TypeError, AttributeError):
+        return h.send_json({"error": f"보낼 프롬프트가 없거나 {PROMPT_MAX}자를 넘습니다"}, 400)
+    if not sendable(handle):
+        return h.send_json({"error": "Orca 에 연결된 에이전트 터미널이 아닙니다"}, 404)
+    try:
+        started = send_prompt(handle, text)
+    except subprocess.TimeoutExpired:
+        return h.send_json({"error": "Orca 가 응답하지 않았습니다 — 들어갔는지 터미널에서 확인하세요 (다시 보내면 두 번 들어갈 수 있음)"}, 504)
+    except Exception as e:
+        return h.send_json({"error": "보내지 못했습니다: " + short(e, 200)}, 502)
+    h.send_json({"ok": True, "started": started})

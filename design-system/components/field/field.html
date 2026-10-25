@@ -1,6 +1,7 @@
 <!-- field — a text input, search box or select.
      <input class="field" type="search|text" placeholder="…">
      <select class="field">…</select>
+     <textarea class="field" rows="4">…</textarea>   several lines; grows only downward (resize: vertical)
      Give it a <label> (wrapping, or for=…) or an aria-label. Size it in the page (flex: 1, min-width). -->
 <!-- @story 검색 — type="search", aria-label 로 이름 -->
 <div class="row"><input class="field" type="search" placeholder="제목·본문 검색" aria-label="제목·본문 검색" style="min-width: 200px"></div>
@@ -10,3 +11,6 @@
 <div class="row"><select class="field" aria-label="시작 시각"><option>00시</option><option>08시</option></select></div>
 <!-- @story 비활성 — disabled -->
 <div class="row"><input class="field" type="text" value="이 기기에서는 바꿀 수 없음" aria-label="잠긴 값" disabled> <select class="field" aria-label="잠긴 선택" disabled><option>00시</option></select></div>
+<!-- @story 여러 줄 — <textarea class="field">, 세로로만 늘어남 -->
+<label class="row"><span class="st">프롬프트</span><textarea class="field" rows="4" style="flex: 1; min-width: 200px">이 저장소의 테스트를 돌려 실패한 것을 고쳐 줘.
+끝나면 PR 을 올려.</textarea></label>

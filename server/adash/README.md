@@ -25,7 +25,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `sessions/` | Claude·Codex 대화 기록 수집(scan), 한 세션 파싱(session), 가격·사용량·작업 계획·위치·Orca 훅, 수동 유휴 표시 | `/api/session`, `/api/plans`, `POST /api/pref` |
 | `history/` | 비교 탭의 일주일 사용량 (5분 칸) | `/api/history` |
 | `orca_runs/` | Orca Run·태스크·워커·터미널 수집, 끝난 디스패치 보관 | `/api/run` |
-| `terminals/` | 세션이 도는 터미널 찾기, 아래 터미널까지 닫기 작업 | `/api/orca/job`, `POST /api/orca/focus·close` |
+| `terminals/` | 세션이 도는 터미널 찾기, 아래 터미널까지 닫기 작업, 에이전트 띄우기(새 워크트리·기존 워크트리)와 프롬프트 보내기 | `/api/orca/job`, `/api/orca/places`, `POST /api/orca/focus·close·launch·send` |
 | `interactions/` | 에이전트 사이 메시지 (Orca 오케스트레이션 수신함) | `/api/interactions` |
 | `plans/` | 외부(드라이버) 계획 파일, 계획의 주인 세션, 추가 상자 사유 | (스냅숏에 실림) |
 | `tests/` | 긴 테스트 실행 진행과 끝난 기록 | `/api/tests` |

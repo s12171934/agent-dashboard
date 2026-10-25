@@ -1,7 +1,7 @@
 // Service worker: makes the page installable (PWA) and opens it offline. Only this origin's page files go through
 // it, network first: a new deployment shows at once, and the cache answers only when the network does not. The
 // metric servers (other origins: /api/*, /events) and build.json, which spots new deployments, are never touched.
-const CACHE = 'adash-shell-v17';
+const CACHE = 'adash-shell-v18';
 const SHELL = ['./', 'index.html', 'app.css', 'api.js', 'decision.js', 'app.js', 'icon-boot.js', 'manifest.webmanifest',
   'ds/ds.css', 'ds/ds.js', 'ds/foundations/tokens.css', 'ds/foundations/base.css', 'ds/foundations/theme.js', 'ds/foundations/fold.js',
   'ds/materials/glass.css', 'ds/materials/matte.css',
