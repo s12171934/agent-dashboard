@@ -1541,26 +1541,23 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .w3-pen { fill: none; stroke-width: 1.6; stroke-linecap: round; } .w3-pen.a { stroke: var(--c1); } .w3-pen.b { stroke: var(--c2); }
 .w3-note.a { fill: var(--lamp); } .w3-note.b { fill: var(--c5); } .w3-tray { fill: var(--alu); }
 /* 픽셀: a 32-unit sprite, so the bob is one pixel and moves in steps */
-/* the office canvas (renderOffice): fills the screen below its top, the page does not scroll; .ch-world is the
-   plane of rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
+/* the office canvas (renderOffice) is the page's background: fixed over the whole screen below anything shown above the
+   view (a decision, the inbox) — under the status bar and the home bar, edge to edge, no frame — with the bar floating
+   on it; chSize sets its box (the first half when half folded). The page does not scroll. .ch-world is the plane of
+   rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
 :root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
-:root.ch-full main { padding-bottom: 0; }
-/* phone: the canvas is the whole screen — no page margins, frame or corners, under the status bar and the home bar (the
-   tools and the staff panel keep clear of them); the status bar's padding stays while a decision or inbox sits above */
-@media (max-width: 700px) {
-  :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
-  :root.ch-full main { padding: 0; }
-  :root.ch-full .ch-canvas { border: 0; border-radius: 0; }
-  :root.ch-full .ch-tools { top: calc(10px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); }
-}
+:root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
+:root.ch-full main { padding: 0; }
+:root.ch-full .ch-canvas { position: fixed; border: 0; border-radius: 0; }
+/* the tools keep clear of the status bar, a notch and a bar on the top or left */
+:root.ch-full .ch-tools { top: calc(10px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); }
+:root.ch-full[data-dock="top"] .ch-tools { top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 20px + var(--dock-reach)); }
+:root.ch-full[data-dock="left"] .ch-tools { left: calc(12px + env(safe-area-inset-left) + var(--dock-reach) + 10px); }
 /* half folded (<html data-posture>, ds fold.js): the page keeps to the first half, laid out as on the cover screen,
    and the bar's sheet has the second (ds dock.css); the office canvas fills its half as on a phone */
 :root[data-posture="book"] main { max-width: var(--seg-w); margin: 0; padding-inline: max(12px, env(safe-area-inset-left)) 12px; }
 :root[data-posture="laptop"] main { padding-inline: 12px; padding-bottom: calc(50vh + var(--pane-gap)); }
 :root[data-posture] :is(#decide-head, #decisions, #inbox) { max-width: var(--seg-w); }
-:root.ch-full[data-posture] main { padding: 0; }
-:root.ch-full[data-posture] .ch-canvas { border: 0; border-radius: 0; }
-:root.ch-full[data-posture] .ch-tools { top: calc(10px + env(safe-area-inset-top)); }
 .ch-canvas { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
   border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--text) 4%, var(--bg)); }
 .ch-canvas:active { cursor: grabbing; }
