@@ -37,6 +37,20 @@
   /* the dock is one per page: its example is placed once at the end of <body>, the section keeps the contract */
   #c-dock .demo { display: none; }
   .vw { font-variant-numeric: tabular-nums; }
+  /* 「점검」 (preview-check.js): a badge per section, the problems under its title, the failing elements outlined */
+  #chk-sum { flex-basis: 100%; }
+  #chk-sum b.ok, .chk-b.ok { color: var(--done); }
+  #chk-sum b.bad, .chk-b.bad { color: var(--bad); }
+  .chk-b.bad { border-color: var(--bad); }
+  .chk-jump { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+  .chk-jump a { color: var(--bad); }
+  .chk { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 2px; }
+  .chk button { all: unset; display: block; cursor: pointer; font-size: 12px; color: var(--text); padding: 4px 8px; border-radius: 6px; overflow-wrap: anywhere; }
+  .chk button:hover, .chk button:focus-visible { background: var(--surface-2); }
+  .chk b { color: var(--bad); margin-right: 4px; }
+  .chk-on [data-chk] { outline: 2px dashed var(--bad); outline-offset: 2px; }
+  .chk-flash { animation: blink .5s 3; }
+  main.chk-only section.chk-pass, main.chk-only > section:not([id]) { display: none; }
   @media (max-width: 700px) { section { padding: 12px; } h1 { font-size: 18px; } }
   /* the fold layout (GUIDELINES B8): the component sections run in two columns, the column gap on the fold */
   @media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
@@ -54,6 +68,12 @@
     <span class="st">테마</span><span class="seg" id="theme"></span>
     <span class="st">재질</span><span class="seg" id="mat"></span>
     <span class="st vw" id="vw"></span>
+  </div>
+  <div class="tools" id="chk-bar">
+    <button type="button" class="act big" id="chk" aria-pressed="false">점검</button>
+    <button type="button" class="act big" id="chk-all" hidden>네 조합 모두</button>
+    <button type="button" class="act big" id="chk-only" aria-pressed="false" hidden>문제만 보기</button>
+    <div class="st" id="chk-sum"></div>
   </div>
   <section class="surface"><h2>색 토큰 <code>foundations/tokens.css</code></h2><div class="sw" id="sw"></div></section>
   <div id="components"></div>
@@ -108,6 +128,7 @@ for (const [i, name] of names.entries()) {
     sec.querySelector('.demo').insertAdjacentHTML('beforeend', `<div class="icons">${ids.map(n => `<div><ds-icon name="${n}"></ds-icon>${n}</div>`).join('')}</div>`);
   }
 }
+(await import('./preview-check.js')).initCheck();
 </script>
 </body>
 </html>
