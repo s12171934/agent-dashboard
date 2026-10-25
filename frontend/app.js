@@ -2846,46 +2846,83 @@ function agViewBind() {
 }
 // ---------- 캐릭터 모드: the agents tab as an office ----------
 // Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
-// sessions share the last one. Each agent is a character at a desk in its model's colour; its face and speech bubble
-// carry the state (a sign and words, not motion alone — A3), and it is a button that opens the session like a card.
-const CH_EYES = {
-  open: '<circle cx="27" cy="22" r="2"/><circle cx="37" cy="22" r="2"/>',
-  down: '<circle cx="27" cy="24" r="2"/><circle cx="37" cy="24" r="2"/>',
-  shut: '<path d="M24.5 23h5M34.5 23h5"/>',
-  happy: '<path d="M24.5 24l2.5-3 2.5 3M34.5 24l2.5-3 2.5 3"/>',
-  dizzy: '<path d="M25 20.5l4 4M29 20.5l-4 4M35 20.5l4 4M39 20.5l-4 4"/>',
-};
-const CH_MOUTH = { flat: '<path d="M29 29h6"/>', smile: '<path d="M28.5 28.5q3.5 3 7 0"/>', o: '<circle cx="32" cy="29.5" r="1.6"/>', frown: '<path d="M28.5 30.5q3.5-3 7 0"/>' };
+// sessions share the last one. Each agent is a character at a desk in its model's colour, drawn in one of two styles
+// (charStyle: 「3D」 shaded like a render, 「픽셀」 a pixel sprite); its face and speech bubble carry the state (a sign and
+// words, not motion alone — A3), and it is a button that opens the session like a card.
+let charStyle = '3d';  // 3d | px
+try { charStyle = localStorage.getItem('adash.charstyle') === 'px' ? 'px' : '3d'; } catch {}
 const CH_FACE = { run: ['down', 'flat'], bg: ['open', 'smile'], wait: ['open', 'smile'], stalled: ['dizzy', 'frown'], idle: ['shut', 'flat'], done: ['happy', 'smile'] };
 const CH_SIGN = { bg: '◍', wait: '…', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
-function charSvg(st, s) {
-  const [eyes, mouth] = s.decision ? ['open', 'o'] : CH_FACE[st] || CH_FACE.idle;
-  return `<svg class="ch-svg" viewBox="0 0 64 64" aria-hidden="true">
-    <path class="ch-legs" d="M9 55v8M55 55v8"/>
+const chFace = (st, s) => s.decision ? ['open', 'o'] : CH_FACE[st] || CH_FACE.idle;
+// 3D: a glossy robot behind a desk seen slightly from above. Gradients use --c (set on the button), so each SVG carries
+// its own, named with a running number.
+let chSeq = 0;
+const CH3_EYES = {
+  open: '<ellipse cx="42" cy="35" rx="3" ry="4"/><ellipse cx="58" cy="35" rx="3" ry="4"/>',
+  down: '<ellipse cx="42" cy="38" rx="3" ry="2.6"/><ellipse cx="58" cy="38" rx="3" ry="2.6"/>',
+  shut: '<path d="M38 36q4 3 8 0M54 36q4 3 8 0"/>',
+  happy: '<path d="M38 37q4-6 8 0M54 37q4-6 8 0"/>',
+  dizzy: '<path d="M39 32l6 6M45 32l-6 6M55 32l6 6M61 32l-6 6"/>',
+};
+const CH3_MOUTH = { flat: '<path d="M46 45h8"/>', smile: '<path d="M45 44q5 4 10 0"/>', o: '<ellipse cx="50" cy="45" rx="2.4" ry="2.8"/>', frown: '<path d="M45 46.5q5-4 10 0"/>' };
+function charSvg3d(st, s) {
+  const n = ++chSeq, g = k => `url(#c3${k}${n})`, [eyes, mouth] = chFace(st, s);
+  return `<svg class="ch-svg ch-3d" viewBox="0 0 100 100" aria-hidden="true">
+    <defs>
+      <radialGradient id="c3s${n}" cx=".38" cy=".32" r=".75"><stop offset="0" class="c3-hi"/><stop offset=".45" class="c3-base"/><stop offset="1" class="c3-lo"/></radialGradient>
+      <linearGradient id="c3v${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="c3-vis-hi"/><stop offset="1" class="c3-vis"/></linearGradient>
+      <linearGradient id="c3d${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="c3-desk-hi"/><stop offset="1" class="c3-desk"/></linearGradient>
+      <linearGradient id="c3l${n}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="c3-lap-hi"/><stop offset="1" class="c3-lap"/></linearGradient>
+    </defs>
+    <ellipse class="c3-shadow" cx="50" cy="95" rx="42" ry="4"/>
     <g class="ch-me">
-      ${isBoss(s) ? '<path class="ch-hat" d="M22 11l4 4 6-6 6 6 4-4v5H22z"/>' : '<path class="ch-ant" d="M32 9V4"/><circle class="ch-skin" cx="32" cy="3.5" r="2"/>'}
-      <rect class="ch-skin" x="19" y="9" width="26" height="25" rx="10"/>
-      <rect class="ch-face" x="22.5" y="14" width="19" height="18" rx="7"/>
-      <g class="ch-ink">${CH_EYES[eyes]}${CH_MOUTH[mouth]}</g>
-      <rect class="ch-skin" x="21" y="35" width="22" height="17" rx="7"/>
+      ${isBoss(s) ? `<path d="M35 15l6 6 9-10 9 10 6-6-2 10H37z" fill="${g('s')}" class="c3-crown"/>` : `<path class="c3-ant" d="M50 16V7"/><circle cx="50" cy="6" r="3.6" fill="${g('s')}"/><circle class="c3-gloss" cx="48.8" cy="4.8" r="1.1"/>`}
+      <path d="M31 84q0-24 19-24t19 24z" fill="${g('s')}"/>
+      <circle cx="27" cy="38" r="5" fill="${g('s')}"/><circle cx="73" cy="38" r="5" fill="${g('s')}"/>
+      <circle cx="50" cy="38" r="23" fill="${g('s')}"/>
+      <rect x="33" y="26" width="34" height="25" rx="11" fill="${g('v')}"/>
+      <g class="c3-ink">${CH3_EYES[eyes]}${CH3_MOUTH[mouth]}</g>
+      <ellipse class="c3-gloss" cx="40" cy="27" rx="7" ry="3" transform="rotate(-18 40 27)"/>
+      <ellipse class="c3-gloss soft" cx="39" cy="20" rx="6" ry="3" transform="rotate(-25 39 20)"/>
     </g>
-    <rect class="ch-desk" x="3" y="50" width="58" height="5" rx="2"/>
-    <rect class="ch-glow" x="23" y="38" width="18" height="2" rx="1"/>
-    <path class="ch-lap" d="M21 50l2-10h18l2 10z"/>
-    <rect class="ch-skin ch-arm l" x="13" y="46" width="8" height="5" rx="2.5"/>
-    <rect class="ch-skin ch-arm r" x="43" y="46" width="8" height="5" rx="2.5"/>
+    <path d="M30 76l3-19h34l3 19z" fill="${g('l')}"/>
+    <circle class="c3-logo" cx="50" cy="66" r="2.6"/>
+    <path d="M6 80h88l-5 6H11z" fill="${g('d')}"/>
+    <path class="c3-desk-front" d="M11 86h78v5H11z"/>
+    <path class="c3-desk-edge" d="M6 80h88"/>
+    <g class="ch-arm l"><ellipse cx="22" cy="80" rx="6.5" ry="4.2" fill="${g('s')}"/></g>
+    <g class="ch-arm r"><ellipse cx="78" cy="80" rx="6.5" ry="4.2" fill="${g('s')}"/></g>
   </svg>`;
 }
+// 픽셀: a 20×21 sprite. Letters are pixel classes (K outline, S body, W highlight, F face, E eye, L laptop, G its logo,
+// D/d desk, H crown, A/B left/right hand); a row's runs of one letter become one rect.
+const PX_EYES = { open: ['FFFFFFFF', 'FEFFFFEF', 'FEFFFFEF'], down: ['FFFFFFFF', 'FFFFFFFF', 'FEFFFFEF'], shut: ['FFFFFFFF', 'FFFFFFFF', 'EEFFFFEE'],
+  happy: ['FFFFFFFF', 'FEFFFFEF', 'EFEFFEFE'], dizzy: ['EFEFFEFE', 'FEFFFFEF', 'EFEFFEFE'] };
+const PX_MOUTH = { flat: ['FFFFFFFF', 'FFEEEEFF'], smile: ['FFEFFEFF', 'FFFEEFFF'], o: ['FFFEEFFF', 'FFFEEFFF'], frown: ['FFFEEFFF', 'FFEFFEFF'] };
+const PX_CLS = { K: 'px-k', S: 'px-s', W: 'px-w', F: 'px-f', E: 'px-e', L: 'px-l', G: 'px-g', D: 'px-d', d: 'px-dd', H: 'px-h', A: 'px-s ch-arm l', B: 'px-s ch-arm r' };
+function pxRects(rows, y0) {
+  let h = '';
+  rows.forEach((row, y) => { for (let x = 0; x < row.length;) { const c = row[x]; let w = 1; while (row[x + w] === c) w++; if (PX_CLS[c]) h += `<rect class="${PX_CLS[c]}" x="${x}" y="${y + y0}" width="${w}" height="1"/>`; x += w; } });
+  return h;
+}
+function charSvgPx(st, s) {
+  const [eyes, mouth] = chFace(st, s), face = r => `....KS${r}SK....`;
+  const top = isBoss(s) ? ['......H..HH..H......', '......HHHHHHHH......'] : ['.........SS.........', '.........KK.........'];
+  const head = ['.....KKKKKKKKKK.....', '....KWWSSSSSSSSK....', face('FFFFFFFF'), ...PX_EYES[eyes].map(face), ...PX_MOUTH[mouth].map(face), '....KSSSSSSSSSSK....', '.....KKKKKKKKKK.....',
+    '......KSSSSSSK......', '.....KSSSSSSSSK.....'];
+  const desk = ['.....KLLLLLLLLK.....', '...AAKLLLGGLLLKBB...', 'DDDDDDDDDDDDDDDDDDDD', 'dddddddddddddddddddd', '.d................d.', '.d................d.', '.d................d.'];
+  return `<svg class="ch-svg ch-px" viewBox="0 0 20 21" shape-rendering="crispEdges" aria-hidden="true"><g class="ch-me">${pxRects([...top, ...head], 0)}</g>${pxRects(desk, 14)}</svg>`;
+}
 function charHtml(s) {
-  const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length;
+  const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`;
   const say = s.decision ? '결정을 기다려요' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
-  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" style="--c:var(--m-${modelKey(s.model)})"
+  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m}"
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}`)}">
     <span class="ch-say"><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
-    ${charSvg(st, s)}
+    ${(charStyle === 'px' ? charSvgPx : charSvg3d)(st, s)}
     <span class="ch-name">${esc(nameOf(s))}</span>
     <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
   </button>`;
@@ -2903,10 +2940,17 @@ function renderOffice() {
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
+  chSeq = 0;
   const rooms = fv.map(roomHtml).join('') + (sv.length ? `<section class="box room"><div class="room-h"><b>단독 자리</b><span class="room-n">${roomCount(sv)}</span></div><div class="room-floor">${sv.map(charHtml).join('')}</div></section>` : '');
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  $('#view').innerHTML = `<div class="sec-h"><h2>사무실</h2><span>캐릭터 모드 · 캐릭터를 누르면 세션을 엽니다. 끄려면 바의 「캐릭터 모드」</span></div>
-    ${rooms ? `<div class="office" style="--ph:${-(Date.now() % 2400) / 1000}s">${rooms}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}`;
+  $('#view').innerHTML = `<div class="controls ag-controls"><span class="seg" id="ch-style"><button data-k="3d">3D 렌더</button><button data-k="px">픽셀</button></span></div>
+    <div class="sec-h"><h2>사무실</h2><span>캐릭터를 누르면 세션을 엽니다. 끄려면 바의 「캐릭터 모드」</span></div>
+    ${rooms ? `<div class="office ch-${charStyle}" style="--ph:${-(Date.now() % 2400) / 1000}s">${rooms}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}`;
+  $('#ch-style').querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === charStyle);
+    b.setAttribute('aria-pressed', b.dataset.k === charStyle);
+    b.onclick = () => { charStyle = b.dataset.k; try { localStorage.setItem('adash.charstyle', charStyle); } catch {} renderOffice(); };
+  });
   $('#view').querySelectorAll('.ch[data-path]').forEach(b => b.onclick = () => openSession(b.dataset.path));
 }
 

@@ -1395,7 +1395,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-qa-a .rv-acts { display: contents; }
 
 /* 캐릭터 모드 (renderOffice): the agents tab as rooms of characters. --c is the model colour (--m-*), --ph the motion
-   phase the page sets so live re-renders do not restart it. The face and the bubble's sign carry the state. */
+   phase the page sets so live re-renders do not restart it. The face and the bubble's sign carry the state; .ch-3d and .ch-px
+   are the two drawing styles (renderOffice's 「3D 렌더」·「픽셀」). */
 .office { display: flex; flex-direction: column; gap: 12px; }
 .room-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
 .room-h .room-n { margin-left: auto; color: var(--muted); font-size: 12px; }
@@ -1418,25 +1419,50 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.dec .ch-say, .ch.dec .ch-say::after { border-color: var(--warn); }
 .ch.dec .ch-say { color: var(--text); }
 .ch.dec .ch-say b { color: var(--warn); animation: pulse 1.6s infinite; }
-.ch-svg { width: 88px; height: 88px; overflow: visible; }
-.ch-skin { fill: var(--c); }
-.ch-face { fill: var(--panel); }
-.ch-ink { fill: var(--text); stroke: var(--text); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.ch-ink path { fill: none; }
-.ch-ant { stroke: var(--c); stroke-width: 2; }
-.ch-hat { fill: var(--coord); }
-.ch-desk { fill: color-mix(in srgb, var(--muted) 40%, var(--panel)); }
-.ch-legs { stroke: color-mix(in srgb, var(--muted) 40%, var(--panel)); stroke-width: 2.5; }
-.ch-lap { fill: color-mix(in srgb, var(--text) 55%, var(--panel)); }
-.ch-glow { fill: transparent; }
-.ch.st-run .ch-glow, .ch.st-bg .ch-glow { fill: var(--ok); }
+.ch-svg { width: 92px; height: 92px; overflow: visible; }
 .ch-me { animation: bob 2.4s ease-in-out infinite var(--ph, 0s); }
 .ch.st-run .ch-me { animation-duration: 1.2s; }
 .ch.st-run .ch-arm { animation: blink .6s infinite var(--ph, 0s); }
 .ch.st-run .ch-arm.r { animation-delay: calc(var(--ph, 0s) - .3s); }
 .ch.st-idle .ch-me, .ch.st-stalled .ch-me { animation: none; transform: translateY(4px); }
-.ch.st-idle .ch-svg { opacity: .55; }
-.ch.st-stalled .ch-skin { fill: color-mix(in srgb, var(--c) 35%, var(--muted)); }
+.ch.st-idle .ch-svg { opacity: .6; }
+/* 3D 렌더: lighter and darker steps of --c in OKLCH make the shading, --on-accent (white) the gloss */
+.c3-hi { stop-color: oklch(from var(--c) calc(l + (1 - l) * .6) calc(c * .6) h); }
+.c3-base { stop-color: var(--c); }
+.c3-lo { stop-color: oklch(from var(--c) calc(l * .58) c h); }
+.c3-vis-hi { stop-color: oklch(from var(--c) .38 .05 h); }
+.c3-vis { stop-color: oklch(from var(--c) .16 .03 h); }
+.c3-ink { fill: oklch(from var(--c) .93 .09 h); stroke: oklch(from var(--c) .93 .09 h); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.c3-ink path { fill: none; }
+.c3-gloss { fill: var(--on-accent); opacity: .55; }
+.c3-gloss.soft { opacity: .35; }
+.c3-ant { stroke: oklch(from var(--c) calc(l * .58) c h); stroke-width: 2.4; stroke-linecap: round; }
+.c3-crown { stroke: oklch(from var(--c) calc(l * .58) c h); stroke-width: 1; stroke-linejoin: round; }
+.c3-desk-hi { stop-color: color-mix(in srgb, var(--muted) 22%, var(--panel)); }
+.c3-desk { stop-color: color-mix(in srgb, var(--muted) 42%, var(--panel)); }
+.c3-desk-front { fill: color-mix(in srgb, var(--muted) 62%, var(--panel)); }
+.c3-desk-edge { stroke: var(--on-accent); stroke-opacity: .5; stroke-width: 1; }
+.c3-shadow { fill: color-mix(in srgb, var(--text) 14%, transparent); }
+.c3-lap-hi { stop-color: color-mix(in srgb, var(--muted) 35%, var(--panel)); }
+.c3-lap { stop-color: color-mix(in srgb, var(--muted) 85%, var(--text)); }
+.c3-logo { fill: color-mix(in srgb, var(--muted) 60%, var(--panel)); }
+.ch.st-run .c3-logo, .ch.st-bg .c3-logo { fill: var(--ok); }
+/* 픽셀: a 20-unit sprite, so the bob is one pixel and moves in steps */
+.ch-px { image-rendering: pixelated; }
+.ch-px .ch-me { --bob: -1px; animation-timing-function: steps(1, end); }
+.ch.st-idle .ch-px .ch-me, .ch.st-stalled .ch-px .ch-me { transform: translateY(1px); }
+.ch.st-run .ch-px .ch-arm { animation-timing-function: steps(1, end); }
+.px-k { fill: oklch(from var(--c) calc(l * .42) c h); }
+.px-s { fill: var(--c); }
+.px-w { fill: oklch(from var(--c) calc(l + (1 - l) * .55) calc(c * .6) h); }
+.px-f { fill: oklch(from var(--c) .97 .02 h); }
+.px-e { fill: oklch(from var(--c) .22 .03 h); }
+.px-l { fill: color-mix(in srgb, var(--muted) 70%, var(--text)); }
+.px-g { fill: color-mix(in srgb, var(--muted) 40%, var(--panel)); }
+.ch.st-run .px-g, .ch.st-bg .px-g { fill: var(--ok); }
+.px-d { fill: color-mix(in srgb, var(--muted) 35%, var(--panel)); }
+.px-dd { fill: color-mix(in srgb, var(--muted) 65%, var(--panel)); }
+.px-h { fill: var(--coord); }
 .ch-name { max-width: 100%; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ch-meta { max-width: 100%; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 500px) { .room-floor { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); } .ch-svg { width: 72px; height: 72px; } }
+@media (max-width: 500px) { .room-floor { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); } .ch-svg { width: 76px; height: 76px; } }
