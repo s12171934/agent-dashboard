@@ -3395,11 +3395,10 @@ function chZoom(k, px, py) {
 function chSize() {
   const cv = $('#ch-canvas');
   if (!cv) return;
-  // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the screen's bottom
-  // (down to the bar's sheet when that is the lower half), which a short viewport leaves --vp-cut above (ds fold.js)
+  // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the viewport's bottom
+  // (down to the bar's sheet when that is the lower half)
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
-  const cut = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-cut')) || 0;
-  const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight + cut;
+  const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight;
   Object.assign(cv.style, { left: v.left + 'px', top: v.top + 'px', width: v.width + 'px', height: Math.max(240, bottom - v.top) + 'px' });
   chApply();
 }
@@ -3446,7 +3445,6 @@ document.addEventListener('wheel', e => {
 addEventListener('resize', () => chSize());
 // half folded or opened again: the office's width changed, so its rooms are laid out anew (after the bar's sheet has moved)
 addEventListener('ds-posture', () => requestAnimationFrame(() => { if ($('#view .office')) renderOffice(); }));
-addEventListener('ds-viewport', () => chSize());
 // iOS: the on-screen keyboard pans the page up to the field, and closing it can leave the page there — the floating bar
 // and the office then sit too high, and the office (its page cannot scroll) has no way back. Once the keyboard is gone,
 // put the office back at the top and re-anchor the fixed layer elsewhere.
