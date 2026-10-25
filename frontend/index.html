@@ -25,28 +25,13 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header>
-  <div class="hrow">
-    <h1><a href="#home" title="홈으로"><img src="icons/icon.svg" alt="">Agent Dashboard</a></h1>
-    <div class="kpis-h">
-      <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
-      <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
-      <div class="stat"><i class="gi"><ds-icon name="bot"></ds-icon></i><b id="k-agents">–</b><span>에이전트</span></div>
-      <div class="stat"><i class="gi"><ds-icon name="dollar"></ds-icon></i><b id="k-cost">–</b><span>추정 비용</span></div>
-      <div class="stat"><i class="gi"><ds-icon name="hash"></ds-icon></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
-      <div class="stat"><i class="gi"><ds-icon name="repeat"></ds-icon></i><b id="k-turns">–</b><span>총 턴</span></div>
-      <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
-      <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b><em id="k-dec">0</em><em id="k-mail" hidden></em></b><span id="k-dec-l">결정 대기</span></div>
-    </div>
-    <div class="conn" id="conn"><i></i><span>연결 중</span></div>
-    <div class="health" id="health" hidden></div>
-  </div>
-</header>
-<!-- the floating bar (<ds-dock>): tabs | view filters | metric servers and display settings; data-tip names each.
-     The bar adds its own ⋯ button (position, size); the data-more items sit in its menu instead of on the bar.
+<!-- the floating bar (<ds-dock>): tabs | view filters | 현황 (the figures, connection and errors — there is no page
+     header), metric servers and display settings; data-tip names each.
+     The bar adds its own ⋯ button (position, size, which items stay on the bar, hiding the bar); the data-more items
+     start in its menu instead of on the bar.
      On a phone it is a launcher pill (summary: set by app.js) that opens these same buttons as a sheet, grouped under
      the separators' data-label. -->
-<ds-dock id="dock" inset-from="header">
+<ds-dock id="dock">
   <a href="#home" data-v="home" data-tip="홈" aria-label="홈"><ds-icon name="home"></ds-icon><b class="dn" id="k-home" hidden>0</b></a>
   <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#compare" data-v="compare" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
@@ -58,11 +43,12 @@
   <button class="dock-btn" id="launch-btn" data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
   <i class="dock-sep" data-label="필터"></i>
   <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
-  <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
+  <label class="dock-btn" data-more data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
   <label class="dock-btn" id="dz-pane-btn" data-tip="읽은 세션 보기" aria-label="읽은 세션 보기: 설계문서 오른쪽의 섹션을 읽은 세션 목록" hidden><input type="checkbox" id="dz-pane-chk"><ds-icon name="users"></ds-icon></label>
   <i class="dock-sep" data-label="설정"></i>
+  <button class="dock-btn" id="stat-btn" data-tip="현황" aria-label="현황: 실행 중·비용·토큰 같은 합계, 결정 대기, 연결과 수집 오류"><ds-icon name="gauge"></ds-icon><b class="dn" id="k-dec-n" hidden>0</b><i class="srv-dot"></i></button>
   <label class="dock-btn" id="inbox-mode-btn" data-more data-tip="메일함 모드" aria-label="메일함 모드: 자리를 비운 동안 질문을 메일함에 쌓고 에이전트는 권장안으로 진행" hidden><input type="checkbox" id="inbox-mode"><ds-icon name="mail"></ds-icon></label>
-  <label class="dock-btn" data-tip="캐릭터 모드" aria-label="캐릭터 모드: 에이전트 탭과 홈을 캐릭터가 책상에서 일하는 사무실 그림으로 봄"><input type="checkbox" id="char-mode"><ds-icon name="smile"></ds-icon></label>
+  <label class="dock-btn" data-more data-tip="캐릭터 모드" aria-label="캐릭터 모드: 에이전트 탭과 홈을 캐릭터가 책상에서 일하는 사무실 그림으로 봄"><input type="checkbox" id="char-mode"><ds-icon name="smile"></ds-icon></label>
   <button class="dock-btn" id="char-btn" data-more data-tip="캐릭터 설정" aria-label="캐릭터 설정: 그림체와 상반신·전신, 캐릭터 그림 관리"><ds-icon name="image"></ds-icon></button>
   <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
   <ds-theme-toggle id="theme" button-class="dock-btn" data-more></ds-theme-toggle>
@@ -71,6 +57,20 @@
   <button class="dock-btn" id="icon-btn" data-more data-tip="앱 아이콘" aria-label="앱 아이콘: 홈 화면·작업 표시줄에 보일 아이콘을 고름"><ds-icon name="grid"></ds-icon></button>
 </ds-dock>
 <ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
+<div id="stat-panel" class="popover dock-pop" hidden>
+  <div class="pop-h"><b>현황</b><span class="st">켜진 서버 전체</span><div class="conn" id="conn"><i></i><span>연결 중</span></div></div>
+  <div class="kpis-h">
+    <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
+    <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="bot"></ds-icon></i><b id="k-agents">–</b><span>에이전트</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="dollar"></ds-icon></i><b id="k-cost">–</b><span>추정 비용</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="hash"></ds-icon></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="repeat"></ds-icon></i><b id="k-turns">–</b><span>총 턴</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
+    <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b><em id="k-dec">0</em><em id="k-mail" hidden></em></b><span id="k-dec-l">결정 대기</span></div>
+  </div>
+  <div class="health" id="health" hidden></div>
+</div>
 <div id="server-panel" class="popover dock-pop" hidden></div>
 <div id="icon-panel" class="popover dock-pop" hidden></div>
 <div id="launch-panel" class="popover dock-pop" hidden></div>

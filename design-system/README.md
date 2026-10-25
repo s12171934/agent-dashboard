@@ -64,7 +64,7 @@ design-system/
 | --- | --- | --- |
 | 아이콘 | `<ds-icon name="users">` — `icons.svg` 의 심볼. 자기는 `display: contents`, 크기는 놓는 쪽이 `… svg` 로 정한다 (기본 1em) | `icon/` |
 | 상태 필 | `<ds-pill state="run\|wait\|idle\|done\|bg\|stalled">라벨</ds-pill>` — 앞의 점은 엘리먼트가 넣는다 | `pill/` |
-| 플로팅 바 | `<ds-dock>` 안에 `<a>` 탭(`.on` = 현재), `<button class="dock-btn">`, `<label class="dock-btn"><input type="checkbox">…</label>` 토글, `<i class="dock-sep">`. `data-tip` 은 호버 이름, `<b class="dn">` 은 개수 배지. 마지막에 ⋯ 바 설정(위치·크기)을 스스로 붙인다. `data-more` 를 붙인 항목은 바에서 빠져 ⋯ 「더 보기」 메뉴의 이름 붙은 행이 된다(휴대폰 시트에서는 제자리). 휴대폰에서는 런처 알약(현재 탭 + `summary`)이 되고, 누르면 같은 버튼들이 이름 붙은 바텀시트(`[open]`, 묶음 제목은 `.dock-sep` 의 `data-label`)로 열린다 | `dock/` |
+| 플로팅 바 | `<ds-dock>` 안에 `<a>` 탭(`.on` = 현재), `<button class="dock-btn">`, `<label class="dock-btn"><input type="checkbox">…</label>` 토글, `<i class="dock-sep">`. `data-tip` 은 호버 이름, `<b class="dn">` 은 개수 배지. 마지막에 ⋯ 더 보기 · 바 설정(위치·크기·바에 둘 항목·바 숨기기)을 스스로 붙인다. `data-more` 를 붙인 항목은 바에서 빠져 ⋯ 「더 보기」 메뉴의 이름 붙은 행이 된다(휴대폰 시트에서는 제자리). 사용자는 「바에 둘 항목」에서 이름(`data-tip`) 있는 항목마다 바·메뉴를 바꿀 수 있고(기본값은 `data-more`), 「바 숨기기」로 바를 버튼 하나로 접는다(휴대폰 제외). 양쪽 옆에 보이는 항목이 없는 `.dock-sep` 는 스스로 숨는다 휴대폰에서는 런처 알약(현재 탭 + `summary`)이 되고, 누르면 같은 버튼들이 이름 붙은 바텀시트(`[open]`, 묶음 제목은 `.dock-sep` 의 `data-label`)로 열린다 | `dock/` |
 | 바 팝오버 | `.dock-pop` — 바 쪽에서 열리는 팝오버 자리. `hidden` 으로 열고 닫으며, 하나가 열리면 다른 `.dock-pop` 은 닫힌다. 위치는 바의 최대 크기 기준이라 크기를 바꿔도 움직이지 않는다 | `dock/` |
 | 표면 | `.surface`, `.surface.surface-strong` — 현재 재질로 그린 판 | `surface/` |
 | 테마 버튼 | `<ds-theme-toggle button-class="…">` — 시스템 → 라이트 → 다크 순환, 아이콘·이름을 스스로 갱신 | `theme-toggle/` |
@@ -119,7 +119,7 @@ design-system/
 
 - 페이지가 정하는 값: `--dock-inset-top` (위쪽 바를 끈적한 헤더 아래로 내릴 거리), 바가 가리지 않도록 본문에 두는 여백. 본문 좌우 여백은 `--gutter` 를 쓴다.
 - 페이지가 바에 주는 속성(선택): `summary` (휴대폰 런처에 보일 한 줄 요약), `sheet-title` (휴대폰 시트 제목), `.dock-sep` 의 `data-label` (시트의 묶음 제목).
-- 기기별 저장값: `adash.theme`, `adash.theme.custom`, `adash.material` (theme.js), `adash.dock`, `adash.dock.size` (dock-boot.js · ds-dock.js).
+- 기기별 저장값: `adash.theme`, `adash.theme.custom`, `adash.material` (theme.js), `adash.dock`, `adash.dock.size`, `adash.dock.hidden`, `adash.dock.items` (dock-boot.js · ds-dock.js).
 
 ## 고칠 때
 

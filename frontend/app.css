@@ -288,10 +288,6 @@ svg text { fill: var(--muted); font-size: 10px; }
 .rnode text.m { fill: var(--muted); font-size: 10.5px; }
 
 @media (max-width: 700px) {
-  .hrow { gap: 10px; padding: 8px 12px 4px; }
-  .hrow h1 { font-size: 14px; flex: 1; }
-  .kpis-h { order: 3; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; }
-  .stat b { font-size: 14px; }
   main { padding-top: 12px; }
   .family { padding: 10px; }
   .tree { margin-left: 6px; padding-left: 12px; }
@@ -1545,7 +1541,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .w3-pen { fill: none; stroke-width: 1.6; stroke-linecap: round; } .w3-pen.a { stroke: var(--c1); } .w3-pen.b { stroke: var(--c2); }
 .w3-note.a { fill: var(--lamp); } .w3-note.b { fill: var(--c5); } .w3-tray { fill: var(--alu); }
 /* 픽셀: a 32-unit sprite, so the bob is one pixel and moves in steps */
-/* the office canvas (renderOffice): fills the screen below the header, the page does not scroll; .ch-world is the
+/* the office canvas (renderOffice): fills the screen below its top, the page does not scroll; .ch-world is the
    plane of rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
 :root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
 :root.ch-full main { padding-bottom: 0; }

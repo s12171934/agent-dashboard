@@ -39,6 +39,8 @@ ds-dock .dn[hidden] { display: none; }
 .dock-menu { position: fixed; z-index: 45; display: flex; flex-direction: column; gap: 6px; padding: 10px; white-space: nowrap;
   border: 1px solid var(--surface-edge); border-radius: 16px; background: var(--surface-sheen), var(--surface-strong);
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow); }
+.dock-menu { max-height: min(75vh, 680px); max-height: min(75dvh, 680px); overflow-y: auto; overscroll-behavior: contain; }
+.dock-menu > *, .dock-side > * { flex: none; }  /* a tall menu scrolls; its rows keep their height */
 .dock-menu[hidden] { display: none; }
 .dock-side { display: contents; } .dock-side[hidden] { display: none; }
 /* .dock-more: the bar's data-more children as named rows (their data-tip), toggles with a switch, separators as group headings */
@@ -58,6 +60,25 @@ ds-dock .dn[hidden] { display: none; }
 .dock-more .dock-sep::after { content: attr(data-label); }
 .dock-size { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .dock-size input { flex: 1; height: 28px; margin: 0; accent-color: var(--accent); }
+/* 「바에 둘 항목」: one row per named item, checked = on the bar (unchecked = in this menu); then 「바 숨기기」 */
+.dock-items { margin-top: 2px; }
+.dock-items > summary { cursor: pointer; padding: 4px 0; }
+.dock-pick { display: grid; gap: 1px; max-height: 40vh; overflow-y: auto; margin: 4px 0 6px; }
+.dock-pick label { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.dock-pick label:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.dock-pick span { flex: 1; }
+.dock-pick svg, .dock-hide svg { width: 16px; height: 16px; flex: none; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dock-pick input { margin: 0; accent-color: var(--accent); }
+:is(.dock-reset, .dock-hide) { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+:is(.dock-reset, .dock-hide):hover { background: color-mix(in srgb, var(--text) 11%, transparent); }
+/* a separator with nothing visible beside it (ds-dock.js seps()) */
+ds-dock:not([open]) > .dock-sep[data-empty] { display: none; }
+/* folded (<html data-dock-hidden>, never on a phone: dock-boot.js): only .dock-show, which unfolds the bar */
+.dock-show { display: none; }
+:root[data-dock-hidden] ds-dock > :not(.dock-show) { display: none; }
+:root[data-dock-hidden] ds-dock > .dock-show { display: inline-flex; opacity: .75; }
+:root[data-dock-hidden] ds-dock > .dock-show:hover { opacity: 1; }
 :root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100% - 16px); }
 :root[data-dock="top"] ds-dock { left: 50%; top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); transform: translateX(-50%); max-width: calc(100% - 16px); }
 :root[data-dock="left"] ds-dock, :root[data-dock="right"] ds-dock { top: 50%; transform: translateY(-50%); flex-direction: column; border-radius: 26px; }
