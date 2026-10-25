@@ -405,11 +405,9 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 .ip-icon:hover { border-color: var(--line); } .ip-icon.on { border-color: var(--accent); }
 .ip-name { margin-top: 10px; font-size: 12.5px; font-weight: 600; }
 .ip-help { margin: 6px 0 0; max-width: 256px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
-/* 「캐릭터」 panel (charPanel): 캐릭터 모드 and how the characters are drawn */
+/* 「캐릭터 설정」 panel (charPanel): how the characters are drawn */
 .cp-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; }
 .cp-row > span:first-child { min-width: 44px; color: var(--muted); }
-.cp-on { margin-top: 0; cursor: pointer; }
-.cp-on span { display: grid; } .cp-on small { color: var(--muted); font-size: 11.5px; }
 .cp-link { display: inline-block; margin-top: 12px; }
 /* 「메트릭 서버」 panel (which server this device reads) */
 .sp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12.5px; }
