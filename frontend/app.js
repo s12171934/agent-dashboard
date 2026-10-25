@@ -97,17 +97,17 @@ const homeViewBind = () => $('#home-view')?.querySelectorAll('button').forEach(b
   homeView = b.dataset.k; try { localStorage.setItem('adash.homeview', homeView); } catch {} hmEdit = false; render(true);
 });
 try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
-// 「캐릭터」 panel (the bar's ⋯ menu): everything about the characters in one place — 캐릭터 모드 on or off, how they
-// are drawn (charStyle) and framed (charFrame), and the way to the 「캐릭터」 tab. This device only.
+$('#char-mode').checked = charMode;
+$('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
+// 「캐릭터 설정」 panel (the bar's ⋯ menu; 캐릭터 모드 itself is a toggle on the bar): how the characters are drawn
+// (charStyle) and framed (charFrame), and the way to the 「캐릭터」 tab. This device only.
 function charPanel() {
   const el = $('#char-panel');
   const seg = (k, cur, opts) => `<span class="seg" data-cp="${k}">${opts.map(([v, l]) => `<button data-k="${v}"${v === cur ? ' class="on"' : ''} aria-pressed="${v === cur}">${l}</button>`).join('')}</span>`;
-  el.innerHTML = `<div class="pop-h"><b>캐릭터</b><span class="st">이 기기에만 저장</span><button class="act" data-cp="close">닫기</button></div>
-    <label class="cp-row cp-on"><input type="checkbox" id="char-mode"${charMode ? ' checked' : ''}><span><b>캐릭터 모드</b><small>에이전트 탭과 홈을 캐릭터 사무실로</small></span></label>
+  el.innerHTML = `<div class="pop-h"><b>캐릭터 설정</b><span class="st">이 기기에만 저장</span><button class="act" data-cp="close">닫기</button></div>
     <div class="cp-row"><span>그림체</span>${seg('style', charStyle, [['ai', 'AI 생성 (SD 픽셀)'], ['l2d', 'Live2D']])}</div>
     <div class="cp-row"><span>보기</span>${seg('frame', charFrame, [['bust', '상반신'], ['full', '전신']])}</div>
     <a class="act cp-link" href="#chars">캐릭터 그림 관리 →</a>`;
-  el.querySelector('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
   const set = { style: k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} },
     frame: k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} } };
   el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); charPanel(); render(); });
@@ -2879,7 +2879,7 @@ function agViewBind() {
 // Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
 // sessions share the last one. A room is one scene (wall with decorations, floor); each agent is one of six original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
-// (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터」 panel (charPanel): 「AI 생성」
+// (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터 설정」 panel (charPanel): 「AI 생성」
 // shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
 // (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
 // drag (a long press on touch) or the arrow keys move them anywhere in the room.
