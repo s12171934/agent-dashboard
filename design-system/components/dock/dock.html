@@ -9,6 +9,9 @@
      </ds-dock>
      Icons only: every item has data-tip (hover name) and aria-label (accessible name).
      The element appends the last button itself (⋯ 바 설정: position and size); do not write one.
+     data-more on an item (or a separator) keeps it off the bar: above the phone width it is a named row in the ⋯ menu
+     (then called 「더 보기」, a separator's data-label heads a group there); on a phone it stays in its place in the sheet.
+     Use it for settings that are not needed at a glance, so the bar keeps to tabs, filters and status.
      Phone (≤500px): the bar is a launcher pill and [open] makes it a bottom sheet of the same children (tabs two to a
      row, toggles as rows with a switch, data-tip as each row's name). The element adds .dock-launch (the .on tab's icon
      and name, summary, a dot when a count badge is up) and .dock-head (sheet-title, default 「이동과 설정」, and a close
@@ -34,6 +37,16 @@
   <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox"><ds-icon name="pulse"></ds-icon></label>
   <i class="dock-sep" data-label="설정"></i>
   <button class="dock-btn" data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
+</ds-dock>
+<!-- @story 더 보기 메뉴 — data-more 항목은 ⋯ 메뉴의 이름 붙은 행으로 (휴대폰 시트에서는 제자리) -->
+<ds-dock summary="실행 1 · 대기 0" data-story-play="setTimeout(() => this.querySelector('.dock-cfg').click())">
+  <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
+  <a href="#" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
+  <i class="dock-sep" data-label="설정"></i>
+  <button class="dock-btn" data-tip="메트릭 서버" aria-label="메트릭 서버"><ds-icon name="server"></ds-icon></button>
+  <label class="dock-btn" data-more data-tip="캐릭터 모드" aria-label="캐릭터 모드"><input type="checkbox" checked><ds-icon name="smile"></ds-icon></label>
+  <button class="dock-btn" data-more data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
+  <a href="#" data-more data-tip="디자인 시스템" aria-label="디자인 시스템"><ds-icon name="shapes"></ds-icon></a>
 </ds-dock>
 <!-- @story 배지 없음 — 개수 배지가 숨은 탭 (hidden) -->
 <ds-dock summary="대기 없음">

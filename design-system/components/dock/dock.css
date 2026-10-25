@@ -41,8 +41,23 @@ ds-dock .dn[hidden] { display: none; }
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow); }
 .dock-menu[hidden] { display: none; }
 .dock-side { display: contents; } .dock-side[hidden] { display: none; }
+/* .dock-more: the bar's data-more children as named rows (their data-tip), toggles with a switch, separators as group headings */
+.dock-more { display: grid; gap: 2px; min-width: 210px; padding-bottom: 8px; margin-bottom: 2px; border-bottom: 1px solid var(--surface-edge); }
+.dock-more:empty { display: none; }
+.dock-more :is(a, .dock-btn) { display: flex; align-items: center; width: auto; height: 36px; justify-content: flex-start; gap: 10px; padding: 0 10px;
+  border: 0; border-radius: 10px; background: none; color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+.dock-more :is(a, .dock-btn):hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.dock-more :is(a, .dock-btn):focus-visible, .dock-more .dock-btn:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dock-more svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.dock-more [data-tip]::after { content: attr(data-tip); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.dock-more .dock-btn:has(input:checked) { color: var(--text); background: none; }
+.dock-more label.dock-btn::before { content: ""; order: 3; flex: none; width: 34px; height: 20px; border-radius: 99px; transition: background .15s;
+  background: radial-gradient(circle at 10px 50%, var(--on-accent) 8px, transparent 8.5px), color-mix(in srgb, var(--muted) 30%, transparent); }
+.dock-more label.dock-btn:has(input:checked)::before { background: radial-gradient(circle at 24px 50%, var(--on-accent) 8px, transparent 8.5px), var(--accent); }
+.dock-more .dock-sep { width: auto; height: auto; margin: 6px 4px 2px; background: none; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.dock-more .dock-sep::after { content: attr(data-label); }
 .dock-size { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.dock-size input { flex: 1; accent-color: var(--accent); }
+.dock-size input { flex: 1; height: 28px; margin: 0; accent-color: var(--accent); }
 :root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100% - 16px); }
 :root[data-dock="top"] ds-dock { left: 50%; top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); transform: translateX(-50%); max-width: calc(100% - 16px); }
 :root[data-dock="left"] ds-dock, :root[data-dock="right"] ds-dock { top: 50%; transform: translateY(-50%); flex-direction: column; border-radius: 26px; }

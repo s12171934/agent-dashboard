@@ -43,8 +43,9 @@
   </div>
 </header>
 <!-- the floating bar (<ds-dock>): tabs | view filters | metric servers and display settings; data-tip names each.
-     The bar adds its own ⋯ settings button (position, size). On a phone it is a launcher pill (summary: set by app.js)
-     that opens these same buttons as a sheet, grouped under the separators' data-label. -->
+     The bar adds its own ⋯ button (position, size); the data-more items sit in its menu instead of on the bar.
+     On a phone it is a launcher pill (summary: set by app.js) that opens these same buttons as a sheet, grouped under
+     the separators' data-label. -->
 <ds-dock id="dock" inset-from="header">
   <a href="#home" data-v="home" data-tip="홈" aria-label="홈"><ds-icon name="home"></ds-icon><b class="dn" id="k-home" hidden>0</b></a>
   <a href="#agents" data-v="agents" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
@@ -59,13 +60,13 @@
   <label class="dock-btn" data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
   <label class="dock-btn" id="dz-pane-btn" data-tip="읽은 세션 보기" aria-label="읽은 세션 보기: 설계문서 오른쪽의 섹션을 읽은 세션 목록" hidden><input type="checkbox" id="dz-pane-chk"><ds-icon name="users"></ds-icon></label>
   <i class="dock-sep" data-label="설정"></i>
-  <label class="dock-btn" id="inbox-mode-btn" data-tip="메일함 모드" aria-label="메일함 모드: 자리를 비운 동안 질문을 메일함에 쌓고 에이전트는 권장안으로 진행" hidden><input type="checkbox" id="inbox-mode"><ds-icon name="mail"></ds-icon></label>
-  <label class="dock-btn" data-tip="캐릭터 모드" aria-label="캐릭터 모드: 에이전트 탭을 캐릭터가 책상에서 일하는 사무실 그림으로 봄"><input type="checkbox" id="char-mode"><ds-icon name="smile"></ds-icon></label>
+  <label class="dock-btn" id="inbox-mode-btn" data-more data-tip="메일함 모드" aria-label="메일함 모드: 자리를 비운 동안 질문을 메일함에 쌓고 에이전트는 권장안으로 진행" hidden><input type="checkbox" id="inbox-mode"><ds-icon name="mail"></ds-icon></label>
+  <label class="dock-btn" data-more data-tip="캐릭터 모드" aria-label="캐릭터 모드: 에이전트 탭을 캐릭터가 책상에서 일하는 사무실 그림으로 봄"><input type="checkbox" id="char-mode"><ds-icon name="smile"></ds-icon></label>
   <button class="dock-btn" id="srv-btn" data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
-  <ds-theme-toggle id="theme" button-class="dock-btn"></ds-theme-toggle>
-  <button class="dock-btn" id="theme-edit" data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>
-  <a href="ds/stories.html" data-tip="디자인 시스템" aria-label="디자인 시스템: 컴포넌트를 상황별로 보고 점검"><ds-icon name="shapes"></ds-icon></a>
-  <button class="dock-btn" id="icon-btn" data-tip="앱 아이콘" aria-label="앱 아이콘: 홈 화면·작업 표시줄에 보일 아이콘을 고름"><ds-icon name="grid"></ds-icon></button>
+  <ds-theme-toggle id="theme" button-class="dock-btn" data-more></ds-theme-toggle>
+  <button class="dock-btn" id="theme-edit" data-more data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>
+  <a href="ds/stories.html" data-more data-tip="디자인 시스템" aria-label="디자인 시스템: 컴포넌트를 상황별로 보고 점검"><ds-icon name="shapes"></ds-icon></a>
+  <button class="dock-btn" id="icon-btn" data-more data-tip="앱 아이콘" aria-label="앱 아이콘: 홈 화면·작업 표시줄에 보일 아이콘을 고름"><ds-icon name="grid"></ds-icon></button>
 </ds-dock>
 <ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
 <div id="server-panel" class="popover dock-pop" hidden></div>
