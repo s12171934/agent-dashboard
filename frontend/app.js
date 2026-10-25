@@ -3207,6 +3207,8 @@ function chApply() {
   chView.x = Math.min(cw - 80, Math.max(80 - ww * chView.z, chView.x));
   chView.y = Math.min(ch - 80, Math.max(80 - wh * chView.z, chView.y));
   w.style.transform = `translate(${chView.x}px, ${chView.y}px) scale(${chView.z})`;
+  // the corridor floor moves and scales with the plane (the backdrop in app.css)
+  cv.style.setProperty('--bx', chView.x + 'px'); cv.style.setProperty('--by', chView.y + 'px'); cv.style.setProperty('--bz', chView.z);
   const zl = $('#ch-zl');
   if (zl) zl.textContent = Math.round(chView.z * 100) + '%';
   $('#ch-fit')?.setAttribute('aria-pressed', chView.fit);
@@ -3305,6 +3307,25 @@ function staffPanel() {
     <section class="hw W" data-hm="${w.id}"><div class="hw-body">${r ? r.body : '<div class="st">보여 줄 데이터가 없습니다</div>'}</div></section></aside>`;
 }
 
+// The time of day for the office's light and window sky
+const todOf = (h = new Date().getHours()) => h >= 6 && h < 10 ? 'morning' : h >= 10 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'evening' : 'night';
+const TOD_NAME = { morning: '아침', day: '낮', evening: '저녁', night: '밤' };
+// The lobby: a glass wall onto the city (its sky follows the time of day), and in front of it a reception desk with a
+// lamp, the office sign, a lounge (sofa, rug), a coffee machine and a water cooler
+function lobbyHtml(people) {
+  const d = new Date(), tod = todOf(d.getHours()), busy = people.filter(s => ['run', 'bg'].includes(subBg(s, agg(s), status(s)))).length;
+  const desk = `<svg class="lb-wide" viewBox="0 0 150 96" width="240" height="154"><rect class="lb-wood2" x="6" y="44" width="138" height="50" rx="6"/><rect class="lb-wood" x="2" y="38" width="146" height="12" rx="4"/>
+    <rect class="lb-dark" x="88" y="20" width="34" height="20" rx="2"/><rect class="lb-metal" x="100" y="38" width="10" height="3"/><path class="lb-dark" d="M24 38v-22h3v22z"/><path class="lb-lamp" d="M14 14h24l-6-10h-12z"/>
+    <rect class="lb-metal" x="44" y="30" width="26" height="8" rx="2"/><rect class="lb-pot" x="128" y="24" width="12" height="14" rx="2"/><path class="lb-leaf" d="M134 24c-8-4-8-14-3-18c3 5 4 11 3 18zM134 24c2-9 7-14 12-14c0 7-5 12-12 14z"/></svg>`;
+  const lounge = `<svg class="lb-wide" viewBox="0 0 210 96" width="320" height="146"><ellipse class="lb-rug" cx="105" cy="86" rx="100" ry="10"/><rect class="lb-sofa" x="10" y="34" width="120" height="30" rx="12"/>
+    <rect class="lb-sofa2" x="18" y="52" width="104" height="24" rx="8"/><rect class="lb-sofa" x="4" y="46" width="18" height="32" rx="8"/><rect class="lb-sofa" x="118" y="46" width="18" height="32" rx="8"/>
+    <rect class="lb-dark" x="154" y="20" width="26" height="58" rx="4"/><rect class="lb-metal" x="158" y="26" width="18" height="12" rx="2"/><rect class="lb-lamp" x="163" y="44" width="8" height="4" rx="1"/><rect class="lb-metal" x="160" y="58" width="14" height="10"/>
+    <rect class="lb-metal" x="186" y="46" width="20" height="32" rx="3"/><rect class="lb-water" x="188" y="16" width="16" height="30" rx="6"/></svg>`;
+  return `<div class="ch-lobby" aria-hidden="true"><i class="lb-city"></i>${desk}<div class="lobby-sign"><b>AGENT OFFICE</b>
+      <span>${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]}) · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · ${TOD_NAME[tod]}</span>
+      <small>출근 ${people.length}명 · 일하는 중 ${busy}</small></div>${lounge}</div>`;
+}
+
 function renderOffice() {
   if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
   const { fams, solos } = families();
@@ -3319,7 +3340,8 @@ function renderOffice() {
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  $('#view').innerHTML = `<div class="ch-canvas" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
+  const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
+  $('#view').innerHTML = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       <div class="ch-tools surface">${home ? homeViewSeg() : ''}
         <span class="seg" id="ch-style"><button data-k="3d">3D</button><button data-k="px">픽셀</button></span>
         <span class="ch-zoom"><button type="button" class="act" id="ch-out" aria-label="축소">−</button><button type="button" class="act" id="ch-zl" title="100%로">100%</button><button type="button" class="act" id="ch-in" aria-label="확대">+</button></span>
@@ -3327,7 +3349,7 @@ function renderOffice() {
         <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
       </div>
       ${home && chPanel ? staffPanel() : ''}
-      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
+      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   $('#ch-style').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === charStyle);
