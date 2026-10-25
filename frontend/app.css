@@ -1,12 +1,10 @@
 
-/* header: floats --hdr-top below the screen edge (<ds-dock inset-from="header"> keeps a top dock under it) */
+/* no page header: the page starts below the status bar's safe area (--hdr-top: where sticky panes stop); the figures,
+   connection and errors live in the bar's 「현황」 popover (#stat-panel) */
 :root { --hdr-top: calc(8px + env(safe-area-inset-top)); }
-header { background: var(--panel); border: 1px solid var(--line); position: sticky; top: var(--hdr-top); z-index: 20; margin: var(--hdr-top) max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left)); border-radius: 20px; }
-.hrow { display: flex; align-items: center; gap: 18px; padding: 10px 14px; flex-wrap: wrap; }
-.hrow h1 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.hrow h1 a { display: contents; color: inherit; text-decoration: none; }  /* the logo goes to the agents tab */
-.hrow h1 img { width: 28px; height: 28px; border-radius: 8px; box-shadow: var(--surface-shadow-sm); }
-.kpis-h { display: flex; gap: 18px; flex-wrap: wrap; }
+body { padding-top: env(safe-area-inset-top); }
+#stat-panel { width: min(360px, calc(var(--seg-w) - 24px)); }
+.kpis-h { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 .stat { display: grid; grid-template-columns: auto auto; column-gap: 8px; align-items: center; justify-content: start; min-width: 0; }
 .stat .gi { grid-row: span 2; }
 .stat[hidden] { display: none; }
@@ -15,7 +13,7 @@ header { background: var(--panel); border: 1px solid var(--line); position: stic
 .conn { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .conn i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
 .conn.on i { background: var(--ok); }
-.health { margin-left: 12px; font-size: 12px; color: var(--bad); white-space: nowrap; cursor: help; }
+.health { margin-top: 12px; font-size: 12px; color: var(--bad); cursor: help; }
 main { padding: 16px var(--gutter); max-width: 1500px; margin: 0 auto; padding-bottom: calc(40px + env(safe-area-inset-bottom));
   padding-left: max(var(--gutter), env(safe-area-inset-left)); padding-right: max(var(--gutter), env(safe-area-inset-right)); }
 
@@ -489,11 +487,10 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 #tests-q { padding: 6px 10px; min-width: 200px; }
 
 /* the page's surfaces, drawn in the current material (ds materials/*.css): large panes */
-header, .family, .cmp, .gwrap, .tests, .talk-g, .tg-wrap, .dc-card {
+.family, .cmp, .gwrap, .tests, .talk-g, .tg-wrap, .dc-card {
   background: var(--surface-sheen), var(--surface); border-color: var(--surface-edge);
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
   box-shadow: var(--surface-hi), var(--surface-shadow); }
-header { border: 1px solid var(--surface-edge); }
 .family { border-radius: calc(var(--radius) + 6px); }
 .family.live { border-color: color-mix(in srgb, var(--ok) 45%, var(--surface-edge)); }
 .family.nested { background: var(--surface-2); border-color: color-mix(in srgb, var(--muted) 35%, transparent); box-shadow: var(--surface-hi); }
@@ -531,29 +528,21 @@ button.dc-opt.picked { background: var(--surface-sheen), color-mix(in srgb, var(
 /* SVG labels sat on solid panels; give their halo the surface tint instead */
 .gnode text, .tg-n, .tg-l, .tdep-t { stroke: color-mix(in srgb, var(--panel) 85%, transparent); }
 
-/* header stat icons: plain line icons in the stat's colour */
+/* 현황 stat icons: plain line icons in the stat's colour */
 .gi { display: grid; place-items: center; width: 18px; color: var(--muted); flex: none; }
 .gi svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .stat:first-child .gi { color: var(--ok); }
 .stat.dec .gi { color: var(--warn); }
-@media (max-width: 700px) { header { margin: var(--hdr-top) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left)); border-radius: 18px; } }
-/* phone: the sticky header keeps to two short rows of figures (no icons, four across) so it does not eat the screen */
-@media (max-width: 500px) {
-  .hrow { gap: 6px; }
-  .kpis-h { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 8px; }
-  .stat { grid-template-columns: minmax(0, 1fr); }
-  .stat .gi { display: none; }
-  .stat b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; }
-  .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
 }
 
-#srv-btn .srv-dot { position: absolute; top: 18%; right: 18%; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 2px var(--panel); }
-ds-dock[open] #srv-btn .srv-dot { position: static; order: 2; box-shadow: none; }
+#dock .srv-dot { position: absolute; top: 18%; right: 18%; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 2px var(--panel); }
+ds-dock[open] .srv-dot { position: static; order: 2; box-shadow: none; }
 #srv-btn.on .srv-dot { background: var(--ok); } #srv-btn.part .srv-dot { background: var(--warn); }
+#stat-btn:not(.bad) .srv-dot, #stat-btn .dn:not([hidden]) ~ .srv-dot { display: none; }  /* 현황: a collection problem, unless the 결정 count shows */
 
 /* the dock (<ds-dock>) floats over the page: keep a gutter on its side so it never covers the end of a scroll */
 :root[data-dock="bottom"] main { padding-bottom: calc(var(--dock-pick, 38px) + 44px + var(--dock-bottom)); }
-:root[data-dock="top"] header { margin-bottom: calc(var(--dock-pick, 38px) + 24px); }
+:root[data-dock="top"] body { padding-top: calc(env(safe-area-inset-top) + var(--dock-pick, 38px) + 30px); }
 :root[data-dock="left"] :is(main, #decisions, #decide-head, #inbox) { padding-left: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-left)); }
 :root[data-dock="right"] :is(main, #decisions, #decide-head, #inbox) { padding-right: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-right)); }
 
@@ -707,16 +696,8 @@ a.act { text-decoration: none; display: inline-block; }
 
 /* the fold layout: an unfolded foldable (ds tokens.css, GUIDELINES B8) is two halves of one screen. Cards run two to a
    row so the fold falls between them, panes that stack on a narrow screen stay side by side (.panes does that itself),
-   and the header keeps to a title row and one row of figures. Same rules for a hinge the browser reports. A folded
-   phone held sideways (height 500 or less) also matches; the rail below then takes the header. */
+   Same rules for a hinge the browser reports. A folded phone held sideways (height 500 or less) also matches. */
 @media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
-  .hrow { gap: 6px 10px; padding: 8px 14px 6px; }
-  .hrow h1 { flex: 1; }
-  .kpis-h { order: 3; width: 100%; display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px 8px; }
-  .stat { grid-template-columns: minmax(0, 1fr); }
-  .stat .gi { display: none; }
-  .stat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
-  .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
   .grid { grid-template-columns: var(--fold-cols); column-gap: var(--pane-gap); }
   /* a card's six figures: three and three in a half-screen card, one row of six once it is wide (fold-card below) */
   .grid > .card { container: fold-card / inline-size; }
@@ -740,21 +721,6 @@ a.act { text-decoration: none; display: inline-block; }
 }
 @container fold-card (min-width: 380px) { .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 
-/* phone held sideways (short landscape, a finger device — a short desktop window keeps the header on top): a header across the top would take a third of the height, so it becomes a
-   rail down the left edge — the icon, the figures stacked (no icons), the connection — and the page moves right */
-@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
-  :root { --rail: calc(104px + env(safe-area-inset-left)); }
-  header { position: fixed; top: 0; bottom: 0; left: 0; width: var(--rail); margin: 0; box-sizing: border-box; overflow-y: auto;
-    border-left: 0; border-radius: 0 18px 18px 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  .hrow { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; padding: 10px; }
-  .hrow h1 { font-size: 0; justify-content: center; flex: none; }
-  .kpis-h { order: 0; width: auto; display: flex; flex-direction: column; gap: 8px; }
-  .stat { grid-template-columns: minmax(0, 1fr); }
-  .stat .gi { display: none; }
-  .stat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
-  .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
-  .conn, .health { margin-left: 0; white-space: normal; }
-  :is(main, #decisions, #decide-head, #inbox) { padding-left: calc(var(--rail) + 12px); }
 }
 /* 「워크트리별」 보기: one section per worktree holding the tree view's own blocks; stand-ins (.wt-proxy) mark sessions drawn elsewhere */
 .ag-controls { margin-bottom: 4px; }
@@ -1468,19 +1434,19 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.st-done .ch-dot { background: var(--done); }
 .ch.dec .ch-dot { background: var(--warn); animation: pulse 1.6s infinite; }
 .ch .badge { margin-top: 2px; }
-/* motion (AI 생성): pixel art at 3×, so it moves a sprite pixel (3px) at a time, in steps; the generated pose carries
+/* motion (AI 생성): pixel art at 2×, so it moves a sprite pixel (2px) at a time, in steps; the generated pose carries
    the state. Live2D moves in its canvas instead. */
-.fig-ai { image-rendering: pixelated; filter: drop-shadow(3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent));
-  animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -3px; }
+.fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
+  animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -2px; }
 .ch.st-run .fig-ai { animation-duration: .8s; }
-.ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph, 0s); --bob: -6px; }
-.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -3px; }
+.ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph, 0s); --bob: -4px; }
+.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -2px; }
 .ch.st-stalled .fig-ai { animation: shake .4s steps(1, end) infinite; }
 .ch.st-idle .fig-ai { animation-duration: 4s; }
 .ch.st-idle .ch-fig { opacity: .8; }
 .ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
-.ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
-@keyframes shake { 50% { transform: translateX(3px); } }
+.ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
+@keyframes shake { 50% { transform: translateX(2px); } }
 /* session detail: the office's person beside the title (.d-ch reuses .ch's pose motion, not its absolute placement),
    and the picker under it */
 .d-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "fig head" "fig top"; align-items: end; column-gap: 14px; margin-bottom: 12px; }
@@ -1524,7 +1490,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .cx-arr i { position: relative; display: block; width: 100%; height: 2px; background: currentColor; border-radius: 2px; }
 .cx-arr i::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left: 7px solid currentColor; border-right: 0; }
 .cx-poses { display: flex; flex-wrap: wrap; gap: 4px; }
-.cx-pose { display: flex; align-items: flex-end; justify-content: center; width: 60px; height: 104px; padding: 2px; border: 1px solid var(--surface-edge); border-radius: 8px;
+.cx-pose { display: flex; align-items: flex-end; justify-content: center; width: 86px; height: 104px; padding: 2px; border: 1px solid var(--surface-edge); border-radius: 8px;
   background: var(--control-fill); cursor: pointer; overflow: hidden; }
 .cx-pose:hover { border-color: var(--muted); }
 .cx-pose.on { border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: -2px; }
