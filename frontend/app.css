@@ -1493,6 +1493,9 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .cx-pose span { display: block; flex: none; background-repeat: no-repeat; image-rendering: pixelated; max-width: none; }
 .cx-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
 .cx-files .act { margin-left: auto; }
+.cx-gone { display: flex; flex-wrap: wrap; gap: 8px; }
+.cx-gone-1 { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; font-size: 12.5px; }
+.cx-gone-1 code { font-size: 11px; color: var(--muted); }
 /* 「새 캐릭터」: the picture on the left, the form beside it, the jobs below */
 .cn { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; margin-bottom: 14px; }
 .cn-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px; }
@@ -1546,6 +1549,11 @@ a.hw-row:hover .hw-t { color: var(--accent); }
    on it; chSize sets its box (the first half when half folded). The page does not scroll. .ch-world is the plane of
    rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
 :root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
+/* iOS can lay an installed PWA out shorter than its screen (iPhone Duo sideways: 587 of 669 high, the status bar's
+   thickness taken off the height too). Nothing is drawn below the viewport but the page's background, so that strip
+   takes the corridor floor's colour and the office still reaches the edge to the eye; the bar stays in the viewport. */
+:root.ch-full { background-color: color-mix(in srgb, #b98152 34%, var(--panel2)); }
+:root.ch-full[data-theme="dark"] { background-color: color-mix(in srgb, #b98152 22%, var(--bg)); }
 :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
 :root.ch-full main { padding: 0; }
 :root.ch-full .ch-canvas { position: fixed; border: 0; border-radius: 0; }

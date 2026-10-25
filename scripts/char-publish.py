@@ -4,12 +4,16 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
 
     scripts/char-publish.py <who> --name 미오 --look '빨간 단발 · 노란 우비' [--boss] [--dir <folder>]
     scripts/char-publish.py <who> --remove
+    scripts/char-publish.py <who> --restore
     scripts/char-publish.py --list
 
 <who> is the file name (a-z, 0-9, -). --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
 as scripts/char-gen.sh leaves them (default: the current folder). The frame sizes and head tops (CH_ART) are measured
 from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), otherwise with the
 workers. A built-in name (aoi …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
+--remove on a built-in person (they live in the deploy) lists them under hidden in chars.json, so every page leaves them
+out; --restore (or putting them up again) takes them off it. Neither list may be emptied: one coordinator and one
+worker always stay.
 Each entry carries v (when it was put up), which the page adds to the picture URLs so a redrawn person shows at once,
 and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
 Needs `npx wrangler login` once, and Pillow with numpy (run it with "$(scripts/char-python.sh)").
@@ -25,6 +29,7 @@ if not shutil.which('npx'):  # started by launchd (the metric server's 「삭제
     if nvm:
         os.environ['PATH'] = nvm[-1] + os.pathsep + os.environ.get('PATH', '')
 WRANGLER = ['npx', '--yes', 'wrangler@' + os.environ.get('WRANGLER_VERSION', '4.151.3')]
+BUILTIN = {'kaede': True, 'yuki': True, 'aoi': False, 'ren': False, 'hina': False, 'sora': False}  # who: boss
 FILES = {'full': '{}-full.webp', 'bust': '{}-bust.webp', 'sd': '{}-sd.png', 'sdb': '{}-sd-bust.png'}
 
 
@@ -73,23 +78,45 @@ ap.add_argument('who', nargs='?')
 ap.add_argument('--name'); ap.add_argument('--look', default='')
 ap.add_argument('--boss', action='store_true')
 ap.add_argument('--dir', default='.')
-ap.add_argument('--remove', action='store_true'); ap.add_argument('--list', action='store_true')
+ap.add_argument('--remove', action='store_true'); ap.add_argument('--restore', action='store_true')
+ap.add_argument('--list', action='store_true')
 ap.add_argument('--dry-run', action='store_true')
 o = ap.parse_args()
 
 if o.list:
-    for who, c in manifest()['chars'].items():
+    m = manifest()
+    for who, c in m['chars'].items():
         print(f"{who}\t{c.get('name', '')}\t{'코디네이터' if c.get('boss') else '워커'}\t{c.get('look', '')}")
+    for who in m.get('hidden', []):
+        print(f"{who}\t(기본 캐릭터, 삭제됨)")
     sys.exit()
 if not o.who or not re.fullmatch(r'[a-z0-9-]+', o.who):
     ap.error('<who> 는 영문 소문자·숫자·- 로 된 이름이어야 합니다')
 m = manifest()
-if o.remove:
-    if m['chars'].pop(o.who, None) is None:
-        sys.exit(f'{o.who}: chars.json 에 없습니다')
+hidden = m.setdefault('hidden', [])
+if o.restore:
+    if o.who not in hidden:
+        sys.exit(f'{o.who}: 삭제한 기본 캐릭터가 아닙니다')
+    hidden.remove(o.who)
     put_manifest(m)
-    for f in FILES.values():
-        r2('delete', f'{BUCKET}/chars/' + f.format(o.who))
+    print(f'{o.who} 를 되살렸습니다')
+    sys.exit()
+if o.remove:
+    builtin = o.who in BUILTIN and o.who not in hidden
+    c = m['chars'].pop(o.who, None)
+    if c is None and not builtin:
+        sys.exit(f'{o.who}: chars.json 에 없습니다')
+    left = {w: b for w, b in BUILTIN.items() if w not in hidden and w != o.who}
+    left.update({w: bool(x.get('boss')) for w, x in m['chars'].items()})
+    boss = c.get('boss') if c and o.who not in BUILTIN else BUILTIN.get(o.who)
+    if boss not in left.values():
+        sys.exit(f"{o.who}: 마지막 {'코디네이터' if boss else '워커'}는 삭제할 수 없습니다")
+    if builtin:
+        hidden.append(o.who)
+    put_manifest(m)
+    if c is not None:
+        for f in FILES.values():
+            r2('delete', f'{BUCKET}/chars/' + f.format(o.who))
     print(f'{o.who} 를 내렸습니다')
     sys.exit()
 
@@ -98,6 +125,8 @@ missing = [p for p in paths.values() if not os.path.exists(p)]
 if missing:
     sys.exit('없는 파일: ' + ', '.join(missing))
 art = {k: measure(p, k in ('sd', 'sdb')) for k, p in paths.items()}
+if o.who in hidden:
+    hidden.remove(o.who)
 m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'v': int(time.time()), 'art': art}
 if o.dry_run:
     print(json.dumps(m, ensure_ascii=False, indent=1))
