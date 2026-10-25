@@ -226,17 +226,30 @@ def remove(jid):
     return True
 
 
-def unpublish(who):
-    """Take a character down: char-publish.py --remove drops it from chars.json and deletes its strips in R2, so every
-    open page loses it on its next read. Its job folders stay (marked .removed), so the sheets can be put up again."""
+def publish_script(who, flag):
+    """char-publish.py <who> --remove|--restore. -> None, or RuntimeError with its last line."""
     if not (isinstance(who, str) and WHO.fullmatch(who)):
         raise ValueError("잘못된 이름입니다")
     py = subprocess.run([os.path.join(REPO, "scripts/char-python.sh")], capture_output=True, text=True, timeout=300).stdout.strip()
-    out = subprocess.run([py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, "--remove"],
+    out = subprocess.run([py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, flag],
                          capture_output=True, text=True, timeout=180, cwd=REPO)
     if out.returncode:
-        msg = (out.stderr.strip().splitlines() or ["삭제하지 못했습니다"])[-1]
-        raise RuntimeError(f"{who} 은(는) 올라가 있지 않습니다" if "chars.json 에 없습니다" in msg else msg)
+        msg = (out.stderr.strip().splitlines() or ["처리하지 못했습니다"])[-1]
+        raise RuntimeError(f"{who} 은(는) 올라가 있지 않습니다" if "chars.json 에 없습니다" in msg else msg.split(": ", 1)[-1])
+
+
+def unpublish(who):
+    """Take a character down: char-publish.py --remove drops it from chars.json and deletes its strips in R2 (a built-in
+    one is listed as hidden there instead), so every open page loses it on its next read. Its job folders stay (marked
+    .removed), so the sheets can be put up again."""
+    publish_script(who, "--remove")
     for j in list_jobs():
         if j["who"] == who and j["state"] == "published":
             open(os.path.join(WORK, j["id"], ".removed"), "w").close()
+
+
+def restore(who):
+    """Bring back a built-in character taken down with unpublish (off chars.json's hidden list)."""
+    if who not in BUILTIN:
+        raise ValueError("기본 캐릭터만 되살릴 수 있습니다 — 올린 캐릭터는 다시 만들어 올리세요")
+    publish_script(who, "--restore")
