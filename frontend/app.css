@@ -329,13 +329,13 @@ ds-tooltip i.sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .tod button { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 4px 6px; font: inherit; cursor: pointer; }
 
 /* 결정 버튼 (decision.js): pending questions from the 8799 server (~/tools/decision-buttons), above the view */
-.badge.dec { background: var(--warn); border-color: var(--warn); color: #fff; }
+.badge.dec { background: var(--warn); border-color: var(--warn); color: var(--on-warn); }
 .stat.dec { cursor: pointer; }
 .stat.dec.on b { color: var(--warn); }
 .stat.dec.away #k-dec-l { color: var(--accent); }
 .stat.dec b em { font-style: normal; } #k-mail { color: var(--accent); }
 /* 메일함 mode is a state of the whole server, not a view filter: lit solid on the bar while it is on */
-ds-dock:not([open]) > #inbox-mode-btn:has(input:checked) { color: var(--on-accent, #fff); background: var(--accent); }
+ds-dock:not([open]) > #inbox-mode-btn:has(input:checked) { color: var(--on-accent-text); background: var(--accent); }
 :is(#decisions, #decide-head, #inbox) { max-width: 960px; margin: 0 auto; padding: 14px 16px 0; }
 #decide-head .sec-h { align-items: center; margin-top: 0; }
 #decide-head .sec-h h2 { font-size: 17px; }
@@ -376,7 +376,7 @@ button.dc-opt.picked { border-color: var(--accent); background: color-mix(in srg
   align-items: center; justify-content: center; font-size: .7em; color: transparent; }
 button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--accent); color: #fff; }
 .dc-other { display: flex; gap: 8px; margin-top: 10px; }
-.dc-other input { flex: 1; min-width: 0; font-size: 15px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
+.dc-other input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
 .dc-other input.filled { border-color: var(--accent); }
 .dc-other button, .dc-submit { font-size: 15px; padding: 0 18px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
 .dc-submit { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; }
@@ -996,7 +996,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .rv-js.j-prog { color: var(--run); border-color: color-mix(in srgb, var(--run) 50%, var(--line)); }
 .rv-js.j-hold { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); border-style: dashed; }
 .rv-js.j-dev { color: var(--s-write); border-color: var(--s-write); }
-.rv-js.j-ready { color: var(--on-accent); background: var(--warn); border-color: var(--warn); font-weight: 600; }
+.rv-js.j-ready { color: var(--on-warn); background: var(--warn); border-color: var(--warn); font-weight: 600; }
 .rv-js.j-qa { color: var(--done); border-color: color-mix(in srgb, var(--done) 50%, var(--line)); }
 #wt-f { flex-wrap: wrap; max-width: 100%; }
 .seg-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--line); }
@@ -1276,7 +1276,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .hw h3 { margin: 0; font-size: 13.5px; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hw-note { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .hw-n { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--panel2); color: var(--muted); font-variant-numeric: tabular-nums; }
-.hw-n.hot { background: var(--warn); color: #fff; } .hw-n.bad { background: var(--bad); color: #fff; }
+.hw-n.hot { background: var(--warn); color: var(--on-warn); } .hw-n.bad { background: var(--bad); color: #fff; }
 .hw-pin { font-size: 11px; }
 .hw-more { color: var(--muted); text-decoration: none; font-weight: 400; font-size: 13px; padding: 0 2px; }
 .hw-more:hover { color: var(--accent); }
@@ -1297,7 +1297,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-item.sent { opacity: .45; pointer-events: none; }
 .hw-opts { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 0 8px; }
 .hw-opt { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hw-opt.rec { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.hw-opt.rec { background: var(--accent); color: var(--on-accent-text); border-color: transparent; }
 .hw-opt.ghost { background: transparent; color: var(--muted); }
 .hw-ok { color: var(--ok); font-size: 13px; padding: 4px 0; }
 .hw-dev { color: var(--bad); font-weight: 600; }

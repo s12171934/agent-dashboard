@@ -26,7 +26,7 @@ ds-dock [data-tip]:is(:hover, :focus-visible, :has(:focus-visible))::after { opa
 :root:is([data-dock="bottom"], [data-dock="top"]) ds-dock [data-tip]:is(:hover, :focus-visible, :has(:focus-visible))::after { transform: translate(-50%, 0); }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock [data-tip]:is(:hover, :focus-visible, :has(:focus-visible))::after { transform: translate(0, -50%); }
 ds-dock .dn { position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; font-size: 10px; line-height: 16px;
-  text-align: center; font-weight: 700; color: var(--on-accent); background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
+  text-align: center; font-weight: 700; color: var(--on-warn); background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
 ds-dock .dn[hidden] { display: none; }
 .dock-btn[hidden] { display: none; }  /* .dock-btn's inline-flex would otherwise win over [hidden] */
 /* toggles: a <label class="dock-btn"> around a checkbox; the box stays (scripts read it) but only the icon shows, lit when checked */
