@@ -57,6 +57,7 @@ POST = {
     "/api/qa/ticket": review.post_qa,
     "/api/chars/create": chars.post_char,
     "/api/chars/remove": chars.post_char,
+    "/api/chars/unpublish": chars.post_char,
     **{f"/api/decision/{a}": decisions.post_decision
        for a in ("ask", "answer", "release", "mode", "inbox", "guard", "dismiss")},
 }
