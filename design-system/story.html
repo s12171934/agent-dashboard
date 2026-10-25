@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Story</title>
+<!-- The canvas of the story viewer (stories.html): one story of one component, alone on a page, so the width of this
+     frame is the width the component meets (breakpoints, overflow) and 「점검」 measures only that story.
+     The viewer drives it through window.storyReady (resolves to the API below); it is not meant to be opened alone. -->
+<script>window.storyReady = new Promise(r => { window.storyResolve = r; });</script>
+<script src="foundations/theme.js"></script>
+<script src="foundations/fold.js"></script>
+<script src="components/dock/dock-boot.js"></script>
+<script type="module" src="ds.js"></script>
+<link rel="stylesheet" href="ds.css">
+<link rel="stylesheet" href="preview.css">
+<style>
+  main { padding: 24px var(--gutter) 130px; }
+  /* on a pane, as in the preview (index.html): components sit on one in the dashboard, and 「점검」 measures contrast against it */
+  section { padding: 14px 16px; }
+  @media (max-width: 700px) { section { padding: 12px; } }
+</style>
+</head>
+<body>
+<main><section class="surface"></section></main>
+<script type="module">
+import { load, fillIcons } from './stories.js';
+import { measure } from './preview-check.js';
+
+const lib = await load();
+const sec = document.querySelector('main > section');
+const keep = new Set(document.body.children);
+const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+// an element's place under <body> as child indexes, so a problem found in one drawing can be found again in the next
+const pathOf = el => { const p = []; for (; el && el !== document.body; el = el.parentElement) p.unshift([...el.parentElement.children].indexOf(el)); return p; };
+const byPath = p => p.reduce((el, i) => el?.children[i], document.body);
+
+window.storyResolve({
+  lib,
+  // draw story i of component name; resolves once its custom elements are up and its plays have run
+  async show(name, i) {
+    const c = lib.components.find(c => c.name === name), s = c?.stories[i];
+    for (const el of [...document.body.children]) if (!keep.has(el)) el.remove();  // the dock and what it hangs on <body>
+    sec.id = 'c-' + name;
+    sec.innerHTML = '';
+    document.documentElement.classList.remove('chk-on');
+    if (!s) return;
+    // the dock is one per page, a direct child of <body> (its contract); 「점검」 counts it under #c-dock all the same
+    if (name === 'dock') document.body.insertAdjacentHTML('beforeend', s.html); else sec.innerHTML = s.html;
+    fillIcons(document.body, lib.sprite);
+    const tags = new Set([...document.body.querySelectorAll('*')].map(e => e.localName).filter(t => t.startsWith('ds-')));
+    await Promise.all([...tags].map(t => customElements.whenDefined(t)));
+    await frame();
+    for (const el of document.body.querySelectorAll('[data-story-play]')) new Function(el.dataset.storyPlay).call(el);
+    await frame();
+    scrollTo(0, 0);
+  },
+  theme(t, m) { applyTheme(t); applyMaterial(m); return frame(); },
+  // [{kind, detail, path, el}] for what fails right now
+  measure: () => measure().map(p => ({ kind: p.kind, detail: p.detail, path: pathOf(p.el), el: p.el })),
+  mark(paths) {
+    document.querySelectorAll('[data-chk]').forEach(el => { delete el.dataset.chk; });
+    for (const p of paths) { const el = byPath(p); if (el) el.dataset.chk = ''; }
+    document.documentElement.classList.toggle('chk-on', paths.length > 0);
+  },
+  flash(path) {
+    const el = byPath(path);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('chk-flash'); void el.offsetWidth; el.classList.add('chk-flash');
+  },
+  width: () => document.documentElement.clientWidth,
+});
+</script>
+</body>
+</html>

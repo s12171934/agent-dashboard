@@ -4,7 +4,9 @@
        <button>B</button>
      </span>
      Two to six options, short labels. The page moves .on and acts on click; a disabled option uses disabled. -->
-<div class="row">
-  <span class="seg"><button class="on">합계</button><button>시간별</button></span>
-  <span class="seg"><button>5분</button><button>15분</button><button class="on">1시간</button><button disabled>1일</button></span>
-</div>
+<!-- @story 두 개 — 가장 흔한 둘 중 하나 -->
+<span class="seg"><button class="on">합계</button><button>시간별</button></span>
+<!-- @story 비활성 선택지 — disabled 옵션이 섞임 -->
+<span class="seg"><button>5분</button><button>15분</button><button class="on">1시간</button><button disabled>1일</button></span>
+<!-- @story 넘치는 폭 — 여섯 개, 긴 라벨: 폭보다 길면 스스로 가로 스크롤 -->
+<span class="seg"><button class="on">에이전트 전체</button><button>코디네이터만</button><button>워커만</button><button>단독 세션</button><button>백그라운드 작업</button><button>끝난 세션</button></span>

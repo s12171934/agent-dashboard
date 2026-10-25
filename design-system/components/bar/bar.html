@@ -4,11 +4,27 @@
      <div class="prog"><div style="width: N%; background: COLOUR"></div>…</div>    stacked, thin (6px)
      <span class="tbar"><i style="width: P%"></i><i class="f" style="width: F%"></i></span>   passed from the left, failed from the right
      <div class="pbar"><i class="done|run|fail|skip"></i>…</div>                   one cell per step, in order -->
+<!-- @story 누적 막대 — .track: 여러 조각을 쌓은 18px 막대 -->
 <div class="bars">
   <div class="track"><div style="width: 30%; background: var(--s-write)"></div><div style="width: 25%; background: var(--s-read)"></div><div style="width: 15%; background: var(--s-out)"></div></div>
+</div>
+<!-- @story 채움 — .ctxbar: 보통, 경고(.ctx-warn), 위험(.ctx-bad) -->
+<div class="bars">
   <div class="ctxbar"><div style="width: 62%"></div></div>
   <div class="ctxbar"><div class="ctx-warn" style="width: 86%"></div></div>
+  <div class="ctxbar"><div class="ctx-bad" style="width: 97%"></div></div>
+</div>
+<!-- @story 얇은 누적 — .prog: 6px -->
+<div class="bars">
   <div class="prog"><div style="width: 40%; background: var(--done)"></div><div style="width: 20%; background: var(--run)"></div></div>
+</div>
+<!-- @story 통과·실패 — .tbar: 통과는 왼쪽부터, 실패는 오른쪽부터 -->
+<div class="bars">
   <span class="tbar"><i style="width: 70%"></i><i class="f" style="width: 10%"></i></span>
+  <span class="tbar"><i style="width: 100%"></i></span>
+  <span class="tbar"><i style="width: 20%"></i><i class="f" style="width: 80%"></i></span>
+</div>
+<!-- @story 단계 — .pbar: 단계마다 칸 하나 (완료·실행·실패·건너뜀·대기) -->
+<div class="bars">
   <div class="pbar"><i class="done"></i><i class="done"></i><i class="run"></i><i></i><i class="fail"></i><i class="skip"></i></div>
 </div>

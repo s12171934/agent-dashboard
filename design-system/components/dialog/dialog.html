@@ -6,10 +6,24 @@
        <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">Do it</button></div>
      </form></dialog>
      Open with showModal(); the clicked button's value becomes returnValue. The confirming button comes last. -->
+<!-- @story 닫힘 — 버튼으로 연다 (showModal) -->
 <button class="act" onclick="this.nextElementSibling.showModal()">대화상자 열기</button>
 <dialog class="dialog"><form method="dialog">
   <h3>"리퀴드글래스 UI" 의 Orca 터미널을 닫을까요?</h3>
   <p class="dialog-warn">⚠ 지금 실행 중입니다.</p>
   <p>에이전트 프로세스가 끝납니다. 세션 기록은 남습니다.</p>
   <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div>
+</form></dialog>
+<!-- @story 경고와 함께 열림 — 위험한 확인 -->
+<dialog class="dialog" data-story-play="this.showModal()"><form method="dialog">
+  <h3>"리퀴드글래스 UI" 의 Orca 터미널을 닫을까요?</h3>
+  <p class="dialog-warn">⚠ 지금 실행 중입니다.</p>
+  <p>에이전트 프로세스가 끝납니다. 세션 기록은 남습니다.</p>
+  <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div>
+</form></dialog>
+<!-- @story 경고 없이 열림 — 일반 확인 -->
+<dialog class="dialog" data-story-play="this.showModal()"><form method="dialog">
+  <h3>완료 워커 12개를 숨길까요?</h3>
+  <p>목록에서만 숨깁니다. 「숨긴 항목」에서 다시 볼 수 있습니다.</p>
+  <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big accent" value="ok">숨기기</button></div>
 </form></dialog>

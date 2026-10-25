@@ -9,6 +9,9 @@
 // and a close button), and toggles [open], which turns the bar into a sheet of its own children. The scrim behind it
 // lives at the end of <body> for the same reason as the menu. Following a tab, or a button that opens a .dock-pop,
 // closes the sheet; toggles and other buttons (the theme) leave it open.
+// data-more on a child (a button, toggle, tab or separator) keeps it off the bar: above the phone width it moves into the
+// ⋯ menu, a row with its data-tip as the name (a separator's data-label heads a group there), and on a phone it goes back
+// to its place in the sheet. The element moves, not a copy, so its id, handlers, checkbox and hidden keep working.
 const SIDES = [['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const PHONE = matchMedia('(max-width: 500px)');
@@ -24,17 +27,24 @@ class DsDock extends HTMLElement {
     const inset = () => document.documentElement.style.setProperty('--dock-inset-top',
       (parseFloat(getComputedStyle(above).top) || 0) + above.offsetHeight + 'px');
     if (above) { new ResizeObserver(inset).observe(above); addEventListener('resize', inset); }
+    // each data-more child keeps a marker at its place in the bar, to go back to on a phone
+    this.more = [...this.children].filter(e => e.hasAttribute('data-more')).map(e => {
+      const mark = document.createComment('dock-more');
+      e.before(mark);
+      return [e, mark];
+    });
     const btn = document.createElement('button');
     btn.className = 'dock-btn dock-cfg';
-    btn.dataset.tip = '바 설정';
-    btn.setAttribute('aria-label', '바 설정');
+    const name = this.more.length ? '더 보기' : '바 설정';
+    btn.dataset.tip = name;
+    btn.setAttribute('aria-label', name);
     btn.innerHTML = '<ds-icon name="more"></ds-icon>';
     this.append(btn);
 
     const menu = this.menu = document.createElement('div');
     menu.className = 'dock-menu dock-pop';
     menu.hidden = true;
-    menu.innerHTML = `<div class="dock-side"><span class="st">바 위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div></div>
+    menu.innerHTML = `<div class="dock-more"></div><div class="dock-side"><span class="st">바 위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div></div>
       <label class="st dock-size">크기 <input type="range" min="28" max="56" step="2"></label>`;
     document.body.append(menu);
     const mark = () => menu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
@@ -48,6 +58,15 @@ class DsDock extends HTMLElement {
     size.oninput = () => { save('adash.dock.size', size.value); applyDock(dockPos(), +size.value); };
     document.addEventListener('click', e => { if (!menu.hidden && !this.contains(e.target) && !menu.contains(e.target)) menu.hidden = true; });
     this.phone();
+    this.place();
+    PHONE.addEventListener('change', () => this.place());
+  }
+  // data-more children: in the ⋯ menu above the phone width, back in the bar (its sheet) on a phone
+  place() {
+    const box = this.menu.querySelector('.dock-more');
+    for (const [el, mark] of this.more) {
+      if (PHONE.matches) { if (el.parentElement !== this) mark.after(el); } else if (el.parentElement !== box) box.append(el);
+    }
   }
   // the phone launcher and sheet (see the header comment)
   phone() {

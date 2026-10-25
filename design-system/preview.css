@@ -1,0 +1,11 @@
+/* Layout helpers the component examples (components/<name>/<name>.html) use, shared by the preview (index.html) and
+   the story canvas (story.html). Preview only: the dashboard never loads it. */
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.bars { display: grid; gap: 10px; max-width: 420px; }
+.bg-field { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 35%, transparent), color-mix(in srgb, var(--s-write) 30%, transparent)); border-radius: 18px; padding: 18px; }
+.icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.icons div { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; font-size: 11px; color: var(--muted); }
+.icons svg { width: 22px; height: 22px; color: var(--text); }
+/* 「점검」: the failing elements outlined, the one picked from the list flashed */
+.chk-on [data-chk] { outline: 2px dashed var(--bad); outline-offset: 2px; }
+.chk-flash { animation: blink .5s 3; }

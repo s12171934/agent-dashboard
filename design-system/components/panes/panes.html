@@ -6,7 +6,13 @@
      Exactly two children. They stack at max-width 700px, but stay side by side in the fold layout (an unfolded
      foldable, GUIDELINES B8) so each half of the screen holds one pane. Put the panes where they span the page's
      width (symmetric padding), so their gap lands on the fold. The gap is --pane-gap; nothing else to set. -->
+<!-- @story 기본 — 같은 폭 두 칸, 700px 이하에서 쌓임 -->
 <div class="panes">
   <div class="box"><h3>작업 분류 <span class="st">도구 호출 42회</span></h3><div class="st">왼쪽 칸: 목록이나 요약</div></div>
   <div class="box"><h3>로그 <span class="st">최근 20건</span></h3><div class="st">오른쪽 칸: 상세나 로그</div></div>
+</div>
+<!-- @story 길이가 다른 칸 — 한쪽만 길 때 -->
+<div class="panes">
+  <div class="box"><h3>요약</h3><div class="st">짧은 칸</div></div>
+  <div class="box"><h3>로그 <span class="st">최근 6건</span></h3><div class="st">17:02 도구 호출 · Read<br>17:03 도구 호출 · Edit<br>17:03 도구 호출 · Bash<br>17:04 입력 대기<br>17:06 응답<br>17:07 완료</div></div>
 </div>

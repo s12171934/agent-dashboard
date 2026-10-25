@@ -3,8 +3,16 @@
      name   a symbol id in icons.svg (see the grid below)
      Always empty: the element draws its own <svg>. It is display: contents, so size and colour come from where it is
      placed (`.parent svg { width: 18px }`, `color`). Decorative: the control around it carries the accessible name. -->
+<!-- @story 기본 — 놓인 곳의 글자 크기(1em)와 색 -->
 <div class="row">
   <ds-icon name="users"></ds-icon>
+  <span>글자 옆 <ds-icon name="chart"></ds-icon></span>
+</div>
+<!-- @story 크기와 색 — 크기·색은 놓는 쪽이 정한다 -->
+<div class="row">
   <span style="color: var(--accent); font-size: 22px"><ds-icon name="chart"></ds-icon></span>
   <span style="color: var(--ok); font-size: 28px"><ds-icon name="pulse"></ds-icon></span>
+  <span style="color: var(--bad); font-size: 36px"><ds-icon name="flask"></ds-icon></span>
 </div>
+<!-- @story 전체 목록 — icons.svg 의 모든 심볼 -->
+<div class="icons" data-icons></div>

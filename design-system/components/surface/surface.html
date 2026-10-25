@@ -3,8 +3,16 @@
      <div class="surface surface-strong"> … </div>        a denser pane (popovers, menus)
      The look (translucency, blur, sheen, shadow) comes from the material, never from the markup.
      Put data-material="matte" on any element to switch the material of its subtree. -->
+<!-- @story 기본 판 — 그라데이션 위의 .surface: 뒤가 비치는 정도는 재질이 정한다 -->
 <div class="row bg-field">
   <div class="surface" style="padding: 16px">.surface</div>
+</div>
+<!-- @story 진한 판 — 팝오버·메뉴에 쓰는 .surface-strong -->
+<div class="row bg-field">
   <div class="surface surface-strong" style="padding: 16px">.surface.surface-strong</div>
+</div>
+<!-- @story 일부만 매트 — data-material="matte" 를 붙인 하위 트리만 매트 -->
+<div class="row bg-field">
+  <div class="surface" style="padding: 16px">.surface</div>
   <div class="surface" data-material="matte" style="padding: 16px">data-material="matte"</div>
 </div>

@@ -2,16 +2,17 @@
 // width and pointer — against the GUIDELINES rules only the screen shows, and marks what fails in place. It runs again
 // on resize, rotation, fold and on a theme or material change, so the preview can be opened on the device itself.
 // 「네 조합」 runs it once in each theme × material and merges the result. ?check in the URL turns it on at load.
-// Preview only: the dashboard never loads it, and scripts/check-ds.py stays the check for the source.
-const RULES = {
+// Preview only: the dashboard never loads it, and scripts/check-ds.py stays the check for the source. The story viewer
+// (stories.html) runs measure() inside its canvas, one story at a time.
+export const RULES = {
   overflow: ['B5', '화면 밖으로 나감'],
   tap: ['A4', '누르는 영역이 작음'],
   input: ['B4', '입력란 글자 16px 미만'],
   contrast: ['대비', '글자 대비 부족'],
   name: ['A1', '아이콘 버튼에 이름 없음'],
 };
-const COMBOS = [['light', 'glass'], ['light', 'matte'], ['dark', 'glass'], ['dark', 'matte']];
-const NAMES = { light: '라이트', dark: '다크', glass: '유리', matte: '매트' };
+export const COMBOS = [['light', 'glass'], ['light', 'matte'], ['dark', 'glass'], ['dark', 'matte']];
+export const NAMES = { light: '라이트', dark: '다크', glass: '유리', matte: '매트' };
 const TARGETS = 'button, a[href], summary, select, textarea, input:not([type=hidden]), [role=button], [tabindex]:not([tabindex="-1"])';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const px = v => parseFloat(v) || 0;
@@ -48,7 +49,7 @@ const backdrop = el => {
 const opacity = el => { let o = 1; for (let e = el; e; e = e.parentElement) o *= px(getComputedStyle(e).opacity) || 0; return o; };
 
 const shown = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
-const label = el => {
+export const label = el => {
   const cls = [...el.classList].filter(c => !c.startsWith('chk')).slice(0, 2).map(c => '.' + c).join('');
   const t = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ');
   return el.localName + cls + (t ? ` 「${t.length > 18 ? t.slice(0, 18) + '…' : t}」` : '');
@@ -70,7 +71,7 @@ const pressArea = el => {
 const owner = el => el.closest('section[id^="c-"]') || (el.closest('ds-dock, .dock-pop') ? document.getElementById('c-dock') : null);
 const skip = el => el.closest('.chk, .chk-b, section > details, #chk-bar');
 
-function measure() {
+export function measure() {
   for (const a of document.getAnimations()) if (a instanceof CSSTransition) a.finish();
   const found = [], add = (kind, el, detail) => found.push({ kind, el, sec: owner(el), detail });
   const W = document.documentElement.clientWidth, coarse = matchMedia('(pointer: coarse)').matches;

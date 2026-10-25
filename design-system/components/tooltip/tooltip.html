@@ -2,5 +2,8 @@
      <ds-tooltip id="tip"></ds-tooltip>      one per page, at the end of <body>
      Script API: tip.show(html, event) on pointer move, tip.hide() on leave. html is trusted: escape data into it.
      Content: short lines; <b> for the heading, <br> between lines. Move the pointer over the box below. -->
-<div class="surface" style="padding: 18px; display: inline-block; cursor: crosshair" onmousemove="document.getElementById('tip-demo').show('<b>10/18 (일) 17:00–18:00</b> · 비용 $9.16<br>리퀴드글래스 UI <b>$4.20</b>', event)" onmouseleave="document.getElementById('tip-demo').hide()">여기에 포인터를 올려 보세요</div>
-<ds-tooltip id="tip-demo"></ds-tooltip>
+<!-- @story 포인터 따라가기 — 상자 위로 포인터를 움직인다 -->
+<div class="surface" style="padding: 18px; display: inline-block; cursor: crosshair" onmousemove="this.nextElementSibling.show('<b>10/18 (일) 17:00–18:00</b> · 비용 $9.16<br>리퀴드글래스 UI <b>$4.20</b>', event)" onmouseleave="this.nextElementSibling.hide()">여기에 포인터를 올려 보세요</div>
+<ds-tooltip></ds-tooltip>
+<!-- @story 떠 있음 — 내용이 보이는 상태 -->
+<ds-tooltip data-story-play="this.show('<b>10/18 (일) 17:00–18:00</b> · 비용 $9.16<br>리퀴드글래스 UI <b>$4.20</b><br>대시보드 실행 <b>$0.19</b>', { clientX: 24, clientY: 24 })"></ds-tooltip>
