@@ -314,6 +314,7 @@ async function renderView(navigated) {
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
   if (r.v !== 'home') hmEdit = false;
+  if (r.v !== 'agents' || !charMode) document.documentElement.classList.remove('ch-full');
   if (r.v === 'home') renderHome();
   else if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
@@ -334,7 +335,8 @@ async function renderView(navigated) {
 function renderHeader() {
   const ss = state.sessions;
   $('#k-live').textContent = ss.filter(s => s.live).length;
-  $('#dock').setAttribute('summary', `실행 ${ss.filter(s => status(s) === 'run').length} · 대기 ${ss.filter(s => status(s) === 'wait').length}`);
+  { const dec = state.decisions?.pending?.length || 0;  // 입력 대기 is not the user's to do; a pending 결정 is
+    $('#dock').setAttribute('summary', `실행 ${ss.filter(s => status(s) === 'run').length}${dec ? ` · 결정 ${dec}` : ''}`); }
   const bg = ss.filter(s => status(s) === 'bg').length;
   $('#k-bg').textContent = bg;
   $('#k-bg-wrap').hidden = !bg;
@@ -2854,7 +2856,7 @@ function agViewBind() {
 let charStyle = '3d';  // 3d | px
 try { charStyle = localStorage.getItem('adash.charstyle') === 'px' ? 'px' : '3d'; } catch {}
 const CH_FACE = { run: ['down', 'flat'], bg: ['open', 'smile'], wait: ['open', 'smile'], stalled: ['dizzy', 'frown'], idle: ['shut', 'flat'], done: ['happy', 'smile'] };
-const CH_SIGN = { bg: '◍', wait: '…', stalled: '!', idle: 'z', done: '✓' };
+const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chFace = (st, s) => s.decision ? ['open', 'o'] : CH_FACE[st] || CH_FACE.idle;
 // The look (skin, hair cut and colour, top, desk props) comes from a hash of the session, so a person keeps theirs
@@ -3059,20 +3061,21 @@ const wallHtml = key => { const k = chHash(key) % WALL_ORDER.length;
 
 function charHtml(s) {
   const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`, L = chLook(s);
-  const say = s.decision ? '결정을 기다려요' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
+  // 입력 대기 is not the user's to do: no bubble (it would read as a call for attention)
+  const say = s.decision ? '결정을 기다려요' : st === 'wait' ? '' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
   return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"
       style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m};--skin:var(--skin-${L.skin});--hair:var(--hair-${L.hair})"
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
-    <span class="ch-say"><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
+    <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
     ${charStyle === 'px' ? pxSprite(st, s) : charSvg3d(st, s)}
     <span class="ch-name">${esc(nameOf(s))}</span>
     <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
   </button>`;
 }
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
-  return [['일하는 중', n(['run', 'bg'])], ['대기', n(['wait'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
+  return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
 const roomBox = (title, key, ms, extra = '') => `<section class="box room"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
     <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
 function roomHtml(f) {
@@ -3118,15 +3121,15 @@ function chKeep(u) {
 function chBind() {
   $('#view').querySelectorAll('.ch').forEach(u => {
     let dragged = false;
-    u.onclick = () => { if (dragged) { dragged = false; return; } openSession(u.dataset.path); };
+    u.onclick = () => { if (dragged) { dragged = false; return; } if (Date.now() - chPanAt < 400) return; openSession(u.dataset.path); };
     u.onpointerdown = e => {
       if (e.button) return;
       const fl = u.parentElement, x0 = u.offsetLeft, y0 = u.offsetTop, px = e.clientX, py = e.clientY;
-      // a mouse drags at once; a finger holds still first, so a swipe over the room still scrolls the page
+      // a mouse drags at once; a finger holds still first, so a swipe over the room pans the canvas
       let armed = e.pointerType !== 'touch', moved = false;
       const hold = armed ? 0 : setTimeout(() => { armed = true; u.classList.add('lift'); }, 280);
       const move = ev => {
-        const dx = ev.clientX - px, dy = ev.clientY - py;
+        const dx = (ev.clientX - px) / chView.z, dy = (ev.clientY - py) / chView.z;
         if (!armed) { if (Math.hypot(dx, dy) > 8) end(); return; }
         if (!moved && Math.hypot(dx, dy) < 4) return;
         if (!moved) { moved = chDrag = true; u.classList.add('dragging'); }
@@ -3154,20 +3157,113 @@ function chBind() {
     };
   });
 }
-addEventListener('resize', () => { if ($('#view .office')) chLayout(); });
+addEventListener('resize', () => { if ($('#view .office')) { chLayout(); chApply(); } });
+
+// The office is a canvas: the rooms are laid out on one plane (.ch-world) inside a box that fills the screen below the
+// header (.ch-canvas, no page scroll), moved by dragging the floor (one finger on touch), the wheel or trackpad, and
+// zoomed with Ctrl/⌘ + wheel, a pinch or the − / + buttons. 「맞춤」 fits every room in view and keeps fitting as the
+// office changes, until the view is moved by hand. The view is kept on this device (adash.chview).
+let chView = { x: 0, y: 0, z: 1, fit: true };
+try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}') }; } catch {}
+let chPanAt = 0, chSaveT;
+const chViewSave = () => { clearTimeout(chSaveT); chSaveT = setTimeout(() => { try { localStorage.setItem('adash.chview', JSON.stringify(chView)); } catch {} }, 300); };
+function chApply() {
+  const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world');
+  if (!w) return;
+  const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
+  if (chView.fit) {  // below the tools, which float over the top left
+    const top = (cv.querySelector('.ch-tools')?.offsetHeight || 0) + 14, room = ch - top - 8;
+    let z = Math.min(1, (cw - 24) / ww, room / wh);
+    if (z < .5) z = Math.min(1, (cw - 24) / ww);  // too small to read: fit the width and pan down instead
+    chView.z = z;
+    chView.x = (cw - ww * z) / 2;
+    chView.y = top + (wh * z < room ? (room - wh * z) / 2 : 0);
+  }
+  // keep at least 80px of the office on screen, so it can never be lost
+  chView.x = Math.min(cw - 80, Math.max(80 - ww * chView.z, chView.x));
+  chView.y = Math.min(ch - 80, Math.max(80 - wh * chView.z, chView.y));
+  w.style.transform = `translate(${chView.x}px, ${chView.y}px) scale(${chView.z})`;
+  const zl = $('#ch-zl');
+  if (zl) zl.textContent = Math.round(chView.z * 100) + '%';
+  $('#ch-fit')?.setAttribute('aria-pressed', chView.fit);
+}
+// zoom by k around a point of the canvas (px from its top left)
+function chZoom(k, px, py) {
+  const z = Math.min(2, Math.max(.25, chView.z * k)), f = z / chView.z;
+  chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = false;
+  chApply(); chViewSave();
+}
+// the canvas takes the screen below its top; the page itself does not scroll
+function chSize() {
+  const cv = $('#ch-canvas');
+  if (!cv) return;
+  cv.style.height = Math.max(240, innerHeight - cv.getBoundingClientRect().top - 12) + 'px';
+  chApply();
+}
+const chPts = new Map();
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools')) return;
+  if (e.pointerType === 'mouse' && (e.button || e.target.closest('.ch'))) return;  // a mouse on a person drags the person
+  chPts.set(e.pointerId, [e.clientX, e.clientY]);
+});
+addEventListener('pointermove', e => {
+  const p = chPts.get(e.pointerId);
+  if (!p) return;
+  if (document.querySelector('.ch.lift, .ch.dragging')) { chPts.clear(); return; }  // a long press picked a person up
+  const r = $('#ch-canvas')?.getBoundingClientRect();
+  if (!r) return;
+  if (chPts.size === 1) {
+    const dx = e.clientX - p[0], dy = e.clientY - p[1];
+    if (Math.abs(dx) + Math.abs(dy) > 2) chPanAt = Date.now();
+    chView.x += dx; chView.y += dy; chView.fit = false;
+    chApply();
+  } else if (chPts.size === 2) {  // pinch: zoom by the change of the fingers' distance, around their middle
+    const [q] = [...chPts].filter(([id]) => id !== e.pointerId).map(([, v]) => v);
+    const d0 = Math.hypot(p[0] - q[0], p[1] - q[1]), d1 = Math.hypot(e.clientX - q[0], e.clientY - q[1]);
+    chPanAt = Date.now();
+    if (d0 > 0) chZoom(d1 / d0, (e.clientX + q[0]) / 2 - r.left, (e.clientY + q[1]) / 2 - r.top);
+  }
+  p[0] = e.clientX; p[1] = e.clientY;
+});
+const chUp = e => {
+  if (!chPts.delete(e.pointerId) || chPts.size) return;
+  chViewSave();
+  if (chStale && !chDrag) { chStale = false; renderOffice(); }
+};
+addEventListener('pointerup', chUp); addEventListener('pointercancel', chUp);
+document.addEventListener('wheel', e => {
+  const cv = e.target.closest?.('#ch-canvas');
+  if (!cv) return;
+  e.preventDefault();
+  const r = cv.getBoundingClientRect(), u = e.deltaMode === 1 ? 16 : 1;
+  if (e.ctrlKey || e.metaKey) return chZoom(Math.exp(-Math.max(-60, Math.min(60, e.deltaY * u)) * .006), e.clientX - r.left, e.clientY - r.top);
+  chView.x -= e.deltaX * u; chView.y -= e.deltaY * u; chView.fit = false;
+  chApply(); chViewSave();
+}, { passive: false });
+addEventListener('resize', () => chSize());
 
 function renderOffice() {
-  if (chDrag) { chStale = true; return; }
+  if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
   chSeq = 0;
-  const rooms = fv.map(roomHtml).join('') + (sv.length ? roomBox('단독 자리', 'solo', sv) : '');
+  const rooms = fv.map(roomHtml).filter(Boolean).concat(sv.length ? roomBox('단독 자리', 'solo', sv) : []);
+  // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
+  const narrow = innerWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
+  const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
+  document.documentElement.classList.add('ch-full');
+  if (scrollY) scrollTo(0, 0);
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  $('#view').innerHTML = `<div class="controls ag-controls"><span class="seg" id="ch-style"><button data-k="3d">3D 렌더</button><button data-k="px">픽셀</button></span>
-      <button type="button" class="act big" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button></div>
-    <div class="sec-h"><h2>사무실</h2><span>누르면 세션을 엽니다 · 끌어서(휴대폰은 길게 눌러) 옮깁니다 · 끄려면 바의 「캐릭터 모드」</span></div>
-    ${rooms ? `<div class="office ch-${charStyle}" style="--ph:${-(Date.now() % 2400) / 1000}s">${rooms}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}`;
+  $('#view').innerHTML = `<div class="ch-canvas" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
+      <div class="ch-tools surface">
+        <span class="seg" id="ch-style"><button data-k="3d">3D</button><button data-k="px">픽셀</button></span>
+        <span class="ch-zoom"><button type="button" class="act" id="ch-out" aria-label="축소">−</button><button type="button" class="act" id="ch-zl" title="100%로">100%</button><button type="button" class="act" id="ch-in" aria-label="확대">+</button></span>
+        <button type="button" class="act" id="ch-fit" aria-pressed="false" title="모든 방이 한눈에 들어오게">맞춤</button>
+        <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
+      </div>
+      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
+    </div>`;
   $('#ch-style').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === charStyle);
     b.setAttribute('aria-pressed', b.dataset.k === charStyle);
@@ -3180,8 +3276,14 @@ function renderOffice() {
     chLayout();
     setTimeout(() => o?.classList.remove('homing'), 500);
   };
+  const mid = () => { const cv = $('#ch-canvas'); return [cv.clientWidth / 2, cv.clientHeight / 2]; };
+  $('#ch-in').onclick = () => chZoom(1.25, ...mid());
+  $('#ch-out').onclick = () => chZoom(.8, ...mid());
+  $('#ch-zl').onclick = () => chZoom(1 / chView.z, ...mid());
+  $('#ch-fit').onclick = () => { chView.fit = true; chApply(); chViewSave(); };
   chLayout();
   chBind();
+  chSize();
 }
 
 function renderAgents() {
