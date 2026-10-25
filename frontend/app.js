@@ -2856,191 +2856,172 @@ function agViewBind() {
 }
 // ---------- 캐릭터 모드: the agents tab as an office ----------
 // Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
-// sessions share the last one. A room is one scene (wall with decorations, floor); each agent is a person at their own
-// desk wearing the model's colour, drawn in one of two styles (charStyle: 「3D」 shaded like a render, 「픽셀」 a pixel
-// sprite). The face and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button:
-// a click opens the session like a card, a drag (a long press on touch) or the arrow keys move them anywhere in the room.
+// sessions share the last one. A room is one scene (wall with decorations, floor); each agent is one of six original
+// anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
+// (charFrame) and drawn in one of two styles (charStyle): 「AI 생성」 shows the generated pose for the state, 「Live2D」
+// deforms that picture live (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry
+// the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
+// drag (a long press on touch) or the arrow keys move them anywhere in the room.
 // Moved places are kept on this device (adash.chpos); 「원래 자리로」 puts everyone back on the grid.
-let charStyle = '3d';  // 3d | px
-try { charStyle = localStorage.getItem('adash.charstyle') === 'px' ? 'px' : '3d'; } catch {}
-const CH_FACE = { run: ['down', 'flat'], bg: ['open', 'smile'], wait: ['open', 'smile'], stalled: ['dizzy', 'frown'], idle: ['shut', 'flat'], done: ['happy', 'smile'] };
+let charStyle = 'ai';  // ai | l2d
+try { charStyle = localStorage.getItem('adash.charstyle') === 'l2d' ? 'l2d' : 'ai'; } catch {}
+let charFrame = 'bust';  // bust | full
+try { charFrame = localStorage.getItem('adash.charframe') === 'full' ? 'full' : 'bust'; } catch {}
 const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
-const chFace = (st, s) => s.decision ? ['open', 'o'] : CH_FACE[st] || CH_FACE.idle;
-// The look (skin, hair cut and colour, top, desk props) comes from a hash of the session, so a person keeps theirs
-// across refreshes.
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
-const HAIRS = ['short', 'long', 'bun', 'spiky'];
-const chLook = s => { const h = chHash(s.id || s.path); return { skin: h % 4, hair: (h >>> 2) % 4, cut: HAIRS[(h >>> 4) % 4], prop: (h >>> 6) % 4, top: (h >>> 8) % 3 }; };
-const worried = (st, s) => st === 'stalled' || !!s.decision;
-
-// 3D: shaded like a render. Gradients read --c, --skin and --hair from the person, so each SVG carries its own, named
-// with a running number.
-let chSeq = 0;
-const C3_EYE = {
-  open: x => `<ellipse class="c3-white" cx="${x}" cy="51.6" rx="2.9" ry="3.3"/><circle class="c3-iris" cx="${x + .3}" cy="52.1" r="2.2"/><circle class="c3-pupil" cx="${x + .3}" cy="52.1" r="1.1"/><circle class="c3-white" cx="${x + 1.1}" cy="51" r=".75"/><path class="c3-lid" d="M${x - 3.2} 50.4q3.2-3 6.4 0"/>`,
-  down: x => `<ellipse class="c3-white" cx="${x}" cy="51.8" rx="2.9" ry="3.1"/><circle class="c3-iris" cx="${x + .2}" cy="53.4" r="2"/><circle class="c3-pupil" cx="${x + .2}" cy="53.6" r="1"/><path class="c3-lidskin" d="M${x - 3.4} 52.2a3.4 3.4 0 0 1 6.8 0z"/><path class="c3-lid" d="M${x - 3.3} 52.2h6.6"/>`,
-  shut: x => `<path class="c3-lid" d="M${x - 3} 52q3 2.6 6 0"/><path class="c3-lid thin" d="M${x + 2.8} 52.2l1.3-.9"/>`,
-  happy: x => `<path class="c3-lid" d="M${x - 3} 53.4q3-4.2 6 0"/>`,
-  dizzy: x => `<path class="c3-lid thin" d="M${x - 2.6} 52a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0-5.2 0m1.4 0a1.2 1.2 0 1 0 2.4 0"/>`,
+// A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h), one pose per frame:
+// 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
+// The coordinators (kaede, yuki) wear a headset; a session's hash picks the person, so they keep theirs across refreshes.
+const CH_ART = {
+  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]}},
+  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]}},
+  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]}},
+  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]}},
+  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]}},
+  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]}},
 };
-const C3_MOUTH = {
-  flat: '<path class="c3-lid" d="M57.4 60.4q2.6 .8 5.2 0"/>',
-  smile: '<path class="c3-mouth" d="M55.6 59.2q4.4 4.8 8.8 0q-4.4 1.8-8.8 0z"/><path class="c3-teeth" d="M56.8 59.7q3.2 .9 6.4 0"/>',
-  o: '<ellipse class="c3-mouth" cx="60" cy="60.6" rx="2" ry="2.5"/>',
-  frown: '<path class="c3-lid" d="M56.4 61.6q3.6-2.6 7.2 0"/>',
-};
-const C3_FRINGE = 'M45.2 50C44 36 51 31.5 60 31.5S76 36 74.8 50C73 44 70 41.5 66 41C62 44 54 44.5 49 42.8C47 44.5 45.8 47 45.2 50z';
-const C3_HAIR = {
-  short: C3_FRINGE, long: C3_FRINGE, bun: C3_FRINGE,
-  spiky: 'M45.2 50C44.6 42 46 37 48 35L48.6 29.6L52.6 33L55 27.5L58.6 32L62 26.8L64.6 32L68.4 28.6L69.6 34L73.6 33C75.4 37.5 75.6 44 74.8 50C72.8 44 68 41 60 41S47.2 44 45.2 50z',
-};
-const C3_PROP = {
-  mug: g => `<path d="M17 86.4h10.4v9.4q0 2.2-2.2 2.2h-6q-2.2 0-2.2-2.2z" fill="${g('m')}"/><path class="c3-mugh" d="M27.4 88.6q4.4 0 4.4 3t-4.4 3"/><ellipse class="c3-coffee" cx="22.2" cy="86.4" rx="5.2" ry="1.4"/><path class="c3-steam" d="M20.4 83q-2-3 0-5.6t0-5.6M24.4 82.4q-2-3 0-5.4"/>`,
-  plant: g => `<path class="c3-leafv" d="M100 88C92 85 90 77 92 72C97 75 100 81 100 88zM100 88C101 79 104 72 110 70C111 77 107 85 100 88zM100 88C98 80 99 73 101 68C104 74 103 82 100 88z" fill="${g('v')}"/><path class="c3-vein" d="M100 87C96 82 94 78 93 74M100 87C103 80 106 75 108.6 72"/><path d="M93.4 89h13.2l-1.8 8.8h-9.6z" fill="${g('p')}"/><rect class="c3-potrim" x="92.6" y="87.4" width="14.8" height="3" rx="1"/>`,
-  papers: () => `<path class="c3-paper b" d="M9 97l3.4-6.4h20l-3.4 6.4z"/><path class="c3-paper" d="M8 95.6l3.4-6.4h20l-3.4 6.4z"/><path class="c3-ink2" d="M13.4 91.4h12M12.6 93h10"/><path class="c3-pen" d="M12 98.2l18-4.4"/>`,
-  lamp: () => `<path class="c3-lampl" d="M107.6 80.4L96 97h23z"/><ellipse class="c3-lampm" cx="106" cy="96.8" rx="7.4" ry="2"/><path class="c3-lampa" d="M106 96L99.6 82L108.6 75"/><path class="c3-lampm" d="M103.6 71.6l11.4 6.4-3.6 4.8-11-6.6z"/><circle class="c3-bulb" cx="109.4" cy="80.6" r="1.6"/>`,
-};
-const C3_PROPS = [['mug', 'plant'], ['papers', 'lamp'], ['mug', 'lamp'], ['papers', 'plant']];
-function charSvg3d(st, s) {
-  const n = ++chSeq, g = k => `url(#c3${k}${n})`, [eyes, mouth] = chFace(st, s), L = chLook(s);
-  const rg = (k, cls, cx = .38, cy = .3, r = .8) => `<radialGradient id="c3${k}${n}" cx="${cx}" cy="${cy}" r="${r}"><stop offset="0" class="${cls}-hi"/><stop offset=".55" class="${cls}"/><stop offset="1" class="${cls}-lo"/></radialGradient>`;
-  const lg = (k, cls, x2 = 0, y2 = 1) => `<linearGradient id="c3${k}${n}" x1="0" y1="0" x2="${x2}" y2="${y2}"><stop offset="0" class="${cls}-hi"/><stop offset="1" class="${cls}-lo"/></linearGradient>`;
-  const fade = (k, cls) => `<radialGradient id="c3${k}${n}"><stop offset="0" class="${cls}"/><stop offset="1" class="${cls}" stop-opacity="0"/></radialGradient>`;
-  const brows = worried(st, s) ? '<path class="c3-brow" d="M50.6 47.2L57 45.2M69.4 47.2L63 45.2"/>' : '<path class="c3-brow" d="M50.8 46.4q3.2-2.2 6.4 0M62.8 46.4q3.2-2.2 6.4 0"/>';
-  const top = [`<path class="c3-crew" d="M53.6 74.8Q60 80.4 66.4 74.8"/>`,
-    `<path class="c3-collarw" d="M53 74l7 6.4-3.4 4.6-5.8-8zM67 74l-7 6.4 3.4 4.6 5.8-8z"/><path class="c3-placket" d="M60 81v18"/><circle class="c3-button" cx="60" cy="88" r=".9"/><circle class="c3-button" cx="60" cy="94" r=".9"/>`,
-    `<path class="c3-string" d="M56.4 79v9.6M63.6 79v9.6"/><circle class="c3-tip" cx="56.4" cy="89" r="1.1"/><circle class="c3-tip" cx="63.6" cy="89" r="1.1"/>`][L.top];
-  const hood = L.top === 2 ? `<path d="M48.6 77Q60 64 71.4 77Q60 72.4 48.6 77z" fill="${g('s')}"/>` : '';
-  return `<svg class="ch-svg ch-3d" viewBox="0 0 120 120" aria-hidden="true">
-    <defs>${rg('k', 'c3-skin')}${rg('h', 'c3-hair', .4, .2, .9)}${rg('s', 'c3-shirt', .35, .2, .9)}${rg('c', 'c3-chair', .4, .15, .9)}${lg('d', 'c3-wood')}${lg('f', 'c3-woodf')}
-      ${lg('l', 'c3-alu', 1, 1)}${lg('m', 'c3-mug', 1, 0)}${lg('p', 'c3-pot', 1, 0)}${lg('v', 'c3-leaf', 1, 1)}${fade('o', 'c3-sh')}${fade('b', 'c3-blushc')}${fade('g', 'c3-glowc')}</defs>
-    <ellipse cx="60" cy="116" rx="60" ry="5" fill="${g('o')}"/>
-    <rect x="37" y="44" width="46" height="54" rx="13" fill="${g('c')}"/><path class="c3-chairhi" d="M45 46.6H75"/>
-    <g class="ch-me">
-      ${L.cut === 'bun' ? `<circle cx="60" cy="29.6" r="6.6" fill="${g('h')}"/><path class="c3-strand" d="M56 27q4-3 8 0"/>` : ''}
-      <path d="M32 106C32 86 40 76.4 54 74.6Q60 77.4 66 74.6C80 76.4 88 86 88 106z" fill="${g('s')}"/>
-      <path class="c3-fold" d="M76 81C84 87 88 96 88 106H75C77 97 78 89 76 81zM44 88q3 8 1 18"/>
-      ${hood}
-      ${L.cut === 'long' ? `<path d="M44.6 47C41.6 63 43.4 79 49.6 84.6H70.4C76.6 79 78.4 63 75.4 47z" fill="${g('h')}"/>` : ''}
-      <path class="c3-neck" d="M54.4 61h11.2v13q-5.6 3.2-11.2 0z"/><ellipse class="c3-chin" cx="60" cy="66.6" rx="6" ry="2.2"/>
-      ${top}
-      <ellipse cx="45.6" cy="52" rx="3.2" ry="4.4" fill="${g('k')}"/><ellipse cx="74.4" cy="52" rx="3.2" ry="4.4" fill="${g('k')}"/>
-      <path class="c3-ear" d="M45.6 50q-1.4 2 0 4M74.4 50q1.4 2 0 4"/>
-      <ellipse cx="60" cy="50" rx="14.5" ry="16" fill="${g('k')}"/>
-      <ellipse class="c3-jaw" cx="60" cy="62.6" rx="10" ry="3.6"/><ellipse class="c3-jaw" cx="60" cy="43.4" rx="12" ry="3"/>
-      ${eyes === 'happy' || mouth === 'smile' ? `<ellipse cx="50.4" cy="57.4" rx="4" ry="2.6" fill="${g('b')}"/><ellipse cx="69.6" cy="57.4" rx="4" ry="2.6" fill="${g('b')}"/>` : ''}
-      ${C3_EYE[eyes](54)}${C3_EYE[eyes](66)}${brows}
-      <path class="c3-nose" d="M60.4 53.4q1.8 3.4-.8 4.6"/>
-      ${C3_MOUTH[mouth]}
-      <path d="${C3_HAIR[L.cut]}" fill="${g('h')}"/>
-      <path class="c3-strand" d="M56 32.6C54 37 52 40 49.4 42.4M63 32.8C64.4 36 65.4 39 66.4 41M59.6 32.4C59 36.4 57.6 40.6 55 43.6"/>
-      <path class="c3-shine" d="M50.4 37C54 34.2 59.6 33.4 64 34.6"/>
-      ${isBoss(s) ? `<path class="c3-band" d="M44.4 50C44 32.4 76 32.4 75.6 50"/><rect class="c3-cup" x="41.4" y="45.6" width="6.2" height="11" rx="3.1"/><rect class="c3-cup" x="72.4" y="45.6" width="6.2" height="11" rx="3.1"/><path class="c3-band thin" d="M76 54.4C76 62 71.4 64.6 66.2 64.8"/><circle class="c3-cup" cx="65.4" cy="64.8" r="1.9"/>` : ''}
-      ${st === 'stalled' ? '<path class="c3-sweat" d="M78.4 37.6C76.4 41.2 75.8 42.6 75.8 43.8a2.6 2.6 0 0 0 5.2 0C81 42.6 80.4 41.2 78.4 37.6z"/><circle class="c3-white" cx="77.4" cy="43.4" r=".7"/>' : ''}
-      <ellipse class="c3-glow" cx="60" cy="76" rx="26" ry="22" fill="${g('g')}"/>
-    </g>
-    <path d="M5 97H115L119.4 104H.6z" fill="${g('d')}"/>
-    <path class="c3-grain" d="M14 99.6H42M80 101.6H108M22 102.6H36"/>
-    ${C3_PROPS[L.prop].map(p => C3_PROP[p](g)).join('')}
-    <circle class="c3-halo" cx="60" cy="88.4" r="6"/>
-    <path d="M42.6 99.4L46.4 79H73.6L77.4 99.4z" fill="${g('l')}"/><path class="c3-lidrim" d="M46.6 79.4H73.4"/>
-    <circle class="c3-logo" cx="60" cy="88.4" r="2.4"/>
-    <g class="ch-arm l"><path class="c3-sleeve" d="M38.6 84C35.6 90 37 96 43 98.8" stroke="${g('s')}"/><ellipse cx="46" cy="99.2" rx="5.4" ry="3.5" fill="${g('k')}"/><path class="c3-knuckle" d="M44 98.2h4.4"/></g>
-    <g class="ch-arm r"><path class="c3-sleeve" d="M81.4 84C84.4 90 83 96 77 98.8" stroke="${g('s')}"/><ellipse cx="74" cy="99.2" rx="5.4" ry="3.5" fill="${g('k')}"/><path class="c3-knuckle" d="M71.6 98.2h4.4"/></g>
-    <rect x=".6" y="104" width="118.8" height="13" fill="${g('f')}"/><path class="c3-edge" d="M.6 104.2H119.4"/>
-    <rect class="c3-drawer" x="84" y="106.6" width="28" height="7.8" rx="1.4"/><path class="c3-handle" d="M93 110.5h10"/>
-  </svg>`;
+const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
+const chWho = s => { const l = isBoss(s) ? CH_BOSS : CH_CREW; return l[chHash(s.id || s.path) % l.length]; };
+const chMove = (st, s) => s.decision ? 'dec' : st;
+const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
+const chSrc = (who, fr) => `chars/${who}-${fr}.webp`;
+const CH_H = { bust: 132, full: 196 };
+function chFig(st, s) {
+  const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
+  const H = CH_H[charFrame], W = Math.round(a.w * H / a.h);
+  if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
+  return `<span class="ch-fig fig-ai ${charFrame}" style="width:${W}px;height:${H}px;background-image:url(${chSrc(who, charFrame)});background-size:${W * 8}px ${H}px;background-position:${-f * W}px 0" aria-hidden="true"></span>`;
 }
 
-// 픽셀: painted on a 32×32 grid and then outlined (every empty pixel next to a painted one becomes the outline). Each
-// pixel belongs to a layer: me (head and body, which bob), l and r (the hands, which type), base (the rest). Sprites
-// are cached by everything that shapes them.
-const PX_CLS = { s: 'px-skin', S: 'px-skin2', h: 'px-hair', H: 'px-hair1', j: 'px-hair2', e: 'px-ink', w: 'px-white', m: 'px-mouth', b: 'px-blush', u: 'px-s', U: 'px-s2', V: 'px-s1',
-  c: 'px-chair', C: 'px-chair2', l: 'px-alu', L: 'px-alu1', k: 'px-alu2', g: 'px-logo', D: 'px-wood1', d: 'px-wood', f: 'px-woodf', F: 'px-woodf2', q: 'px-mug', t: 'px-steam',
-  p: 'px-pot', v: 'px-leaf', K: 'px-lamp', y: 'px-light', z: 'px-sweat', P: 'px-headset', o: 'px-line', n: 'px-paper' };
-const pxMemo = new Map();
-function pxSprite(st, s) {
-  const [eyes, mouth] = chFace(st, s), L = chLook(s), boss = isBoss(s), key = [eyes, mouth, L.cut, L.prop, L.top, boss, st === 'stalled'].join('|');
-  if (pxMemo.has(key)) return pxMemo.get(key);
-  const N = 32, G = Array.from({ length: N }, () => Array(N).fill(null));
-  const put = (x, y, c, ly = 'base') => { if (x >= 0 && y >= 0 && x < N && y < N) G[y][x] = { c, ly }; };
-  const rect = (x, y, w, h, c, ly) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) put(i, j, c, ly); };
-  const ell = (cx, cy, rx, ry, c, ly, keep = () => true) => { for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (((i + .5 - cx) / rx) ** 2 + ((j + .5 - cy) / ry) ** 2 <= 1 && keep(i, j)) put(i, j, c, ly); };
-  const pts = (list, c, ly) => list.forEach(([x, y]) => put(x, y, c, ly));
-  const mirror = list => list.flatMap(([x, y]) => [[x, y], [31 - x, y]]);
-  // chair, then the person front to back
-  rect(10, 13, 12, 12, 'c'); rect(20, 13, 2, 12, 'C'); rect(11, 13, 9, 1, 'C');
-  if (L.cut === 'bun') { ell(16, 2.6, 2.4, 2.2, 'h', 'me'); put(15, 1, 'H', 'me'); }
-  if (L.cut === 'long') { rect(8, 7, 3, 12, 'h', 'me'); rect(21, 7, 3, 12, 'j', 'me'); }
-  rect(11, 17, 10, 1, 'u', 'me'); rect(10, 18, 12, 1, 'u', 'me'); rect(9, 19, 14, 6, 'u', 'me');
-  for (let j = 17; j < 25; j++) for (let i = 9; i < 23; i++) if (G[j][i]?.c === 'u' && (i >= 20 || j >= 23)) put(i, j, 'U', 'me');
-  pts([[10, 18], [10, 19], [10, 20], [11, 18]], 'V', 'me');
-  rect(8, 19, 2, 5, 'u', 'me'); rect(22, 19, 2, 5, 'U', 'me');
-  rect(14, 15, 4, 2, 'S', 'me');
-  if (L.top === 1) pts(mirror([[13, 17], [14, 17], [14, 18]]), 'w', 'me');
-  else if (L.top === 2) { pts(mirror([[12, 16], [13, 16]]), 'u', 'me'); pts(mirror([[14, 19], [14, 20], [14, 21]]), 'w', 'me'); }
-  else pts([[15, 17], [16, 17]], 'S', 'me');
-  ell(16, 10, 6.2, 6.1, 's', 'me');
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (G[j][i]?.c === 's' && (i >= 20 || j >= 15)) put(i, j, 'S', 'me');
-  pts([[9, 10]], 's', 'me'); pts([[9, 11]], 'S', 'me'); pts([[22, 10], [22, 11]], 'S', 'me');
-  // hair: a cap with a side-swept fringe, highlight and shade
-  ell(16, 7.2, 6.9, 4.4, 'h', 'me', (i, j) => j <= 7);
-  rect(10, 8, 4, 1, 'h', 'me'); rect(20, 8, 2, 1, 'h', 'me'); put(10, 9, 'h', 'me'); put(21, 9, 'h', 'me');
-  if (L.cut === 'spiky') pts([[11, 2], [14, 1], [14, 2], [17, 2], [20, 2], [12, 2], [18, 1]], 'h', 'me');
-  for (let j = 0; j < 10; j++) for (let i = 0; i < N; i++) if (G[j][i]?.c === 'h' && G[j][i].ly === 'me' && (i >= 19 || (j === 7 && i >= 14))) put(i, j, 'j', 'me');
-  pts([[12, 4], [13, 4], [14, 4], [11, 5], [12, 5]], 'H', 'me');
-  if (L.cut === 'long') { rect(9, 9, 1, 9, 'h', 'me'); rect(22, 9, 1, 9, 'j', 'me'); }
-  // face
-  const brow = worried(st, s) ? [[12, 9], [13, 8]] : [[12, 9], [13, 9]];
-  pts([...brow, ...brow.map(([x, y]) => [31 - x, y])], 'j', 'me');
-  ({ open: () => { pts([[12, 10], [12, 11], [13, 11], [18, 10], [18, 11], [19, 11]], 'e', 'me'); pts([[13, 10], [19, 10]], 'w', 'me'); },
-    down: () => pts([[12, 11], [13, 11], [18, 11], [19, 11]], 'e', 'me'),
-    shut: () => pts([[11, 11], [12, 12], [13, 12], [14, 11], [17, 11], [18, 12], [19, 12], [20, 11]], 'e', 'me'),
-    happy: () => pts(mirror([[11, 11], [12, 10], [13, 11]]), 'e', 'me'),
-    dizzy: () => pts(mirror([[11, 10], [13, 10], [12, 11], [11, 12], [13, 12]]), 'e', 'me') })[eyes]();
-  put(16, 12, 'S', 'me');
-  ({ flat: () => pts([[15, 13], [16, 13]], 'e', 'me'),
-    smile: () => { pts([[14, 13], [17, 13]], 'e', 'me'); pts([[15, 14], [16, 14]], 'm', 'me'); },
-    o: () => pts([[15, 13], [16, 13], [15, 14], [16, 14]], 'm', 'me'),
-    frown: () => { pts([[15, 13], [16, 13]], 'e', 'me'); pts([[14, 14], [17, 14]], 'e', 'me'); } })[mouth]();
-  if (mouth === 'smile' || eyes === 'happy') pts(mirror([[11, 13]]), 'b', 'me');
-  if (boss) { pts(mirror([[9, 8], [9, 9], [9, 10], [9, 11], [8, 9], [8, 10]]), 'P', 'me'); pts(mirror([[10, 6], [10, 7], [11, 4], [11, 5], [12, 3], [13, 3]]), 'P', 'me'); pts([[14, 2], [15, 2], [16, 2], [17, 2], [21, 12], [20, 13], [19, 13]], 'P', 'me'); }
-  if (st === 'stalled') pts([[24, 5], [24, 6], [23, 6]], 'z', 'me');
-  // laptop (its back), hands, desk and props
-  rect(11, 19, 10, 6, 'l'); rect(11, 19, 10, 1, 'L'); rect(19, 20, 2, 5, 'k'); pts([[15, 21], [16, 21], [15, 22], [16, 22]], 'g');
-  rect(8, 24, 3, 1, 's', 'l'); rect(21, 24, 3, 1, 's', 'r');
-  rect(0, 25, 32, 1, 'D'); rect(0, 26, 32, 1, 'd'); rect(1, 27, 30, 5, 'f'); rect(1, 31, 30, 1, 'F'); rect(21, 28, 8, 1, 'F'); rect(23, 29, 4, 1, 'F');
-  const prop = { mug: () => { rect(3, 21, 3, 4, 'q'); put(6, 22, 'q'); put(6, 23, 'q'); pts([[4, 19], [3, 18], [5, 17]], 't'); },
-    plant: () => { rect(26, 22, 3, 3, 'p'); pts([[25, 19], [26, 18], [27, 17], [28, 18], [29, 19], [26, 20], [27, 19], [27, 20], [28, 20], [27, 21], [26, 21], [28, 21]], 'v'); },
-    papers: () => { rect(2, 23, 6, 2, 'n'); rect(3, 22, 5, 1, 'n'); pts([[3, 23], [4, 23], [5, 23]], 'L'); pts([[8, 21], [7, 22]], 'q'); },
-    lamp: () => { rect(25, 24, 4, 1, 'K'); pts([[27, 23], [27, 22], [26, 21], [25, 20]], 'K'); rect(23, 18, 4, 2, 'K'); pts([[23, 20], [24, 20], [24, 21]], 'y'); } };
-  C3_PROPS[L.prop].forEach(p => prop[p]());
-  // outline: chair pixels against the person, then empty pixels around everything (not the steam or lamp light)
-  const soft = c => c === 't' || c === 'y';
-  const near = (i, j, f) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => { const q = G[j + b]?.[i + a]; return q && f(q); });
-  const edge = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const p = G[j][i];
-    if (p && (p.c === 'c' || p.c === 'C') && near(i, j, q => q.ly === 'me')) edge.push([i, j, 'base']);
-    if (!p) { let ly = null; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([a, b]) => { const q = G[j + b]?.[i + a]; if (q && !soft(q.c) && !ly) ly = q.ly; }); if (ly) edge.push([i, j, ly]); }
+// Live2D: one shared WebGL canvas (a page may hold only ~16 contexts) renders each visible person's frame as a mesh the
+// vertex shader bends — the head turns about the neck, the upper body rises with each breath, hair beside the face
+// swings behind the head on a damped spring, the whole figure sways — and each person's own 2D canvas copies it. While
+// standing still the face blinks by crossfading to frame 7. Without WebGL the frame is drawn flat with the same bob.
+const L2D_MOVE = {  // t in seconds → tilt (rad), breath, sway, bob (shares of the frame), blink allowed
+  wait: t => [.03 * Math.sin(t * .9), .006 * Math.sin(t * 2.1), .004 * Math.sin(t * .7), 0, true],
+  run: t => [.04 + .025 * Math.sin(t * 4.2), .007 * Math.sin(t * 3.4), .002 * Math.sin(t * 1.3), .004 * Math.abs(Math.sin(t * 4.2)), false],
+  bg: t => [.04 * Math.sin(t * .8), .007 * Math.sin(t * 1.8), .006 * Math.sin(t * .8), 0, false],
+  stalled: t => [.012 * Math.sin(t * 23), .004 * Math.sin(t * 5), .003 * Math.sin(t * 31), 0, false],
+  idle: t => [.06 + .03 * Math.sin(t * .6), .011 * Math.sin(t * 1.2), .003 * Math.sin(t * .6), .004 * (1 + Math.sin(t * 1.2)), false],
+  done: t => [.05 * Math.sin(t * 1.6), .006 * Math.sin(t * 3), .006 * Math.sin(t * 1.6), .022 * Math.abs(Math.sin(t * 3.2)), false],
+  dec: t => [.06 * Math.sin(t * 2), .006 * Math.sin(t * 2.6), .01 * Math.sin(t * 2.4), .006 * Math.abs(Math.sin(t * 2)), false],
+};
+const L2D = (() => {
+  const VS = `attribute vec2 a; uniform vec4 m; uniform vec4 p; uniform vec2 h; varying vec2 q;
+    void main() {
+      float ny = p.x, k = p.y, hs = p.z;  // neck y, frame aspect w/h, head size (share of h)
+      vec2 o = a;
+      float head = smoothstep(ny + .04 * hs, ny - .06 * hs, a.y);
+      vec2 d = (a - vec2(.5, ny)) * vec2(k, 1.); float an = m.x * head;
+      d = vec2(d.x * cos(an) - d.y * sin(an), d.x * sin(an) + d.y * cos(an));
+      o = vec2(.5, ny) + d / vec2(k, 1.);
+      float side = smoothstep(.1, .3, abs(a.x - .5)), band = smoothstep(ny - .8 * hs, ny - .3 * hs, a.y) * (1. - smoothstep(ny + .3 * hs, ny + 1.1 * hs, a.y));
+      o.x += (h.x + h.y * sin(p.w * 2.3 - a.y * 9.)) * side * band * (a.y - ny + hs) / hs;
+      float up = clamp((1. - a.y) / (1. - ny), 0., 1.);
+      o.y -= m.y * up + m.w;
+      o.x += m.z * (1. - a.y);
+      o = .04 + o * .92;
+      gl_Position = vec4(o.x * 2. - 1., 1. - o.y * 2., 0., 1.);
+      q = a;
+    }`;
+  const FS = `precision mediump float; uniform sampler2D t; uniform vec3 f; uniform vec4 e; varying vec2 q;
+    void main() {  // f: frame, blink amount, -; e: eye band centre x,y and radii
+      vec4 c = texture2D(t, vec2((f.x + q.x) / 8., q.y));
+      if (f.y > 0.) { vec2 r = (q - e.xy) / e.zw; float w = f.y * (1. - smoothstep(.7, 1., length(r)));
+        c = mix(c, texture2D(t, vec2((7. + q.x) / 8., q.y)), w); }
+      gl_FragColor = c;
+    }`;
+  let gl = null, cv = null, u = {}, tex = new Map(), raf = 0, last = 0, io = null;
+  const shown = new Set(), spring = new Map(), imgs = new Map();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  function init() {
+    cv = document.createElement('canvas');
+    gl = cv.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: true, alpha: true });
+    if (!gl) return;
+    const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); return x; };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { gl = null; return; }
+    gl.useProgram(pr);
+    const N = 24, v = [], ix = [];  // an N × N grid of the frame
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) v.push(i / N, j / N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * (N + 1) + i; ix.push(k, k + 1, k + N + 1, k + 1, k + N + 2, k + N + 1); }
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(ix), gl.STATIC_DRAW);
+    const al = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(al); gl.vertexAttribPointer(al, 2, gl.FLOAT, false, 0, 0);
+    u.n = ix.length; ['m', 'p', 'h', 'f', 'e'].forEach(k => u[k] = gl.getUniformLocation(pr, k));
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
-  edge.forEach(([i, j, ly]) => put(i, j, 'o', ly));
-  const layers = { base: '', me: '', l: '', r: '' };
-  for (let j = 0; j < N; j++) for (let i = 0; i < N;) {
-    const p = G[j][i]; let w = 1;
-    while (p && G[j][i + w] && G[j][i + w].c === p.c && G[j][i + w].ly === p.ly) w++;
-    if (p) layers[p.ly] += `<rect class="${PX_CLS[p.c]}" x="${i}" y="${j}" width="${w}" height="1"/>`;
-    i += w;
+  const img = src => { if (!imgs.has(src)) { const im = new Image(); im.src = src; im.onload = () => kick(); imgs.set(src, im); } return imgs.get(src); };
+  function texOf(src) {
+    if (tex.has(src)) return tex.get(src);
+    const im = img(src);
+    if (!im.complete || !im.naturalWidth) return null;
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    tex.set(src, t);
+    return t;
   }
-  const svg = `<svg class="ch-svg ch-px" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">${layers.base}<g class="ch-me">${layers.me}</g><g class="ch-arm l">${layers.l}</g><g class="ch-arm r">${layers.r}</g></svg>`;
-  pxMemo.set(key, svg);
-  return svg;
-}
+  function draw(c, t, dt) {
+    const who = c.dataset.who, mv = c.dataset.mv, fr = c.dataset.fr, a = CH_ART[who][fr], f = CH_POSE[mv] ?? 0, src = chSrc(who, fr);
+    const id = c.closest('.ch')?.dataset.id || who, ph = (chHash(id) % 1000) / 160, T = t + ph;
+    const [tilt, br, sway, bob, blinks] = (L2D_MOVE[mv] || L2D_MOVE.wait)(T);
+    // hair: a damped spring pulled by the head's tilt and the body's sway, so it lags and overshoots
+    const sp = spring.get(id) || { x: 0, v: 0 }; spring.set(id, sp);
+    const pull = -(tilt * .05 + sway * 2.5);
+    sp.v += ((pull - sp.x) * 60 - sp.v * 7) * dt; sp.x += sp.v * dt;
+    const blink = blinks && T % 4.2 < .16 ? Math.sin(T % 4.2 / .16 * Math.PI) : 0;
+    const ctx = c.getContext('2d'), W = c.width, H = c.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!gl) {  // flat fallback
+      const im = img(src);
+      if (im.complete && im.naturalWidth) ctx.drawImage(im, f * a.w, 0, a.w, a.h, W * .04, H * (.04 - br - bob), W * .92, H * .92);
+      return;
+    }
+    const tx = texOf(src);
+    if (!tx) return;
+    if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); }
+    const top = a.top[f], full = fr === 'full', hs = full ? .11 : .34, ny = top + (full ? .12 : .36);
+    gl.viewport(0, cv.height - H, W, H);  // the top-left corner, read back below
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindTexture(gl.TEXTURE_2D, tx);
+    gl.uniform4f(u.m, tilt, br, full ? sway : sway * .4, bob);
+    gl.uniform4f(u.p, ny, a.w / a.h, hs, T);
+    gl.uniform2f(u.h, sp.x, .004);
+    gl.uniform3f(u.f, f, blink, 0);
+    gl.uniform4f(u.e, .5, top + (full ? .06 : .18), full ? .1 : .2, full ? .022 : .055);
+    gl.drawElements(gl.TRIANGLES, u.n, gl.UNSIGNED_SHORT, 0);
+    ctx.drawImage(cv, 0, 0, W, H, 0, 0, W, H);
+  }
+  function frame(now) {
+    raf = 0;
+    if (!shown.size) return;
+    const dt = Math.min(.1, (now - (last || now)) / 1000);
+    if (now - last < 32 && last) { raf = requestAnimationFrame(frame); return; }  // ~30fps is plenty
+    last = now;
+    const t = reduce.matches ? 0 : now / 1000;
+    shown.forEach(c => c.isConnected ? draw(c, t, dt) : shown.delete(c));
+    if (!reduce.matches) raf = requestAnimationFrame(frame);
+  }
+  const kick = () => { if (!raf) raf = requestAnimationFrame(frame); };
+  // after each render: watch the new canvases, draw only those on screen
+  function mount(root) {
+    if (!cv) init();
+    io?.disconnect(); shown.clear();
+    const cs = root.querySelectorAll('canvas.fig-l2d');
+    if (!cs.length) return;
+    io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? shown.add(e.target) : shown.delete(e.target)); kick(); });
+    cs.forEach(c => { c.dataset.fr = charFrame; io.observe(c); });
+  }
+  return { mount };
+})();
 
-// The room's wall: decorations in a row (hidden past what the width holds — chLayout). 3D items are shaded SVG; pixel
-// items are letter sprites like the people.
-const WALL3D = {
+// The room's wall: shaded decorations in a row (hidden past what the width holds — chLayout).
+const WALL = {
   window: () => `<svg viewBox="0 0 60 52" width="60" height="52"><rect class="w3-frame" x="2" y="2" width="56" height="42" rx="3"/><rect class="w3-sky" x="6" y="6" width="22" height="34"/><rect class="w3-sky" x="32" y="6" width="22" height="34"/>
     <ellipse class="w3-cloud" cx="16" cy="16" rx="7" ry="3"/><ellipse class="w3-cloud" cx="21" cy="14" rx="4.6" ry="3.4"/><ellipse class="w3-cloud" cx="44" cy="26" rx="6" ry="2.4"/><path class="w3-glint" d="M10 36L22 10M36 36L44 18"/><rect class="w3-sill" x="0" y="44" width="60" height="5" rx="1.6"/></svg>`,
   shelf: () => `<svg viewBox="0 0 70 52" width="70" height="52"><path class="w3-board" d="M2 22h66v4H2zM2 46h66v4H2z"/><path class="w3-book a" d="M6 6h6v16H6zM40 32h6v14h-6z"/><path class="w3-book b" d="M13 9h5v13h-5zM47 30h5v16h-5z"/>
@@ -3053,31 +3034,21 @@ const WALL3D = {
   board: () => `<svg viewBox="0 0 74 52" width="74" height="52"><rect class="w3-frame" x="1" y="3" width="72" height="42" rx="2"/><rect class="w3-white" x="4" y="6" width="66" height="36"/><path class="w3-pen a" d="M9 13h22M9 19h16M9 25h20"/>
     <path class="w3-pen b" d="M36 30l6-8 6 5 7-11"/><rect class="w3-note a" x="54" y="9" width="11" height="10" transform="rotate(4 59 14)"/><rect class="w3-note b" x="12" y="31" width="10" height="9" transform="rotate(-5 17 35)"/><rect class="w3-tray" x="20" y="44" width="34" height="3" rx="1"/></svg>`,
 };
-const PXW = {
-  window: ['oooooooooooo', 'oFFFFFFFFFFo', 'oFAAWAFAAAFo', 'oFAWWWFAAAFo', 'oFAAAAFAAWFo', 'oFFFFFFFFFFo', 'oFaaaaFaaaFo', 'oFaaaaFaaaFo', 'oFFFFFFFFFFo', 'oSSSSSSSSSSo', 'oooooooooooo'],
-  shelf: ['.o..........v.', '.xo.y....ovvvo', '.xzoyy.X..opo.', '.xzyyyXX..ppp.', 'bbbbbbbbbbbbbb', '.o..........o.'],
-  clock: ['..ooooo..', '.oWWWWWo.', 'oWWWeWWWo', 'oWWWeWWWo', 'oWWWeeWWo', 'oWWWWWWWo', '.oWWWWWo.', '..ooooo..'],
-  poster: ['ooooooooo', 'oAAAAAyAo', 'oAAAAAAAo', 'oAAvAAAAo', 'oAvvvAvAo', 'ovvvvvvvo', 'ooooooooo'],
-  board: ['oooooooooooooooo', 'oWWWWWWWWWWWyyWo', 'oWxxxxWWWWWWyyWo', 'oWWWWWWzzzWWWWWo', 'oWxxxWWWWWWXXWWo', 'oWWWWWWWWWWXXWWo', 'oooooooooooooooo'],
-};
-const PXW_CLS = { o: 'px-line', F: 'pw-frame', A: 'pw-sky', a: 'pw-sky2', W: 'pw-white', S: 'pw-sill', x: 'pw-b1', y: 'pw-b2', z: 'pw-b3', X: 'pw-b4', b: 'pw-board', v: 'px-leaf', p: 'px-pot', e: 'px-ink' };
-const pxWall = rows => `<svg viewBox="0 0 ${rows[0].length} ${rows.length}" width="${rows[0].length * 4}" height="${rows.length * 4}" shape-rendering="crispEdges">${rows.map((row, y) => {
-  let h = ''; for (let x = 0; x < row.length;) { const c = row[x]; let w = 1; while (row[x + w] === c) w++; if (PXW_CLS[c]) h += `<rect class="${PXW_CLS[c]}" x="${x}" y="${y}" width="${w}" height="1"/>`; x += w; } return h; }).join('')}</svg>`;
 const WALL_ORDER = ['window', 'shelf', 'window', 'clock', 'poster', 'window', 'board', 'shelf', 'window', 'poster', 'clock', 'window'];
 const wallHtml = key => { const k = chHash(key) % WALL_ORDER.length;
-  return `<div class="room-wall" aria-hidden="true">${[...WALL_ORDER.slice(k), ...WALL_ORDER.slice(0, k)].map(w => `<span class="wall-item">${charStyle === 'px' ? pxWall(PXW[w]) : WALL3D[w]()}</span>`).join('')}</div>`; };
+  return `<div class="room-wall" aria-hidden="true">${[...WALL_ORDER.slice(k), ...WALL_ORDER.slice(0, k)].map(w => `<span class="wall-item">${WALL[w]()}</span>`).join('')}</div>`; };
 
 function charHtml(s) {
-  const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`, L = chLook(s);
+  const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`;
   // 입력 대기 is not the user's to do: no bubble (it would read as a call for attention)
   const say = s.decision ? '결정을 기다려요' : st === 'wait' ? '' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
   return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"
-      style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m};--skin:var(--skin-${L.skin});--hair:var(--hair-${L.hair})"
+      style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m}"
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
     <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
-    ${charStyle === 'px' ? pxSprite(st, s) : charSvg3d(st, s)}
+    ${chFig(st, s)}
     <span class="ch-name">${esc(nameOf(s))}</span>
     <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
   </button>`;
@@ -3278,13 +3249,13 @@ const plainText = h => String(h || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/
 const staffOf = w => { let r; try { r = HM_W[w.id].html(w); } catch { r = null; } return r; };
 function staffHtml(w) {
   const def = HM_W[w.id], r = staffOf(w), role = STAFF[w.id] || def.name;
-  const st = r?.bad ? 'stalled' : r?.hot || r?.n ? 'run' : 'idle', me = { id: 'staff-' + w.id, path: 'staff-' + w.id, role: 'staff' }, L = chLook(me);
+  const st = r?.bad ? 'stalled' : r?.hot || r?.n ? 'run' : 'idle', me = { id: 'staff-' + w.id, path: 'staff-' + w.id, role: 'staff' };
   const say = (r && plainText(r.note)) || (r?.n ? `${def.name} ${r.n}` : '보고할 것 없음');
   return `<button type="button" class="ch staff st-${st}${w.id === 'mine' && r?.n ? ' dec' : ''}${chPanel === w.id ? ' open' : ''}" data-staff="${w.id}" data-id="staff-${w.id}"
-      style="--c:var(--accent);--skin:var(--skin-${L.skin});--hair:var(--hair-${L.hair})" aria-expanded="${chPanel === w.id}"
+      style="--c:var(--accent)" aria-expanded="${chPanel === w.id}"
       title="${esc(`${role} · ${def.name}\n${say}\n누르면 ${def.name} 열기`)}" aria-label="${esc(`${role}: ${def.name}${r?.n ? ' ' + r.n : ''}. ${say}`)}">
     <span class="ch-say"><span>${r?.n ? `<b>${r.n}</b>` : ''}${esc(cut(say, 60))}</span></span>
-    ${charStyle === 'px' ? pxSprite(st, me) : charSvg3d(st, me)}
+    ${chFig(st, me)}
     <span class="ch-name">${role}</span>
     <span class="ch-meta">${def.name}</span>
   </button>`;
@@ -3331,7 +3302,6 @@ function renderOffice() {
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
-  chSeq = 0;
   const home = route().v === 'home';
   const rooms = [home ? staffRoom() : ''].concat(fv.map(roomHtml), sv.length ? roomBox('단독 자리', 'solo', sv) : []).filter(Boolean);
   // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
@@ -3343,7 +3313,8 @@ function renderOffice() {
   const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
   $('#view').innerHTML = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       <div class="ch-tools surface">${home ? homeViewSeg() : ''}
-        <span class="seg" id="ch-style"><button data-k="3d">3D</button><button data-k="px">픽셀</button></span>
+        <span class="seg" id="ch-style"><button data-k="ai">AI 생성</button><button data-k="l2d">Live2D</button></span>
+        <span class="seg" id="ch-frame"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>
         <span class="ch-zoom"><button type="button" class="act" id="ch-out" aria-label="축소">−</button><button type="button" class="act" id="ch-zl" title="100%로">100%</button><button type="button" class="act" id="ch-in" aria-label="확대">+</button></span>
         <button type="button" class="act" id="ch-fit" aria-pressed="false" title="모든 방이 한눈에 들어오게">맞춤</button>
         <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
@@ -3351,11 +3322,13 @@ function renderOffice() {
       ${home && chPanel ? staffPanel() : ''}
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
-  $('#ch-style').querySelectorAll('button').forEach(b => {
-    b.classList.toggle('on', b.dataset.k === charStyle);
-    b.setAttribute('aria-pressed', b.dataset.k === charStyle);
-    b.onclick = () => { charStyle = b.dataset.k; try { localStorage.setItem('adash.charstyle', charStyle); } catch {} renderOffice(); };
+  const seg = (id, get, set) => $(id).querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === get());
+    b.setAttribute('aria-pressed', b.dataset.k === get());
+    b.onclick = () => { set(b.dataset.k); renderOffice(); };
   });
+  seg('#ch-style', () => charStyle, k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} });
+  seg('#ch-frame', () => charFrame, k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} });
   $('#ch-reset').onclick = () => {
     chPos = {}; chPosSave();
     const o = $('#view .office');
@@ -3375,6 +3348,7 @@ function renderOffice() {
   chLayout();
   chBind();
   chSize();
+  L2D.mount($('#view'));
 }
 
 function renderAgents() {
