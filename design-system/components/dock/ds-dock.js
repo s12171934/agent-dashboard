@@ -50,6 +50,7 @@ class DsDock extends HTMLElement {
     const mark = () => menu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
     btn.onclick = e => { e.stopPropagation(); mark(); menu.querySelector('.dock-side').hidden = dockLocked(); menu.hidden = !menu.hidden; };
     menu.onclick = e => {
+      if (e.target.closest('a')) { menu.hidden = true; return; }  // a tab moved here: going to it closes the menu
       const b = e.target.closest('[data-dock]'); if (!b) return;
       save('adash.dock', b.dataset.dock); applyDock(b.dataset.dock); mark();
     };
