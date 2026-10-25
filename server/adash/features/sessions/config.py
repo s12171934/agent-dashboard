@@ -20,3 +20,4 @@ WAIT_SECONDS = 30 * 60    # a finished turn counts as "waiting for input" for th
 HOOK_STATUS = os.path.join(HOME, "Library/Application Support/orca/agent-hooks/last-status.json")
 hooks = {}  # provider session id -> Orca hook status (Orca-managed Claude panes only)
 LOG_LIMIT = 600
+CHAT_LIMIT, CHAT_CHARS = 200, 4000  # /api/chat: the last prompts and replies, each cut at this many characters

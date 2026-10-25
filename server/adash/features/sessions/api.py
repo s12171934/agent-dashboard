@@ -1,4 +1,4 @@
-"""Session endpoints: one session's detail, the plans of several, and manual idle marks."""
+"""Session endpoints: one session's detail, its conversation, the plans of several, and manual idle marks."""
 
 import json
 from urllib.parse import parse_qs
@@ -31,6 +31,20 @@ def get_session(h, url):
     if not body:
         return h.send_json({"error": "not found"}, 404)
     h.send_body(body)
+
+
+def get_chat(h, url):
+    # The conversation alone (prompts and replies at full length, up to CHAT_CHARS), for the chat on a card or the detail.
+    path = parse_qs(url.query).get("path", [""])[0]
+    with lock:
+        s = sessions.get(path)
+        chat = list(s.chat) if s else None
+    if chat is None:
+        s = archived_session(path)
+        chat = s and list(s.chat)
+    if chat is None:
+        return h.send_json({"error": "not found"}, 404)
+    h.send_json({"chat": chat})
 
 
 def get_plans(h, url):

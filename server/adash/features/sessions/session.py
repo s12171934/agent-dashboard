@@ -11,8 +11,8 @@ from adash.core.util import epoch, short
 from adash.features.decisions.store import INBOX_PICK
 from adash.features.designs.refs import DesignReads, note_design_stats
 from adash.features.orca_runs.store import orca_state
-from adash.features.sessions.config import (CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS, STALL_SECONDS,
-    WAIT_SECONDS, hooks)
+from adash.features.sessions.config import (CHAT_CHARS, CHAT_LIMIT, CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS,
+    STALL_SECONDS, WAIT_SECONDS, hooks)
 from adash.features.sessions.patterns import (APLAN_CMD, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS, BG_NOTE,
     BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD, RUN_CREATE,
     RUN_ID, TERM_CREATE, classify_tool, tool_hint)
@@ -40,6 +40,7 @@ class Session:
         self.turn_by_key = {}
         self.compactions = []  # turn indices
         self.log = []
+        self.chat = []  # the conversation as said: prompts and replies, whitespace kept (CHAT_LIMIT × CHAT_CHARS)
         self.pending_tools = []  # codex: tool calls seen before their usage record
         self.cats = collections.Counter()  # tool calls by category
         self.skill_use = collections.Counter()
@@ -114,11 +115,17 @@ class Session:
             note_design_stats(self.reads)
         return changed
 
-    def add_log(self, ts, role, text, instruction=True, **extra):
+    def add_log(self, ts, role, text, instruction=True, full=None, **extra):
+        said = role == "assistant" or (role == "user" and instruction and not NOT_INSTRUCTION.match(text or ""))
         if role == "user":
             self.last_prompt, self.last_prompt_ts = text, ts
-            if instruction and not NOT_INSTRUCTION.match(text or ""):
+            if said:
                 self.prompts.append((ts or "", text))
+        if said and full is not None and full.strip():
+            full = full.strip()
+            self.chat.append({"ts": ts, "role": role, "text": full if len(full) <= CHAT_CHARS else full[: CHAT_CHARS - 1] + "…"})
+            if len(self.chat) > CHAT_LIMIT:
+                del self.chat[: len(self.chat) - CHAT_LIMIT]
         self.log.append({"ts": ts, "role": role, "text": text, "turn": len(self.turns) - 1, **extra})
         if len(self.log) > LOG_LIMIT:
             del self.log[: len(self.log) - LOG_LIMIT]
@@ -348,7 +355,7 @@ class Session:
                 elif block.get("type") == "text" and block.get("text", "").strip():
                     for m in INBOX_PICK.finditer(block["text"]):
                         self.inbox_picks[m[1]] = m[2].strip(" `*")
-                    self.add_log(ts, "assistant", short(block["text"]))
+                    self.add_log(ts, "assistant", short(block["text"]), full=block["text"])
         elif typ == "user":
             content = msg.get("content")
             if not rec.get("isMeta"):
@@ -361,7 +368,7 @@ class Session:
                 self.check_brief(content)
                 if not self.title and not content.startswith("<"):
                     self.title = short(content, 80)
-                self.add_log(ts, "user", short(content), instruction=not rec.get("isMeta"))
+                self.add_log(ts, "user", short(content), instruction=not rec.get("isMeta"), full=content)
             elif isinstance(content, list):
                 for block in content:
                     if not isinstance(block, dict):
@@ -376,7 +383,7 @@ class Session:
                             self.asks[block["tool_use_id"]][2] = True
                         self.add_log(ts, "result", short(body, 200), size=len(body), error=bool(block.get("is_error")))
                     elif block.get("type") == "text" and not block.get("text", "").startswith("<"):
-                        self.add_log(ts, "user", short(block.get("text", "")), instruction=not rec.get("isMeta"))
+                        self.add_log(ts, "user", short(block.get("text", "")), instruction=not rec.get("isMeta"), full=block.get("text", ""))
         elif typ == "system":
             sub = rec.get("subtype")
             if sub and "compact" in sub:
@@ -429,13 +436,13 @@ class Session:
             role = p.get("role")
             text = " ".join(c.get("text", "") for c in p.get("content") or [] if isinstance(c, dict))
             if role == "assistant" and text.strip():
-                self.add_log(ts, "assistant", short(text))
+                self.add_log(ts, "assistant", short(text), full=text)
             elif role == "user" and "dispatched worker" in text:
                 self.check_brief(text)
-                self.add_log(ts, "user", short(text))
+                self.add_log(ts, "user", short(text), full=text)
             elif role == "user" and text.strip() and not text.lstrip().startswith(("#", "<")):
                 self.title = self.title or short(text, 80)
-                self.add_log(ts, "user", short(text))
+                self.add_log(ts, "user", short(text), full=text)
         elif ptype and "compact" in str(ptype):
             if self.turns and (len(self.turns) - 1) not in self.compactions:
                 self.compactions.append(len(self.turns) - 1)

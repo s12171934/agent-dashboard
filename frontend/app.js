@@ -297,7 +297,8 @@ async function refresh() {
   IX = index();
   renderHeader();
   notifyDecisions();
-  render();
+  await render();
+  chatSync();
 }
 
 // Live updates rebuild the view's HTML, which drops every scroll position (the page and inner scrollers
@@ -310,7 +311,7 @@ function scrollKey(el) {
 }
 function saveScroll() {
   const inner = [];
-  $('#view').querySelectorAll('*').forEach(el => { if ((el.scrollTop || el.scrollLeft) && !el.classList.contains('log')) inner.push([scrollKey(el), el.scrollLeft, el.scrollTop]); });
+  $('#view').querySelectorAll('*').forEach(el => { if ((el.scrollTop || el.scrollLeft) && !el.classList.contains('log') && !el.classList.contains('chat-log')) inner.push([scrollKey(el), el.scrollLeft, el.scrollTop]); });
   return { y: window.scrollY, x: window.scrollX, h: document.documentElement.scrollHeight, inner };
 }
 function restoreScroll(sv) {
@@ -976,14 +977,14 @@ function actBtns(s, big) {
 }
 // 「Orca 에서 열기」 only where the server found the connected Orca terminal the agent runs in.
 const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} accent" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
-// 「Orca 에서 열기」 + 「닫기」 for a session (the session page adds 「프롬프트」, which opens 「새 에이전트」 on it). The session page's detail object comes from /api/session, which has no
-// orca_focus; the snapshot row does. Closing a running agent is allowed; the confirm dialog warns about it.
+// 「Orca 에서 열기」 + 「닫기」 for a session (prompts go through the chat: the session page's box, a card's sheet). The
+// session page's detail object comes from /api/session, which has no orca_focus; the snapshot row does. Closing a running agent is allowed; the confirm dialog warns about it.
 // A terminal being closed (closing) shows no buttons from the click on, as once it is gone; a failed close puts them back.
 function orcaBtns(s, big) {
   const focus = s.orca_focus ?? state.all?.find(x => x.path === s.path)?.orca_focus;
   if (!focus || closing.has(focus)) return '';
   const cls = big ? 'act big' : 'act';
-  return `${focusBtn(focus, big)}${big ? `<button class="${cls}" data-act="prompt" data-handle="${esc(focus)}" title="이 에이전트의 Orca 터미널에 프롬프트를 입력">프롬프트</button>` : ''}<button class="${cls} danger" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
+  return `${focusBtn(focus, big)}<button class="${cls} danger" data-act="close" data-handle="${esc(focus)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">닫기</button>`;
 }
 // Fold a repository group of a driver plan (agents list and session page alike).
 document.addEventListener('click', e => {
@@ -1004,7 +1005,6 @@ document.addEventListener('click', e => {
   if (a === 'idle') pref('idle', [p], { msg: `"${cut(name, 30)}" 유휴로 표시`, action: 'unidle' });
   else if (a === 'unidle') pref('unidle', [p]);
   else if (a === 'close') closeOrca(s, name, b.dataset.handle);
-  else if (a === 'prompt') launchPanel('send', b.dataset.handle);
   else if (a === 'focus') api.focus(b.dataset.handle).then(r => toast(r.status === 200 ? 'Orca 에서 열었습니다' : r.body?.error || `Orca 전환 실패 (${r.status})`))
     .catch(() => toast('대시보드 서버에 보내지 못했습니다'));
 }, true);
@@ -4441,15 +4441,27 @@ function renderSession(navigated) {
     <div class="panes">${useHtml}${logHtml}
     </div>`;
   }
-  const ch = chShown();
-  $('#view').innerHTML = `<a class="back" href="#agents">← 에이전트</a>
+  const ch = chShown(), who = chName(chWho(d));
+  const html = `<a class="back" href="#agents">← 에이전트</a>
     ${ch ? `<div class="d-hero">${chHero(d)}<div class="d-head">` : ''}
     <h2 class="d">${esc(nameOf(d))}</h2>
     <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>${ch ? '</div>' : ''}
     <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
     ${ch ? `</div>${chPickOpen ? chPicker(d) : ''}` : ''}
+    <section class="box chat-box" data-chat-box="${esc(d.path)}"><h3>${esc(who)} 와 대화 <span class="st">Orca 터미널에 입력합니다 · Enter 보내기, Shift+Enter 줄바꿈</span></h3>${chatHtml(d)}</section>
     ${rel ? `<div class="box">${rel}</div>` : ''}
     ${body}`;
+  // A live update keeps the chat box itself (what is being typed, the focus, an IME composition) and replaces the rest.
+  const keep = $('#view > .chat-box');
+  if (keep?.dataset.chatBox === d.path) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const slot = [...tpl.content.children].find(x => x.classList.contains('chat-box')), nodes = [...tpl.content.childNodes], i = nodes.indexOf(slot);
+    keep.querySelector('h3').replaceWith(slot.querySelector('h3'));
+    [...$('#view').childNodes].forEach(x => x !== keep && x.remove());
+    keep.before(...nodes.slice(0, i)); keep.after(...nodes.slice(i + 1));
+  } else $('#view').innerHTML = html;
+  chatPaint(d.path);
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
   for (const k of ['subs', 'prevplans', 'design', 'vault', 'wpchart']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { openState[k] = el.open; if (k === 'wpchart' && el.open) wpChart(d); }; }
   for (const k of ['orch', 'self', 'log']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { secSave(d, k, el.open); if (el.open && k === 'self') ctxChart(d); if (el.open && k === 'orch') flowBind(d); if (el.open && k === 'log') $('.log').scrollTop = $('.log').scrollHeight; }; }
@@ -4970,6 +4982,170 @@ async function lpLaunch() {
     .then(x => x.status !== 200 && toast(x.body?.error || 'Orca 전환 실패')) } : {});
 }
 $('#launch-btn').onclick = () => { if ($('#launch-panel').hidden) launchPanel(); else $('#launch-panel').hidden = true; };
+// ---------- chat ----------
+// The conversation with an agent as a chat with its person (chWho): its replies on the left beside its face, the
+// prompts on the right, and a box that types into the agent's Orca terminal (api.send, as 「프롬프트 보내기」). Two
+// places: the session page (a box under the header) and a sheet over the agents list or the office, opened by a right
+// click or a long press on a card or a person. The conversation is /api/chat, read again when the session's last_ts
+// moves; a live update repaints only the log, so the box keeps what is being typed (and an IME composition).
+const chat = { cache: {}, draft: {}, sent: {}, busy: {}, note: {}, stick: {}, top: {} };
+const chatSess = p => (state?.all || state?.sessions || []).find(x => x.path === p) || (detail?.path === p ? detail : null);
+const chatHandle = s => s && (s.orca_focus ?? state?.all?.find(x => x.path === s.path)?.orca_focus) || '';
+const chatTime = ts => ts ? new Date(toDate(ts)).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
+// A message as said: escaped, with its **bold** and `code` drawn (the rest of the markdown stays as typed).
+const chatText = t => esc(t).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+const chatNorm = t => String(t || '').replace(/\s+/g, ' ').trim();
+function chatGet(s) {
+  const c = chat.cache[s.path] ||= { msgs: null, ts: undefined, busy: false };
+  if (c.ts !== s.last_ts && !c.busy) {
+    const ts = s.last_ts;
+    c.busy = true;
+    api.chat(s.path).then(m => { c.msgs = m || []; c.err = false; }).catch(() => { c.msgs ||= []; c.err = true; })
+      .finally(() => { c.ts = ts; c.busy = false; chatPaint(s.path); });
+  }
+  return c.msgs;
+}
+// A person's face: the top of their SD bust sprite (pose 0), scaled to fill a circle of size px.
+function chFace(s, size = 32) {
+  const a = CH_ART[chWho(s)].sdb, k = size * 1.5 / a.pw, w = a.pw * k;
+  return `<span class="chat-face" style="width:${size}px;height:${size}px;background-image:url(${chSdSrc(chWho(s), 'bust')});background-size:${a.pw * 8 * k}px ${a.ph * k}px;background-position:${-(w - size) / 2}px ${-a.top[0] * a.ph * k}px" aria-hidden="true"></span>`;
+}
+function chatLogHtml(s) {
+  const msgs = chatGet(s), c = chat.cache[s.path], face = chFace(s);
+  if (!msgs) return '<div class="chat-empty st">대화를 읽는 중…</div>';
+  // Sent from here and not yet in the log: shown as pending until the prompt turns up there.
+  const sent = chat.sent[s.path] = (chat.sent[s.path] || []).filter(x => !msgs.some(m => m.role === 'user' && msOf(m.ts) >= x.at - 60e3
+    && chatNorm(m.text).startsWith(chatNorm(x.text).slice(0, 40))));
+  const them = (m, first) => `<div class="chat-b them${first ? '' : ' cont'}">${first ? face : '<span class="chat-face"></span>'}<div class="chat-t">${chatText(m.text)}</div><span class="chat-ts">${chatTime(m.ts)}</span></div>`;
+  const me = (m, pend) => `<div class="chat-b me${pend ? ' pend' : ''}"><span class="chat-ts">${pend ? (m.queued ? '대기 · 턴이 끝나면 읽음' : '보냄') : chatTime(m.ts)}</span><div class="chat-t">${chatText(m.text)}</div></div>`;
+  const st = status(s), la = s.last_action;
+  const rows = msgs.map((m, i) => m.role === 'user' ? me(m) : them(m, msgs[i - 1]?.role !== 'assistant'));
+  rows.push(...sent.map(x => me(x, true)));
+  if (s.decision) rows.push(`<div class="chat-b them note">${face}<div class="chat-t"><b>결정을 기다려요</b> · ${esc(cut(s.decision.question || s.decision.questions?.[0]?.question || '', 120))}</div></div>`);
+  else if (st === 'run') rows.push(`<div class="chat-b them note">${face}<div class="chat-t"><span class="chat-dots" aria-label="작업 중"><i></i><i></i><i></i></span>${la ? ` <span class="st">${esc(cut(la.text, 80))}</span>` : ''}</div></div>`);
+  if (!rows.length) return `<div class="chat-empty st">${c?.err ? '대화를 읽지 못했습니다' : '아직 대화가 없습니다'}</div>`;
+  return (msgs.length >= 200 ? '<div class="chat-empty st">최근 200개만 보입니다</div>' : '') + rows.join('');
+}
+function chatHtml(s) {
+  const p = s.path, h = chatHandle(s), busy = chat.busy[p], [msg, cls] = chat.note[p] || ['', ''];
+  return `<div class="chat" data-chat="${esc(p)}">
+    <div class="chat-log" role="log" aria-label="${esc(nameOf(s))} 와의 대화">${chatLogHtml(s)}</div>
+    <form class="chat-form"><textarea class="field chat-in" rows="1" aria-label="${esc(chName(chWho(s)))} 에게 보낼 말"
+        placeholder="${h ? `${esc(chName(chWho(s)))} 에게 말하기` : 'Orca 터미널에 연결되지 않아 보낼 수 없습니다'}" title="Enter 보내기 · Shift+Enter 줄바꿈"${h ? '' : ' disabled'}>${esc(chat.draft[p] || '')}</textarea>
+      <button class="act big accent" type="submit"${h && !busy && (chat.draft[p] || '').trim() ? '' : ' disabled'}>${busy ? '보내는 중…' : '보내기'}</button></form>
+    <div class="chat-note sp-msg ${cls}"${msg ? '' : ' hidden'}>${esc(msg)}</div></div>`;
+}
+// Repaint every chat on show for a session: the log, and the form's state, leaving the text box itself alone.
+function chatPaint(p) {
+  const s = chatSess(p);
+  document.querySelectorAll('.chat[data-chat]').forEach(el => {
+    if (el.dataset.chat !== p || !s) return;
+    const log = el.querySelector('.chat-log'), h = chatHandle(s), busy = chat.busy[p], [msg, cls] = chat.note[p] || ['', ''];
+    const html = chatLogHtml(s);
+    if (log.dataset.html !== html) { log.innerHTML = html; log.dataset.html = html; }
+    log.scrollTop = chat.stick[p] !== false ? log.scrollHeight : chat.top[p] || 0;
+    const ta = el.querySelector('.chat-in'), b = el.querySelector('.chat-form button'), n = el.querySelector('.chat-note');
+    ta.disabled = !h;
+    chatGrow(ta);
+    b.disabled = !h || busy || !(chat.draft[p] || '').trim();
+    b.textContent = busy ? '보내는 중…' : '보내기';
+    n.hidden = !msg; n.textContent = msg; n.className = `chat-note sp-msg ${cls}`;
+  });
+  const dlg = $('#chat-dlg');
+  if (dlg?.open && dlg.dataset.path === p && s) dlg.querySelector('.chat-dlg-s').textContent = `${chName(chWho(s))} · ${ST_LABEL[status(s)]}`;
+}
+const chatSync = () => new Set([...document.querySelectorAll('.chat[data-chat]')].map(el => el.dataset.chat)).forEach(chatPaint);
+async function chatSend(p) {
+  const s = chatSess(p), h = chatHandle(s), text = (chat.draft[p] || '').trim();
+  if (!h || !text || chat.busy[p]) return;
+  chat.busy[p] = true; chat.note[p] = null; chatPaint(p);
+  const r = await api.send(h, text).catch(() => ({ status: 502, body: { error: '대시보드 서버에 보내지 못했습니다' } }));
+  chat.busy[p] = false;
+  if (r.status === 200) {
+    (chat.sent[p] ||= []).push({ text, at: Date.now(), queued: !r.body.started });
+    chat.draft[p] = ''; chat.stick[p] = true;
+    document.querySelectorAll('.chat[data-chat]').forEach(el => { if (el.dataset.chat === p) { const ta = el.querySelector('.chat-in'); ta.value = ''; chatGrow(ta); } });
+  } else chat.note[p] = [r.body?.error || `보내지 못했습니다 (${r.status})`, 'bad'];
+  chatPaint(p);
+}
+const chatGrow = ta => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 160) + 'px'; };
+const COARSE = matchMedia('(pointer: coarse)');
+document.addEventListener('input', e => {
+  const ta = e.target.closest?.('.chat-in');
+  if (!ta) return;
+  const p = ta.closest('.chat').dataset.chat;
+  chat.draft[p] = ta.value;
+  chatGrow(ta);
+  ta.form.querySelector('button').disabled = !chatHandle(chatSess(p)) || chat.busy[p] || !ta.value.trim();
+});
+// Enter sends (not mid-composition: Korean input ends a syllable with Enter); on a touch keyboard Enter is a new line.
+document.addEventListener('keydown', e => {
+  const ta = e.target.closest?.('.chat-in');
+  if (!ta || e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229 || COARSE.matches) return;
+  e.preventDefault();
+  chatSend(ta.closest('.chat').dataset.chat);
+});
+document.addEventListener('submit', e => {
+  const f = e.target.closest('.chat-form');
+  if (!f) return;
+  e.preventDefault();
+  chatSend(f.closest('.chat').dataset.chat);
+});
+document.addEventListener('scroll', e => {
+  const log = e.target.classList?.contains('chat-log') && e.target;
+  if (!log) return;
+  const p = log.closest('.chat').dataset.chat;
+  chat.stick[p] = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
+  chat.top[p] = log.scrollTop;
+}, true);
+
+// The sheet: a modal over the page, the person and their state on top, 「상세」 to the session page.
+function chatOpen(p) {
+  const s = chatSess(p);
+  if (!s) return;
+  let d = $('#chat-dlg');
+  if (!d) {
+    d = document.createElement('dialog'); d.id = 'chat-dlg'; d.className = 'dialog chat-dlg';
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-chat-close], [data-chat-detail]')) d.close(); });
+    document.body.appendChild(d);
+  }
+  if (d.open && d.dataset.path === p) return;
+  d.dataset.path = p;
+  d.innerHTML = `<div class="chat-dlg-in"><div class="chat-dlg-h">${chFace(s, 44)}<div class="chat-dlg-t"><b>${esc(nameOf(s))}</b><span class="st chat-dlg-s"></span></div>
+      <a class="act" href="#s=${encodeURIComponent(p)}" data-chat-detail>상세</a><button type="button" class="act" data-chat-close>닫기</button></div>${chatHtml(s)}</div>`;
+  chat.stick[p] = true;
+  if (!d.open) d.showModal();
+  chatPaint(p);
+  const ta = d.querySelector('.chat-in');
+  chatGrow(ta);
+  if (!COARSE.matches && !ta.disabled) ta.focus(); else d.querySelector('[data-chat-close]').focus();
+}
+// Right click, or a still press of half a second (finger or pen), on an agent card or a person in the office. The
+// click that ends a long press does not also open the session; a person's drag (armed by its own hold) is let go.
+const chatTarget = el => el.closest?.('.card[data-path], .ch[data-path]');
+const chatSkip = el => el.closest('[data-act], a, input, textarea, select, .acts');
+document.addEventListener('contextmenu', e => {
+  const t = chatTarget(e.target);
+  if (!t || chatSkip(e.target)) return;
+  e.preventDefault();
+  chatOpen(t.dataset.path);
+});
+let chatHold = null, chatHeld = false;
+document.addEventListener('pointerdown', e => {
+  clearTimeout(chatHold?.t); chatHold = null;
+  const t = e.pointerType !== 'mouse' && chatTarget(e.target);
+  if (!t || chatSkip(e.target)) return;
+  chatHold = { x: e.clientX, y: e.clientY, t: setTimeout(() => {
+    chatHold = null; chatHeld = true;
+    dispatchEvent(new PointerEvent('pointercancel'));  // ends a person's drag before the sheet covers it
+    navigator.vibrate?.(10);
+    chatOpen(t.dataset.path);
+  }, 500) };
+});
+addEventListener('pointermove', e => { if (chatHold && Math.hypot(e.clientX - chatHold.x, e.clientY - chatHold.y) > 10) { clearTimeout(chatHold.t); chatHold = null; } });
+addEventListener('pointerup', () => { clearTimeout(chatHold?.t); chatHold = null; });
+addEventListener('pointercancel', e => { if (e.isTrusted) { clearTimeout(chatHold?.t); chatHold = null; } });
+document.addEventListener('click', e => { if (chatHeld) { chatHeld = false; e.stopPropagation(); e.preventDefault(); } }, true);
 // ---------- projects ----------
 // Project progress from the metric servers started with --projects-dir (one progress.json per project; the servers
 // derive every figure, this only lays it out). Two views of the same list:

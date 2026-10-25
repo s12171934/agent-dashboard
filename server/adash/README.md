@@ -22,7 +22,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 
 | 폴더 | 무엇 | 엔드포인트 (`api.py`) |
 | --- | --- | --- |
-| `sessions/` | Claude·Codex 대화 기록 수집(scan), 한 세션 파싱(session), 가격·사용량·작업 계획·위치·Orca 훅, 수동 유휴 표시 | `/api/session`, `/api/plans`, `POST /api/pref` |
+| `sessions/` | Claude·Codex 대화 기록 수집(scan), 한 세션 파싱(session), 가격·사용량·작업 계획·위치·Orca 훅, 수동 유휴 표시 | `/api/session`, `/api/chat`, `/api/plans`, `POST /api/pref` |
 | `history/` | 비교 탭의 일주일 사용량 (5분 칸) | `/api/history` |
 | `orca_runs/` | Orca Run·태스크·워커·터미널 수집, 끝난 디스패치 보관 | `/api/run` |
 | `terminals/` | 세션이 도는 터미널 찾기, 아래 터미널까지 닫기 작업, 에이전트 띄우기(새 워크트리·기존 워크트리)와 프롬프트 보내기 | `/api/orca/job`, `/api/orca/places`, `POST /api/orca/focus·close·launch·send` |
