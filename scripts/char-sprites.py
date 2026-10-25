@@ -3,7 +3,7 @@
 
 Drops the white backdrop (a flood from the cell edges, plus flat white gaps between the legs and inside the hair),
 lines the frames up (a bust by its head), crops all 8 with one shared box so a pose keeps its place, and scales them
-to 320 px (full) or 240 px (bust) high. Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
+to 320 px (full) or 240 px (bust) high; also writes the pixel version <out>-px.png (66 / 98 px high). Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
 starts as a share of h — which goes into CH_ART in frontend/app.js.
   scripts/char-sprites.py <sheet.png> <full|bust> <out.webp>
 Needs Pillow, numpy and scipy.
@@ -79,4 +79,36 @@ for i, c in enumerate(cells):
     ys = np.where(b.sum(axis=1) > b.shape[1] * .3)[0]
     meta['frames'].append({'top': round(ys[0] / H, 3)})
 sheet.save(out, 'WEBP', quality=88, method=6)
+
+# The pixel version (「AI 생성」 style): every frame shrunk onto a grid PH px high, one shared palette for all 8 frames
+# (so a colour never flickers between poses), alpha cut hard, then a 1 px outline in a darkened copy of the colour it
+# borders. Written next to the strip as <out>-px.png; the page shows it at 2× with image-rendering: pixelated.
+PH = 66 if kind == 'bust' else 98
+PW = int(FW * PH / H + .5)
+small = Image.new('RGBA', (PW * 8, PH), (0, 0, 0, 0))
+for i in range(8):
+    f = sheet.crop((i * FW, 0, (i + 1) * FW, H)).filter(ImageFilter.UnsharpMask(2, 120, 2))
+    # a plain box average washes out thin dark lines (eyes, lineart): mix in a darkest-of-neighbours copy
+    box = f.resize((PW, PH), Image.BOX)
+    dark = Image.fromarray(np.dstack([np.asarray(f)[:, :, :3], np.asarray(f)[:, :, 3]]).astype(np.uint8)).filter(ImageFilter.MinFilter(3)).resize((PW, PH), Image.BOX)
+    b, d = np.asarray(box).astype(float), np.asarray(dark).astype(float)
+    w = np.clip((b[:, :, :3].mean(axis=2) - d[:, :, :3].mean(axis=2)) / 120, 0, 1)[:, :, None] * .3
+    m = b.copy(); m[:, :, :3] = b[:, :, :3] * (1 - w) + d[:, :, :3] * w
+    small.paste(Image.fromarray(m.astype(np.uint8)), (i * PW, 0))
+a = np.asarray(small).copy()
+solid = a[:, :, 3] > 110
+rgb = Image.fromarray(a[:, :, :3])
+pal = rgb.quantize(colors=40, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+q = np.asarray(pal.convert('RGB')).copy()
+px = np.zeros_like(a); px[:, :, :3] = q; px[:, :, 3] = solid * 255
+edge = ~solid & ndimage.binary_dilation(solid, structure=[[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+# frames sit side by side: no outline across a frame border
+edge[:, [i * PW for i in range(1, 8)]] &= False
+src = np.zeros_like(q)
+for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+    sh = np.roll(np.roll(q * solid[:, :, None], dy, 0), dx, 1); m = np.roll(np.roll(solid, dy, 0), dx, 1)
+    src = np.where((m & ~src.any(axis=2))[:, :, None], sh, src)
+px[edge, :3] = (src[edge] * .3).astype(np.uint8); px[edge, 3] = 255
+Image.fromarray(px).save(out.rsplit('.', 1)[0] + '-px.png', optimize=True)
+meta['pw'], meta['ph'] = PW, PH
 print(json.dumps(meta))
