@@ -2877,7 +2877,7 @@ function agViewBind() {
 }
 // ---------- 캐릭터 모드: the agents tab as an office ----------
 // Same sessions and filters as the tree. A worktree is one room (coordinators first, then by state), and rooms one
-// family spans are linked by a line (officeRooms, chLinks). A room is one scene (wall with decorations, floor); each agent is one of six original
+// family spans are linked person to person by a line in the family's colour (officeRooms, chLinks). A room is one scene (wall with decorations, floor); each agent is one of six original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
 // (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터 설정」 panel (charPanel): 「AI 생성」
 // shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
@@ -3106,13 +3106,14 @@ function charHtml(s) {
   const say = s.decision ? '결정을 기다려요' : st === 'wait' ? '' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
-  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"
+  const fam = chFam.get(s.path);
+  return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"${fam ? ` data-fam="${esc(fam.keys.join(' '))}"` : ''}
       style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m}"
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
     <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${esc(cut(say, 60))}</span></span>
     ${chFig(st, s)}
     <span class="ch-name">${esc(nameOf(s))}</span>
-    <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${srvBadge(s)}
+    <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}${srvBadge(s)}
   </button>`;
 }
 // Session detail: the same person as in the office, in the same pose, beside the title — continuity from the office.
@@ -3141,56 +3142,91 @@ const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(
 const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
     <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
 // One room per worktree (wtKey): everyone on show sits where they run, so a coordinator and the workers it sent to other
-// worktrees sit in different rooms. Rooms a family spans are linked (coordinator's room → worker's room, with how many
-// it sent there; chLinks draws them), and linked rooms are laid out together, the room with a top coordinator first.
+// worktrees sit in different rooms. Each coordinator with workers on show is a family with its own colour (chFam): its
+// people wear a chip in that colour — the coordinator how many workers it has and how many sit elsewhere, a worker
+// whose coordinator it is (its room in the tooltip) — and chLinks draws a line in that colour
+// from the coordinator to each worker in another room. Rooms a family spans are laid out together, the room with a top
+// coordinator first.
+const FAM_HUE = [212, 24, 148, 282, 350, 48, 186, 318, 96, 252];
+let chFam = new Map(), chLinkList = [];
+const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
 function officeRooms(people) {
-  const up = coordOf(families().fams), by = new Map(), links = new Map();
+  const up = coordOf(families().fams), by = new Map(), on = new Set(people.map(s => s.path)), fams = new Map(), pairs = [];
   for (const s of people) { const k = wtKey(s); (by.get(k) || by.set(k, []).get(k)).push(s); }
   for (const s of people) {
-    const c = up.get(s.path)?.coord, a = c && wtKey(c), b = wtKey(s);
-    if (!a || a === b || !by.has(a)) continue;
-    const l = links.get(a + '\n' + b) || links.set(a + '\n' + b, { a, b, n: 0, by: new Set() }).get(a + '\n' + b);
-    l.n++; l.by.add(nameOf(c));
+    const c = up.get(s.path)?.coord;
+    if (!c || !on.has(c.path)) continue;
+    (fams.get(c.path) || fams.set(c.path, { c, ws: [] }).get(c.path)).ws.push(s);
+    if (wtKey(c) !== wtKey(s)) pairs.push([wtKey(c), wtKey(s)]);
   }
+  // colours in order of start, so a family keeps its colour while newer ones come and go
+  chFam = new Map(); chLinkList = [];
+  [...fams.values()].sort((x, y) => byStart(x.c, y.c)).forEach((f, i) => {
+    const hue = FAM_HUE[i % FAM_HUE.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+    const cm = chFam.get(f.c.path) || {};
+    chFam.set(f.c.path, { ...cm, hue: cm.hue ?? hue, keys: [...(cm.keys || []), f.c.path], boss: { hue, n: f.ws.length, away: away.length } });
+    for (const w of f.ws) {
+      const wm = chFam.get(w.path) || {};
+      chFam.set(w.path, { ...wm, hue, keys: [f.c.path, ...(wm.keys || [])], of: { c: f.c, hue, room: wtKey(w) !== k ? roomName(f.c.place) : '' } });
+    }
+    away.forEach(w => chLinkList.push({ from: f.c.path, to: w.path, hue, fam: f.c.path, name: nameOf(f.c) }));
+  });
   // linked rooms form groups (union-find); groups by their most urgent person, a lone room after the linked ones
   const root = new Map([...by.keys()].map(k => [k, k])), find = k => root.get(k) === k ? k : find(root.get(k));
-  for (const l of links.values()) root.set(find(l.a), find(l.b));
+  for (const [x, y] of pairs) root.set(find(x), find(y));
   const rank = k => Math.min(...by.get(k).map(sessRank)), lead = k => by.get(k).some(m => m.role === 'coordinator');
   const late = k => by.get(k).map(m => m.started || '').sort().pop() || '';
   const groups = new Map();
   for (const k of by.keys()) (groups.get(find(k)) || groups.set(find(k), []).get(find(k))).push(k);
   const order = [...groups.values()].map(ks => ks.sort((x, y) => lead(y) - lead(x) || rank(x) - rank(y) || late(y).localeCompare(late(x))))
     .sort((x, y) => (y.length > 1) - (x.length > 1) || Math.min(...x.map(rank)) - Math.min(...y.map(rank)) || late(y[0]).localeCompare(late(x[0]))).flat();
-  const html = order.map(k => {
-    const ms = by.get(k).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y)), p = ms.find(m => m.place)?.place;
-    const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
+  return order.map(k => {
+    const ms = by.get(k).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y)), p = ms.find(m => m.place)?.place, name = roomName(p);
     return roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}${srvBadge(ms[0])}`);
   });
-  return { html, links: [...links.values()] };
 }
-// The links between rooms, over the plane: a dotted line from the edge of the coordinator's room to the edge of the
-// worker's, an arrow at the worker's end and a tag in the middle. Rooms only move when their height changes, so it is
-// redrawn after every layout.
-let chLinkList = [];
+// A person's family chips (charHtml): as a coordinator, then as a worker (a sub-coordinator wears both).
+function famChips(s) {
+  const m = chFam.get(s.path);
+  if (!m) return '';
+  const chip = (hue, txt, tip) => `<span class="ch-fam" style="--fh:${hue}" title="${esc(tip)}">${txt}</span>`;
+  return (m.boss ? chip(m.boss.hue, `◆ 워커 ${m.boss.n}${m.boss.away ? ` · 다른 방 ${m.boss.away}` : ''}`, `이 코디네이터의 워커 ${m.boss.n}명${m.boss.away ? `, 그중 ${m.boss.away}명은 다른 워크트리 방 (선으로 이어짐)` : ''}`) : '')
+    + (m.of ? chip(m.of.hue, `◆ ${esc(cut(nameOf(m.of.c), 18))} 소속`, `코디네이터 ${nameOf(m.of.c)}${m.of.room ? ` (▣ ${m.of.room} 방)` : ''} 의 워커`) : '');
+}
+// The family lines, over the plane: a curve in the family's colour from the coordinator to each of its workers in
+// another room, arching over the corridor, a dot at the coordinator and an arrow at the worker, the coordinator's name
+// on the first line of each family. People move (layout, drag), so it is redrawn after each move.
 function chLinks() {
   const w = $('#view .ch-world');
   if (!w) return;
   w.querySelectorAll('.ch-links, .ch-link-tag').forEach(x => x.remove());
-  const box = k => { const r = w.querySelector(`.room[data-room="${CSS.escape(k)}"]`); return r && { x: r.offsetLeft + r.offsetWidth / 2, y: r.offsetTop + r.offsetHeight / 2, hw: r.offsetWidth / 2 + 8, hh: r.offsetHeight / 2 + 8 }; };
-  // where the line from a room's centre along (dx, dy) leaves it
-  const edge = (r, dx, dy) => { const t = Math.min(dx ? r.hw / Math.abs(dx) : Infinity, dy ? r.hh / Math.abs(dy) : Infinity); return [r.x + dx * t, r.y + dy * t]; };
-  let lines = '', tags = '';
+  if (!chLinkList.length) return;
+  const wr = w.getBoundingClientRect(), z = wr.width / w.offsetWidth || 1;
+  const at = path => { const f = w.querySelector(`.ch[data-path="${CSS.escape(path)}"] .ch-fig`); if (!f) return null; const r = f.getBoundingClientRect();
+    return { x: (r.left + r.width / 2 - wr.left) / z, y: (r.top + r.height * .3 - wr.top) / z }; };
+  let svg = '', tags = '';
+  const named = new Set();
   for (const l of chLinkList) {
-    const A = box(l.a), B = box(l.b);
+    const A = at(l.from), B = at(l.to);
     if (!A || !B) continue;
-    const dx = B.x - A.x, dy = B.y - A.y, [x1, y1] = edge(A, dx, dy), [x2, y2] = edge(B, -dx, -dy);
-    if ((x2 - x1) * dx + (y2 - y1) * dy <= 0) continue;  // overlapping rooms: nothing between them to draw
-    lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
-    const who = [...l.by];
-    tags += `<span class="ch-link-tag" style="left:${(x1 + x2) / 2}px;top:${(y1 + y2) / 2}px" title="${esc(`${who.join(', ')} → 워커 ${l.n}`)}">${esc(cut(who[0], 14))}${who.length > 1 ? ` 외 ${who.length - 1}` : ''} → 워커 <b>${l.n}</b></span>`;
+    const lift = Math.min(180, 50 + Math.hypot(B.x - A.x, B.y - A.y) * .22), d = `M${A.x} ${A.y}C${A.x} ${A.y - lift} ${B.x} ${B.y - lift} ${B.x} ${B.y}`;
+    svg += `<g class="ch-link" data-fam="${esc(l.fam)}" style="--fh:${l.hue}"><path class="halo" d="${d}"/><path d="${d}"/><circle cx="${A.x}" cy="${A.y}" r="7"/>
+      <path class="tip" d="M-9 -7L0 0L-9 7z" transform="translate(${B.x} ${B.y}) rotate(90)"/></g>`;
+    if (!named.has(l.fam)) {
+      named.add(l.fam);
+      tags += `<span class="ch-link-tag" data-fam="${esc(l.fam)}" style="--fh:${l.hue};left:${(A.x + B.x) / 2}px;top:${(A.y + B.y) / 2 - lift * .75}px">◆ ${esc(cut(l.name, 20))} 의 워커</span>`;
+    }
   }
-  if (!lines) return;
-  w.insertAdjacentHTML('beforeend', `<svg class="ch-links" width="${w.offsetWidth}" height="${w.offsetHeight}" aria-hidden="true"><defs><marker id="ch-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs><g marker-end="url(#ch-arrow)">${lines}</g></svg>${tags}`);
+  if (svg) w.insertAdjacentHTML('beforeend', `<svg class="ch-links" width="${w.offsetWidth}" height="${w.offsetHeight}" aria-hidden="true">${svg}</svg>${tags}`);
+  chHot(w.dataset.hot);
+}
+// Pointing at a person brings their family forward: its lines, chips and people stay, the rest fade.
+function chHot(fam) {
+  const w = $('#view .ch-world');
+  if (!w) return;
+  if (fam) w.dataset.hot = fam; else delete w.dataset.hot;
+  w.classList.toggle('fam-hot', !!fam);
+  w.querySelectorAll('.ch-link, .ch-link-tag, .ch[data-fam]').forEach(x => x.classList.toggle('fam-on', !!fam && x.dataset.fam.split(' ').includes(fam)));
 }
 
 // Places: a moved person keeps {x: share of the free width, y: px from the room's top}; the rest sit on the grid.
@@ -3260,6 +3296,7 @@ function chBind() {
         const x = Math.min(Math.max(0, x0 + dx), fl.clientWidth - u.offsetWidth), y = Math.min(Math.max(0, y0 + dy), fl.clientHeight - u.offsetHeight + 60);
         chPlace(u, x, y);
         if (y + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = y + u.offsetHeight + CH_GAP + 'px';
+        if (u.dataset.fam) chLinks();
       };
       const end = () => {
         clearTimeout(hold);
@@ -3269,6 +3306,7 @@ function chBind() {
       };
       addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
     };
+    if (u.dataset.fam) { u.onpointerenter = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = () => chHot(null); }
     u.addEventListener('touchmove', ev => { if (u.classList.contains('lift')) ev.preventDefault(); }, { passive: false });
     u.addEventListener('contextmenu', ev => { if (u.classList.contains('lift')) ev.preventDefault(); });
     u.onkeydown = e => {
@@ -3278,6 +3316,7 @@ function chBind() {
       const fl = u.parentElement, step = e.shiftKey ? 40 : 10;
       chPlace(u, Math.min(Math.max(0, u.offsetLeft + d[0] * step), fl.clientWidth - u.offsetWidth), Math.max(0, u.offsetTop + d[1] * step));
       chKeep(u);
+      if (u.dataset.fam) chLinks();
     };
   });
 }
@@ -3433,9 +3472,8 @@ function renderOffice() {
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
   const home = route().v === 'home';
-  const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv], office = officeRooms(people);
-  chLinkList = office.links;
-  const rooms = [home ? staffRoom() : ''].concat(office.html).filter(Boolean);
+  const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
+  const rooms = [home ? staffRoom() : ''].concat(officeRooms(people)).filter(Boolean);
   // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
   const narrow = innerWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
