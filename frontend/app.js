@@ -3126,10 +3126,25 @@ function chKeep(u) {
   if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px';
   $('#ch-reset').disabled = false;
 }
+// keep a person in sight beside (or above, on a narrow screen) the staff panel that just opened
+function chReveal(id) {
+  const u = $(`#ch-canvas .ch[data-id="${id}"]`), pn = $('#ch-canvas .ch-panel');
+  if (!u || !pn) return;
+  const a = u.getBoundingClientRect(), b = pn.getBoundingClientRect();
+  if (innerWidth > 700 && a.right > b.left - 12) chView.x -= a.right - (b.left - 12);
+  else if (innerWidth <= 700 && a.bottom > b.top - 12) chView.y -= a.bottom - (b.top - 12);
+  else return;
+  chView.fit = false; chApply(); chViewSave();
+}
 function chBind() {
   $('#view').querySelectorAll('.ch').forEach(u => {
     let dragged = false;
-    u.onclick = () => { if (dragged) { dragged = false; return; } if (Date.now() - chPanAt < 400) return; openSession(u.dataset.path); };
+    u.onclick = () => {
+      if (dragged) { dragged = false; return; }
+      if (Date.now() - chPanAt < 400) return;
+      if (u.dataset.staff) { chPanel = chPanel === u.dataset.staff ? null : u.dataset.staff; renderOffice(); chReveal(u.dataset.id); return; }
+      openSession(u.dataset.path);
+    };
     u.onpointerdown = e => {
       if (e.button) return;
       const fl = u.parentElement, x0 = u.offsetLeft, y0 = u.offsetTop, px = e.clientX, py = e.clientY;
@@ -3179,12 +3194,13 @@ function chApply() {
   const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world');
   if (!w) return;
   const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
-  if (chView.fit) {  // below the tools, which float over the top left
+  if (chView.fit) {  // below the tools, which float over the top left, and beside an open staff panel
     const top = (cv.querySelector('.ch-tools')?.offsetHeight || 0) + 14, room = ch - top - 8;
-    let z = Math.min(1, (cw - 24) / ww, room / wh);
-    if (z < .5) z = Math.min(1, (cw - 24) / ww);  // too small to read: fit the width and pan down instead
+    const pn = cv.querySelector('.ch-panel'), side = pn && innerWidth > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
+    let z = Math.min(1, (fw - 24) / ww, room / wh);
+    if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
     chView.z = z;
-    chView.x = (cw - ww * z) / 2;
+    chView.x = (fw - ww * z) / 2;
     chView.y = top + (wh * z < room ? (room - wh * z) / 2 : 0);
   }
   // keep at least 80px of the office on screen, so it can never be lost
@@ -3210,7 +3226,7 @@ function chSize() {
 }
 const chPts = new Map();
 document.addEventListener('pointerdown', e => {
-  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools, .ch-mine')) return;
+  if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-tools, .ch-panel')) return;
   if (e.pointerType === 'mouse' && (e.button || e.target.closest('.ch'))) return;  // a mouse on a person drags the person
   chPts.set(e.pointerId, [e.clientX, e.clientY]);
 });
@@ -3241,7 +3257,7 @@ const chUp = e => {
 addEventListener('pointerup', chUp); addEventListener('pointercancel', chUp);
 document.addEventListener('wheel', e => {
   const cv = e.target.closest?.('#ch-canvas');
-  if (!cv || e.target.closest('.ch-mine')) return;  // the 내 차례 card scrolls itself
+  if (!cv || e.target.closest('.ch-panel')) return;  // the staff panel scrolls itself
   e.preventDefault();
   const r = cv.getBoundingClientRect(), u = e.deltaMode === 1 ? 16 : 1;
   if (e.ctrlKey || e.metaKey) return chZoom(Math.exp(-Math.max(-60, Math.min(60, e.deltaY * u)) * .006), e.clientX - r.left, e.clientY - r.top);
@@ -3250,20 +3266,59 @@ document.addEventListener('wheel', e => {
 }, { passive: false });
 addEventListener('resize', () => chSize());
 
+// 운영실: on 홈 each widget of this device's home layout (hmLay — 위젯 홈's 편집 picks them) is a staff member who does
+// its job. The bubble is the widget's one-line note, the state its urgency (something to look at: busy; bad: stalled);
+// pressing them opens the widget itself in a panel over the canvas (chPanel), with all its buttons working.
+const STAFF = { mine: '비서', flow: '감독관', tests: '테스터', cost: '회계', board: '매니저', qa: 'QA 담당', tl: '기록원', map: '안내원',
+  proj: 'PM', vault: '사서', design: '설계자', servers: '관리인' };
+let chPanel = null;  // the widget id whose panel is open
+const plainText = h => String(h || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const staffOf = w => { let r; try { r = HM_W[w.id].html(w); } catch { r = null; } return r; };
+function staffHtml(w) {
+  const def = HM_W[w.id], r = staffOf(w), role = STAFF[w.id] || def.name;
+  const st = r?.bad ? 'stalled' : r?.hot || r?.n ? 'run' : 'idle', me = { id: 'staff-' + w.id, path: 'staff-' + w.id, role: 'staff' }, L = chLook(me);
+  const say = (r && plainText(r.note)) || (r?.n ? `${def.name} ${r.n}` : '보고할 것 없음');
+  return `<button type="button" class="ch staff st-${st}${w.id === 'mine' && r?.n ? ' dec' : ''}${chPanel === w.id ? ' open' : ''}" data-staff="${w.id}" data-id="staff-${w.id}"
+      style="--c:var(--accent);--skin:var(--skin-${L.skin});--hair:var(--hair-${L.hair})" aria-expanded="${chPanel === w.id}"
+      title="${esc(`${role} · ${def.name}\n${say}\n누르면 ${def.name} 열기`)}" aria-label="${esc(`${role}: ${def.name}${r?.n ? ' ' + r.n : ''}. ${say}`)}">
+    <span class="ch-say"><span>${r?.n ? `<b>${r.n}</b>` : ''}${esc(cut(say, 60))}</span></span>
+    ${charStyle === 'px' ? pxSprite(st, me) : charSvg3d(st, me)}
+    <span class="ch-name">${role}</span>
+    <span class="ch-meta">${def.name}</span>
+  </button>`;
+}
+function staffRoom() {
+  const ws = hmLay.widgets.filter(w => HM_W[w.id]);
+  if (!ws.length) return '';
+  const todo = hmMine().length;
+  return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">위젯을 맡은 사람들 · 누르면 그 위젯</span><span class="room-n">${todo ? `내 차례 <b>${todo}</b> · ` : ''}전체 <b>${ws.length}</b></span></div>
+    <div class="room-floor">${wallHtml('staff')}${ws.map(staffHtml).join('')}</div></section>`;
+}
+// the open staff member's widget, as on 위젯 홈 (its section keeps data-hm, so hmBind's buttons find their widget)
+function staffPanel() {
+  const w = hmLay.widgets.find(x => x.id === chPanel);
+  if (!w) { chPanel = null; return ''; }
+  const def = HM_W[w.id], r = staffOf(w);
+  return `<aside class="ch-panel surface" aria-label="${esc(def.name)}"><div class="ch-panel-h"><b>${STAFF[w.id] || ''} · ${def.name}${r?.n ? ` <span class="badge">${r.n}</span>` : ''}</b>
+      ${r?.more ? hmLink(r.more, '전체 보기 →') : ''}<button type="button" class="act" id="ch-panel-x" aria-label="닫기">닫기</button></div>
+    ${r?.note ? `<div class="st ch-panel-note">${r.note}</div>` : ''}${r?.tools || ''}
+    <section class="hw W" data-hm="${w.id}"><div class="hw-body">${r ? r.body : '<div class="st">보여 줄 데이터가 없습니다</div>'}</div></section></aside>`;
+}
+
 function renderOffice() {
   if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
   chSeq = 0;
-  const rooms = fv.map(roomHtml).filter(Boolean).concat(sv.length ? roomBox('단독 자리', 'solo', sv) : []);
+  const home = route().v === 'home';
+  const rooms = [home ? staffRoom() : ''].concat(fv.map(roomHtml), sv.length ? roomBox('단독 자리', 'solo', sv) : []).filter(Boolean);
   // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
   const narrow = innerWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
   // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  const home = route().v === 'home', mine = home ? hmMine() : [];
   $('#view').innerHTML = `<div class="ch-canvas" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       <div class="ch-tools surface">${home ? homeViewSeg() : ''}
         <span class="seg" id="ch-style"><button data-k="3d">3D</button><button data-k="px">픽셀</button></span>
@@ -3271,7 +3326,7 @@ function renderOffice() {
         <button type="button" class="act" id="ch-fit" aria-pressed="false" title="모든 방이 한눈에 들어오게">맞춤</button>
         <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
       </div>
-      ${mine.length ? `<div class="ch-mine surface"><div class="ch-mine-h"><b>내 차례 <span class="badge">${mine.length}</span></b><a href="#decide" class="st">결정 화면 →</a></div>${hmMineHtml({ size: 'S' }).body}</div>` : ''}
+      ${home && chPanel ? staffPanel() : ''}
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   $('#ch-style').querySelectorAll('button').forEach(b => {
@@ -3291,7 +3346,10 @@ function renderOffice() {
   $('#ch-out').onclick = () => chZoom(.8, ...mid());
   $('#ch-zl').onclick = () => chZoom(1 / chView.z, ...mid());
   $('#ch-fit').onclick = () => { chView.fit = true; chApply(); chViewSave(); };
-  if (home) { homeViewBind(); hmDecBind($('#view')); }
+  if (home) {
+    homeViewBind();
+    if (chPanel) { hmBind(); $('#ch-panel-x').onclick = () => { chPanel = null; renderOffice(); }; }
+  }
   chLayout();
   chBind();
   chSize();
@@ -5566,30 +5624,31 @@ function hmDecBind(v) {
   });
 }
 
+const hmRedraw = () => homeView === 'office' ? renderOffice() : renderHome();
 function hmBind() {
   const v = $('#view'), find = el => hmLay.widgets.find(w => w.id === el.closest('[data-hm]')?.dataset.hm);
   v.querySelectorAll('[data-hm-act]').forEach(b => b.onclick = () => {
     const a = b.dataset.hmAct;
     if (a === 'reset') { hmLay.widgets = HM_DEFAULT.map(w => ({ ...w })); hmSave(); }
     hmEdit = a === 'edit' || (a === 'reset' && hmEdit);
-    renderHome();
+    hmRedraw();
   });
-  v.querySelectorAll('[data-hm-add]').forEach(b => b.onclick = () => { const id = b.dataset.hmAdd; hmLay.widgets.push({ id, size: HM_W[id].size || 'M' }); hmSave(); renderHome(); });
-  v.querySelectorAll('[data-hm-size]').forEach(b => b.onclick = () => { find(b).size = b.dataset.hmSize; hmSave(); renderHome(); });
-  v.querySelectorAll('[data-hm-del]').forEach(b => b.onclick = () => { hmLay.widgets = hmLay.widgets.filter(w => w !== find(b)); hmSave(); renderHome(); });
-  v.querySelectorAll('[data-hm-pin]').forEach(b => b.onclick = () => { const w = find(b); w.pin = !w.pin; hmNorm(); hmSave(); renderHome(); });
-  v.querySelectorAll('[data-hm-fold]').forEach(b => b.onclick = () => { const id = b.dataset.hmFold; hmLay.fold[id] = !(hmLay.fold[id] ?? true); hmSave(); renderHome(); });
+  v.querySelectorAll('[data-hm-add]').forEach(b => b.onclick = () => { const id = b.dataset.hmAdd; hmLay.widgets.push({ id, size: HM_W[id].size || 'M' }); hmSave(); hmRedraw(); });
+  v.querySelectorAll('[data-hm-size]').forEach(b => b.onclick = () => { find(b).size = b.dataset.hmSize; hmSave(); hmRedraw(); });
+  v.querySelectorAll('[data-hm-del]').forEach(b => b.onclick = () => { hmLay.widgets = hmLay.widgets.filter(w => w !== find(b)); hmSave(); hmRedraw(); });
+  v.querySelectorAll('[data-hm-pin]').forEach(b => b.onclick = () => { const w = find(b); w.pin = !w.pin; hmNorm(); hmSave(); hmRedraw(); });
+  v.querySelectorAll('[data-hm-fold]').forEach(b => b.onclick = () => { const id = b.dataset.hmFold; hmLay.fold[id] = !(hmLay.fold[id] ?? true); hmSave(); hmRedraw(); });
   v.querySelectorAll('[data-hm-opt]').forEach(b => b.onclick = e => {
     e.preventDefault();
     const w = find(b), k = b.dataset.hmOpt;
     // h: a number; another option with a value toggles off when picked again (st: the QA stage shown); without one, on/off.
     const v = b.dataset.v;
     w.opts = { ...w.opts, [k]: k === 'h' ? +v : v !== undefined ? (w.opts?.[k] === v ? '' : v) : !w.opts?.[k] };
-    hmSave(); renderHome();
+    hmSave(); hmRedraw();
   });
   hmDecBind(v);
   v.querySelectorAll('[data-hm-wtqa]').forEach(a => a.onclick = () => { wtf.qa = a.dataset.hmWtqa; try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} });
-  v.querySelectorAll('[data-hm-wtreset]').forEach(a => a.onclick = e => { e.preventDefault(); Object.assign(wtf, { f: 'all', q: '', qa: '' }); try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} renderHome(); });
+  v.querySelectorAll('[data-hm-wtreset]').forEach(a => a.onclick = e => { e.preventDefault(); Object.assign(wtf, { f: 'all', q: '', qa: '' }); try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} hmRedraw(); });
   // The QA tickets' buttons are the 워크트리 tab's, handled as there (confirmations included).
   const qa = v.querySelector('.hw[data-hm=qa]');
   if (qa) qa.onclick = wtClick;
