@@ -3195,28 +3195,32 @@ function famChips(s) {
   return (m.boss ? chip(m.boss.hue, `◆ 워커 ${m.boss.n}${m.boss.away ? ` · 다른 방 ${m.boss.away}` : ''}`, `이 코디네이터의 워커 ${m.boss.n}명${m.boss.away ? `, 그중 ${m.boss.away}명은 다른 워크트리 방 (선으로 이어짐)` : ''}`) : '')
     + (m.of ? chip(m.of.hue, `◆ ${esc(cut(nameOf(m.of.c), 18))} 소속`, `코디네이터 ${nameOf(m.of.c)}${m.of.room ? ` (▣ ${m.of.room} 방)` : ''} 의 워커`) : '');
 }
-// The family lines, over the plane: a curve in the family's colour from the coordinator to each of its workers in
-// another room, arching over the corridor, a dot at the coordinator and an arrow at the worker, the coordinator's name
-// on the first line of each family. People move (layout, drag), so it is redrawn after each move.
+// The family lines, over the plane: a dotted thread in the family's colour from the coordinator's side to the side of
+// each of its workers in another room (the sides facing each other, at the waist, clear of bubbles and name tags),
+// sagging a little across the corridor, a dot at each end and, at the bottom of the first thread of each family, the
+// coordinator's name. People
+// move (layout, drag), so it is redrawn after each move.
 function chLinks() {
   const w = $('#view .ch-world');
   if (!w) return;
   w.querySelectorAll('.ch-links, .ch-link-tag').forEach(x => x.remove());
   if (!chLinkList.length) return;
   const wr = w.getBoundingClientRect(), z = wr.width / w.offsetWidth || 1;
-  const at = path => { const f = w.querySelector(`.ch[data-path="${CSS.escape(path)}"] .ch-fig`); if (!f) return null; const r = f.getBoundingClientRect();
-    return { x: (r.left + r.width / 2 - wr.left) / z, y: (r.top + r.height * .3 - wr.top) / z }; };
+  const fig = path => { const f = w.querySelector(`.ch[data-path="${CSS.escape(path)}"] .ch-fig`); if (!f) return null; const r = f.getBoundingClientRect();
+    return { x: (r.left + r.width / 2 - wr.left) / z, y: (r.top + r.height * .62 - wr.top) / z, hw: r.width / z * .36 }; };
+  const side = (p, toward) => ({ x: p.x + Math.sign(toward - p.x || 1) * p.hw, y: p.y });
   let svg = '', tags = '';
   const named = new Set();
   for (const l of chLinkList) {
-    const A = at(l.from), B = at(l.to);
-    if (!A || !B) continue;
-    const lift = Math.min(180, 50 + Math.hypot(B.x - A.x, B.y - A.y) * .22), d = `M${A.x} ${A.y}C${A.x} ${A.y - lift} ${B.x} ${B.y - lift} ${B.x} ${B.y}`;
-    svg += `<g class="ch-link" data-fam="${esc(l.fam)}" style="--fh:${l.hue}"><path class="halo" d="${d}"/><path d="${d}"/><circle cx="${A.x}" cy="${A.y}" r="7"/>
-      <path class="tip" d="M-9 -7L0 0L-9 7z" transform="translate(${B.x} ${B.y}) rotate(90)"/></g>`;
+    const a = fig(l.from), b = fig(l.to);
+    if (!a || !b) continue;
+    const A = side(a, b.x), B = side(b, a.x);
+    const sag = Math.min(60, 16 + Math.hypot(B.x - A.x, B.y - A.y) * .06), low = Math.max(A.y, B.y) + sag;
+    const d = `M${A.x} ${A.y}C${A.x + (B.x - A.x) * .3} ${low} ${B.x - (B.x - A.x) * .3} ${low} ${B.x} ${B.y}`;
+    svg += `<g class="ch-link" data-fam="${esc(l.fam)}" style="--fh:${l.hue}"><path d="${d}"/><circle class="boss" cx="${A.x}" cy="${A.y}" r="4"/><circle cx="${B.x}" cy="${B.y}" r="4"/></g>`;
     if (!named.has(l.fam)) {
       named.add(l.fam);
-      tags += `<span class="ch-link-tag" data-fam="${esc(l.fam)}" style="--fh:${l.hue};left:${(A.x + B.x) / 2}px;top:${(A.y + B.y) / 2 - lift * .75}px">◆ ${esc(cut(l.name, 20))} 의 워커</span>`;
+      tags += `<span class="ch-link-tag" data-fam="${esc(l.fam)}" style="--fh:${l.hue};left:${(A.x + B.x) / 2}px;top:${(A.y + B.y) / 8 + low * .75}px">${esc(cut(l.name, 20))} 의 워커</span>`;
     }
   }
   if (svg) w.insertAdjacentHTML('beforeend', `<svg class="ch-links" width="${w.offsetWidth}" height="${w.offsetHeight}" aria-hidden="true">${svg}</svg>${tags}`);
