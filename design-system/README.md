@@ -16,6 +16,7 @@ design-system/
     tokens.css            팔레트(라이트·다크), 모양(반경), 레이아웃(브레이크포인트·--gutter·--tap), 독 크기
     base.css              요소 기본값, 터치 기본값(입력란 16px 등), .st, 깜빡임·맥박 애니메이션
     theme.js              테마·재질 전환, 사용자 색, 팔레트 예시 (<head> 부트 스크립트)
+    fold.js               펼친 접이식에서 주름이 화면 가운데서 벗어난 거리 --fold-off (<head> 부트 스크립트)
   materials/
     glass.css             리퀴드글래스 (기본) — 재질 계약의 기준
     matte.css             매트: 불투명, 블러·광택 없음
@@ -91,6 +92,7 @@ design-system/
 
 ```html
 <script src="ds/foundations/theme.js"></script>          <!-- 첫 페인트 전에 테마 -->
+<script src="ds/foundations/fold.js"></script>           <!-- 펼친 접이식의 주름 위치 -->
 <script src="ds/components/dock/dock-boot.js"></script>  <!-- 첫 페인트 전에 바 위치·크기 -->
 <script type="module" src="ds/ds.js"></script>
 <link rel="stylesheet" href="ds/ds.css">

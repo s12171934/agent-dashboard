@@ -3,7 +3,7 @@
 // metric servers (other origins: /api/*, /events) and build.json, which spots new deployments, are never touched.
 const CACHE = 'adash-shell-v13';
 const SHELL = ['./', 'index.html', 'app.css', 'api.js', 'decision.js', 'app.js', 'icon-boot.js', 'manifest.webmanifest',
-  'ds/ds.css', 'ds/ds.js', 'ds/foundations/tokens.css', 'ds/foundations/base.css', 'ds/foundations/theme.js',
+  'ds/ds.css', 'ds/ds.js', 'ds/foundations/tokens.css', 'ds/foundations/base.css', 'ds/foundations/theme.js', 'ds/foundations/fold.js',
   'ds/materials/glass.css', 'ds/materials/matte.css',
   ...['surface', 'icon', 'dot', 'badge', 'pill', 'chip', 'button', 'segmented', 'bar', 'heading', 'box', 'card',
     'panes', 'kpi', 'table', 'legend', 'field', 'donut', 'popover', 'dialog', 'tooltip', 'toast', 'dock', 'theme-toggle', 'theme-editor'].map(c => `ds/components/${c}/${c}.css`),

@@ -110,6 +110,7 @@ for p in sorted(css_files):
 
 # --- the fold layout (B8, B10): the one fold query, copied verbatim from tokens.css (the rule that sets --fold: 1)
 SEGMENTS = '(horizontal-viewport-segments: 2)'
+RAIL = '(orientation: landscape) and (max-height: 500px) and (pointer: coarse)'  # a phone held sideways (GUIDELINES 10 표)
 tokens_body = css_body(read(os.path.join(DS, 'foundations', 'tokens.css')))
 FOLD = next((m.strip() for m in re.findall(r'@media([^{]*)\{\s*:root\s*\{\s*--fold:\s*1;', tokens_body) if 'viewport-segments' not in m), None)
 if not FOLD:
@@ -119,8 +120,8 @@ for p in sorted(css_files):
     for n, line in lines(read(p)):
         for q in re.findall(r'@media([^{]*)', line):
             for part in q.split(','):
-                if re.search(r'aspect-ratio|viewport-segments|height', part) and FOLD and norm(part) not in (norm(FOLD), SEGMENTS):
-                    report('B8', f'{rel(p)}:{n}', f'{norm(part)}: aspect, height and segment conditions only as the fold query (tokens.css) or {SEGMENTS}')
+                if re.search(r'aspect-ratio|viewport-segments|height', part) and FOLD and norm(part) not in (norm(FOLD), SEGMENTS, RAIL):
+                    report('B8', f'{rel(p)}:{n}', f'{norm(part)}: aspect, height and segment conditions only as the fold query (tokens.css), {SEGMENTS} or {RAIL}')
         if 'env(viewport-segment' in line and not p.endswith(os.path.join('foundations', 'tokens.css')):
             report('B10', f'{rel(p)}:{n}', 'env(viewport-segment-*) outside tokens.css; use --hinge, --seg-w or --pane-gap')
 

@@ -711,17 +711,24 @@ a.act { text-decoration: none; display: inline-block; }
   .stat .gi { display: none; }
   .stat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
   .stat span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
-  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: max(10px, var(--hinge)); }
+  .grid { grid-template-columns: var(--fold-cols); column-gap: var(--pane-gap); }
   /* a card's six figures: three and three in a half-screen card, one row of six once it is wide (fold-card below) */
   .grid > .card { container: fold-card / inline-size; }
   .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .plan-grid, .pj-split.on, .pj-tlwrap.side.focused { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pane-gap); }
+  .plan-grid, .pj-split.on, .pj-tlwrap.side.focused { grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }
   .pj-split.on .pj-note { position: sticky; max-height: calc(100vh - var(--hdr-top) - 90px); }
   .pj-split.on .pj-obs { display: none; }  /* half a screen is too narrow for it; the open note has 「Obsidian 에서 열기」 */
   .pj-tlwrap.side.focused .pj-focus { margin-top: 0; }
   details.pj-row > summary { grid-template-columns: minmax(0, 220px) 1fr; }
   .row { grid-template-columns: minmax(0, 200px) 1fr 88px; grid-template-areas: none; gap: 10px; }
   .row .nm, .row .val, .row .track { grid-area: auto; }
+  /* the log in half a screen: time and text, the role written before the text (renderSession), as on a narrow screen */
+  .log div { grid-template-columns: 52px 1fr; }
+  .log div > span:nth-child(2) { display: none; }
+  /* home widgets: one half each (a wide one spans both), so no widget lies across the fold */
+  main .hm-grid { grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }  /* main: beats the 900px rule further down */
+  .hm-grid > :is(.hw.S, .hw.M, .hw.L) { grid-column: span 1; }
+  .hm-grid > .hw.L { grid-row: span 2; }
   /* a side bar pads both sides alike, so the page's middle stays on the fold */
   :root:is([data-dock="left"], [data-dock="right"]) :is(main, #decisions, #decide-head, #inbox) { padding-inline: calc(var(--dock-pick, 38px) + 38px); }
 }
