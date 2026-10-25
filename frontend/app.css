@@ -1559,6 +1559,10 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
 :root.ch-full main { padding: 0; }
 :root.ch-full .ch-canvas { position: fixed; border: 0; border-radius: 0; }
+/* a short viewport (chOver): the canvas is in the page and reaches past the viewport by --over-r/--over-b; what sits on
+   its right or bottom edge keeps to the viewport */
+:root.ch-full .ch-canvas.ch-over { position: absolute; }
+.ch-canvas .ch-panel { margin: 0 var(--over-r, 0px) var(--over-b, 0px) 0; }
 /* the tools keep clear of the status bar, a notch and a bar on the top or left */
 :root.ch-full .ch-tools { top: calc(10px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); }
 :root.ch-full[data-dock="top"] .ch-tools { top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 20px + var(--dock-reach)); }
@@ -1576,13 +1580,10 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-world .room { margin: 0; }
 .ch-tools { position: absolute; z-index: 5; top: 10px; left: 10px; right: 10px; width: fit-content; max-width: calc(100% - 20px); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
   padding: 6px; border-radius: 16px; cursor: auto; }
-.ch-zoom { display: inline-flex; gap: 2px; }
-.ch-zoom .act { min-width: 34px; font-variant-numeric: tabular-nums; }
-/* the zoom figure is on the bar (#zoom-btn) — kept here only on a phone, whose bar is a launcher pill */
-#ch-zl { display: none; } @media (max-width: 500px) { #ch-zl { display: inline-flex; } }
+/* the canvas's zoom (− figure +) and 맞춤 are on the bar (.ch-dock, shown with the office); 맞춤 is lit while it holds */
+#fit-btn[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
 #zoom-btn { width: auto; min-width: var(--dock-sz); padding: 0 10px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock:not([open]) #zoom-btn { width: var(--dock-sz); padding: 0; font-size: 11px; }
-#ch-fit[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .ch-say[hidden] { visibility: hidden; display: flex; }
 /* The canvas backdrop: the corridor floor runs past the rooms in every direction and moves with the view (chApply sets
    --bx --by --bz), wood planks for 3D and tiles for 픽셀. The light follows the local hour (.tod-*: morning, day,
