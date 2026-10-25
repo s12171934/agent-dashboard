@@ -1559,8 +1559,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
 :root.ch-full main { padding: 0; }
 :root.ch-full .ch-canvas { position: fixed; border: 0; border-radius: 0; }
-/* a short viewport (chOver): the canvas is in the page and reaches past the viewport by --over-r/--over-b; what sits on
-   its right or bottom edge keeps to the viewport */
+/* an installed app on a touch screen (chScreen): the canvas is in the page and reaches the screen's edges, past a short
+   viewport by --over-r/--over-b; what sits on its right or bottom edge keeps to the viewport */
 :root.ch-full .ch-canvas.ch-over { position: absolute; }
 .ch-canvas .ch-panel { margin: 0 var(--over-r, 0px) var(--over-b, 0px) 0; }
 /* the tools keep clear of the status bar, a notch and a bar on the top or left */
