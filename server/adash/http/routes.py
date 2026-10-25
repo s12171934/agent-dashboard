@@ -20,6 +20,7 @@ GET = {
     "/api/state": snapshot.get_state,
     "/events": snapshot.get_events,
     "/api/session": sessions.get_session,
+    "/api/chat": sessions.get_chat,
     "/api/plans": sessions.get_plans,
     "/api/tests": tests.get_tests,
     "/api/history": history.get_history,

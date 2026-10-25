@@ -247,6 +247,16 @@ const api = (() => {
       const d = srv && await getJson(srv, '/api/session?path=' + encodeURIComponent(path));
       return d && { ...d, server: srv.id };
     },
+    // One session's conversation, prompts and replies as said (each up to 4,000 characters): [{ts, role user|assistant,
+    // text}], oldest first. A server without /api/chat gives the short lines of the session's log instead. null when unknown.
+    chat: async path => {
+      const srv = ownerOf('path', path);
+      if (!srv) return null;
+      const d = await getJson(srv, '/api/chat?path=' + encodeURIComponent(path));
+      if (d) return d.chat;
+      const s = await getJson(srv, '/api/session?path=' + encodeURIComponent(path));
+      return s && s.log.filter(l => l.role === 'user' || l.role === 'assistant').map(({ ts, role, text }) => ({ ts, role, text }));
+    },
     // Sessions older than the live window, usage only: {updated, scanning, days, sessions[{id, kind, path, title,
     // model, parent, started, last_ts, slots{5-minute slot: [input, cache_write, cache_read, output, cost]}}]}
     history: async () => {
