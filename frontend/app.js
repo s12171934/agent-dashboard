@@ -2917,9 +2917,10 @@ const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
 // beside it. Read on load and again with every build check (each minute, and when the page comes back), so a person
 // put up — from the 「캐릭터」 tab's 「새 캐릭터」 or by hand — shows without a reload; v goes on their picture URLs, so a
 // redrawn one shows too. Each read starts again from the built-in six, so a person taken down leaves. Added people
-// join the lists after the six, so a session already drawn may change hands once.
+// join the lists after the six, so a session already drawn may change hands once. hidden: [<who>] lists built-in people
+// taken down from the tab (char-publish.py --remove); they leave the lists, but never the last one of a list.
 let chSeen = '', chBase = null;
-const chVer = {}, chR2 = new Set();  // chR2: everyone chars.json lists (they can be taken down from the tab)
+const chVer = {}, chR2 = new Set(), chHidden = new Set();  // chR2: everyone chars.json lists; chHidden: built-ins taken down
 async function chLoad() {
   let t, j;
   try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); t = r.ok ? await r.text() : '{}'; j = JSON.parse(t); } catch { return; }
@@ -2938,6 +2939,14 @@ async function chLoad() {
     if (c.v) chVer[who] = String(c.v);
     chR2.add(who);
     if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) (c.boss ? CH_BOSS : CH_CREW).push(who);
+  }
+  chHidden.clear();
+  for (const who of Array.isArray(j?.hidden) ? j.hidden : []) {
+    const l = who in chBase.art && !chR2.has(who) && [CH_BOSS, CH_CREW].find(x => x.includes(who));
+    if (!l || l.length < 2) continue;
+    l.splice(l.indexOf(who), 1);
+    delete CH_ART[who]; delete CH_INFO[who];
+    chHidden.add(who);
   }
   if (state) { chxMounted = false; render(); }
 }
@@ -3595,7 +3604,8 @@ function chxCard(who, boss, n) {
     <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd${chx.fr === 'bust' ? '-bust' : ''}.png</code>
       ${chR2.has(who) ? `<span class="badge" title="배포 없이 R2 에 올린 캐릭터 (scripts/char-publish.py)">R2</span>
       <button type="button" class="act danger" data-cx-del="${who}" title="R2 에서 내려 모든 기기의 사무실에서 뺌">삭제</button>` : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
-      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button>`}</div>
+      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button>
+      ${(boss ? CH_BOSS : CH_CREW).length > 1 ? `<button type="button" class="act danger" data-cx-del="${who}" title="기본 캐릭터를 모든 기기의 사무실에서 뺌 (아래에서 되살릴 수 있음)">삭제</button>` : ''}`}</div>
   </section>`;
 }
 // 「새 캐릭터」: one picture (and a name) from this device goes to a metric server, which hands it with a brief to an Orca
@@ -3726,12 +3736,14 @@ async function cnPoll() {
   }
   if (jobs.some(j => j.state === 'running')) cnTimer = setTimeout(cnPoll, 5000);
 }
-// 「삭제」 on a person put up without a deploy (R2): a metric server runs char-publish.py --remove, then this page reads
-// chars.json again at once (other pages within a minute). The built-in six live in the deploy and are only switched off.
+// 「삭제」: a metric server runs char-publish.py --remove, then this page reads chars.json again at once (other pages
+// within a minute). A person put up without a deploy (R2) loses their pictures there; a built-in one (in the deploy) is
+// listed as hidden instead and can be brought back below the lists (chRestore). The last of a list stays.
 async function chDelete(who, b) {
-  const name = CH_INFO[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id;
+  const name = CH_INFO[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id, r2 = chR2.has(who) && !(who in chBase?.art);
   if (!srv) return toast('연결된 메트릭 서버가 없습니다');
-  if (!await uiConfirm(`「${name}」(${who}) 캐릭터를 삭제할까요?\n\nR2 에서 그림과 목록 항목을 지워 모든 기기의 사무실에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다. 작업 폴더의 원본·시트는 남습니다.`, { ok: '삭제', danger: true })) return;
+  if (!await uiConfirm(r2 ? `「${name}」(${who}) 캐릭터를 삭제할까요?\n\nR2 에서 그림과 목록 항목을 지워 모든 기기의 사무실에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다. 작업 폴더의 원본·시트는 남습니다.`
+    : `기본 캐릭터 「${name}」(${who}) 을(를) 삭제할까요?\n\n모든 기기의 사무실과 캐릭터 목록에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다. 그림은 배포본에 남아 이 탭 아래 「삭제한 기본 캐릭터」에서 되살릴 수 있습니다.`, { ok: '삭제', danger: true })) return;
   b.disabled = true; b.textContent = '삭제 중…';
   const r = await api.charUnpublish(srv, who);
   if (r.status !== 200) { b.disabled = false; b.textContent = '삭제'; return toast(r.body?.error || `삭제하지 못했습니다 (${r.status})`); }
@@ -3741,6 +3753,16 @@ async function chDelete(who, b) {
   await chLoad();
   cnPoll();
   toast(`「${cut(name, 20)}」 캐릭터를 삭제했습니다`);
+}
+async function chRestore(who, b) {
+  const name = chBase?.info[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id;
+  if (!srv) return toast('연결된 메트릭 서버가 없습니다');
+  b.disabled = true; b.textContent = '되살리는 중…';
+  const r = await api.charRestore(srv, who);
+  if (r.status !== 200) { b.disabled = false; b.textContent = '되살리기'; return toast(r.body?.error || `되살리지 못했습니다 (${r.status})`); }
+  chSeen = '';
+  await chLoad();
+  toast(`「${cut(name, 20)}」 캐릭터를 되살렸습니다`);
 }
 function renderChars() {
   if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
@@ -3754,6 +3776,9 @@ function renderChars() {
     </div>
     ${cnHtml()}
     ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
+    ${chHidden.size ? `<div class="sec-h"><h2>삭제한 기본 캐릭터</h2><span>${chHidden.size}명</span></div>
+    <div class="cx-gone">${[...chHidden].map(w => `<span class="cx-gone-1 surface"><b>${esc(chBase.info[w][0])}</b><code>${w}</code>
+      <button type="button" class="act" data-cx-back="${w}" title="모든 기기의 사무실과 목록에 다시 넣음">되살리기</button></span>`).join('')}</div>` : ''}
     <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 기본 캐릭터 그림은 <code>scripts/char-gen.sh</code> 로 만듭니다. 새 캐릭터는 위 「새 캐릭터」나 <code>scripts/char-publish.py</code> 로 올리면 배포 없이 더해집니다.</div>`;
   $('#cx-fr').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
@@ -3766,6 +3791,7 @@ function renderChars() {
     chxMounted = false; renderChars();
   });
   $('#view').querySelectorAll('[data-cx-del]').forEach(b => b.onclick = () => chDelete(b.dataset.cxDel, b));
+  $('#view').querySelectorAll('[data-cx-back]').forEach(b => b.onclick = () => chRestore(b.dataset.cxBack, b));
   $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
     .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
   cnBind();
