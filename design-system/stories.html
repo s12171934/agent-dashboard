@@ -39,6 +39,8 @@
   .head h2 { font-size: 15px; margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
   .head h2 code { font-weight: 400; font-size: 11.5px; color: var(--muted); }
   .head p { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
+  .step { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .step #at { font-variant-numeric: tabular-nums; min-width: 4em; text-align: center; }
   .stage { margin-top: 12px; height: clamp(340px, 62vh, 760px); overflow: auto; border: 1px solid var(--surface-edge); border-radius: 14px; background: var(--bg); }
   .stage iframe { display: block; border: 0; width: 100%; height: 100%; margin: 0 auto; background: var(--bg); }
   .stage.fixed iframe { border-inline: 1px dashed var(--surface-edge); }
@@ -84,7 +86,15 @@
       <div id="list"></div>
     </nav>
     <div>
-      <div class="surface head" id="head"></div>
+      <div class="surface head">
+        <div id="head"></div>
+        <div class="step">
+          <button type="button" class="act" id="prev">← 이전</button>
+          <span class="st" id="at"></span>
+          <button type="button" class="act" id="next">다음 →</button>
+          <button type="button" class="act" id="next-bad" hidden>다음 문제 →</button>
+        </div>
+      </div>
       <div class="stage" id="stage"><iframe id="frame" title="스토리 캔버스"></iframe></div>
       <div class="surface panel">
         <span class="seg" id="tabs"></span>
@@ -131,6 +141,7 @@ $('#find').oninput = e => {
     el.querySelectorAll('.nav-s').forEach((a, i) => { const hit = hitC || (c.stories[i].name + c.stories[i].note).toLowerCase().includes(q); a.hidden = !hit; any ||= hit; });
     el.hidden = !any;
   }
+  drawStep();
 };
 const badge = (el, list) => {
   el.hidden = !list;
@@ -177,7 +188,7 @@ const live = () => {
   const list = found();
   results.set(key(cur.name, cur.i), { list, where: where() });
   api.mark(list.map(p => p.path));
-  drawBadges(); drawPane();
+  drawBadges(); drawPane(); drawStep();
 };
 
 const show = async (name, i, measure = true) => {
@@ -193,8 +204,38 @@ const show = async (name, i, measure = true) => {
   await api.show(c.name, i);
   if (measure) live();
   else api.mark((results.get(k)?.list || []).map(p => p.path));
-  drawPane();
+  drawPane(); drawStep();
 };
+
+// --- stepping through the stories while checking: 이전/다음 follow the list as it is filtered (search, 문제만 보기),
+// 다음 문제 jumps to the next story whose last check failed. ← → on the keyboard do 이전/다음.
+const order = () => [...document.querySelectorAll('.nav-s')].filter(a => !a.hidden && !a.closest('.nav-c').hidden
+  && !($('nav').classList.contains('only') && a.classList.contains('pass')));
+const go = k => { if (k && !busy) location.hash = k; };
+const move = by => {
+  const list = order().map(a => a.dataset.k), k = key(cur.name, cur.i), at = list.indexOf(k);
+  go(list[at < 0 ? (by > 0 ? 0 : list.length - 1) : (at + by + list.length) % list.length]);
+};
+const nextBad = () => {
+  const all = [...document.querySelectorAll('.nav-s')].map(a => a.dataset.k), at = all.indexOf(key(cur.name, cur.i));
+  go([...all.slice(at + 1), ...all.slice(0, at + 1)].find(k => results.get(k)?.list.length));
+};
+const drawStep = () => {
+  if (!cur) return;
+  const list = order(), at = list.findIndex(a => a.dataset.k === key(cur.name, cur.i));
+  $('#at').textContent = `${at < 0 ? '–' : at + 1} / ${list.length}`;
+  const bad = [...results.values()].filter(r => r.list.length).length;
+  $('#next-bad').hidden = !bad;
+  $('#next-bad').textContent = `다음 문제 → (${bad})`;
+};
+$('#prev').onclick = () => move(-1);
+$('#next').onclick = () => move(1);
+$('#next-bad').onclick = nextBad;
+addEventListener('keydown', e => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('input, select, textarea')) return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); move(1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1); }
+});
 const route = () => {
   const [name, i] = decodeURIComponent(location.hash.slice(1)).split('/');
   show(name, +i || 0);
@@ -250,7 +291,7 @@ const sweep = async combos => {
 };
 $('#all').onclick = () => sweep([[theme(), material()]]);
 $('#all4').onclick = () => sweep(COMBOS);
-$('#only').onclick = () => $('#only').setAttribute('aria-pressed', $('nav').classList.toggle('only'));
+$('#only').onclick = () => { $('#only').setAttribute('aria-pressed', $('nav').classList.toggle('only')); drawStep(); };
 
 route();
 </script>
