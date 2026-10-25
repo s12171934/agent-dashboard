@@ -1430,11 +1430,12 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.dragging { cursor: grabbing; z-index: 999; }
 .ch.lift, .ch.dragging { filter: drop-shadow(0 10px 12px color-mix(in srgb, var(--text) 28%, transparent)); }
 .ch.lift .ch-fig, .ch.dragging .ch-fig { transform: translateY(-4px) scale(1.03); }
-.ch:hover .ch-name { color: var(--accent); }
+.ch:hover .ch-name { border-color: var(--accent); }
+.ch:hover, .ch:focus-visible { z-index: 900 !important; }
 .ch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
-.ch-say { position: relative; box-sizing: border-box; max-width: 100%; height: 36px; display: flex; align-items: center; margin-bottom: 2px; padding: 3px 9px;
-  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--muted); font-size: 11px; line-height: 1.3;
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--text) 10%, transparent); }
+.ch-say { position: relative; box-sizing: border-box; max-width: calc(100% / var(--lz, 1)); height: 36px; display: flex; align-items: center; margin-bottom: 2px; padding: 3px 9px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: color-mix(in srgb, var(--text) 80%, var(--panel)); font-size: 12px; font-weight: 500; line-height: 1.3;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--text) 12%, transparent); transform: scale(var(--lz, 1)); transform-origin: bottom center; }
 .ch-say > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .ch-say::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: var(--panel); border: solid var(--line); border-width: 0 1px 1px 0;
   transform: translateX(-50%) rotate(45deg); }
@@ -1450,11 +1451,21 @@ a.hw-row:hover .hw-t { color: var(--accent); }
   filter: drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
 /* a bust is cut at the waist: fade the cut into the floor */
 .fig-l2d.bust { -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
-.ch-name { box-shadow: inset 0 -2px var(--c); }  /* the model's colour */
-.ch-name, .ch-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; border-radius: 6px;
-  background: color-mix(in srgb, var(--panel) 82%, transparent); }
-.ch-name { font-size: 12px; font-weight: 600; }
-.ch-meta { color: var(--muted); font-size: 11px; }
+.ch-tag { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: calc(100% / var(--lz, 1)); transform: scale(var(--lz, 1)); transform-origin: top center; position: relative; z-index: 1; }
+.ch-name, .ch-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a name plate: solid, the model's colour along its bottom, a dot in the state's colour */
+.ch-name { display: flex; align-items: center; gap: 5px; box-sizing: border-box; padding: 2px 8px 3px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line); box-shadow: inset 0 -3px var(--c), 0 2px 5px color-mix(in srgb, var(--ink) 18%, transparent); }
+.ch-meta { padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; color: color-mix(in srgb, var(--text) 72%, var(--panel)); background: color-mix(in srgb, var(--panel) 92%, transparent); }
+.ch-far .ch-meta { display: none; }
+.ch-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* a flex item's own text cannot take the ellipsis */
+.ch-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.ch.st-run .ch-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.ch.st-bg .ch-dot { background: color-mix(in srgb, var(--ok) 55%, var(--panel)); }
+.ch.st-wait .ch-dot { background: var(--accent); }
+.ch.st-stalled .ch-dot { background: var(--bad); }
+.ch.st-done .ch-dot { background: var(--done); }
+.ch.dec .ch-dot { background: var(--warn); animation: pulse 1.6s infinite; }
 .ch .badge { margin-top: 2px; }
 /* motion (AI 생성): pixel art at 3×, so it moves a sprite pixel (3px) at a time, in steps; the generated pose carries
    the state. Live2D moves in its canvas instead. */
@@ -1607,21 +1618,21 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-world .room:nth-child(even)::after { right: auto; left: -30px; }
 /* family lines (chLinks): a coordinator → each of its workers in another room, a dotted thread in the family's colour
    (--fh, a hue) sagging over the corridor between the two people's sides (a filled dot at the coordinator), and the chips its people wear (.ch-fam). Pointing
-   at a person (.fam-hot) fades other families and makes theirs solid. */
+   at (or focusing) a person (.fam-hot) shows their team's lines, which are hidden otherwise, and fades everyone else. */
 .ch-world .room { z-index: 1; }
 .ch-links { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; overflow: visible; }
 .ch-link { --fc: hsl(var(--fh) 65% 50%); transition: opacity .2s; }
-.ch-link path { fill: none; stroke: var(--fc); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0 8; opacity: .8; transition: stroke-dasharray .2s; }
+.ch-link path { fill: none; stroke: var(--fc); stroke-width: calc(3px * var(--lz, 1)); stroke-linecap: round; stroke-dasharray: 0 calc(8px * var(--lz, 1)); }
 .ch-link circle { fill: var(--panel); stroke: var(--fc); stroke-width: 2; }
 .ch-link circle.boss { fill: var(--fc); }
 .ch-link-tag, .ch-fam { --fc: hsl(var(--fh) 72% 48%); }
-.ch-link-tag { position: absolute; z-index: 3; transform: translate(-50%, -50%); pointer-events: auto; cursor: help; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; color: var(--fc); background: color-mix(in srgb, var(--fc) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--fc) 50%, transparent); transition: opacity .2s; }
-.ch-fam { display: block; max-width: 100%; margin: 3px auto 0; width: fit-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; color: var(--fc); background: color-mix(in srgb, var(--fc) 14%, var(--panel)); border: 1.5px solid var(--fc); }
-.fam-hot .ch-link:not(.fam-on), .fam-hot .ch-link-tag:not(.fam-on) { opacity: .12; }
+.ch-link-tag { position: absolute; z-index: 3; transform: translate(-50%, -50%) scale(var(--lz, 1)); pointer-events: none; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: #fff; background: var(--fc); box-shadow: 0 3px 8px -3px color-mix(in srgb, var(--ink) 40%, transparent); }
+.ch-fam { display: block; max-width: 100%; margin: 1px auto 0; width: fit-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; color: color-mix(in srgb, var(--fc) 70%, var(--text)); background: color-mix(in srgb, var(--fc) 16%, var(--panel)); border: 1.5px solid var(--fc); }
+.ch-link, .ch-link-tag { opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s; }
+.ch-link.fam-on, .ch-link-tag.fam-on { opacity: 1; visibility: visible; }
 .fam-hot .ch:not(.fam-on) { opacity: .45; }
-.fam-hot .ch-link.fam-on path { stroke-dasharray: none; opacity: 1; }
 /* the lobby: the office sign (date, time of day, head count) between a reception desk and a lounge */
 .ch-lobby { grid-column: 1 / -1; position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; min-height: 250px;
   padding: 0 28px; overflow: hidden; isolation: isolate; pointer-events: none; border: 8px solid color-mix(in srgb, var(--wood) 40%, #3a3a44); border-radius: 22px;
