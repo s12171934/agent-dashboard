@@ -44,7 +44,7 @@ window.THEME_VARS = [['--bg', '배경'], ['--panel', '카드·상자'], ['--pane
   ['--muted', '흐린 글자'], ['--accent', '강조'], ['--run', '실행 중'], ['--ok', '연결·진행'], ['--warn', '입력 대기·결정'], ['--bad', '오류·응답 없음'],
   ['--done', '완료'], ['--idle', '유휴'], ['--coord', '코디네이터']];
 // Palette examples, each with a light and a dark set over THEME_VARS; 「색 편집」 offers them, and picking one replaces
-// the overrides of the base in use. --warn also fills badges with white text (결정 대기), so it stays a mid-dark tone.
+// the overrides of the base in use. --warn also fills badges (결정 대기); their text is --on-warn, black or white by contrast.
 const V = s => Object.fromEntries(s.split(' ').map((c, i) => [THEME_VARS[i][0], c]));
 window.PALETTES = [
   ['GitHub', { light: V('#f6f8fa #ffffff #f6f8fa #d0d7de #1f2328 #656d76 #0969da #0969da #0969da #9a6700 #cf222e #1a7f37 #d0d7de #8250df'),

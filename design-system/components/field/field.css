@@ -2,5 +2,11 @@
 .field { font: inherit; color: var(--text); padding: 4px 8px; border: 1px solid var(--surface-edge); border-radius: 8px; background: var(--control-fill);
   -webkit-backdrop-filter: var(--surface-blur-sm); backdrop-filter: var(--surface-blur-sm); box-shadow: var(--surface-hi); }
 select.field { cursor: pointer; padding: 4px 6px; }
+/* the native menu look ignores height in Safari, so the select draws its own chevron (two triangles in the text colour)
+   and takes --tap height like every other control (A4) */
+select.field { -webkit-appearance: none; appearance: none; min-height: var(--tap); padding-right: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%; background-size: 4px 4px; background-repeat: no-repeat; }
 .field { max-width: 100%; }
-@media (pointer: coarse) { .field { min-height: var(--tap); } }
+/* a finger device: --tap tall, and 16px text, which font: inherit above would otherwise undo (B4: smaller and iOS zooms) */
+@media (pointer: coarse) { .field { min-height: var(--tap); font-size: 16px; } }

@@ -6,4 +6,7 @@
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
   box-shadow: var(--surface-hi), var(--surface-shadow); }
 .box h3 { font-size: 13px; margin: 0 0 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-details.box > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+details.box > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; position: relative; }
+/* a one-line summary is shorter than --tap: an invisible ::before makes the press area that tall without moving anything */
+details.box > summary::before { content: ""; position: absolute; left: 0; right: 0;
+  top: min(0px, calc((100% - var(--tap)) / 2)); bottom: min(0px, calc((100% - var(--tap)) / 2)); }

@@ -10,8 +10,13 @@
   --s-input: #e07b39; --s-write: #8a63d2; --s-read: #9cb6e8; --s-out: #2f9e5b;
   --m-opus: #d9773b; --m-fable: #b04fc4; --m-sonnet: #3b8fd8; --m-haiku: #2fa39a; --m-gpt: #4b5563; --m-other: #9aa3ad;
   --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #6250d6;
-  --on-accent: #fff;  /* text and icons on a filled accent, warn or state colour */
+  --on-accent: #fff;  /* text and icons on a filled accent or state colour */
+  --on-warn: var(--on-accent);         /* text on a filled --warn (결정 대기 badges); white is 2.95 : 1 on the light --warn */
+  --on-accent-text: var(--on-accent);  /* text on a filled --accent (the picked option); white is 2.68 : 1 on the dark --accent */
 }
+/* black or white, whichever reads on this colour, a user palette's too (WCAG 4.5 : 1 in both built-in themes). --on-accent
+   itself stays white: it also draws switch knobs and marks on state colours */
+@supports (color: contrast-color(red)) { :root { --on-warn: contrast-color(var(--warn)); --on-accent-text: contrast-color(var(--accent)); } }
 :root { color-scheme: light; }
 :root[data-theme="dark"] {
   color-scheme: dark;

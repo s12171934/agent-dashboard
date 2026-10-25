@@ -3,7 +3,7 @@
 .tp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
 .tp-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .tp-row.own span { color: var(--text); font-weight: 600; }
-.tp-row input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; cursor: pointer; }
+.tp-row input[type=color] { width: max(30px, var(--tap)); height: var(--tap); padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; cursor: pointer; }
 .tp-row span { flex: 1; }
 .tp-row .act:disabled { opacity: .35; cursor: default; }
 @media (max-width: 500px) { .tp-grid { grid-template-columns: 1fr; } }
@@ -11,6 +11,7 @@
 .tp-pals > .st { width: 100%; font-size: 11px; }
 .tp-pal { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); color: var(--text); font-size: 12px; cursor: pointer; }
 .tp-pal:hover { border-color: var(--muted); }
+@media (pointer: coarse) { .tp-pal { min-height: var(--tap); } }
 .tp-pal.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .tp-sw { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid; border-radius: 5px; }
 .tp-sw i { width: 7px; height: 12px; border-radius: 2px; }
