@@ -9,6 +9,7 @@ on:
     paths:
       - frontend/**
       - design-system/**
+      - functions/**
       - scripts/deploy-frontend.sh
       - .github/workflows/deploy-frontend.yml
   workflow_dispatch:
