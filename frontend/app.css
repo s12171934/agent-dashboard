@@ -961,7 +961,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-modal .dz-pane { padding: 0; border: 0; background: none; box-shadow: none; }
 .dz-modal [data-dz-hide] { display: none; }
 @media (max-width: 900px) { #dz-pane-btn { display: none; } }
-.dz-modal { width: min(560px, calc(100vw - 16px)); max-width: none; max-height: min(82dvh, 760px); padding: 0; overflow: hidden; }
+.dz-modal { width: min(560px, calc(100% - 16px)); max-width: none; max-height: min(82dvh, 760px); padding: 0; overflow: hidden; }
 .dz-modal[open] { display: flex; flex-direction: column; }
 .dz-mh { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px; }
 .dz-mh > :first-child { margin-right: auto; }
@@ -1043,7 +1043,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .qa-more > div { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: grid; gap: 4px; min-width: 150px; padding: 6px; border: 1px solid var(--surface-edge); border-radius: 12px;
   background: var(--surface-sheen), var(--surface-strong); box-shadow: var(--surface-hi), var(--surface-shadow-float); }
 .qa-run.done { background: var(--done); } .qa-run.fail { background: var(--bad); } .qa-run.run { background: var(--run); }
-#ui-dlg { max-width: min(560px, calc(100vw - 32px)); }
+#ui-dlg { max-width: min(560px, calc(100% - 32px)); }
 #ui-dlg .ui-msg { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto; margin: 0 0 12px; }
 #ui-dlg .field { margin-bottom: 12px; box-sizing: border-box; }
 

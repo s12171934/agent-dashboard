@@ -1,6 +1,10 @@
 /* Design system base: element defaults, text utilities, touch defaults and shared motion. */
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+/* the page never pans sideways (GUIDELINES B5): whatever still pokes past the edge is cut, not scrolled to. clip, not
+   hidden, so neither is a scroll container and sticky headers keep sticking. iOS also shrinks a home-screen app whose
+   page is wider than the screen. */
+html, body { overflow-x: clip; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
 button { font: inherit; color: inherit; }
 /* touch: no grey flash on tap, no double-tap zoom delay on things you press */

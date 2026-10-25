@@ -43,8 +43,8 @@ ds-dock .dn[hidden] { display: none; }
 .dock-side { display: contents; } .dock-side[hidden] { display: none; }
 .dock-size { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .dock-size input { flex: 1; accent-color: var(--accent); }
-:root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100vw - 16px); }
-:root[data-dock="top"] ds-dock { left: 50%; top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); transform: translateX(-50%); max-width: calc(100vw - 16px); }
+:root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100% - 16px); }
+:root[data-dock="top"] ds-dock { left: 50%; top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); transform: translateX(-50%); max-width: calc(100% - 16px); }
 :root[data-dock="left"] ds-dock, :root[data-dock="right"] ds-dock { top: 50%; transform: translateY(-50%); flex-direction: column; border-radius: 26px; }
 /* a side bar keeps clear of a landscape notch, and on a screen shorter than the bar it scrolls instead of running off both ends */
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock { max-height: calc(100% - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));

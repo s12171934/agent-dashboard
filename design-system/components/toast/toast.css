@@ -1,7 +1,7 @@
 /* <ds-toast open>: an inverted pill (text colour as the fill) at the bottom centre; slides up while open.
    Above a bottom <ds-dock> it keeps clear of the bar. */
 ds-toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 30px); opacity: 0; pointer-events: none; transition: .2s; color: var(--bg);
-  border-radius: 99px; padding: 9px 18px; font-size: 13px; display: flex; gap: 14px; align-items: center; z-index: 50; max-width: calc(100vw - 32px);
+  border-radius: 99px; padding: 9px 18px; font-size: 13px; display: flex; gap: 14px; align-items: center; z-index: 50; max-width: calc(100% - 32px);
   background: color-mix(in srgb, var(--text) 82%, transparent); -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur);
   box-shadow: var(--control-hi), var(--surface-shadow-float); }
 ds-toast[open] { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
