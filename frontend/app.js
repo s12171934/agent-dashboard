@@ -3357,7 +3357,10 @@ function chApply() {
   if (!w) return;
   const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
   if (chView.fit) {  // below the tools, which float over the top left, and beside an open staff panel
-    const t = cv.querySelector('.ch-tools'), top = (t ? t.offsetTop + t.offsetHeight : 10) + 4, room = ch - top - 8;
+    // and above a bar floating on the bottom of the canvas
+    const t = cv.querySelector('.ch-tools'), top = (t ? t.offsetTop + t.offsetHeight : 10) + 4;
+    const dk = document.documentElement.dataset.dock === 'bottom' && $('ds-dock:not([open])')?.getBoundingClientRect();
+    const room = ch - top - (dk ? Math.max(8, cv.getBoundingClientRect().bottom - dk.top + 8) : 8);
     const pn = cv.querySelector('.ch-panel'), side = pn && cw > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
     let z = Math.min(1, (fw - 24) / ww, room / wh);
     if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
@@ -3392,10 +3395,12 @@ function chZoom(k, px, py) {
 function chSize() {
   const cv = $('#ch-canvas');
   if (!cv) return;
+  // the canvas is fixed (app.css): it takes the view's place across and from the view's top to the screen's bottom
+  // (down to the bar's sheet when that is the lower half), which a short viewport leaves --vp-cut above (ds fold.js)
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
-  const cut = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-cut')) || 0;  // ds fold.js
-  const bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight + cut - (innerWidth <= 700 || posture ? 0 : 12);
-  cv.style.height = Math.max(240, bottom - cv.getBoundingClientRect().top) + 'px';
+  const cut = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-cut')) || 0;
+  const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight + cut;
+  Object.assign(cv.style, { left: v.left + 'px', top: v.top + 'px', width: v.width + 'px', height: Math.max(240, bottom - v.top) + 'px' });
   chApply();
 }
 const chPts = new Map();
