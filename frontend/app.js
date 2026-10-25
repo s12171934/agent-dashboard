@@ -100,17 +100,19 @@ try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
 $('#char-mode').checked = charMode;
 $('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
 // 「캐릭터 설정」 panel (the bar's ⋯ menu; 캐릭터 모드 itself is a toggle on the bar): how the characters are drawn
-// (charStyle) and framed (charFrame), and the way to the 「캐릭터」 tab. This device only.
+// (charStyle) and framed (charFrame), whether idle people stroll about (charRoam), and the way to the 「캐릭터」 tab. This device only.
 function charPanel() {
   const el = $('#char-panel');
   const seg = (k, cur, opts) => `<span class="seg" data-cp="${k}">${opts.map(([v, l]) => `<button data-k="${v}"${v === cur ? ' class="on"' : ''} aria-pressed="${v === cur}">${l}</button>`).join('')}</span>`;
   el.innerHTML = `<div class="pop-h"><b>캐릭터 설정</b><span class="st">이 기기에만 저장</span><button class="act" data-cp="close">닫기</button></div>
     <div class="cp-row"><span>그림체</span>${seg('style', charStyle, [['ai', 'AI 생성 (SD 픽셀)'], ['l2d', 'Live2D']])}</div>
     <div class="cp-row"><span>보기</span>${seg('frame', charFrame, [['bust', '상반신'], ['full', '전신']])}</div>
+    <div class="cp-row"><span>유휴 때</span>${seg('roam', charRoam ? 'on' : 'off', [['off', '제자리'], ['on', '돌아다니기']])}</div>
     <a class="act cp-link" href="#chars">캐릭터 그림 관리 →</a>`;
   const set = { style: k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} },
-    frame: k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} } };
-  el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); charPanel(); render(); });
+    frame: k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} },
+    roam: k => { charRoam = k === 'on'; try { localStorage.setItem('adash.charroam', charRoam ? '1' : '0'); } catch {} chRoamClear(); } };
+  el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button, [data-cp=roam] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); charPanel(); render(); });
   el.querySelector('[data-cp=close]').onclick = () => { el.hidden = true; };
   el.querySelector('.cp-link').onclick = () => { el.hidden = true; };
   el.hidden = false;
@@ -2888,6 +2890,8 @@ let charStyle = 'ai';  // ai | l2d
 try { charStyle = localStorage.getItem('adash.charstyle') === 'l2d' ? 'l2d' : 'ai'; } catch {}
 let charFrame = 'bust';  // bust | full
 try { charFrame = localStorage.getItem('adash.charframe') === 'full' ? 'full' : 'bust'; } catch {}
+let charRoam = false;  // 유휴 때 돌아다니기 (chWalk)
+try { charRoam = localStorage.getItem('adash.charroam') === '1'; } catch {}
 const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
@@ -3137,7 +3141,7 @@ function chLayout() {
     const uw = us[0].offsetWidth, uh = us[0].offsetHeight, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
     let H = top + Math.ceil(us.length / cols) * (uh + CH_GAP) + CH_GAP;
     us.forEach((u, i) => {
-      const p = chPos[u.dataset.id];
+      const p = (charRoam && u.classList.contains('st-idle') && chRoamAt[u.dataset.id]) || chPos[u.dataset.id];
       const x = p ? p.x * Math.max(0, W - uw) : slot * (i % cols) + (slot - uw) / 2, y = p ? Math.max(0, p.y) : top + Math.floor(i / cols) * (uh + CH_GAP);
       chPlace(u, x, y);
       H = Math.max(H, y + uh + CH_GAP);
@@ -3151,6 +3155,7 @@ const chPlace = (u, x, y) => { u.style.left = x + 'px'; u.style.top = y + 'px'; 
 function chKeep(u) {
   const fl = u.parentElement, free = Math.max(1, fl.clientWidth - u.offsetWidth);
   chPos[u.dataset.id] = { x: Math.min(1, Math.max(0, u.offsetLeft / free)), y: u.offsetTop };
+  delete chRoamAt[u.dataset.id];
   chPosSave();
   if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px';
   $('#ch-reset').disabled = false;
@@ -3176,6 +3181,7 @@ function chBind() {
     };
     u.onpointerdown = e => {
       if (e.button) return;
+      chWalkStop(u);
       const fl = u.parentElement, x0 = u.offsetLeft, y0 = u.offsetTop, px = e.clientX, py = e.clientY;
       // a mouse drags at once; a finger holds still first, so a swipe over the room pans the canvas
       let armed = e.pointerType !== 'touch', moved = false;
@@ -3203,6 +3209,7 @@ function chBind() {
       const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!d) return;
       e.preventDefault();
+      chWalkStop(u);
       const fl = u.parentElement, step = e.shiftKey ? 40 : 10;
       chPlace(u, Math.min(Math.max(0, u.offsetLeft + d[0] * step), fl.clientWidth - u.offsetWidth), Math.max(0, u.offsetTop + d[1] * step));
       chKeep(u);
@@ -3210,6 +3217,56 @@ function chBind() {
   });
 }
 addEventListener('resize', () => { if ($('#view .office')) { chLayout(); chApply(); } });
+
+// 「유휴 때 돌아다니기」 (charRoam): now and then an idle person gets up, walks a few steps across their room's floor
+// (standing pose, facing the way they go) and dozes off again where they stop. The spot lives only in this page
+// (chRoamAt, the same {x, y} as chPos) and never in adash.chpos; once busy again they are back at their own place.
+// Not while a person or the view is being dragged, the page is hidden, or motion is reduced.
+const chRoamAt = {}, chRoamNext = {};  // id → spot; id → when they next get up
+const chReduce = matchMedia('(prefers-reduced-motion: reduce)');
+const chRoamClear = () => { for (const o of [chRoamAt, chRoamNext]) for (const k of Object.keys(o)) delete o[k]; };
+function chPose(u, mv) {
+  const f = u.querySelector('.ch-fig');
+  if (!f) return;
+  if (f.classList.contains('fig-l2d')) f.dataset.mv = mv;
+  else f.style.backgroundPosition = `${-(CH_POSE[mv] ?? 0) * f.offsetWidth}px 0`;
+}
+function chWalk(u) {
+  const fl = u.parentElement, free = Math.max(0, fl.clientWidth - u.offsetWidth), x0 = u.offsetLeft, y0 = u.offsetTop;
+  const top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54, bot = Math.max(top, fl.clientHeight - u.offsetHeight - CH_GAP);
+  const x = Math.min(free, Math.max(0, x0 + (Math.random() * 2 - 1) * 260)), y = Math.min(bot, Math.max(top, y0 + (Math.random() * 2 - 1) * 120));
+  const d = Math.hypot(x - x0, y - y0), ms = Math.round(d / 45 * 1000);  // a stroll at 45px a second
+  if (d < 30) return 0;
+  u.classList.add('walking'); u.classList.toggle('walk-l', x < x0);
+  chPose(u, 'wait');
+  u.style.transition = `left ${ms}ms linear, top ${ms}ms linear`;
+  chPlace(u, x, y);
+  chRoamAt[u.dataset.id] = { x: free ? x / free : 0, y };
+  u.walkT = setTimeout(() => chWalkStop(u, true), ms);
+  return ms;
+}
+// arrived, or stopped where they are now (picked up, moved by keys, the office redrawn)
+function chWalkStop(u, arrived) {
+  if (!u.classList.contains('walking')) return;
+  clearTimeout(u.walkT);
+  if (!arrived) {
+    const cs = getComputedStyle(u), x = parseFloat(cs.left), y = parseFloat(cs.top), free = Math.max(0, u.parentElement.clientWidth - u.offsetWidth);
+    chPlace(u, x, y);
+    chRoamAt[u.dataset.id] = { x: free ? x / free : 0, y };
+  }
+  u.style.transition = '';
+  u.classList.remove('walking');
+  chPose(u, 'idle');
+}
+setInterval(() => {
+  if (!charRoam || chDrag || chPts.size || document.hidden || chReduce.matches) return;
+  const now = Date.now();
+  $('#view').querySelectorAll('.ch-world .ch.st-idle:not(.dec):not(.walking)').forEach(u => {
+    const id = u.dataset.id;
+    if (!(id in chRoamNext)) chRoamNext[id] = now + 2000 + Math.random() * 8000;  // first seen: not all at once
+    else if (now >= chRoamNext[id]) chRoamNext[id] = now + chWalk(u) + 4000 + Math.random() * 10000;
+  });
+}, 1000);
 
 // The office is a canvas: the rooms are laid out on one plane (.ch-world) inside a box that fills the screen below the
 // header (.ch-canvas, no page scroll), moved by dragging the floor (one finger on touch), the wheel or trackpad, and
@@ -3357,6 +3414,7 @@ function lobbyHtml(people) {
 
 function renderOffice() {
   if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
+  $('#view').querySelectorAll('.ch.walking').forEach(u => { chWalkStop(u); chRoamNext[u.dataset.id] = Date.now() + 1000; });  // walk on from here
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
@@ -3379,7 +3437,7 @@ function renderOffice() {
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   $('#ch-reset').onclick = () => {
-    chPos = {}; chPosSave();
+    chPos = {}; chPosSave(); chRoamClear();
     const o = $('#view .office');
     o?.classList.add('homing');  // glide back instead of jumping
     chLayout();

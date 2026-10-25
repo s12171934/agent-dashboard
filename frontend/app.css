@@ -1466,6 +1466,10 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.st-stalled .fig-ai { animation: shake .4s steps(1, end) infinite; }
 .ch.st-idle .fig-ai { animation-duration: 4s; }
 .ch.st-idle .ch-fig { opacity: .8; }
+/* 유휴 때 돌아다니기 (chWalk): awake and standing while walking, facing the way they go */
+.ch.walking .ch-fig { opacity: 1; }
+.ch.walking .fig-ai { animation-duration: .5s; }
+.ch.walk-l .ch-fig { scale: -1 1; }
 .ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
 .ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
 @keyframes shake { 50% { transform: translateX(3px); } }
