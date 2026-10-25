@@ -4974,7 +4974,8 @@ function hmData(key, fn, sig) {
 }
 
 // 내 차례: what waits for a person — a 결정 버튼 question, a QA ticket at a user gate (반출 승인 with its worktree still
-// there: without one there is nothing to approve, only a driver state left behind; 막힘), a session whose turn ended (입력 대기). Questions first, then tickets, then sessions; the longest wait first within each.
+// there: without one there is nothing to approve, only a driver state left behind; 막힘). Questions first, then tickets;
+// the longest wait first within each.
 function hmMine() {
   const out = [], dec = state.decisions;
   const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
@@ -4985,14 +4986,14 @@ function hmMine() {
     if (qa.blocked) out.push({ kind: 'blocked', at: qa.at?.[qa.stage] ? new Date(qa.at[qa.stage]).getTime() : null, t, set });
     else if (qa.stage === 'committed' && t.repos.length) out.push({ kind: 'approve', at: qa.at?.committed ? new Date(qa.at.committed).getTime() : null, t, set });
   }
-  for (const s of state.sessions) if (!s.parent && !s.decision && status(s) === 'wait') out.push({ kind: 'wait', at: toDate(s.last_ts).getTime(), s });
-  const order = { dec: 0, blocked: 1, approve: 2, wait: 3 };
+  // an agent waiting for its next instruction (입력 대기) is not the user's to do: it is not listed, so it raises no badge
+  const order = { dec: 0, blocked: 1, approve: 2 };
   return out.sort((a, b) => order[a.kind] - order[b.kind] || (a.at || Infinity) - (b.at || Infinity));
 }
 const hmRec = o => /recommended|권장/i.test(o.label);
 // Rows by the widget's size; the rest is counted per kind under them.
 const HM_ROWS = { S: 3, M: 5, L: 8, W: 6 };
-const HM_KIND = { dec: ['결정', '#decide'], blocked: ['막힘', '#worktrees'], approve: ['반출 승인', '#worktrees'], wait: ['입력 대기', '#agents'] };
+const HM_KIND = { dec: ['결정', '#decide'], blocked: ['막힘', '#worktrees'], approve: ['반출 승인', '#worktrees'] };
 function hmMineHtml(w) {
   const items = hmMine(), dec = state.decisions, unread = (dec?.inbox || []).filter(r => !r.read).length;
   const n = k => items.filter(x => x.kind === k).length, shown = items.slice(0, HM_ROWS[w.size]), rest = items.slice(shown.length);
@@ -5005,12 +5006,11 @@ function hmMineHtml(w) {
         <div class="hw-opts">${simple ? q0.options.map((o, i) => `<button type="button" class="hw-opt${hmRec(o) ? ' rec' : ''}" data-hm-dec="${esc(x.q.id)}" data-i="${i}" title="${esc(o.description || '')}">${esc(cut(o.label, 40))}</button>`).join('') : ''}
           <a class="hw-opt ghost" href="#decide">${simple ? '기타…' : '답하기 →'}</a></div></div>`;
     }
-    if (x.kind === 'wait') return hmRow('입력 대기', 'idle', esc(cut(x.s.last_action?.text || '턴을 끝내고 다음 지시를 기다림', 90)), esc(cut(nameOf(x.s), 40)), `<span class="hw-age">${age}</span>`, sessHref(x.s));
     const q = x.t.qa;
     return hmRow(x.kind === 'approve' ? '반출 승인' : '막힘', x.kind === 'approve' ? 'ok' : 'bad', `${esc(x.t.key)} ${esc(cut(x.t.summary || '', 60))}`,
       x.kind === 'approve' ? `검토 통과·커밋 완료${q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}` : esc(cut(q.blocked_reason || qaName(q.stage) + ' 단계에서 멈춤', 70)), `<span class="hw-age">${age}</span>`, '#worktrees');
   }).join('') + (rest.length ? `<div class="hw-rest">외 ${Object.keys(HM_KIND).filter(k => rest.some(x => x.kind === k)).map(k => `<a href="${HM_KIND[k][1]}">${HM_KIND[k][0]} ${rest.filter(x => x.kind === k).length}</a>`).join(' · ')}</div>` : '');
-  const sum = [['결정', n('dec')], ['막힘', n('blocked')], ['반출 승인', n('approve')], ['입력 대기', n('wait')], ['메일함', unread]].filter(([, c]) => c).map(([l, c]) => `${l} ${c}`).join(' · ');
+  const sum = [['결정', n('dec')], ['막힘', n('blocked')], ['반출 승인', n('approve')], ['메일함', unread]].filter(([, c]) => c).map(([l, c]) => `${l} ${c}`).join(' · ');
   return { n: items.length, hot: items.length > 0, note: sum, body: rows || '<div class="hw-ok">기다리는 일이 없습니다 ✓</div>' };
 }
 
