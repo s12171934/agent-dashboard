@@ -1565,4 +1565,21 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .pw-frame { fill: color-mix(in srgb, var(--wood) 80%, var(--panel)); } .pw-sky { fill: var(--sky); } .pw-sky2 { fill: color-mix(in srgb, var(--sky) 75%, var(--panel)); }
 :root[data-theme="dark"] :is(.pw-sky, .pw-sky2) { fill: color-mix(in srgb, var(--sky) 30%, var(--night)); }
 .pw-white { fill: var(--mug); } .pw-sill { fill: color-mix(in srgb, var(--wood) 60%, var(--panel)); } .pw-board { fill: color-mix(in srgb, var(--wood) 85%, var(--ink)); }
+/* the office canvas (renderOffice): fills the screen below the header, the page does not scroll; .ch-world is the
+   plane of rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
+:root.ch-full, :root.ch-full body { overflow: hidden; overscroll-behavior: none; }
+:root.ch-full main { padding-bottom: 0; }
+.ch-canvas { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
+  border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--text) 4%, var(--bg)); }
+.ch-canvas:active { cursor: grabbing; }
+.ch-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: grid; grid-template-columns: repeat(var(--cols), var(--room-w, 680px)); gap: 28px; padding: 28px;
+  align-items: start; }
+.ch-world .room { margin: 0; }
+.ch-tools { position: absolute; z-index: 5; top: 10px; left: 10px; right: 10px; width: fit-content; max-width: calc(100% - 20px); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  padding: 6px; border-radius: 16px; cursor: auto; }
+.ch-zoom { display: inline-flex; gap: 2px; }
+.ch-zoom .act { min-width: 34px; font-variant-numeric: tabular-nums; }
+#ch-fit[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.ch-say[hidden] { visibility: hidden; display: flex; }  /* keeps the bubble's room so people stay on one line */
+@media (max-width: 700px) { .ch-world { padding: 12px; } }
 @media (max-width: 500px) { .ch { width: 124px; } .ch-svg { width: 108px; height: 108px; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
