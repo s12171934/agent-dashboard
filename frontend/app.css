@@ -1602,3 +1602,5 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 @media (max-width: 700px) { .ch-panel { top: auto; height: 62%; } }  /* keeps the bubble's room so people stay on one line */
 @media (max-width: 700px) { .ch-world { padding: 12px; } }
 @media (max-width: 500px) { .ch { width: 124px; } .fig-l2d { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
+/* a tab moved into the bar's ⋯ menu (data-more) shows it is the open one */
+.dock-more a.on, .dock-more a.on svg { color: var(--accent); }

@@ -312,7 +312,8 @@ async function render(navigated) {
 async function renderView(navigated) {
   const r = route();
   const tab = r.v === 'session' || r.v === 'run' ? 'agents' : r.v;
-  document.querySelectorAll('#dock a').forEach(a => a.classList.toggle('on', a.dataset.v === tab));
+  document.querySelectorAll('#dock a, .dock-more a').forEach(a =>  // a data-more tab sits in the ⋯ menu
+    a.classList.toggle('on', a.dataset.v === tab));
   if (r.v !== 'talk') talkMounted = false;
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
