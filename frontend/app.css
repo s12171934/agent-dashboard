@@ -1436,7 +1436,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-say { position: relative; box-sizing: border-box; max-width: calc(100% / var(--lz, 1)); height: 36px; display: flex; align-items: center; margin-bottom: 2px; padding: 3px 9px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: color-mix(in srgb, var(--text) 80%, var(--panel)); font-size: 12px; font-weight: 500; line-height: 1.3;
   box-shadow: 0 2px 6px color-mix(in srgb, var(--text) 12%, transparent); transform: scale(var(--lz, 1)); transform-origin: bottom center; }
-.ch-say > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ch-say > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: keep-all; overflow-wrap: anywhere; }
+.ch-say .nw { white-space: nowrap; }
 .ch-say::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: var(--panel); border: solid var(--line); border-width: 0 1px 1px 0;
   transform: translateX(-50%) rotate(45deg); }
 .ch-say b { margin-right: 4px; color: var(--text); }
@@ -1457,7 +1458,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-name { display: flex; align-items: center; gap: 5px; box-sizing: border-box; padding: 2px 8px 3px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--text);
   background: var(--panel); border: 1px solid var(--line); box-shadow: inset 0 -3px var(--c), 0 2px 5px color-mix(in srgb, var(--ink) 18%, transparent); }
 .ch-meta { padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; color: color-mix(in srgb, var(--text) 72%, var(--panel)); background: color-mix(in srgb, var(--panel) 92%, transparent); }
-.ch-far .ch-meta { display: none; }
+.ch-far .ch-meta, .ch-far .ch-far-x { display: none; }
 .ch-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* a flex item's own text cannot take the ellipsis */
 .ch-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .ch.st-run .ch-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
@@ -1499,7 +1500,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .d-chopt:hover { border-color: var(--accent); }
 .d-chopt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); font-weight: 600; }
 .d-chspr { display: block; background-repeat: no-repeat; image-rendering: pixelated; }
-@media (max-width: 520px) { .d-hero { grid-template-areas: "fig head" "top top"; column-gap: 10px; row-gap: 8px; } .d-chgrp > .st { width: 100%; } }
+@media (max-width: 500px) { .d-hero { grid-template-areas: "fig head" "top top"; column-gap: 10px; row-gap: 8px; } .d-chgrp > .st { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
 /* 「캐릭터」 tab: a card per person; its three stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows */
 .cx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 12px; margin-bottom: 14px; }
@@ -1640,7 +1641,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
   background: linear-gradient(to top, var(--corridor) 0 58px, color-mix(in srgb, var(--wood) 50%, #2a2a30) 58px 64px, transparent 64px),
     repeating-linear-gradient(90deg, transparent 0 196px, color-mix(in srgb, var(--wood) 40%, #3a3a44) 196px 204px),
     linear-gradient(to bottom, var(--sky-top), var(--sky-low));
-  box-shadow: inset 0 0 0 2px rgb(255 255 255 / .15), 0 22px 36px -10px rgb(0 0 0 / .3); }
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sky-top) 40%, transparent), 0 22px 36px -10px rgb(0 0 0 / .3); }
 /* the skyline behind the glass, and its lit windows at night */
 .ch-lobby .lb-city { position: absolute; inset: auto 0 64px; height: 120px; z-index: -1; opacity: var(--city-o, .55);
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='120'%3E%3Cpath d='M0 120V70h30V40h26v30h18V20h34v100zM110 120V55h22V30h40v90zM178 120V64h30V12h28v108zM240 120V48h44v72zM290 120V78h18V36h36v84zM350 120V58h22V26h28v94z' fill='%23243049'/%3E%3C/svg%3E") repeat-x bottom / 400px 120px; }
