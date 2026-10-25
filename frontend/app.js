@@ -384,13 +384,18 @@ function renderHeader() {
   $('#k-mail').hidden = !unread;
   $('#k-dec-l').textContent = '결정 대기' + (unread ? ' · 메일' : '');
   $('#k-dec-wrap').classList.toggle('on', dec.pending.length > 0 || unread > 0);
+  $('#k-dec-n').textContent = dec.pending.length + unread;  // the bar's 「현황」 button: what is waiting on the user
+  $('#k-dec-n').hidden = !(dec.pending.length + unread);
   $('#k-dec-wrap').classList.toggle('away', inboxMode().on);
   $('#k-dec-wrap').title = inboxMode().on ? '메일함 모드 켜짐: 질문은 메일함에 쌓이고 에이전트는 권장안으로 진행합니다' : '';
   $('#inbox-mode-btn').hidden = !inboxMode().ids.length;
   $('#inbox-mode').checked = inboxMode().on;
 }
-// Header 「결정 대기」: the screen with every pending question and the 메일함.
-$('#k-dec-wrap').onclick = () => { location.hash = 'decide'; };
+// 「현황」 (the bar's figures popover, there is no page header); its 「결정 대기」 opens the screen with every pending
+// question and the 메일함.
+$('#stat-btn').onclick = () => { $('#stat-panel').hidden = !$('#stat-panel').hidden; };
+$('#k-dec-wrap').onclick = () => { $('#stat-panel').hidden = true; location.hash = 'decide'; };
+document.addEventListener('click', e => { if (!e.target.closest('#stat-panel, #stat-btn')) $('#stat-panel').hidden = true; });
 
 // 메일함 mode, one switch over every server that is on and has it: on only when each of them is on.
 function inboxMode() {
@@ -491,6 +496,8 @@ function renderHealth() {
   el.hidden = !stalled.length && !failed.length;
   el.textContent = stalled.length ? `⚠ 수집 중단: ${stalled.join(', ')}` : `⚠ 오류 ${failed.length}`;
   el.title = failed.join('\n') || '마지막 정상 수집이 오래됐습니다. 서버 로그를 확인하세요.';
+  $('#stat-btn').classList.toggle('bad', !el.hidden);
+  $('#stat-btn').dataset.tip = el.hidden ? '현황' : '현황 · ' + el.textContent;
 }
 
 // ---------- agents (cards) ----------

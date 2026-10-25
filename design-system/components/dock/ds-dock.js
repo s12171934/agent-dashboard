@@ -12,9 +12,18 @@
 // data-more on a child (a button, toggle, tab or separator) keeps it off the bar: above the phone width it moves into the
 // ⋯ menu, a row with its data-tip as the name (a separator's data-label heads a group there), and on a phone it goes back
 // to its place in the sheet. The element moves, not a copy, so its id, handlers, checkbox and hidden keep working.
+// 「바에 둘 항목」 in the ⋯ menu lets the user move any named item (data-tip) between the bar and the menu; the choice
+// overrides data-more and is saved as adash.dock.items ({key: 'bar' | 'more'}, key = data-key, id, the toggle's input
+// id, href or data-tip). A separator left with nothing visible beside it on the bar hides itself ([data-empty]).
+// 「바 숨기기」 folds the bar to one button that brings it back (adash.dock.hidden, <html data-dock-hidden> set by
+// dock-boot.js's applyDock, before the first paint); a phone keeps its launcher.
 const SIDES = [['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const PHONE = matchMedia('(max-width: 500px)');
+const ITEMS = 'adash.dock.items';
+const prefs = () => { try { return JSON.parse(localStorage.getItem(ITEMS)) || {}; } catch { return {}; } };
+const keyOf = e => e.dataset.key || e.id || e.querySelector('input')?.id || e.getAttribute('href') || e.dataset.tip;
+const esc = t => String(t).replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
 
 class DsDock extends HTMLElement {
   static observedAttributes = ['summary', 'sheet-title'];
@@ -27,15 +36,15 @@ class DsDock extends HTMLElement {
     const inset = () => document.documentElement.style.setProperty('--dock-inset-top',
       (parseFloat(getComputedStyle(above).top) || 0) + above.offsetHeight + 'px');
     if (above) { new ResizeObserver(inset).observe(above); addEventListener('resize', inset); }
-    // each data-more child keeps a marker at its place in the bar, to go back to on a phone
-    this.more = [...this.children].filter(e => e.hasAttribute('data-more')).map(e => {
+    // each named child (and data-more separator) keeps a marker at its place in the bar, to go back to
+    this.more = [...this.children].filter(e => e.dataset.tip || e.hasAttribute('data-more')).map(e => {
       const mark = document.createComment('dock-more');
       e.before(mark);
       return [e, mark];
     });
     const btn = document.createElement('button');
     btn.className = 'dock-btn dock-cfg';
-    const name = this.more.length ? '더 보기' : '바 설정';
+    const name = '더 보기 · 바 설정';
     btn.dataset.tip = name;
     btn.setAttribute('aria-label', name);
     btn.innerHTML = '<ds-icon name="more"></ds-icon>';
@@ -45,29 +54,79 @@ class DsDock extends HTMLElement {
     menu.className = 'dock-menu dock-pop';
     menu.hidden = true;
     menu.innerHTML = `<div class="dock-more"></div><div class="dock-side"><span class="st">바 위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div></div>
-      <label class="st dock-size">크기 <input type="range" min="28" max="56" step="2"></label>`;
+      <label class="st dock-size">크기 <input type="range" min="28" max="56" step="2"></label>
+      <details class="dock-items"><summary class="st">바에 둘 항목</summary><div class="dock-pick"></div>
+        <button class="dock-reset">기본값으로</button></details>
+      <button class="dock-hide"><ds-icon name="eye-off"></ds-icon>바 숨기기</button>`;
     document.body.append(menu);
     const mark = () => menu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
     btn.onclick = e => { e.stopPropagation(); mark(); menu.querySelector('.dock-side').hidden = dockLocked(); menu.hidden = !menu.hidden; };
     menu.onclick = e => {
       if (e.target.closest('a')) { menu.hidden = true; return; }  // a tab moved here: going to it closes the menu
+      if (e.target.closest('.dock-hide')) { menu.hidden = true; this.collapse(true); return; }
+      if (e.target.closest('.dock-reset')) { save(ITEMS, '{}'); this.place(); this.picks(); return; }
       const b = e.target.closest('[data-dock]'); if (!b) return;
       save('adash.dock', b.dataset.dock); applyDock(b.dataset.dock); mark();
     };
-    const size = menu.querySelector('input');
+    const size = menu.querySelector('.dock-size input');
     size.value = dockSize();
     size.oninput = () => { save('adash.dock.size', size.value); applyDock(dockPos(), +size.value); };
+    menu.querySelector('.dock-pick').onchange = e => {
+      const p = prefs(); p[e.target.dataset.k] = e.target.checked ? 'bar' : 'more';
+      save(ITEMS, JSON.stringify(p)); this.place();
+    };
     document.addEventListener('click', e => { if (!menu.hidden && !this.contains(e.target) && !menu.contains(e.target)) menu.hidden = true; });
+    // folded (「바 숨기기」): only this button shows; it unfolds the bar
+    const show = this.show = document.createElement('button');
+    show.className = 'dock-btn dock-show';
+    show.dataset.tip = '바 보이기';
+    show.setAttribute('aria-label', '바 보이기');
+    show.innerHTML = '<ds-icon name="grid"></ds-icon>';
+    show.onclick = e => { e.stopPropagation(); this.collapse(false); };
+    this.append(show);
     this.phone();
+    this.picks();
     this.place();
     PHONE.addEventListener('change', () => this.place());
   }
-  // data-more children: in the ⋯ menu above the phone width, back in the bar (its sheet) on a phone
+  // menu items (data-more, or moved there in 「바에 둘 항목」): in the ⋯ menu above the phone width, back in the bar
+  // (its sheet) on a phone
+  inMore(e) {
+    if (!e.dataset.tip) return e.hasAttribute('data-more');
+    const p = prefs()[keyOf(e)];
+    return p ? p === 'more' : e.hasAttribute('data-more');
+  }
   place() {
     const box = this.menu.querySelector('.dock-more');
     for (const [el, mark] of this.more) {
-      if (PHONE.matches) { if (el.parentElement !== this) mark.after(el); } else if (el.parentElement !== box) box.append(el);
+      if (PHONE.matches || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
     }
+    this.seps();
+  }
+  // a bar separator with no visible item on one side of it (up to the next separator or the end) hides
+  seps() {
+    let seen = false, pend = null;  // pend: a separator after visible items, shown once one follows it
+    for (const el of this.children) {
+      if (el.classList.contains('dock-sep')) {
+        el.toggleAttribute('data-empty', true);
+        if (seen) { pend = el; seen = false; }
+      } else if (!el.matches('.dock-launch, .dock-head, .dock-cfg, .dock-show') && !el.hidden) {
+        seen = true;
+        if (pend) { pend.removeAttribute('data-empty'); pend = null; }
+      }
+    }
+  }
+  // the 「바에 둘 항목」 list: one checkbox per named item, checked = on the bar
+  picks() {
+    this.menu.querySelector('.dock-pick').innerHTML = this.more.filter(([e]) => e.dataset.tip).map(([e]) => {
+      const icon = e.querySelector('ds-icon')?.getAttribute('name') || (e.localName === 'ds-theme-toggle' ? 'sun' : 'grid');
+      return `<label><ds-icon name="${icon}"></ds-icon><span>${esc(e.dataset.tip)}</span><input type="checkbox" data-k="${esc(keyOf(e))}"${this.inMore(e) ? '' : ' checked'}></label>`;
+    }).join('');
+  }
+  collapse(on) {
+    save('adash.dock.hidden', on ? '1' : '');
+    applyDock();
+    (on ? this.show : this.querySelector('.dock-cfg')).focus({ preventScroll: true });
   }
   // the phone launcher and sheet (see the header comment)
   phone() {
@@ -94,7 +153,7 @@ class DsDock extends HTMLElement {
       if (!this.hasAttribute('open') || !hit || hit.parentElement === head) return;
       setTimeout(() => { if (hit.matches('a') || [...document.querySelectorAll('.dock-pop')].some(p => !p.hidden)) this.open(false); });
     });
-    new MutationObserver(() => this.mark()).observe(this, { subtree: true, attributes: true, attributeFilter: ['class', 'hidden'], childList: true, characterData: true });
+    new MutationObserver(() => { this.mark(); this.seps(); }).observe(this, { subtree: true, attributes: true, attributeFilter: ['class', 'hidden'], childList: true, characterData: true });
     this.mark();
   }
   open(on) {
