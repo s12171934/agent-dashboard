@@ -12,18 +12,24 @@
 <script type="module" src="ds.js"></script>
 <link rel="stylesheet" href="ds.css">
 <style>
+  /* one screen, never a page scroll: the list, the canvas and the panel each scroll inside */
+  html, body { height: 100%; overflow: hidden; }
   body { margin: 0; }
-  main { max-width: 1400px; margin: 0 auto; padding: 20px var(--gutter) 40px; }
+  main { max-width: 1400px; height: 100dvh; box-sizing: border-box; margin: 0 auto; display: flex; flex-direction: column;
+    padding: 16px var(--gutter) max(16px, env(safe-area-inset-bottom)); }
   h1 { font-size: 20px; margin: 0 0 4px; }
   h1 + .st a { color: var(--accent); }
+  .top { flex: none; }
   .tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
   #sum { flex-basis: 100%; }
   .ok { color: var(--done); }
   .bad { color: var(--bad); }
   .badge.bad { border-color: var(--bad); }
 
-  .sb { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
-  nav { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; padding: 10px; }
+  .sb { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; margin-top: 12px; }
+  nav { min-height: 0; overflow: auto; padding: 10px; }
+  .work { min-height: 0; display: flex; flex-direction: column; }
+  .head { flex: none; }
   nav .field { width: 100%; box-sizing: border-box; }
   #pick { display: none; }
   .nav-c { margin-top: 8px; }
@@ -41,10 +47,10 @@
   .head p { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
   .step { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
   .step #at { font-variant-numeric: tabular-nums; min-width: 4em; text-align: center; }
-  .stage { margin-top: 12px; height: clamp(340px, 62vh, 760px); overflow: auto; border: 1px solid var(--surface-edge); border-radius: 14px; background: var(--bg); }
+  .stage { flex: 1; min-height: 180px; margin-top: 12px; overflow: auto; border: 1px solid var(--surface-edge); border-radius: 14px; background: var(--bg); }
   .stage iframe { display: block; border: 0; width: 100%; height: 100%; margin: 0 auto; background: var(--bg); }
   .stage.fixed iframe { border-inline: 1px dashed var(--surface-edge); }
-  .panel { margin-top: 12px; padding: 12px 16px; }
+  .panel { flex: none; max-height: 32%; overflow: auto; margin-top: 12px; padding: 12px 16px; }
   .panel .seg { margin-bottom: 10px; }
   .chk { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   .chk button { all: unset; display: block; cursor: pointer; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; overflow-wrap: anywhere; }
@@ -54,19 +60,28 @@
   .doc { white-space: pre-wrap; color: var(--muted); font-size: 12px; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; }
 
   @media (max-width: 900px) {
-    .sb { grid-template-columns: minmax(0, 1fr); }
-    nav { position: static; max-height: none; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .sb { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
+    nav { overflow: visible; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
     #find, #list { display: none; }
     #pick { display: block; }
-    .stage { height: 70vh; }
   }
-  @media (max-width: 700px) { h1 { font-size: 18px; } .head, .panel { padding: 12px; } }
+  @media (max-width: 700px) {
+    main { padding-top: 10px; }
+    h1 { font-size: 18px; }
+    h1 + .st .what, #vw { display: none; }
+    .tools { gap: 6px 10px; margin-top: 6px; }
+    .head, .panel { padding: 10px 12px; }
+    .head p { display: none; }
+    .step { margin-top: 6px; }
+    .stage, .panel { margin-top: 10px; }
+  }
 </style>
 </head>
 <body>
 <main>
+  <div class="top">
   <h1>스토리</h1>
-  <div class="st">컴포넌트를 상황별로 하나씩 · 마크업은 components/&lt;이름&gt;/&lt;이름&gt;.html 의 <code>@story</code> · <a href="index.html">한 페이지로 전체 보기</a></div>
+  <div class="st"><span class="what">컴포넌트를 상황별로 하나씩 · 마크업은 components/&lt;이름&gt;/&lt;이름&gt;.html 의 <code>@story</code> · </span><a href="index.html">한 페이지로 전체 보기</a> · <a href="../">대시보드로</a></div>
   <div class="tools">
     <span class="st">테마</span><span class="seg" id="theme"></span>
     <span class="st">재질</span><span class="seg" id="mat"></span>
@@ -79,13 +94,14 @@
     <button type="button" class="act big" id="only" aria-pressed="false">문제만 보기</button>
     <div class="st" id="sum"></div>
   </div>
+  </div>
   <div class="sb">
     <nav class="surface" aria-label="컴포넌트와 스토리">
       <input class="field" id="find" type="search" placeholder="컴포넌트·스토리 찾기" aria-label="컴포넌트·스토리 찾기">
       <select class="field" id="pick" aria-label="스토리 고르기"></select>
       <div id="list"></div>
     </nav>
-    <div>
+    <div class="work">
       <div class="surface head">
         <div id="head"></div>
         <div class="step">
