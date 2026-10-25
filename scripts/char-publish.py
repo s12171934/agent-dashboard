@@ -10,9 +10,11 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
 as scripts/char-gen.sh leaves them (default: the current folder). The frame sizes and head tops (CH_ART) are measured
 from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), otherwise with the
 workers. A built-in name (aoi …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
-Needs `npx wrangler login` once, and Pillow with numpy.
+Each entry carries v (when it was put up), which the page adds to the picture URLs so a redrawn person shows at once,
+and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
+Needs `npx wrangler login` once, and Pillow with numpy (run it with "$(scripts/char-python.sh)").
 """
-import argparse, json, os, re, subprocess, sys, tempfile
+import argparse, json, os, re, subprocess, sys, tempfile, time
 import numpy as np
 from PIL import Image
 
@@ -91,7 +93,7 @@ missing = [p for p in paths.values() if not os.path.exists(p)]
 if missing:
     sys.exit('없는 파일: ' + ', '.join(missing))
 art = {k: measure(p, k in ('sd', 'sdb')) for k, p in paths.items()}
-m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'art': art}
+m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'v': int(time.time()), 'art': art}
 if o.dry_run:
     print(json.dumps(m, ensure_ascii=False, indent=1))
     sys.exit()
@@ -99,4 +101,6 @@ for k, p in paths.items():
     r2('put', f'{BUCKET}/chars/' + FILES[k].format(o.who), '--file', p,
        '--content-type', 'image/webp' if p.endswith('.webp') else 'image/png')
 put_manifest(m)  # last, so the page never lists someone whose pictures are not there yet
+with open(os.path.join(o.dir, '.published'), 'w') as fh:
+    json.dump({'who': o.who, 'at': m['chars'][o.who]['v']}, fh)
 print(f'{o.who} 를 올렸습니다 — 열린 탭은 다음에 열 때 보입니다')
