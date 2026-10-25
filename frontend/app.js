@@ -97,8 +97,25 @@ const homeViewBind = () => $('#home-view')?.querySelectorAll('button').forEach(b
   homeView = b.dataset.k; try { localStorage.setItem('adash.homeview', homeView); } catch {} hmEdit = false; render(true);
 });
 try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
-$('#char-mode').checked = charMode;
-$('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
+// 「캐릭터」 panel (the bar's ⋯ menu): everything about the characters in one place — 캐릭터 모드 on or off, how they
+// are drawn (charStyle) and framed (charFrame), and the way to the 「캐릭터」 tab. This device only.
+function charPanel() {
+  const el = $('#char-panel');
+  const seg = (k, cur, opts) => `<span class="seg" data-cp="${k}">${opts.map(([v, l]) => `<button data-k="${v}"${v === cur ? ' class="on"' : ''} aria-pressed="${v === cur}">${l}</button>`).join('')}</span>`;
+  el.innerHTML = `<div class="pop-h"><b>캐릭터</b><span class="st">이 기기에만 저장</span><button class="act" data-cp="close">닫기</button></div>
+    <label class="cp-row cp-on"><input type="checkbox" id="char-mode"${charMode ? ' checked' : ''}><span><b>캐릭터 모드</b><small>에이전트 탭과 홈을 캐릭터 사무실로</small></span></label>
+    <div class="cp-row"><span>그림체</span>${seg('style', charStyle, [['ai', 'AI 생성 (SD 픽셀)'], ['l2d', 'Live2D']])}</div>
+    <div class="cp-row"><span>보기</span>${seg('frame', charFrame, [['bust', '상반신'], ['full', '전신']])}</div>
+    <a class="act cp-link" href="#chars">캐릭터 그림 관리 →</a>`;
+  el.querySelector('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
+  const set = { style: k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} },
+    frame: k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} } };
+  el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); charPanel(); render(); });
+  el.querySelector('[data-cp=close]').onclick = () => { el.hidden = true; };
+  el.querySelector('.cp-link').onclick = () => { el.hidden = true; };
+  el.hidden = false;
+}
+$('#char-btn').onclick = () => { if ($('#char-panel').hidden) charPanel(); else $('#char-panel').hidden = true; };
 
 // ---------- model of the world ----------
 function index() {
@@ -2862,9 +2879,9 @@ function agViewBind() {
 // Same sessions and filters as the tree. A coordinator family is one room (coordinators first, then by state), solo
 // sessions share the last one. A room is one scene (wall with decorations, floor); each agent is one of six original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
-// (charFrame, Live2D only) and drawn in one of two styles (charStyle): 「AI 생성」 shows the generated pose for the state
-// as an SD chibi in pixel art, 「Live2D」 deforms the illustration live (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry
-// the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
+// (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터」 panel (charPanel): 「AI 생성」
+// shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
+// (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
 // drag (a long press on touch) or the arrow keys move them anywhere in the room.
 // Moved places are kept on this device (adash.chpos); 「원래 자리로」 puts everyone back on the grid.
 let charStyle = 'ai';  // ai | l2d
@@ -2875,16 +2892,17 @@ const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 // A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h), one pose per frame. full and
-// bust are anime illustrations (Live2D); sd is the same character as an SD chibi in pixel art (AI 생성, pw × ph):
+// bust are anime illustrations (Live2D); sd and sdb are the same character as an SD chibi in pixel art, whole and from
+// the waist up (AI 생성, pw × ph):
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
 // The coordinators (kaede, yuki) wear a headset; a session's hash picks the person, so they keep theirs across refreshes.
 const CH_ART = {
-  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]},sd:{pw:42,ph:58,top:[0.034,0.017,0.034,0.017,0.034,0.017,0.034,0.017]}},
-  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]},sd:{pw:41,ph:57,top:[0.035,0.053,0.053,0.035,0.035,0.053,0.053,0.035]}},
-  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]},sd:{pw:41,ph:57,top:[0.018,0.018,0.018,0.018,0.035,0.035,0.035,0.035]}},
-  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]},sd:{pw:40,ph:57,top:[0.035,0.035,0.035,0.035,0.053,0.053,0.053,0.053]}},
-  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]},sd:{pw:42,ph:57,top:[0.018,0.018,0.018,0.018,0.018,0.018,0.035,0.018]}},
-  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]},sd:{pw:42,ph:59,top:[0.051,0.034,0.034,0.034,0.051,0.017,0.034,0.034]}},
+  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]},sd:{pw:42,ph:58,top:[0.034,0.017,0.034,0.017,0.034,0.017,0.034,0.017]},sdb:{pw:56,ph:58,top:[0.034,0.034,0.034,0.034,0.052,0.017,0.034,0.017]}},
+  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]},sd:{pw:41,ph:57,top:[0.035,0.053,0.053,0.035,0.035,0.053,0.053,0.035]},sdb:{pw:54,ph:57,top:[0.053,0.053,0.053,0.053,0.053,0.053,0.07,0.053]}},
+  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]},sd:{pw:41,ph:57,top:[0.018,0.018,0.018,0.018,0.035,0.035,0.035,0.035]},sdb:{pw:54,ph:57,top:[0.018,0.035,0.018,0.018,0.053,0.053,0.035,0.035]}},
+  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]},sd:{pw:40,ph:57,top:[0.035,0.035,0.035,0.035,0.053,0.053,0.053,0.053]},sdb:{pw:54,ph:57,top:[0.035,0.053,0.035,0.035,0.07,0.07,0.088,0.07]}},
+  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]},sd:{pw:42,ph:57,top:[0.018,0.018,0.018,0.018,0.018,0.018,0.035,0.018]},sdb:{pw:57,ph:57,top:[0.018,0.018,0.018,0.018,0.035,0.018,0.035,0.018]}},
+  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]},sd:{pw:42,ph:59,top:[0.051,0.034,0.034,0.034,0.051,0.017,0.034,0.034]},sdb:{pw:56,ph:59,top:[0.068,0.017,0.017,0.034,0.068,0.017,0.017,0.034]}},
 };
 const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
 // 「캐릭터」 tab: a person switched off (false) is left out of the office; a list with everyone off keeps them all.
@@ -2895,14 +2913,15 @@ const chWho = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chH
 const chMove = (st, s) => s.decision ? 'dec' : st;
 const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
 const chSrc = (who, fr) => `chars/${who}-${fr}.webp`;
+const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png`;
 const CH_H = { bust: 132, full: 196 };
 function chFig(st, s) {
   const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
   const H = CH_H[charFrame], W = Math.round(a.w * H / a.h);
   if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
-  // AI 생성: the SD pixel sprite at a whole 3×, so every sprite pixel is a crisp 3 × 3 block (one size for both framings)
-  const sd = CH_ART[who].sd, pw = sd.pw * 3, ph = sd.ph * 3;
-  return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(chars/${who}-sd.png);background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
+  // AI 생성: the SD pixel sprite at a whole 3×, so every sprite pixel is a crisp 3 × 3 block
+  const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * 3, ph = sd.ph * 3;
+  return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
 }
 
 // Live2D: one shared WebGL canvas (a page may hold only ~16 contexts) renders each visible person's frame as a mesh the
@@ -3324,8 +3343,6 @@ function renderOffice() {
   const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
   $('#view').innerHTML = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       <div class="ch-tools surface">${home ? homeViewSeg() : ''}
-        <span class="seg" id="ch-style"><button data-k="ai">AI 생성</button><button data-k="l2d">Live2D</button></span>
-        ${charStyle === 'l2d' ? '<span class="seg" id="ch-frame"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>' : ''}
         <span class="ch-zoom"><button type="button" class="act" id="ch-out" aria-label="축소">−</button><button type="button" class="act" id="ch-zl" title="100%로">100%</button><button type="button" class="act" id="ch-in" aria-label="확대">+</button></span>
         <button type="button" class="act" id="ch-fit" aria-pressed="false" title="모든 방이 한눈에 들어오게">맞춤</button>
         <button type="button" class="act" id="ch-reset" title="옮긴 사람을 모두 처음 자리(격자)로 되돌림">원래 자리로</button>
@@ -3333,13 +3350,6 @@ function renderOffice() {
       ${home && chPanel ? staffPanel() : ''}
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
-  const seg = (id, get, set) => $(id).querySelectorAll('button').forEach(b => {
-    b.classList.toggle('on', b.dataset.k === get());
-    b.setAttribute('aria-pressed', b.dataset.k === get());
-    b.onclick = () => { set(b.dataset.k); renderOffice(); };
-  });
-  seg('#ch-style', () => charStyle, k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} });
-  if ($('#ch-frame')) seg('#ch-frame', () => charFrame, k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} });
   $('#ch-reset').onclick = () => {
     chPos = {}; chPosSave();
     const o = $('#view .office');
@@ -3364,7 +3374,7 @@ function renderOffice() {
 
 // ---------- 「캐릭터」 tab: each person's pictures, from the generated base through the SD sprite to Live2D ----------
 // One pose at a time in all three stages, so the chain reads left to right: 베이스 (frontend/chars/<who>-<fr>.webp, cut
-// from the AI sheet by char-sprites.py) → SD 픽셀 (<who>-sd.png, an SD chibi pixel sheet drawn from the full base,
+// from the AI sheet by char-sprites.py) → SD 픽셀 (<who>-sd[-bust].png, an SD chibi pixel sheet drawn from the full base,
 // 「AI 생성」 in the office) → Live2D (the base deformed live by L2D). A person can be left out of the office (chPool, this device only);
 // the counts are the sessions on show (liveSess) drawn as that person now. Live updates leave the page alone (chxMounted).
 const CH_INFO = {
@@ -3377,27 +3387,27 @@ const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait
 let chx = { fr: 'bust', pose: 1 }, chxMounted = false;
 try { Object.assign(chx, JSON.parse(localStorage.getItem('adash.chars') || '{}')); } catch {}
 function chxStages(who) {
-  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who].sd, f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 3, ph = sd.ph * 3;
+  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 3, ph = sd.ph * 3;
   const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * 8}px ${h}px;background-position:${-f * w}px 0"></span>`;
   const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
   return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
     + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(aoi 외는 aoi 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
-    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 3배`, spr(`chars/${who}-sd.png`, pw, ph, 'cx-px'))
+    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 3배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
     + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
     + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f]}" data-fr="${fr}" aria-hidden="true"></canvas>`);
 }
 function chxCard(who, boss, n) {
-  const [name, look] = CH_INFO[who], on = chPool[who] !== false, a = CH_ART[who].sd;
+  const [name, look] = CH_INFO[who], on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)];
   const thumbs = [...Array(8).keys()].map(i => `<button type="button" class="cx-pose${i === chx.pose ? ' on' : ''}" data-pose="${i}" aria-pressed="${i === chx.pose}" data-tip="${esc(CH_POSE_L[i])}" aria-label="${esc(CH_POSE_L[i])}">
-      <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(chars/${who}-sd.png);background-size:${a.pw * 8}px ${a.ph}px;background-position:${-i * a.pw}px 0"></span></button>`).join('');
+      <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${a.pw * 8}px ${a.ph}px;background-position:${-i * a.pw}px 0"></span></button>`).join('');
   return `<section class="cx surface${on ? '' : ' off'}" data-who="${who}">
     <div class="cx-h"><h3>${name}<span class="badge">${boss ? '코디네이터' : '워커'}</span></h3><span class="cx-look">${look}</span>
       <span class="cx-n">${on ? `맡은 세션 <b>${n}</b>` : '배치 안 함'}</span>
       <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
     <div class="cx-flow">${chxStages(who)}</div>
     <div class="cx-poses" role="group" aria-label="포즈">${thumbs}</div>
-    <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd.png</code>
+    <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>${chSdSrc(who, chx.fr)}</code>
       <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
       <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button></div>
   </section>`;
