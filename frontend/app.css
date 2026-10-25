@@ -226,7 +226,8 @@ a.tkc:hover { border-color: var(--accent); }
 .row { display: grid; grid-template-columns: minmax(0, 260px) 1fr 96px; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .row:last-child { border-bottom: 0; }
 .row .nm { display: flex; flex-direction: column; min-width: 0; }
-.row .nm b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.row .nm b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 6px;
+  padding-left: 3px; margin-left: -3px; }  /* room for the .dot.live ring (3px), which the clip would cut */
 .row .nm b > span { overflow: hidden; text-overflow: ellipsis; }
 .row .val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .row .val small { display: block; color: var(--muted); font-weight: 400; font-size: 10.5px; }
@@ -569,7 +570,8 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 
 /* a project's line of stages: each stage draws the half-segments on both sides of its node; green between two
    finished stages */
-.pj-flow { display: flex; align-items: flex-start; overflow-x: auto; padding: 2px 0; }
+/* the scroller clips both ways: 8px above and below holds the current step's pulse ring (7px out), the margin keeps the layout */
+.pj-flow { display: flex; align-items: flex-start; overflow-x: auto; padding: 8px 0; margin: -6px 0; }
 .pj-flow .pj-st { flex: 1 0 68px; min-width: 68px; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; cursor: pointer; }
 .pj-flow .pj-st::before, .pj-flow .pj-st::after { content: ""; position: absolute; top: 12px; height: 2px; width: 50%; background: var(--line); }
 .pj-flow .pj-st::before { left: 0; } .pj-flow .pj-st::after { right: 0; }
