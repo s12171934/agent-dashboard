@@ -17,4 +17,5 @@ a, button, label, summary, select, input { touch-action: manipulation; }
 /* opacity only: compositor-animated, no per-frame repaint (box-shadow keyframes repainted every frame) */
 @keyframes pulse { 50% { opacity: .45; } }
 @keyframes blink { 50% { opacity: .25; } }
+@keyframes bob { 50% { transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
