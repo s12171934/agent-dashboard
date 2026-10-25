@@ -1605,16 +1605,22 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-world .room::after { content: ""; position: absolute; right: -30px; bottom: -14px; width: 42px; height: 64px; pointer-events: none;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 64'%3E%3Cellipse cx='21' cy='61' rx='15' ry='3' fill='%23000' fill-opacity='.18'/%3E%3Cpath d='M21 40C10 36 4 24 8 14C15 20 20 28 21 40zM21 40C22 26 28 16 38 12C40 24 32 36 21 40zM21 40C18 26 19 12 23 4C29 14 27 30 21 40z' fill='%234f9a5a'/%3E%3Cpath d='M21 39C16 30 12 24 9 17M21 39C26 30 31 22 36 15' stroke='%23000' stroke-opacity='.15' fill='none'/%3E%3Cpath d='M10 40h22l-3 21H13z' fill='%23b8673f'/%3E%3Crect x='9' y='38' width='24' height='5' rx='2' fill='%23c97b52'/%3E%3C/svg%3E") no-repeat center / contain; }
 .ch-world .room:nth-child(even)::after { right: auto; left: -30px; }
-/* links between rooms (chLinks): a family spanning worktrees — coordinator's room → worker's room, dotted like footsteps
-   on the corridor floor (under the rooms, so a line passing another room hides behind it), a tag in the middle with how
-   many it sent */
+/* family lines (chLinks): a coordinator → each of its workers in another room, a curve in the family's colour (--fh,
+   a hue) over the rooms, and the chips its people wear (.ch-fam). Pointing at a person (.fam-hot) fades other families. */
 .ch-world .room { z-index: 1; }
-.ch-links { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; overflow: visible; }
-.ch-links line { stroke: var(--accent); stroke-width: 5; stroke-linecap: round; stroke-dasharray: .1 13; opacity: .85; }
-.ch-links marker path { fill: var(--accent); }
-.ch-link-tag { position: absolute; z-index: 3; transform: translate(-50%, -50%); pointer-events: auto; white-space: nowrap; padding: 3px 10px; border-radius: 999px;
-  font-size: 12px; color: var(--text); background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 4px 10px -4px rgb(0 0 0 / .3); }
-.ch-link-tag b { font-variant-numeric: tabular-nums; }
+.ch-links { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; overflow: visible; }
+.ch-link { --fc: hsl(var(--fh) 72% 48%); transition: opacity .2s; }
+.ch-link path { fill: none; stroke: var(--fc); stroke-width: 4; stroke-linecap: round; }
+.ch-link path.halo { stroke: var(--panel); stroke-width: 9; opacity: .85; }
+.ch-link circle, .ch-link path.tip { fill: var(--fc); stroke: var(--panel); stroke-width: 2; }
+.ch-link-tag, .ch-fam { --fc: hsl(var(--fh) 72% 48%); }
+.ch-link-tag { position: absolute; z-index: 3; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: #fff; background: var(--fc); box-shadow: 0 4px 10px -4px rgb(0 0 0 / .35); transition: opacity .2s; }
+.ch-fam { display: block; max-width: 100%; margin: 3px auto 0; width: fit-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; color: var(--fc); background: color-mix(in srgb, var(--fc) 14%, var(--panel)); border: 1.5px solid var(--fc); }
+.fam-hot .ch-link:not(.fam-on), .fam-hot .ch-link-tag:not(.fam-on) { opacity: .12; }
+.fam-hot .ch:not(.fam-on) { opacity: .45; }
+.fam-hot .ch-link.fam-on path:not(.halo) { stroke-width: 6; }
 /* the lobby: the office sign (date, time of day, head count) between a reception desk and a lounge */
 .ch-lobby { grid-column: 1 / -1; position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; min-height: 250px;
   padding: 0 28px; overflow: hidden; isolation: isolate; pointer-events: none; border: 8px solid color-mix(in srgb, var(--wood) 40%, #3a3a44); border-radius: 22px;
