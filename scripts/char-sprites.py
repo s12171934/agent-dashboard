@@ -5,7 +5,8 @@ Drops the white backdrop (a flood from the cell edges, plus flat white gaps betw
 lines the frames up (a bust by its head), crops all 8 with one shared box so a pose keeps its place, and scales them
 to 320 px (full) or 240 px (bust) high (the Live2D pictures). Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
 starts as a share of h — which goes into CH_ART in frontend/app.js. An sd sheet (SD chibi pixel art, 「AI 생성」) is
-snapped to a pixel grid (standing pose 56 rows high) and written as <out> itself (a .png), with {pw, ph} instead of {w, h}.
+snapped to a pixel grid (standing pose 56 rows high) and written as <out> itself (a .png), with {pw, ph} instead of {w, h},
+and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}).
   scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png>
 Needs Pillow, numpy and scipy.
 """
@@ -16,6 +17,7 @@ from scipy import ndimage
 
 src, kind, out = sys.argv[1:4]
 SD_BODY = 56  # an SD sprite's standing height (frame 0, head to feet) in pixels
+SD_CUT, SD_BUST = .75, 56  # an SD bust: the top 75 % of the standing height, that part 56 rows high
 H = 320 if kind == 'full' else 240  # output frame height
 im = Image.open(src).convert('RGB')
 W0, H0 = im.size
@@ -89,37 +91,48 @@ if kind == 'sd':
     qi = np.asarray(pal); cols = np.asarray(pal.getpalette()[:64 * 3]).reshape(-1, 3)
     al = np.asarray(full)[:, :, 3] > 128
     dark = cols.mean(axis=1) < 70
-    PH = int((y1 - y0) / bs + .5); PW = int((x1 - x0) / bs + .5)
-    px = np.zeros((PH, PW * 8, 4), np.uint8)
-    for i in range(8):
-        for j in range(PH):
-            ys = slice(y0 + int(j * bs), y0 + max(int((j + 1) * bs), int(j * bs) + 1))
-            for k in range(PW):
-                xs = slice(i * cw + x0 + int(k * bs), i * cw + x0 + max(int((k + 1) * bs), int(k * bs) + 1))
-                m = al[ys, xs]
-                if m.mean() < .5: continue
-                cnt = np.bincount(qi[ys, xs][m], minlength=64)
-                # a dark colour (lineart, an eye) that covers a good part of the block wins over the mode
-                dk = np.where(dark, cnt, 0)
-                v = dk.argmax() if dk.max() >= .3 * m.sum() else cnt.argmax()
-                px[j, i * PW + k] = (*cols[v], 255)
-    # drop stray pixels: an opaque pixel with at most one opaque neighbour is noise from the backdrop's edge
-    for _ in range(2):
+
+    def pixel(bs, yb, path, cut):
+        """the box from y0 down to yb in bs-px blocks, written to path; cut: the bottom edge is a cut (a bust), not an outline"""
+        PH = int((yb - y0) / bs + .5); PW = int((x1 - x0) / bs + .5)
+        px = np.zeros((PH, PW * 8, 4), np.uint8)
+        for i in range(8):
+            for j in range(PH):
+                ys = slice(y0 + int(j * bs), y0 + max(int((j + 1) * bs), int(j * bs) + 1))
+                for k in range(PW):
+                    xs = slice(i * cw + x0 + int(k * bs), i * cw + x0 + max(int((k + 1) * bs), int(k * bs) + 1))
+                    m = al[ys, xs]
+                    if not m.size or m.mean() < .5: continue
+                    cnt = np.bincount(qi[ys, xs][m], minlength=64)
+                    # a dark colour (lineart, an eye) that covers a good part of the block wins over the mode
+                    dk = np.where(dark, cnt, 0)
+                    v = dk.argmax() if dk.max() >= .3 * m.sum() else cnt.argmax()
+                    px[j, i * PW + k] = (*cols[v], 255)
+        # drop stray pixels: an opaque pixel with at most one opaque neighbour is noise from the backdrop's edge
+        for _ in range(2):
+            o = px[:, :, 3] > 0
+            nb = sum(np.roll(o, sh, ax) for sh, ax in ((1, 0), (-1, 0), (1, 1), (-1, 1)))
+            px[o & (nb <= 1)] = 0
+        # a clean 1 px outline: every pixel on the silhouette's edge becomes a dark shade of its own colour (this also
+        # hides the backdrop's whitish fringe)
         o = px[:, :, 3] > 0
-        nb = sum(np.roll(o, sh, ax) for sh, ax in ((1, 0), (-1, 0), (1, 1), (-1, 1)))
-        px[o & (nb <= 1)] = 0
-    # a clean 1 px outline: every pixel on the silhouette's edge becomes a dark shade of its own colour (this also
-    # hides the backdrop's whitish fringe)
-    o = px[:, :, 3] > 0
-    inner = o & np.roll(o, 1, 0) & np.roll(o, -1, 0) & np.roll(o, 1, 1) & np.roll(o, -1, 1)
-    rim = o & ~inner
-    px[rim, :3] = (px[rim, :3] * .3).astype(np.uint8)
-    Image.fromarray(px).save(out, optimize=True)
-    meta = {'pw': PW, 'ph': PH, 'frames': []}
-    for i in range(8):
-        a = px[:, i * PW:(i + 1) * PW, 3] > 0
-        b = a[:, int(PW * .38):int(PW * .62)]
-        meta['frames'].append({'top': round(int(np.where(b.sum(axis=1) > b.shape[1] * .3)[0][0]) / PH, 3)})
+        inner = o & np.roll(o, 1, 0) & np.roll(o, -1, 0) & np.roll(o, 1, 1) & np.roll(o, -1, 1)
+        rim = o & ~inner
+        if cut: rim[-1] = o[-1] & ~(np.roll(o[-1], 1) & np.roll(o[-1], -1))
+        px[rim, :3] = (px[rim, :3] * .3).astype(np.uint8)
+        Image.fromarray(px).save(path, optimize=True)
+        meta = {'pw': PW, 'ph': PH, 'frames': []}
+        for i in range(8):
+            a = px[:, i * PW:(i + 1) * PW, 3] > 0
+            b = a[:, int(PW * .38):int(PW * .62)]
+            meta['frames'].append({'top': round(int(np.where(b.sum(axis=1) > b.shape[1] * .3)[0][0]) / PH, 3)})
+        return meta
+
+    meta = pixel(bs, y1, out, False)
+    # the bust: from the head down to just below the waist (SD_CUT of the standing height), on a finer grid so the
+    # face gets more pixels — written next to it as <out>-bust.png
+    yb = b0[1] + SD_CUT * (b0[3] - b0[1])
+    meta['bust'] = pixel((yb - b0[1]) / SD_BUST, yb, out.rsplit('.', 1)[0] + '-bust.png', True)
     print(json.dumps(meta))
     sys.exit()
 s = H / (y1 - y0); FW = round((x1 - x0) * s)
