@@ -2109,7 +2109,13 @@ const jiraStage = t => {
   const n = (t.status || '').replace(/\s/g, '');
   return /hold|홀딩|보류/i.test(n) ? 'hold' : /QA준비/.test(n) ? 'ready' : /개발완료/.test(n) ? 'dev' : /QA완료/.test(n) || t.cat === 'done' ? 'qa' : t.cat === 'new' ? 'todo' : 'prog';
 };
-const obsLink = p => 'obsidian://open?path=' + encodeURIComponent(p);
+// A note in Obsidian. Inside a server's vault it goes by vault name and vault-relative path, which also opens on a phone
+// (the Mac's absolute path does not exist there and Obsidian only starts); outside one, by absolute path.
+const obsLink = p => {
+  const root = (state?.vaults || []).find(v => p.startsWith(v + '/'));
+  return root ? `obsidian://open?vault=${encodeURIComponent(root.split('/').pop())}&file=${encodeURIComponent(p.slice(root.length + 1).replace(/\.md$/, ''))}`
+    : 'obsidian://open?path=' + encodeURIComponent(p);
+};
 const BASE_SRC = { PR: 'PR 의 base', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
 function wtTest(x) {
   if (!x) return '';
@@ -5602,12 +5608,12 @@ document.addEventListener('click', e => { if (chatHeld) { chatHeld = false; e.st
 //   branch and opens the same detail below the graph (가로) or beside it (세로).
 // Picking a step splits the detail: the stages and steps on one side, the step's Obsidian note on the other. The
 // documents themselves open in Obsidian: a step's 「Obsidian」 button, the note's title, its 「Obsidian 에서 열기」, and
-// the [[links]] in it (obsidian://open?path=, or a search for a link outside the project folder).
+// the [[links]] in it (obsLink, or a search for a link outside the project folder).
 const PJ_ST = { done: '완료', failed: '실패', active: '진행 중', pending: '예정', scheduling: '일정 미정', empty: '작업 없음' };
 const PJ_C = { done: 'var(--done)', failed: 'var(--bad)', active: 'var(--run)', pending: 'var(--muted)', scheduling: 'var(--idle)', empty: 'var(--idle)' };
 const pjFin = st => st.status === 'done' || st.status === 'failed';
-// A note in Obsidian: by its absolute path, which the project's progress.json path (absolute) gives the folder of.
-const pjObsidian = abs => 'obsidian://open?path=' + encodeURIComponent(abs);
+// A note in Obsidian (obsLink): its absolute path comes from the project's progress.json path (absolute).
+const pjObsidian = obsLink;
 const pjAbs = (p, rel) => p.path.replace(/[^/]*$/, '') + rel;
 const pjPct = x => x.total ? Math.round(x.counts.done / x.total * 100) : 0;
 const pjPeriod = (a, b) => a ? (b && b !== a ? `${a} ~ ${b}` : a) : '날짜 미정';

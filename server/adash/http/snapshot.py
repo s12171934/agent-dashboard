@@ -1,6 +1,7 @@
 """The /api/state snapshot, built once per version, and the /events stream that announces new versions."""
 
 import gzip
+import os
 import threading
 import time
 
@@ -21,6 +22,7 @@ from adash.features.sessions.idle import apply_prefs
 from adash.features.terminals.pending import pending_sessions
 from adash.features.terminals.targets import close_tree, focus_targets
 from adash.features.tests.tests import test_progress
+import adash.core.config as core_config
 import adash.core.state as core_state
 import adash.features.designs.store as designs_store
 import adash.features.plan_usage.usage as plan_usage_mod
@@ -104,6 +106,8 @@ def build_state(encode):
             "decisions": decisions,
             "flow": flow,
             "plan_usage": plan_usage_mod.plan_usage,
+            # the vault root (--vault): the page links its notes by vault name and relative path, which a phone can open
+            "vault": core_config.VAULT if os.path.isdir(core_config.VAULT) else None,
         })
     return v, body
 

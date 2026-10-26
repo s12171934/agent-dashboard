@@ -138,6 +138,8 @@ const api = (() => {
     out.health = mergeHealth(parts.map(([s, d]) => [s, d.health]));
     // design documents: whether any server indexes them, and a version string that changes when a server's index does
     out.design = { enabled: parts.some(([, d]) => d.design?.enabled), version: parts.map(([s, d]) => `${s.id}:${d.design?.version ?? ''}`).join(',') };
+    // each server's vault root, for the Obsidian links (app.js obsLink); a server older than it sends none
+    out.vaults = [...new Set(parts.map(([, d]) => d.vault).filter(Boolean))];
     owner = next;
     return out;
   }
