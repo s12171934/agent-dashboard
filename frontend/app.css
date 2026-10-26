@@ -737,8 +737,10 @@ a.act { text-decoration: none; display: inline-block; }
   /* the log in half a screen: time and text, the role written before the text (renderSession), as on a narrow screen */
   .log div { grid-template-columns: 52px 1fr; }
   .log div > span:nth-child(2) { display: none; }
-  /* home: the changes on one half, 내 차례 and 진행 중 on the other, so nothing lies across the fold */
-  main .hm-main { grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }  /* main: beats the 900px rule further down */
+  /* home widgets: one half each (a wide one spans both), so no widget lies across the fold */
+  main .hm-grid { grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }  /* main: beats the 900px rule further down */
+  .hm-grid > :is(.hw.S, .hw.M, .hw.L) { grid-column: span 1; }
+  .hm-grid > .hw.L { grid-row: span 2; }
   /* a side bar pads both sides alike, so the page's middle stays on the fold */
   :root:is([data-dock="left"], [data-dock="right"]) :is(main, #dec-alert, #decisions, #decide-head, #inbox) { padding-inline: calc(var(--dock-pick, 38px) + 38px); }
 }
@@ -1270,25 +1272,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 
 /* ---------- 홈: widget grid (S 1 column, M 2, L 2×2, W the row) ---------- */
 .hm-h .hm-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-/* the changes since the baseline (a wide column), and beside them 내 차례 over 진행 중 */
-.hm-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-.hm-side { display: grid; gap: 14px; min-width: 0; }
-.hm-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-.hm-stat { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
-.hm-stat b { font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
-.hm-stat.bad b { color: var(--bad); }
-.hm-stat.zero b { opacity: .35; }
-.hm-ch { display: grid; grid-template-columns: 44px auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; color: inherit; text-decoration: none; }
-.hw-body > .hm-ch:first-child, .hm-gap + .hm-ch { border-top: 0; }
-.hm-ch:hover .hw-t { color: var(--accent); }
-.hm-ch .hw-t { white-space: normal; }
-.hm-ch .hw-t small { white-space: nowrap; }
-.hm-at { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.hm-gap { font-size: 11.5px; color: var(--muted); padding: 10px 0 4px; border-top: 1px dashed var(--line); }
-.hm-live { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); color: inherit; text-decoration: none; font-size: 13px; }
-.hw-body > .hm-live:first-child { border-top: 0; }
-.hm-live:hover .hw-who b { color: var(--accent); }
-.hm-live .pbar { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+.hm-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(140px, auto); grid-auto-flow: dense; gap: 14px; }
 .hw { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .hw.S { grid-column: span 1; } .hw.M { grid-column: span 2; } .hw.L { grid-column: span 2; grid-row: span 2; } .hw.W { grid-column: 1 / -1; }
 .hw h3 { margin: 0; font-size: 13.5px; display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1373,15 +1357,15 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-proj b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .hw-proj .ctxbar span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
 @media (max-width: 900px) {
-  .hm-main { grid-template-columns: minmax(0, 1fr); }
+  .hm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hw.L { grid-row: auto; }
 }
 @media (max-width: 500px) {
-  .hm-main, .hm-side { gap: 10px; }
-  .hm-ch { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .hm-ch .hm-at { display: none; }
-  .hm-stat { padding: 6px 10px; }
+  .hm-grid { gap: 10px; grid-auto-rows: auto; }
+  .hw.M, .hw.L, .hw.W { grid-column: 1 / -1; }
   .hw-run { grid-template-columns: minmax(0, 1fr) auto; }
   .hw-run .pbar { grid-column: 1 / -1; grid-row: 2; }
+  .hm-h .hm-tools .st { display: none; }
 }
 .hw-rest { font-size: 12px; color: var(--muted); padding-top: 6px; border-top: 1px solid var(--line); }
 .hw-rest a { color: var(--accent); text-decoration: none; }

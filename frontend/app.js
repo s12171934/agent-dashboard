@@ -351,7 +351,6 @@ async function renderView(navigated) {
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
-  if (r.v !== 'home' || charMode) hmLeave();  // leaving 홈: the last moment it was seen
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
   document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom figure (맞춤), on the bar
   if (!office) document.documentElement.classList.remove('ch-full');
@@ -6274,9 +6273,9 @@ function ticketDesignBadge(p, n) {
   return `<div class="tg-d" title="${esc('읽은 설계 섹션\n' + tip)}">${top.map(x => esc(lbl(x))).join(' · ')}${rows.length > 3 ? ` <span>+${rows.length - 3}</span>` : ''}</div>`;
 }
 
-// ---------- widgets over the snapshot: the office's staff (운영실), and 내 차례 on 홈 ----------
+// ---------- widgets over the snapshot: the office's staff (운영실) ----------
 // Each widget is a function of the snapshot that returns its body, or null when there is nothing to show (no QA sets,
-// no test ever). The layout (adash.home) was 위젯 홈's; 홈 is now fixed (renderHome below) and the list only says which
+// no test ever). The layout (adash.home) was 위젯 홈's; 홈 is now the ticket board (renderHome) and the list only says which
 // staff members the office seats, with each widget's own options (opts). Sizes: S one column, M two, L two by two, W
 // the whole row.
 const HM_SIZES = ['S', 'M', 'L', 'W'];
@@ -6568,117 +6567,84 @@ const HM_W = {
 let hmLay = { widgets: HM_DEFAULT.map(w => ({ ...w })), fold: {} };
 try { const v = JSON.parse(localStorage.getItem('adash.home') || 'null'); if (Array.isArray(v?.widgets)) hmLay = { widgets: v.widgets.filter(w => HM_W[w.id] && HM_SIZES.includes(w.size)), fold: v.fold || {} }; } catch {}
 
-// ---------- 「홈」: what changed since the person last looked, then what waits for them and what is moving ----------
-// The baseline (adash.seenBase) is the last moment this device had 홈 on screen before the person went away: adash.seen
-// follows 홈 while it shows, and coming back to it after over HM_AWAY moves the baseline there — a reload or a quick
-// look at another tab keeps it. 「확인함」 sets it to now; a fixed window can be picked beside it. Everything is read off
-// the snapshot's timestamps — a session's last record, a QA ticket's entry into its stage, a test's end — plus the
-// vault notes made since. Stale things stay off: a 막힘 over a day (hmMine), 응답 없음 from before the baseline.
-const HM_BASE = [['seen', '지난번 본 뒤'], [3, '3시간'], ['day', '오늘']];
-const HM_AWAY = 5 * 60e3;
-let hmBase = 'seen', hmShown = false;
-const hmLS = (k, v) => { try { if (v === undefined) return +localStorage.getItem(k) || 0; localStorage.setItem(k, String(v)); } catch {} return 0; };
-const hmMarkSeen = () => hmLS('adash.seen', Date.now());
-function hmEnter() {
-  const last = hmLS('adash.seen');
-  if (!last || Date.now() - last > HM_AWAY) hmLS('adash.seenBase', last || Date.now() - 8 * 3600e3);  // first visit: the last eight hours
-  hmShown = true;
+// ---------- 「홈」: the work in hand, one row per ticket ----------
+// The person's unit of work is a ticket, not a session: a ticket's brief, hand-offs, coordinator and workers are many
+// sessions. Each session goes to the first Jira-style key in its title, worktree or branch (PRD-49·50 and prd49-50
+// are both PRD-49; a lower-case key counts only with a prefix seen in upper case somewhere), a worker without one to
+// its coordinator's. A ticket is on the board while one of its sessions is (hmRecent) or its QA ticket waits at a user
+// gate; it is drawn as 작업 보드 drew a family — the ticket's row, then its sessions under it.
+const TK_RE = /\b([A-Za-z]{2,6})-?(\d{2,5})\b/;
+function hmTkKeys(ss) {
+  const known = new Set((wtData.sets || []).flatMap(x => x.tickets.map(t => t.key.split('-')[0])));
+  for (const s of ss) for (const t of [s.title, s.place?.worktree, s.place?.branch]) { const m = t && /\b([A-Z]{2,6})-(\d{2,5})\b/.exec(t); if (m) known.add(m[1]); }
+  return s => { for (const t of [s.title, s.place?.worktree, s.place?.branch]) { const m = t && TK_RE.exec(t); if (m && known.has(m[1].toUpperCase())) return `${m[1].toUpperCase()}-${m[2]}`; } return null; };
 }
-const hmLeave = () => { if (hmShown) { hmMarkSeen(); hmShown = false; } };
-addEventListener('pagehide', hmLeave);
-document.addEventListener('visibilitychange', () => { if (document.hidden) hmLeave(); else if (route().v === 'home' && !charMode) render(); });
-function hmSince() {
-  if (hmBase === 'day') return new Date().setHours(0, 0, 0, 0);
-  if (hmBase !== 'seen') return Date.now() - hmBase * 3600e3;
-  return hmLS('adash.seenBase') || Date.now() - 8 * 3600e3;
+const hmAsk = s => !s.decision && status(s) === 'wait' && s.plan?.cur_text && s.plan.done < s.plan.total && HM_ASK.test(s.plan.cur_text);
+// What the ticket needs, most urgent first: [rank, pill state, label].
+function hmTkState(ms, qa) {
+  const n = f => ms.filter(f).length, st = s => status(s);
+  const fresh = qa?.at?.[qa.stage] && Date.now() - new Date(qa.at[qa.stage]).getTime() < HM_STALE;
+  if (n(s => s.decision)) return [0, 'wait', '결정 대기'];
+  if (n(hmAsk)) return [1, 'wait', '보고 확인'];
+  if (qa && !qa.ignored && qa.stage === 'committed' && qa.repos) return [2, 'wait', '반출 승인'];
+  if (qa?.blocked && fresh) return [3, 'stalled', '막힘'];
+  if (n(s => st(s) === 'stalled' && hmRecent(s))) return [4, 'stalled', `응답 없음 ${n(s => st(s) === 'stalled' && hmRecent(s))}`];
+  if (n(s => st(s) === 'run')) return [5, 'run', `실행 중 ${n(s => st(s) === 'run')}`];
+  if (n(s => st(s) === 'bg')) return [6, 'bg', '백그라운드'];
+  if (n(s => st(s) === 'wait')) return [7, 'wait', '입력 대기'];
+  return [8, ms.some(s => st(s) === 'done') ? 'done' : 'idle', ms.some(s => st(s) === 'done') ? '완료' : '유휴'];
 }
-const hmTime = ms => new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-// The changes since t0, newest first: {at, kind, cls, main, sub, right, href}.
-function hmChanges(t0) {
-  const out = [], devOf = new Map();
-  for (const x of state.flow?.items || []) if (x.session) devOf.set(x.session, [...devOf.get(x.session) || [], x]);
-  for (const s of state.sessions) {
-    if (s.parent || !s.last_ts) continue;
-    const at = toDate(s.last_ts).getTime(), st = status(s);
-    if (at < t0 || ['run', 'bg'].includes(st)) continue;  // still working: 진행 중 has it
-    const p = s.plan, dev = devOf.get(s.path);
-    const kind = s.decision ? ['결정 대기', 'q'] : st === 'stalled' ? ['멈춤', 'bad'] : st === 'done' || p && p.done >= p.total ? ['끝남', 'ok'] : ['턴 끝', 'idle'];
-    const la = s.last_action, said = la?.role === 'assistant' ? la.text : la ? `${NOW_ROLE[la.role] || ''} · ${la.text}` : '';
-    out.push({ at, kind: kind[0], cls: kind[1], href: sessHref(s),
-      main: `${esc(cut(nameOf(s), 60))}${p ? ` <span class="st">계획 ${p.done}/${p.total}</span>` : ''}${dev ? ` <span class="hw-dev" title="${esc(dev.map(x => x.reason).join('\n'))}">⚠ ${esc(dev[0].rule_name || dev[0].rule)}</span>` : ''}`,
-      sub: esc(cut(said, 140)), right: pill(st, s) });
+function hmTickets(all) {
+  const ss = state.sessions.filter(s => !s.parent), keyOf = hmTkKeys(ss), up = coordOf(families().fams), by = new Map(), rest = [];
+  for (const s of ss) {
+    const c = up.get(s.path)?.coord, k = keyOf(s) || (c && keyOf(c));
+    if (k) (by.get(k) || by.set(k, []).get(k)).push(s); else rest.push(s);
   }
-  for (const set of wtData.sets || []) for (const t of set.tickets) {
-    const q = t.qa, at = q?.at?.[q.stage] && new Date(q.at[q.stage]).getTime();
-    if (!q || q.ignored || !at || at < t0) continue;
-    out.push({ at, kind: 'QA', cls: q.blocked ? 'bad' : q.stage === 'committed' || q.stage === 'delivered' ? 'ok' : '', href: '#worktrees',
-      main: `${esc(t.key)} → <b>${esc(qaName(q.stage))}</b>${q.blocked ? ' <span class="hw-dev">막힘</span>' : ''}${q.round > 1 ? ` <span class="st">${q.round}회차</span>` : ''}`,
-      sub: esc(cut(q.blocked ? q.blocked_reason || t.summary || '' : t.summary || '', 140)) });
+  const qaOf = new Map();
+  for (const set of wtData.sets || []) for (const t of set.tickets) if (t.qa) qaOf.set(t.key, t);
+  const tks = [];
+  for (const [key, ms] of by) {
+    const t = qaOf.get(key), qa = t?.qa && { ...t.qa, repos: t.repos.length };
+    const [rank, pst, label] = hmTkState(ms, qa);
+    if (!all && !ms.some(hmRecent) && rank > 3) continue;
+    const last = ms.reduce((a, s) => toDate(s.last_ts) > toDate(a.last_ts) ? s : a);
+    // the ticket's name: the first session that carries the key in its own title (a worker under it may be about anything)
+    const named = [...ms].sort(byStart).find(s => keyOf({ title: s.title }) === key) || [...ms].sort(byStart)[0];
+    tks.push({ key, ms, t, qa, rank, pst, label, last, named });
   }
-  for (const t of testItems()) {
-    const at = t.finished_at && new Date(t.finished_at).getTime();
-    if (!at || at < t0) continue;
-    const bad = t.phase === 'failed' || t.failed;
-    out.push({ at, kind: bad ? '테스트 실패' : '테스트 통과', cls: bad ? 'bad' : 'ok', href: '#tests', main: esc(cut(t.label || t.key, 70)),
-      sub: `${t.total ? `${t.passed ?? t.done ?? 0}/${t.total} 통과` : ''}${t.failed ? ` · 실패 ${t.failed}` : ''}${t.failures?.[0] ? ` · ${esc(cut(t.failures[0].id, 60))}` : ''}` });
-  }
-  // the vault notes, one row per session that wrote them (a session often writes a dozen at once)
-  const notes = hmData('vault', () => api.vaultRecent(40), Math.floor(Date.now() / 60e3)), by = new Map();
-  for (const n of notes?.notes || []) if (n.mtime * 1000 >= t0) { const k = n.session || n.agent; by.set(k, [...by.get(k) || [], n]); }
-  for (const ns of by.values()) {
-    const n0 = ns[0], who = n0.session_title || (n0.session || /[0-9a-f]{8}-[0-9a-f]{4}-/.test(n0.agent) ? '' : n0.agent);  // a bare session id names nothing
-    out.push({ at: n0.mtime * 1000, kind: '문서', cls: '', docs: ns.length, href: n0.session ? `#s=${encodeURIComponent(n0.session)}` : obsLink(n0.abs),
-      main: `${ns.length > 1 ? `문서 ${ns.length}개` : esc(cut(n0.title, 70))}${who ? ` <span class="st">${esc(cut(who, 50))}</span>` : ''}`,
-      sub: ns.length > 1 ? esc(cut(ns.map(x => x.title).join(' · '), 160)) : '' });
-  }
-  return out.sort((a, b) => b.at - a.at);
+  tks.sort((a, b) => a.rank - b.rank || toDate(b.last.last_ts) - toDate(a.last.last_ts));
+  return { tks, rest: byRank(rest.filter(s => all || hmRecent(s)), sessRank) };
 }
-
-// The cost of every session's 5-minute slots from t0 on.
-function hmCostSince(t0) {
-  let sum = 0;
-  for (const s of state.sessions) for (const [k, v] of Object.entries(s.slots || {})) if (+k * 300e3 + 300e3 > t0) sum += v[4];
-  return sum;
+function hmTicketsHtml(all) {
+  const { tks, rest } = hmTickets(all);
+  const row = (cls, name, sub, cells, right, href) => `<a class="hw-run ${cls}" href="${href}"><span class="hw-who"><b>${name}</b><small>${sub}</small></span>${cells}<span class="hw-right">${right}</span></a>`;
+  const out = [];
+  for (const x of tks) {
+    const lead = byRank(x.ms, sessRank)[0], said = x.last.last_action?.role === 'assistant' ? x.last.last_action.text : '';
+    const prs = [...new Set([...(x.qa?.prs || []), ...(x.t?.repos || []).map(r => r.pr?.url).filter(Boolean)])];
+    const title = x.t?.summary || nameOf(x.named).replace(new RegExp(TK_RE.source + '(?:[·,-]\\d+)*'), '').replace(/^[\s·:-]+/, '');
+    const sub = [`세션 ${x.ms.length}`, lead.plan && `계획 ${lead.plan.done}/${lead.plan.total}${lead.plan.cur_text ? ' · ' + esc(cut(lead.plan.cur_text, 24)) : ''}`,
+      x.qa && `QA ${esc(qaName(x.qa.stage))}`, prs.length && `PR ${prs.length}`, said && `“${esc(cut(said, 60))}”`].filter(Boolean).join(' · ');
+    const href = x.rank === 0 ? '#decide' : x.rank === 2 || x.rank === 3 ? '#worktrees' : sessHref(lead);
+    out.push(row('fam', `${esc(x.key)} ${esc(cut(title, 40))}`, sub, hmPlanCells(lead), `<ds-pill state="${x.pst}">${x.label}${x.rank > 4 ? ' · ' + ago(x.last.last_ts) : ''}</ds-pill>`, href));
+    const kids = byRank(x.ms.filter(m => all || hmRecent(m) || m.decision), sessRank);
+    // under a session: its plan, else what it said last
+    const said1 = m => m.plan ? `계획 ${m.plan.done}/${m.plan.total}${m.plan.cur_text ? ' · ' + esc(cut(m.plan.cur_text, 30)) : ''}` : m.last_action?.role === 'assistant' ? esc(cut(m.last_action.text, 70)) : esc(ROLE[m.role] || '');
+    for (const m of kids.slice(0, 4)) out.push(row('sub', esc(cut(nameOf(m), 40)), said1(m), hmPlanCells(m), pill(status(m), m), sessHref(m)));
+    if (kids.length > 4) out.push(`<div class="hw-run sub st">외 ${kids.length - 4}개</div>`);
+  }
+  if (rest.length) out.push(`<div class="hw-sub">티켓 없는 세션 ${rest.length}</div>`);
+  for (const s of rest) out.push(row('solo', esc(cut(nameOf(s), 40)), s.plan ? `계획 ${s.plan.done}/${s.plan.total}${s.plan.cur_text ? ' · ' + esc(cut(s.plan.cur_text, 30)) : ''}` : '단독', hmPlanCells(s), pill(status(s), s), sessHref(s)));
+  return { n: tks.length, note: `티켓 ${tks.length}${rest.length ? ` · 그 밖의 세션 ${rest.length}` : ''}`, body: out.join('') || '<div class="st">지금 움직이는 작업이 없습니다</div>' };
 }
 
-// 진행 중: sessions working now (one gone quiet is a 멈춤 among the changes).
-function hmLiveHtml() {
-  const ss = state.sessions.filter(s => !s.parent && ['run', 'bg'].includes(status(s)));
-  return byRank(ss, s => -toDate(s.last_ts).getTime()).map(s => {
-    const p = s.plan, la = s.last_action;
-    return `<a class="hm-live" href="${sessHref(s)}"><span class="hw-who"><b>${esc(cut(nameOf(s), 40))}</b><small>${p ? `${p.done}/${p.total} · ${esc(cut(p.cur_text || '', 40))}` : la?.role === 'user' ? '' : esc(cut(la?.text || '', 60))}</small></span>
-      ${p ? hmPlanCells(s) : ''}${pill(status(s), s)}</a>`;
-  }).join('') || '<div class="st">지금 움직이는 에이전트가 없습니다</div>';
-}
-
+let hmAll = false;  // 「완료도 보기」: tickets and sessions with nothing recent too
 function renderHome() {
   needReviews();
-  wtWebStash();
-  if (hmShown) hmMarkSeen(); else hmEnter();
-  const t0 = hmSince(), ch = hmChanges(t0), mine = hmMineHtml({ size: 'M' }), cost = hmCostSince(t0);
-  const n = k => ch.filter(x => x.kind === k).length, fails = n('테스트 실패');
-  const docs = ch.filter(x => x.kind === '문서').reduce((a, x) => a + x.docs, 0);
-  const stats = [[usd(cost), '비용'], [n('턴 끝') + n('끝남'), '턴 끝'], [n('멈춤'), '멈춤', 'bad'], [n('QA'), 'QA 단계 이동'], [fails, '테스트 실패', 'bad'], [docs, '새 문서']]
-    .map(([v, l, c]) => `<span class="hm-stat${c && v ? ' ' + c : ''}${v ? '' : ' zero'}"><b>${v}</b>${l}</span>`).join('');
-  const MAX = 40, shown = ch.slice(0, MAX);
-  // a gap of over an hour between two rows: a time divider, so a long absence reads as sessions of work
-  const rows = shown.map((x, i) => `${i && shown[i - 1].at - x.at > 3600e3 ? `<div class="hm-gap">${hmTime(x.at)}</div>` : ''}
-    <a class="hm-ch" href="${x.href}"><span class="hm-at">${hmTime(x.at)}</span><span class="hw-kind ${x.cls}">${x.kind}</span>
-      <span class="hw-t">${x.main}${x.sub ? `<small>${x.sub}</small>` : ''}</span>${x.right || ''}</a>`).join('');
-  $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${hmTime(t0)} 이후 · ${hmAge(t0)}</span>
-      <span class="hm-tools"><span class="seg">${HM_BASE.map(([v, l]) => `<button type="button" data-hm-base="${v}" class="${v === hmBase ? 'on' : ''}">${l}</button>`).join('')}</span>
-        ${hmBase === 'seen' ? '<button type="button" class="act big" data-hm-act="seen" title="지금까지를 본 것으로 둡니다">확인함</button>' : ''}</span></div>
-    <div class="hm-stats">${stats}</div>
-    <div class="hm-main">
-      <section class="hw hm-feed"><h3>지난번 이후 바뀐 것<span class="hw-n">${ch.length}</span><span class="hw-note">새 것이 위</span></h3>
-        <div class="hw-body">${rows || '<div class="hw-ok">그 뒤로 바뀐 것이 없습니다 ✓</div>'}${ch.length > MAX ? `<div class="hw-rest">외 ${ch.length - MAX}건 — <a href="#agents">에이전트 탭</a></div>` : ''}</div></section>
-      <div class="hm-side">
-        <section class="hw" data-hm="mine"><h3>내 차례${mine.n ? `<span class="hw-n hot">${mine.n}</span>` : ''}<span class="hw-note">${mine.note}</span></h3><div class="hw-body">${mine.body}</div></section>
-        <section class="hw"><h3>진행 중${hmLink('#agents')}</h3><div class="hw-body">${hmLiveHtml()}</div></section>
-      </div>
-    </div>`;
-  wtWebPlace($('#view'));
+  const r = hmTicketsHtml(hmAll);
+  $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span></div>
+    <div class="hm-grid"><section class="hw W" data-hm="tickets"><h3><span class="hw-name">진행 중인 작업</span>${r.n ? `<span class="hw-n">${r.n}</span>` : ''}<span class="hw-note">${r.note}</span>
+      <button type="button" class="hw-tog${hmAll ? ' on' : ''}" data-hm-all aria-pressed="${hmAll}">완료도 보기</button>${hmLink('#agents')}</h3><div class="hw-body">${r.body}</div></section></div>`;
   hmBind();
 }
 
@@ -6697,11 +6663,10 @@ function hmDecBind(v) {
 }
 
 const hmRedraw = () => charMode ? renderOffice() : renderHome();
-// 홈's own buttons, and those of a widget open in the office's staff panel (its section carries data-hm).
+// 홈's own button, and those of a widget open in the office's staff panel (its section carries data-hm).
 function hmBind() {
   const v = $('#view'), find = el => hmLay.widgets.find(w => w.id === el.closest('[data-hm]')?.dataset.hm);
-  v.querySelectorAll('[data-hm-base]').forEach(b => b.onclick = () => { const x = b.dataset.hmBase; hmBase = /^\d+$/.test(x) ? +x : x; hmRedraw(); });
-  v.querySelectorAll('[data-hm-act=seen]').forEach(b => b.onclick = () => { hmLS('adash.seenBase', Date.now()); hmRedraw(); });
+  v.querySelectorAll('[data-hm-all]').forEach(b => b.onclick = () => { hmAll = !hmAll; hmRedraw(); });
   v.querySelectorAll('[data-hm-opt]').forEach(b => b.onclick = e => {
     e.preventDefault();
     const w = find(b), k = b.dataset.hmOpt;
