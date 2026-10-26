@@ -2076,12 +2076,13 @@ function qaLegend() {
 }
 function qaTrack(q) {
   if (!q) return '';
-  const keys = WT_QA, cur = keys.indexOf(q.stage);
+  // A cleaned ticket went through every stage the track shows.
+  const keys = WT_QA, cur = q.stage === 'cleaned' ? keys.length : keys.indexOf(q.stage);
   let [, next, user] = QA_DESC[q.stage] || [];
   if (q.stage === 'delivered' && q.merge_at) [next, user] = ['코디네이터가 머지하고, 머지되면 드라이버가 정리한다', false];
   const nodes = keys.map((k, i) => `<span class="qa-step${i < cur ? ' done' : i === cur ? (q.blocked ? ' bad' : ' cur') : ''}" title="${esc(qaTip(k, i, q.at?.[k]))}"><i class="qa-n">${i + 1}</i><small>${QA_ST[k]}</small></span>`).join('<b></b>');
   const nextTxt = q.blocked ? '막힘 — 사람이 판단해야 다음으로 간다' : next ? '다음: ' + next : '';
-  return `<div class="qa-track"><span class="qa-steps">${nodes}</span><span class="qa-lbl">${cur + 1}/${keys.length} ${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}${nextTxt ? `<span class="qa-next${user && !q.blocked ? ' user' : ''}">${esc(nextTxt)}</span>` : ''}</span>
+  return `<div class="qa-track"><span class="qa-steps">${nodes}</span><span class="qa-lbl">${Math.min(cur + 1, keys.length)}/${keys.length} ${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}${nextTxt ? `<span class="qa-next${user && !q.blocked ? ' user' : ''}">${esc(nextTxt)}</span>` : ''}</span>
     ${q.round > 1 ? `<span class="rv-flag warn" title="재오픈으로 다시 기동">${q.round}회차</span>` : ''}
     ${q.blocked ? `<span class="rv-flag bad" title="${esc(q.blocked_reason || '')}">막힘${q.blocked_reason ? ' · ' + esc(cut(q.blocked_reason, 40)) : ''}</span>` : ''}
     ${q.ignored ? '<span class="rv-flag">제외</span>' : ''}
