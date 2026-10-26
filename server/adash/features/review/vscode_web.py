@@ -10,6 +10,7 @@ looking at a worktree, the desktop window is for changing it.
 """
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -19,6 +20,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from urllib.parse import parse_qs
 
 from adash.core.config import HERE
 from adash.features.review.config import VSCODE_CLI
@@ -31,6 +33,9 @@ PREFIX = "/vscode/"
 SETTINGS = {"files.readonlyInclude": {"**": True}, "workbench.startupEditor": "none",
             "security.workspace.trust.enabled": False, "chat.disableAIFeatures": True,
             "workbench.secondarySideBar.defaultVisibility": "hidden"}
+# ?theme=light|dark on the workbench page: the dashboard's theme, as the default colour theme of that page (the page asks
+# again when the dashboard's theme changes). A theme the user picked inside VS Code still wins.
+THEMES = {"light": "Default Light Modern", "dark": "Default Dark Modern"}
 _start = threading.Lock()
 _proc = None
 
@@ -112,6 +117,34 @@ def url_for(path):
     return base() + "/?folder=" + path
 
 
+def _dechunk(body):
+    out = b""
+    while body:
+        size, _, body = body.partition(b"\r\n")
+        n = int(size.split(b";")[0] or b"0", 16)
+        if not n:
+            break
+        out += body[:n]
+        body = body[n + 2:]
+    return out
+
+
+def _themed(head, body, theme):
+    """The workbench page with configurationDefaults setting the colour theme, sent with a Content-Length."""
+    lines = head.split("\r\n")
+    chunked = any(ln.lower().replace(" ", "") == "transfer-encoding:chunked" for ln in lines[1:])
+    page = (_dechunk(body) if chunked else body).decode("utf-8")
+
+    def put(m):
+        cfg = json.loads(html.unescape(m.group(2)))
+        cfg["configurationDefaults"] = {**cfg.get("configurationDefaults", {}), "workbench.colorTheme": THEMES[theme],
+                                        "window.autoDetectColorScheme": False}
+        return m.group(1) + html.escape(json.dumps(cfg), quote=True) + '"'
+    page = re.sub(r'(id="vscode-workbench-web-configuration" data-settings=")([^"]*)"', put, page, count=1).encode()
+    lines = [ln for ln in lines if ln.split(":", 1)[0].strip().lower() not in ("transfer-encoding", "content-length")]
+    return "\r\n".join(lines + [f"Content-Length: {len(page)}"]), page
+
+
 # Accept-Language goes as English: serve-web picks the display language from it, and a Korean browser got a language
 # pack built for an older VS Code that showed wrong strings.
 _DROP_REQ = {"connection", "keep-alive", "proxy-connection", "te", "trailer", "upgrade", "accept-language"}
@@ -180,8 +213,11 @@ def proxy(h, url):
         return h.send_json({"error": "웹 VS Code 가 떠 있지 않습니다. 대시보드에서 다시 여세요"}, 502)
     with up:
         ws = h.headers.get("Upgrade", "").lower() == "websocket"
+        theme = h.command == "GET" and url.path in (b, b + "/") and (parse_qs(url.query).get("theme") or [""])[0]
+        theme = theme if theme in THEMES else None
         lines = [f"{h.command} {h.path} HTTP/1.1"]
-        lines += [f"{k}: {v}" for k, v in h.headers.items() if k.lower() not in _DROP_REQ]
+        lines += [f"{k}: {v}" for k, v in h.headers.items()
+                  if k.lower() not in _DROP_REQ and not (theme and k.lower() == "accept-encoding")]
         lines += ["Accept-Language: en"] + (["Connection: Upgrade", "Upgrade: websocket"] if ws else ["Connection: close"])
         up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
         n = int(h.headers.get("Content-Length") or 0)
@@ -195,6 +231,10 @@ def proxy(h, url):
             head, rest = _head(up)
         except OSError:
             return
+        if theme and head.startswith("HTTP/1.1 200"):
+            while chunk := up.recv(65536):
+                rest += chunk
+            head, rest = _themed(head, rest, theme)
         h.connection.sendall(_frameable(head).encode("latin-1") + rest)
         if ws:
             t = threading.Thread(target=_pipe, args=(h.rfile.read1, up), daemon=True)

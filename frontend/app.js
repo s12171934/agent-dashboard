@@ -2356,6 +2356,15 @@ function wtWebPlace(root) {
     if (row && el.parentNode !== row) wtWebMove(row, el);
   }
 }
+// The page follows the dashboard's light / dark: the server sets it as the page's default colour theme (?theme=), so a
+// theme change reopens the shown pages with the new one (VS Code restores their open editors) and retargets the rest.
+const wtWebUrl = u => { const x = new URL(u, location.href); x.searchParams.set('theme', document.documentElement.dataset.theme || 'light'); return x.href; };
+document.addEventListener('ds:theme', () => {
+  for (const el of wtWeb.values()) el.querySelectorAll('.rv-web-f').forEach(f => {
+    if (f.dataset.src) f.dataset.src = wtWebUrl(f.dataset.src);
+    else if (new URL(f.src).searchParams.get('theme') !== document.documentElement.dataset.theme) f.src = wtWebUrl(f.src);
+  });
+});
 async function wtWebToggle(b) {
   const key = b.dataset.wtWeb, srv = b.dataset.srv, label = on => document.querySelectorAll(`button[data-wt-web="${CSS.escape(key)}"]`)
     .forEach(x => { x.textContent = on ? 'VS Code 접기' : 'VS Code 로 보기'; x.setAttribute('aria-expanded', on); });
@@ -2371,7 +2380,7 @@ async function wtWebToggle(b) {
       <span class="st">웹 VS Code · 읽기 전용</span>
       <span class="rv-acts"><button class="act big" data-wt-open="${esc(key)}" data-srv="${esc(srv)}" title="저장소마다 데스크톱 VS Code 창을 엽니다">데스크톱 VS Code 로 열기</button></span>
     </div>
-    ${rs.map((r, i) => `<iframe class="rv-web-f" ${i ? 'data-src' : 'src'}="${esc(r.url)}" title="${esc(r.repo)} — 웹 VS Code"${i ? ' hidden' : ''}></iframe>`).join('')}`;
+    ${rs.map((r, i) => `<iframe class="rv-web-f" ${i ? 'data-src' : 'src'}="${esc(wtWebUrl(r.url))}" title="${esc(r.repo)} — 웹 VS Code"${i ? ' hidden' : ''}></iframe>`).join('')}`;
   wtWeb.set(key, el);
   document.querySelector(`#view [data-wt-tk="${CSS.escape(key)}"]`)?.append(el);
   label(true);
