@@ -234,6 +234,8 @@ def publish_script(who, flag):
     out = subprocess.run([py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, flag],
                          capture_output=True, text=True, timeout=180, cwd=REPO)
     if out.returncode:
+        if "CLOUDFLARE_API_TOKEN" in out.stdout + out.stderr:  # no wrangler login on this Mac (launchd can't prompt)
+            raise RuntimeError("이 Mac 에 wrangler 로그인이 없습니다 — 터미널에서 npx wrangler login 을 한 번 실행하세요")
         msg = (out.stderr.strip().splitlines() or ["처리하지 못했습니다"])[-1]
         raise RuntimeError(f"{who} 은(는) 올라가 있지 않습니다" if "chars.json 에 없습니다" in msg else msg.split(": ", 1)[-1])
 
