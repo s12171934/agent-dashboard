@@ -132,8 +132,6 @@ const api = (() => {
     for (const [s, d] of parts) for (const a of d.plan_usage?.accounts || [])
       if (!accts[a.key] || (a.at || 0) > (accts[a.key].at || 0)) accts[a.key] = { ...a, server: s.id, server_name: s.name };
     out.plan_usage = Object.values(accts);
-    // Dashboard-only Claude logins, per server: where to make one and which exist (see the 「사용량」 tab).
-    out.plan_own = parts.filter(([, d]) => d.plan_usage?.own_dir).map(([s, d]) => ({ server: s.id, server_name: s.name, dir: d.plan_usage.own_dir, own: d.plan_usage.own || [] }));
     out.tests.history_at = parts.map(([s, d]) => `${s.id}:${d.tests?.history_at ?? ''}`).join(',') || null;
     out.reviews_at = parts.map(([s, d]) => `${s.id}:${d.reviews_at ?? ''}`).join(',') || null;
     out.orca.error = errors.join(' · ') || null;
