@@ -273,6 +273,9 @@ addEventListener('hashchange', e => {
     if (state?.decisions?.available && !decLeft()) { history.replaceState(null, '', e.oldURL); return toast('결정 대기 중인 질문이 없습니다'); }
     decFrom = from;
   }
+  // 홈 and 에이전트 open fitted, however they are reached (the tab bar, a staff member, a link, back): a zoom or pan
+  // made on one screen is not carried to the other
+  if (['home', 'agents'].includes(route().v)) chFit();
   hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0);
 });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
@@ -3501,7 +3504,7 @@ addEventListener('resize', () => {
 // office changes, until the view is moved by hand. The view is kept on this device (adash.chview).
 let chView = { x: 0, y: 0, z: 1, fit: true };
 let chLz = 1;  // the label growth chLayout last spaced the rows for
-try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}') }; } catch {}
+try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}'), fit: true }; } catch {}  // a load opens fitted too
 let chPanAt = 0, chSaveT;
 const chViewSave = () => { clearTimeout(chSaveT); chSaveT = setTimeout(() => { try { localStorage.setItem('adash.chview', JSON.stringify(chView)); } catch {} }, 300); };
 // the part of the canvas a fit fills: beside an open staff panel and clear of the bar floating on the bottom (or top)
@@ -3550,6 +3553,7 @@ function chZoom(k, px, py) {
 // a worktree room pressed (its title or floor, not a person): the view fits that room, up to 200%; pressed again while
 // it is so (not moved since), back to 맞춤. Twice, as the labels' growth (--lz) re-spaces the room's rows when the zoom changes.
 let chFocused = '';
+function chFit() { chFocused = ''; chView.fit = true; }
 function chFocus(key) {
   const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world'), r = [...(w?.querySelectorAll('.room[data-room]') || [])].find(n => n.dataset.room === key);
   if (!r) return;
