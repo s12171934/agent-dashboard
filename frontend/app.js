@@ -260,7 +260,7 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide', 'chars'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
 }
 addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
@@ -348,6 +348,7 @@ async function renderView(navigated) {
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'worktrees') await renderWorktrees();
   else if (r.v === 'decide') renderDecide();
+  else if (r.v === 'usage') renderUsage();
   else if (r.v === 'chars') renderChars();
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'designs') await renderDesigns();
@@ -376,7 +377,7 @@ function renderHeader() {
   { const n = hmMine().length; $('#k-home').textContent = n; $('#k-home').hidden = !n; }
   $('#k-runs').textContent = state.orca.error ? '오류' : state.orca.runs.filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
-  renderPlanUsage();
+  usageBadge();
   const dec = state.decisions || { available: false, pending: [] }, unread = (dec.inbox || []).filter(r => !r.read).length;
   $('#k-dec-wrap').hidden = !dec.available;
   $('#k-dec').textContent = dec.pending.length;
@@ -515,30 +516,43 @@ function renderHealth() {
   $('#stat-btn').dataset.tip = el.hidden ? '현황' : '현황 · ' + el.textContent;
 }
 
-// Claude plan usage (state.plan_usage: per server, from the account's usage API every 5 minutes): the 5-hour session
-// and weekly buckets as bars, the one that is holding the account back marked, and the extra usage credits. The bar
-// tip carries the most used bucket so it shows without opening 「현황」.
-function renderPlanUsage() {
-  const list = state.plan_usage || [], el = $('#plan-usage');
-  el.hidden = !list.length;
-  if (!list.length) return;
-  const until = t => {
-    if (!t) return '';
-    const m = Math.max(0, Math.round((t - Date.now() / 1000) / 60)), d = new Date(t * 1000);
-    const at = m < 1440 ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' });
-    return `${at} 리셋 · ${m < 60 ? m + '분' : m < 1440 ? Math.floor(m / 60) + '시간 ' + m % 60 + '분' : Math.floor(m / 1440) + '일'} 남음`;
-  };
-  const tone = p => p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--accent)';
-  el.innerHTML = list.map(u => `<div class="pu-h"><b>플랜 사용량</b>${list.length > 1 ? `<span>${esc(u.server_name)}</span>` : ''}
-      <span class="st" title="Claude Code 토큰으로 사용량 API 를 5분마다 조회 (${esc(u.source || '')})">${new Date(u.at * 1000).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 기준</span></div>
-    ${u.error ? `<div class="pu-err">⚠ 갱신 실패: ${esc(u.error)}</div>` : ''}
-    ${(u.limits || []).map(b => `<div class="pu-row${b.active ? ' on' : ''}" title="${b.active ? '지금 걸려 있는 한도' : ''}">
-      <span class="pu-n">${esc(b.name)}${b.active ? ' <em>현재 한도</em>' : ''}</span><b>${b.percent ?? '–'}%</b>
-      <div class="ctxbar"><div style="width:${Math.min(100, b.percent || 0)}%;background:${tone(b.percent || 0)}"></div></div>
-      <span class="pu-r">${until(b.resets_at)}</span></div>`).join('')}
-    ${u.extra ? `<div class="pu-x">초과 사용 크레딧 ${u.extra.limit_usd ? `<b>${usd(u.extra.used_usd)}</b> / ${usd(u.extra.limit_usd)}${u.extra.reached ? ' · <em>한도 도달</em>' : ''}` : '<b>꺼짐</b> (월 한도 $0)'}</div>` : ''}`).join('');
-  const top = list.flatMap(u => u.limits || []).sort((a, b) => (b.percent || 0) - (a.percent || 0))[0];
-  if (top && $('#stat-btn').dataset.tip === '현황') $('#stat-btn').dataset.tip = `현황 · ${top.name} ${top.percent}%`;
+// ---------- plan usage (#usage) ----------
+// One card per subscription account (state.plan_usage, read by each server every 5 minutes from the provider's usage
+// API with the token its CLI or Orca keeps): every limit window as a bar with its reset, the one holding the account
+// back marked, and the extra credits. An account whose token is not valid keeps its last figures, greyed, with why.
+// The bar's tab carries the fullest window of an account in use, coloured once it nears its limit.
+const PROVIDERS = { claude: 'Claude', codex: 'Codex' };
+const usageTone = p => p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--accent)';
+function usageBadge() {
+  const live = (state.plan_usage || []).filter(a => !a.stale && !a.note), top = Math.max(-1, ...live.flatMap(a => (a.limits || []).map(b => b.percent ?? -1)));
+  const el = $('#k-usage');
+  el.hidden = top < 70;
+  el.textContent = top + '%';
+  el.style.background = top >= 70 ? usageTone(top) : '';
+}
+function untilText(t) {
+  if (!t) return '';
+  const m = Math.max(0, Math.round((t - Date.now() / 1000) / 60)), d = new Date(t * 1000);
+  const at = m < 1440 ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' });
+  return `${at} 리셋 · ${m < 60 ? m + '분' : m < 1440 ? Math.floor(m / 60) + '시간 ' + m % 60 + '분' : Math.floor(m / 1440) + '일 ' + Math.floor(m % 1440 / 60) + '시간'} 남음`;
+}
+function renderUsage() {
+  const list = state.plan_usage || [], multi = new Set(list.map(a => a.server)).size > 1;
+  const when = t => t ? `${new Date(t * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 기준 (${ago(new Date(t * 1000).toISOString())})` : '아직 읽지 못함';
+  const extra = a => a.extra ? `<div class="pu-x">초과 사용 크레딧 ${a.extra.limit_usd ? `<b>${usd(a.extra.used_usd)}</b> / ${usd(a.extra.limit_usd)}${a.extra.reached ? ' · <em>한도 도달</em>' : ''}` : '<b>꺼짐</b> (월 한도 $0)'}</div>`
+    : a.credits ? `<div class="pu-x">크레딧 ${a.credits.unlimited ? '<b>무제한</b>' : a.credits.balance != null ? `<b>${esc(a.credits.balance)}</b>` : a.credits.has ? '<b>있음</b>' : '<b>없음</b>'}${a.credits.reached ? ' · <em>한도 도달</em>' : ''}</div>` : '';
+  const card = a => `<section class="box pu-card${a.stale || a.note ? ' stale' : ''}">
+    <div class="pu-h"><span class="badge">${PROVIDERS[a.provider] || esc(a.provider)}</span><b>${esc(a.email || '?')}</b>${a.plan ? `<span class="st">${esc(a.plan)}</span>` : ''}
+      ${multi ? `<span class="st">${esc(a.server_name)}</span>` : ''}</div>
+    <div class="pu-when" title="${esc(a.source ? '토큰: ' + a.source : '')}">${when(a.at)}</div>
+    ${a.note ? `<div class="pu-note">${esc(a.note)}</div>` : ''}${a.error ? `<div class="pu-err">⚠ 갱신 실패: ${esc(a.error)}</div>` : ''}
+    ${(a.limits || []).map(b => `<div class="pu-row${b.active ? ' on' : ''}">
+      <span class="pu-n">${esc(b.name)}${b.active ? ` <em>${a.provider === 'claude' ? '현재 한도' : '한도 도달'}</em>` : ''}</span><b>${b.percent ?? '–'}%</b>
+      <div class="ctxbar"><div style="width:${Math.min(100, b.percent || 0)}%;background:${usageTone(b.percent || 0)}"></div></div>
+      <span class="pu-r">${untilText(b.resets_at)}</span></div>`).join('')}
+    ${extra(a)}</section>`;
+  $('#view').innerHTML = `<div class="sec-h"><h2>플랜 사용량</h2><span>구독 계정마다 사용량 API 를 5분에 한 번 읽습니다. 토큰이 없거나 만료된 계정은 마지막 값을 흐리게 보여 줍니다.</span></div>
+    ${list.length ? `<div class="pu-grid">${list.map(card).join('')}</div>` : '<div class="empty">사용량을 읽는 메트릭 서버가 없습니다.</div>'}`;
 }
 
 // ---------- agents (cards) ----------
@@ -6656,7 +6670,7 @@ function connect() {
   });
 }
 connect();
-setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests'].includes(route().v) || onlyLive && route().v === 'compare')) render(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
+setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests', 'usage'].includes(route().v) || onlyLive && route().v === 'compare')) render(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => {
   if (route().v === 'session' && detail) renderSession();
   if (route().v === 'projects' && pj.view === 'timeline') render();  // 자동 orientation follows the window's shape
