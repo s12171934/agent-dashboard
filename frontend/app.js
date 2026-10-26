@@ -337,7 +337,7 @@ async function renderView(navigated) {
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
-  if (r.v !== 'home') hmEdit = false;
+  if (r.v !== 'home' || charMode) hmLeave();  // leaving 홈: the last moment it was seen
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
   document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom figure (맞춤), on the bar
   if (!office) document.documentElement.classList.remove('ch-full');
@@ -3601,7 +3601,7 @@ window.visualViewport?.addEventListener('resize', () => {
   else if (visualViewport.offsetTop) scrollTo(scrollX, scrollY);
 });
 
-// 운영실: on 홈 each widget of this device's home layout (hmLay — 위젯 홈's 편집 picks them) is a staff member who does
+// 운영실: on 홈 each widget of this device's home layout (hmLay) is a staff member who does
 // its job. The bubble is the widget's one-line note, the state its urgency (something to look at: busy; bad: stalled);
 // pressing them opens the widget itself in a panel over the canvas (chPanel), with all its buttons working.
 const STAFF = { mine: '비서', flow: '감독관', tests: '테스터', cost: '회계', board: '매니저', qa: 'QA 담당', tl: '기록원', map: '안내원',
@@ -3629,7 +3629,7 @@ function staffRoom() {
   return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">위젯을 맡은 사람들 · 누르면 그 위젯</span><span class="room-n">${todo ? `내 차례 <b>${todo}</b> · ` : ''}전체 <b>${ws.length}</b></span></div>
     <div class="room-floor">${wallHtml('staff')}${ws.map(staffHtml).join('')}</div></section>`;
 }
-// the open staff member's widget, as on 위젯 홈 (its section keeps data-hm, so hmBind's buttons find their widget)
+// the open staff member's widget (its section keeps data-hm, so hmBind's buttons find their widget)
 function staffPanel() {
   const w = hmLay.widgets.find(x => x.id === chPanel);
   if (!w) { chPanel = null; return ''; }
@@ -6264,17 +6264,15 @@ function ticketDesignBadge(p, n) {
   return `<div class="tg-d" title="${esc('읽은 설계 섹션\n' + tip)}">${top.map(x => esc(lbl(x))).join(' · ')}${rows.length > 3 ? ` <span>+${rows.length - 3}</span>` : ''}</div>`;
 }
 
-// ---------- 「홈」 tab: widgets over the same snapshot, arranged per device (adash.home) ----------
-// What needs a person sits on top (내 차례, 흐름 이탈 are pinned there), progress below. Each widget is a function of the
-// snapshot that returns its body, or null when there is nothing to show (no QA sets, no test ever): the widget then
-// leaves the grid, except in 편집 where it stays as a placeholder so it can still be moved. Sizes: S one column,
-// M two, L two by two, W the whole row. A click on a widget's 「→」 goes to the tab that holds the full view.
+// ---------- widgets over the snapshot: the office's staff (운영실), and 내 차례 on 홈 ----------
+// Each widget is a function of the snapshot that returns its body, or null when there is nothing to show (no QA sets,
+// no test ever). The layout (adash.home) was 위젯 홈's; 홈 is now fixed (renderHome below) and the list only says which
+// staff members the office seats, with each widget's own options (opts). Sizes: S one column, M two, L two by two, W
+// the whole row.
 const HM_SIZES = ['S', 'M', 'L', 'W'];
 const HM_DEFAULT = [{ id: 'mine', size: 'L', pin: true }, { id: 'flow', size: 'M', pin: true }, { id: 'tests', size: 'S' }, { id: 'cost', size: 'S' },
   { id: 'board', size: 'W' }, { id: 'qa', size: 'M' }, { id: 'tl', size: 'M' }];
 const hmSave = () => { try { localStorage.setItem('adash.home', JSON.stringify(hmLay)); } catch {} };
-let hmEdit = false, hmDrag = null;
-const hmNorm = () => { hmLay.widgets = [...hmLay.widgets.filter(w => w.pin), ...hmLay.widgets.filter(w => !w.pin)]; };
 const hmAge = ms => human(Math.max(0, (Date.now() - ms) / 1000));
 const hmLink = (href, label = '→') => `<a class="hw-more" href="${href}">${label}</a>`;
 const hmRow = (kind, cls, main, sub, right, href) => `<${href ? `a href="${href}"` : 'div'} class="hw-row"><span class="hw-kind ${cls}">${kind}</span><span class="hw-t">${main}${sub ? `<small>${sub}</small>` : ''}</span>${right || ''}</${href ? 'a' : 'div'}>`;
@@ -6294,8 +6292,12 @@ function hmData(key, fn, sig) {
 }
 
 // 내 차례: what waits for a person — a 결정 버튼 question, a QA ticket at a user gate (반출 승인 with its worktree still
-// there: without one there is nothing to approve, only a driver state left behind; 막힘). Questions first, then tickets;
-// the longest wait first within each.
+// there: without one there is nothing to approve, only a driver state left behind; 막힘), and an agent at an approval or
+// report step of its plan (보고 ask). A 막힘 older than HM_STALE is a leftover, not today's work: it leaves the list (the
+// 워크트리 tab still has it). Questions first, then the rest; the longest wait first within each.
+const HM_STALE = 24 * 3600e3;
+// A plan step that hands the turn to the person: the agent stops there for a go-ahead, not for its next instruction.
+const HM_ASK = /승인|보고|컨펌|확인 요청|검토 요청|결정|피드백|선택/;
 function hmMine() {
   const out = [], dec = state.decisions;
   const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
@@ -6303,17 +6305,21 @@ function hmMine() {
   for (const set of wtData.sets || []) for (const t of set.tickets) {
     const qa = t.qa;
     if (!qa || qa.ignored) continue;
-    if (qa.blocked) out.push({ kind: 'blocked', at: qa.at?.[qa.stage] ? new Date(qa.at[qa.stage]).getTime() : null, t, set });
+    const at = qa.at?.[qa.stage] ? new Date(qa.at[qa.stage]).getTime() : null;
+    if (qa.blocked) { if (at && Date.now() - at < HM_STALE) out.push({ kind: 'blocked', at, t, set }); }
     else if (qa.stage === 'committed' && t.repos.length) out.push({ kind: 'approve', at: qa.at?.committed ? new Date(qa.at.committed).getTime() : null, t, set });
   }
-  // an agent waiting for its next instruction (입력 대기) is not the user's to do: it is not listed, so it raises no badge
-  const order = { dec: 0, blocked: 1, approve: 2 };
+  // an agent waiting for its next instruction (입력 대기) is not the user's to do, unless its plan stopped at a step that
+  // asks for the person (HM_ASK)
+  for (const s of state.sessions) if (!s.parent && !s.decision && status(s) === 'wait' && s.plan?.cur_text && s.plan.done < s.plan.total && HM_ASK.test(s.plan.cur_text))
+    out.push({ kind: 'ask', at: toDate(s.last_ts).getTime(), s });
+  const order = { dec: 0, ask: 1, blocked: 2, approve: 3 };
   return out.sort((a, b) => order[a.kind] - order[b.kind] || (a.at || Infinity) - (b.at || Infinity));
 }
 const hmRec = o => /recommended|권장/i.test(o.label);
 // Rows by the widget's size; the rest is counted per kind under them.
 const HM_ROWS = { S: 3, M: 5, L: 8, W: 6 };
-const HM_KIND = { dec: ['결정', '#decide'], blocked: ['막힘', '#worktrees'], approve: ['반출 승인', '#worktrees'] };
+const HM_KIND = { dec: ['결정', '#decide'], ask: ['보고', '#agents'], blocked: ['막힘', '#worktrees'], approve: ['반출 승인', '#worktrees'] };
 function hmMineHtml(w) {
   const items = hmMine(), dec = state.decisions, unread = (dec?.inbox || []).filter(r => !r.read).length;
   const n = k => items.filter(x => x.kind === k).length, shown = items.slice(0, HM_ROWS[w.size]), rest = items.slice(shown.length);
@@ -6326,11 +6332,13 @@ function hmMineHtml(w) {
         <div class="hw-opts">${simple ? q0.options.map((o, i) => `<button type="button" class="hw-opt${hmRec(o) ? ' rec' : ''}" data-hm-dec="${esc(x.q.id)}" data-i="${i}" title="${esc(o.description || '')}">${esc(cut(o.label, 40))}</button>`).join('') : ''}
           <a class="hw-opt ghost" href="#decide">${simple ? '기타…' : '답하기 →'}</a></div></div>`;
     }
+    if (x.kind === 'ask') return hmRow('보고', 'idle', `${esc(cut(nameOf(x.s), 50))} · ${esc(cut(x.s.plan.cur_text, 40))}`,
+      esc(cut(x.s.last_action?.text || '', 90)), `<span class="hw-age">${age}</span>`, sessHref(x.s));
     const q = x.t.qa;
     return hmRow(x.kind === 'approve' ? '반출 승인' : '막힘', x.kind === 'approve' ? 'ok' : 'bad', `${esc(x.t.key)} ${esc(cut(x.t.summary || '', 60))}`,
       x.kind === 'approve' ? `검토 통과·커밋 완료${q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}` : esc(cut(q.blocked_reason || qaName(q.stage) + ' 단계에서 멈춤', 70)), `<span class="hw-age">${age}</span>`, '#worktrees');
   }).join('') + (rest.length ? `<div class="hw-rest">외 ${Object.keys(HM_KIND).filter(k => rest.some(x => x.kind === k)).map(k => `<a href="${HM_KIND[k][1]}">${HM_KIND[k][0]} ${rest.filter(x => x.kind === k).length}</a>`).join(' · ')}</div>` : '');
-  const sum = [['결정', n('dec')], ['막힘', n('blocked')], ['반출 승인', n('approve')], ['메일함', unread]].filter(([, c]) => c).map(([l, c]) => `${l} ${c}`).join(' · ');
+  const sum = [['결정', n('dec')], ['보고', n('ask')], ['막힘', n('blocked')], ['반출 승인', n('approve')], ['메일함', unread]].filter(([, c]) => c).map(([l, c]) => `${l} ${c}`).join(' · ');
   return { n: items.length, hot: items.length > 0, note: sum, body: rows || '<div class="hw-ok">기다리는 일이 없습니다 ✓</div>' };
 }
 
@@ -6550,29 +6558,116 @@ const HM_W = {
 let hmLay = { widgets: HM_DEFAULT.map(w => ({ ...w })), fold: {} };
 try { const v = JSON.parse(localStorage.getItem('adash.home') || 'null'); if (Array.isArray(v?.widgets)) hmLay = { widgets: v.widgets.filter(w => HM_W[w.id] && HM_SIZES.includes(w.size)), fold: v.fold || {} }; } catch {}
 
-function hmWidget(w) {
-  const def = HM_W[w.id];
-  let r;
-  try { r = def.html(w); } catch (e) { r = { body: `<div class="st">그리지 못했습니다: ${esc(e.message)}</div>` }; }
-  if (!r && !hmEdit) return '';
-  const folded = PHONE.matches && !w.pin && (hmLay.fold[w.id] ?? true);
-  const head = `<h3>${hmEdit ? '<span class="hw-grip" title="끌어서 순서 바꾸기">⠿</span>' : ''}<span class="hw-name"${PHONE.matches && !w.pin && !hmEdit ? ` data-hm-fold="${w.id}"` : ''}>${def.name}</span>${r?.n ? `<span class="hw-n${r.bad ? ' bad' : r.hot ? ' hot' : ''}">${r.n}</span>` : ''}${w.pin ? '<span class="hw-pin" title="고정: 맨 위에 둔다">📌</span>' : ''}
-    <span class="hw-note">${r?.note || ''}</span>${!hmEdit && r?.tools ? r.tools : ''}${!hmEdit && r?.more ? hmLink(r.more) : ''}
-    ${hmEdit ? `<span class="hw-edit"><span class="seg">${HM_SIZES.map(z => `<button type="button" data-hm-size="${z}" class="${z === w.size ? 'on' : ''}">${z}</button>`).join('')}</span>
-      <button type="button" class="hw-x" data-hm-pin title="${w.pin ? '고정 풀기' : '맨 위에 고정'}">📌</button><button type="button" class="hw-x" data-hm-del title="빼기">✕</button></span>` : ''}</h3>`;
-  return `<section class="hw ${w.size}${folded ? ' fold' : ''}${!r ? ' empty' : ''}" data-hm="${w.id}">${head}<div class="hw-body">${r ? r.body : `<div class="st">보여 줄 데이터가 없어 평소에는 숨겨집니다</div>`}</div></section>`;
+// ---------- 「홈」: what changed since the person last looked, then what waits for them and what is moving ----------
+// The baseline (adash.seenBase) is the last moment this device had 홈 on screen before the person went away: adash.seen
+// follows 홈 while it shows, and coming back to it after over HM_AWAY moves the baseline there — a reload or a quick
+// look at another tab keeps it. 「확인함」 sets it to now; a fixed window can be picked beside it. Everything is read off
+// the snapshot's timestamps — a session's last record, a QA ticket's entry into its stage, a test's end — plus the
+// vault notes made since. Stale things stay off: a 막힘 over a day (hmMine), 응답 없음 from before the baseline.
+const HM_BASE = [['seen', '지난번 본 뒤'], [3, '3시간'], ['day', '오늘']];
+const HM_AWAY = 5 * 60e3;
+let hmBase = 'seen', hmShown = false;
+const hmLS = (k, v) => { try { if (v === undefined) return +localStorage.getItem(k) || 0; localStorage.setItem(k, String(v)); } catch {} return 0; };
+const hmMarkSeen = () => hmLS('adash.seen', Date.now());
+function hmEnter() {
+  const last = hmLS('adash.seen');
+  if (!last || Date.now() - last > HM_AWAY) hmLS('adash.seenBase', last || Date.now() - 8 * 3600e3);  // first visit: the last eight hours
+  hmShown = true;
+}
+const hmLeave = () => { if (hmShown) { hmMarkSeen(); hmShown = false; } };
+addEventListener('pagehide', hmLeave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) hmLeave(); else if (route().v === 'home' && !charMode) render(); });
+function hmSince() {
+  if (hmBase === 'day') return new Date().setHours(0, 0, 0, 0);
+  if (hmBase !== 'seen') return Date.now() - hmBase * 3600e3;
+  return hmLS('adash.seenBase') || Date.now() - 8 * 3600e3;
+}
+const hmTime = ms => new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+// The changes since t0, newest first: {at, kind, cls, main, sub, right, href}.
+function hmChanges(t0) {
+  const out = [], devOf = new Map();
+  for (const x of state.flow?.items || []) if (x.session) devOf.set(x.session, [...devOf.get(x.session) || [], x]);
+  for (const s of state.sessions) {
+    if (s.parent || !s.last_ts) continue;
+    const at = toDate(s.last_ts).getTime(), st = status(s);
+    if (at < t0 || ['run', 'bg'].includes(st)) continue;  // still working: 진행 중 has it
+    const p = s.plan, dev = devOf.get(s.path);
+    const kind = s.decision ? ['결정 대기', 'q'] : st === 'stalled' ? ['멈춤', 'bad'] : st === 'done' || p && p.done >= p.total ? ['끝남', 'ok'] : ['턴 끝', 'idle'];
+    const la = s.last_action, said = la?.role === 'assistant' ? la.text : la ? `${NOW_ROLE[la.role] || ''} · ${la.text}` : '';
+    out.push({ at, kind: kind[0], cls: kind[1], href: sessHref(s),
+      main: `${esc(cut(nameOf(s), 60))}${p ? ` <span class="st">계획 ${p.done}/${p.total}</span>` : ''}${dev ? ` <span class="hw-dev" title="${esc(dev.map(x => x.reason).join('\n'))}">⚠ ${esc(dev[0].rule_name || dev[0].rule)}</span>` : ''}`,
+      sub: esc(cut(said, 140)), right: pill(st, s) });
+  }
+  for (const set of wtData.sets || []) for (const t of set.tickets) {
+    const q = t.qa, at = q?.at?.[q.stage] && new Date(q.at[q.stage]).getTime();
+    if (!q || q.ignored || !at || at < t0) continue;
+    out.push({ at, kind: 'QA', cls: q.blocked ? 'bad' : q.stage === 'committed' || q.stage === 'delivered' ? 'ok' : '', href: '#worktrees',
+      main: `${esc(t.key)} → <b>${esc(qaName(q.stage))}</b>${q.blocked ? ' <span class="hw-dev">막힘</span>' : ''}${q.round > 1 ? ` <span class="st">${q.round}회차</span>` : ''}`,
+      sub: esc(cut(q.blocked ? q.blocked_reason || t.summary || '' : t.summary || '', 140)) });
+  }
+  for (const t of testItems()) {
+    const at = t.finished_at && new Date(t.finished_at).getTime();
+    if (!at || at < t0) continue;
+    const bad = t.phase === 'failed' || t.failed;
+    out.push({ at, kind: bad ? '테스트 실패' : '테스트 통과', cls: bad ? 'bad' : 'ok', href: '#tests', main: esc(cut(t.label || t.key, 70)),
+      sub: `${t.total ? `${t.passed ?? t.done ?? 0}/${t.total} 통과` : ''}${t.failed ? ` · 실패 ${t.failed}` : ''}${t.failures?.[0] ? ` · ${esc(cut(t.failures[0].id, 60))}` : ''}` });
+  }
+  // the vault notes, one row per session that wrote them (a session often writes a dozen at once)
+  const notes = hmData('vault', () => api.vaultRecent(40), Math.floor(Date.now() / 60e3)), by = new Map();
+  for (const n of notes?.notes || []) if (n.mtime * 1000 >= t0) { const k = n.session || n.agent; by.set(k, [...by.get(k) || [], n]); }
+  for (const ns of by.values()) {
+    const n0 = ns[0], who = n0.session_title || (n0.session || /[0-9a-f]{8}-[0-9a-f]{4}-/.test(n0.agent) ? '' : n0.agent);  // a bare session id names nothing
+    out.push({ at: n0.mtime * 1000, kind: '문서', cls: '', docs: ns.length, href: n0.session ? `#s=${encodeURIComponent(n0.session)}` : obsLink(n0.abs),
+      main: `${ns.length > 1 ? `문서 ${ns.length}개` : esc(cut(n0.title, 70))}${who ? ` <span class="st">${esc(cut(who, 50))}</span>` : ''}`,
+      sub: ns.length > 1 ? esc(cut(ns.map(x => x.title).join(' · '), 160)) : '' });
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
+// The cost of every session's 5-minute slots from t0 on.
+function hmCostSince(t0) {
+  let sum = 0;
+  for (const s of state.sessions) for (const [k, v] of Object.entries(s.slots || {})) if (+k * 300e3 + 300e3 > t0) sum += v[4];
+  return sum;
+}
+
+// 진행 중: sessions working now (one gone quiet is a 멈춤 among the changes).
+function hmLiveHtml() {
+  const ss = state.sessions.filter(s => !s.parent && ['run', 'bg'].includes(status(s)));
+  return byRank(ss, s => -toDate(s.last_ts).getTime()).map(s => {
+    const p = s.plan, la = s.last_action;
+    return `<a class="hm-live" href="${sessHref(s)}"><span class="hw-who"><b>${esc(cut(nameOf(s), 40))}</b><small>${p ? `${p.done}/${p.total} · ${esc(cut(p.cur_text || '', 40))}` : la?.role === 'user' ? '' : esc(cut(la?.text || '', 60))}</small></span>
+      ${p ? hmPlanCells(s) : ''}${pill(status(s), s)}</a>`;
+  }).join('') || '<div class="st">지금 움직이는 에이전트가 없습니다</div>';
 }
 
 function renderHome() {
-  if (hmDrag) return;  // a drag in progress keeps its DOM; the next refresh after it draws
   needReviews();
   wtWebStash();
-  const left = Object.keys(HM_W).filter(id => !hmLay.widgets.some(w => w.id === id));
-  $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span>
-      <span class="hm-tools">${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
-        : '<button type="button" class="act big" data-hm-act="edit">편집</button>'}</span></div>
-    ${hmEdit && left.length ? `<div class="box hm-cat"><b>위젯 추가</b>${left.map(id => `<button type="button" class="hm-add" data-hm-add="${id}"><span>+</span>${HM_W[id].name}<small>${HM_W[id].desc}</small></button>`).join('')}</div>` : ''}
-    <div class="hm-grid${hmEdit ? ' editing' : ''}">${hmLay.widgets.map(hmWidget).join('')}</div>`;
+  if (hmShown) hmMarkSeen(); else hmEnter();
+  const t0 = hmSince(), ch = hmChanges(t0), mine = hmMineHtml({ size: 'M' }), cost = hmCostSince(t0);
+  const n = k => ch.filter(x => x.kind === k).length, fails = n('테스트 실패');
+  const docs = ch.filter(x => x.kind === '문서').reduce((a, x) => a + x.docs, 0);
+  const stats = [[usd(cost), '비용'], [n('턴 끝') + n('끝남'), '턴 끝'], [n('멈춤'), '멈춤', 'bad'], [n('QA'), 'QA 단계 이동'], [fails, '테스트 실패', 'bad'], [docs, '새 문서']]
+    .map(([v, l, c]) => `<span class="hm-stat${c && v ? ' ' + c : ''}${v ? '' : ' zero'}"><b>${v}</b>${l}</span>`).join('');
+  const MAX = 40, shown = ch.slice(0, MAX);
+  // a gap of over an hour between two rows: a time divider, so a long absence reads as sessions of work
+  const rows = shown.map((x, i) => `${i && shown[i - 1].at - x.at > 3600e3 ? `<div class="hm-gap">${hmTime(x.at)}</div>` : ''}
+    <a class="hm-ch" href="${x.href}"><span class="hm-at">${hmTime(x.at)}</span><span class="hw-kind ${x.cls}">${x.kind}</span>
+      <span class="hw-t">${x.main}${x.sub ? `<small>${x.sub}</small>` : ''}</span>${x.right || ''}</a>`).join('');
+  $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${hmTime(t0)} 이후 · ${hmAge(t0)}</span>
+      <span class="hm-tools"><span class="seg">${HM_BASE.map(([v, l]) => `<button type="button" data-hm-base="${v}" class="${v === hmBase ? 'on' : ''}">${l}</button>`).join('')}</span>
+        ${hmBase === 'seen' ? '<button type="button" class="act big" data-hm-act="seen" title="지금까지를 본 것으로 둡니다">확인함</button>' : ''}</span></div>
+    <div class="hm-stats">${stats}</div>
+    <div class="hm-main">
+      <section class="hw hm-feed"><h3>지난번 이후 바뀐 것<span class="hw-n">${ch.length}</span><span class="hw-note">새 것이 위</span></h3>
+        <div class="hw-body">${rows || '<div class="hw-ok">그 뒤로 바뀐 것이 없습니다 ✓</div>'}${ch.length > MAX ? `<div class="hw-rest">외 ${ch.length - MAX}건 — <a href="#agents">에이전트 탭</a></div>` : ''}</div></section>
+      <div class="hm-side">
+        <section class="hw" data-hm="mine"><h3>내 차례${mine.n ? `<span class="hw-n hot">${mine.n}</span>` : ''}<span class="hw-note">${mine.note}</span></h3><div class="hw-body">${mine.body}</div></section>
+        <section class="hw"><h3>진행 중${hmLink('#agents')}</h3><div class="hw-body">${hmLiveHtml()}</div></section>
+      </div>
+    </div>`;
   wtWebPlace($('#view'));
   hmBind();
 }
@@ -6592,22 +6687,15 @@ function hmDecBind(v) {
 }
 
 const hmRedraw = () => charMode ? renderOffice() : renderHome();
+// 홈's own buttons, and those of a widget open in the office's staff panel (its section carries data-hm).
 function hmBind() {
   const v = $('#view'), find = el => hmLay.widgets.find(w => w.id === el.closest('[data-hm]')?.dataset.hm);
-  v.querySelectorAll('[data-hm-act]').forEach(b => b.onclick = () => {
-    const a = b.dataset.hmAct;
-    if (a === 'reset') { hmLay.widgets = HM_DEFAULT.map(w => ({ ...w })); hmSave(); }
-    hmEdit = a === 'edit' || (a === 'reset' && hmEdit);
-    hmRedraw();
-  });
-  v.querySelectorAll('[data-hm-add]').forEach(b => b.onclick = () => { const id = b.dataset.hmAdd; hmLay.widgets.push({ id, size: HM_W[id].size || 'M' }); hmSave(); hmRedraw(); });
-  v.querySelectorAll('[data-hm-size]').forEach(b => b.onclick = () => { find(b).size = b.dataset.hmSize; hmSave(); hmRedraw(); });
-  v.querySelectorAll('[data-hm-del]').forEach(b => b.onclick = () => { hmLay.widgets = hmLay.widgets.filter(w => w !== find(b)); hmSave(); hmRedraw(); });
-  v.querySelectorAll('[data-hm-pin]').forEach(b => b.onclick = () => { const w = find(b); w.pin = !w.pin; hmNorm(); hmSave(); hmRedraw(); });
-  v.querySelectorAll('[data-hm-fold]').forEach(b => b.onclick = () => { const id = b.dataset.hmFold; hmLay.fold[id] = !(hmLay.fold[id] ?? true); hmSave(); hmRedraw(); });
+  v.querySelectorAll('[data-hm-base]').forEach(b => b.onclick = () => { const x = b.dataset.hmBase; hmBase = /^\d+$/.test(x) ? +x : x; hmRedraw(); });
+  v.querySelectorAll('[data-hm-act=seen]').forEach(b => b.onclick = () => { hmLS('adash.seenBase', Date.now()); hmRedraw(); });
   v.querySelectorAll('[data-hm-opt]').forEach(b => b.onclick = e => {
     e.preventDefault();
     const w = find(b), k = b.dataset.hmOpt;
+    if (!w) return;
     // h: a number; another option with a value toggles off when picked again (st: the QA stage shown); without one, on/off.
     const v = b.dataset.v;
     w.opts = { ...w.opts, [k]: k === 'h' ? +v : v !== undefined ? (w.opts?.[k] === v ? '' : v) : !w.opts?.[k] };
@@ -6619,36 +6707,6 @@ function hmBind() {
   // The QA tickets' buttons are the 워크트리 tab's, handled as there (confirmations included).
   const qa = v.querySelector('.hw[data-hm=qa]');
   if (qa) qa.onclick = wtClick;
-  if (hmEdit) v.querySelectorAll('.hw-grip').forEach(g => g.onpointerdown = hmDragStart);
-}
-
-// 편집: drag a widget by its ⠿ grip; it moves before the widget under the pointer (after it past that widget's middle).
-// Pinned widgets stay ahead of the rest whatever the drop.
-function hmDragStart(e) {
-  e.preventDefault();
-  const el = e.target.closest('.hw'), grid = el.parentElement;
-  hmDrag = el;
-  el.classList.add('dragging');
-  // Listened on the document, not captured on the grip: moving the widget in the DOM drops a pointer capture.
-  const move = ev => {
-    const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.hw');
-    if (!over || over === el || over.parentElement !== grid) return;
-    const r = over.getBoundingClientRect(), after = ev.clientX > r.left + r.width / 2 || ev.clientY > r.bottom - 10;
-    grid.insertBefore(el, after ? over.nextSibling : over);
-  };
-  const up = () => {
-    document.removeEventListener('pointermove', move);
-    document.removeEventListener('pointerup', up);
-    document.removeEventListener('pointercancel', up);
-    const ids = [...grid.querySelectorAll('.hw')].map(x => x.dataset.hm);
-    hmLay.widgets.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-    hmNorm(); hmSave();
-    hmDrag = null;
-    renderHome();
-  };
-  document.addEventListener('pointermove', move);
-  document.addEventListener('pointerup', up);
-  document.addEventListener('pointercancel', up);
 }
 
 function connect() {
