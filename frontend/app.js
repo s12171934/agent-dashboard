@@ -76,10 +76,12 @@ function iconPanel() {
     <div class="ip-name">${(x => `${x.concept} · ${x.colour}`)(APP_ICONS.find(x => x.id === cur))}</div>
     <p class="ip-help">${ios ? '홈 화면 아이콘은 추가할 때 정해집니다. 바꾸려면 홈 화면에서 지우고 Safari 공유 → 홈 화면에 추가로 다시 넣으세요.'
       : '탭 아이콘은 바로 바뀝니다. 설치한 앱 아이콘은 브라우저가 다음에 앱을 확인할 때 바뀌며, 바꿀지 물어볼 수 있습니다.'}</p>`;
-  el.querySelectorAll('.ip-icon').forEach(b => b.onclick = () => { setAppIcon(b.dataset.id); iconPanel(); });
+  el.querySelectorAll('.ip-icon').forEach(b => b.onclick = () => { setAppIcon(b.dataset.id); el.hidden = true; });
   el.querySelector('[data-ip=close]').onclick = () => { el.hidden = true; };
   el.hidden = false;
 }
+// A popover closes once its action is done (a pick, a switch, an add) or on a click outside (ds-dock.js); it stays open
+// for what is shown in it (a test result, an error) and for steps of a form.
 $('#icon-btn').onclick = () => { if ($('#icon-panel').hidden) iconPanel(); else $('#icon-panel').hidden = true; };
 // 「Orca 에 열린 것만」: only agents whose connected Orca terminal the server found (session.orca_focus), the same set
 // that gets the 「Orca 에서 열기」 button. Combines with 「실행 중만」 (both must hold).
@@ -104,7 +106,7 @@ function charPanel() {
     <a class="act cp-link" href="#chars">캐릭터 그림 관리 →</a>`;
   const set = { style: k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} },
     frame: k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} } };
-  el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); charPanel(); render(); });
+  el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); el.hidden = true; render(); });
   el.querySelector('[data-cp=close]').onclick = () => { el.hidden = true; };
   el.querySelector('.cp-link').onclick = () => { el.hidden = true; };
   el.hidden = false;
@@ -392,7 +394,6 @@ function renderHeader() {
 // question and the 메일함.
 $('#stat-btn').onclick = () => { $('#stat-panel').hidden = !$('#stat-panel').hidden; };
 $('#k-dec-wrap').onclick = () => { $('#stat-panel').hidden = true; location.hash = 'decide'; };
-document.addEventListener('click', e => { if (!e.target.closest('#stat-panel, #stat-btn')) $('#stat-panel').hidden = true; });
 
 // 메일함 mode, one switch over every server that is on and has it: on only when each of them is on.
 function inboxMode() {
@@ -4970,10 +4971,10 @@ function serverPanel() {
   const msg = $('#sp-msg'), say = (text, cls = '') => { msg.className = 'sp-msg ' + cls; msg.textContent = text; };
   const verdict = r => !r.ok ? [r.error, 'bad'] : r.api !== api.API_VERSION ? [`연결은 되지만 서버 API v${r.api} 가 페이지 v${api.API_VERSION} 와 다릅니다`, 'bad'] : ['연결됩니다', 'ok'];
   // Every change goes through setServers, which reconnects; the snapshot is refetched at once.
-  const apply = list => { api.setServers(list); pump(true); serverPanel(); };
+  const apply = list => { api.setServers(list); pump(true); el.hidden = true; };
   el.querySelectorAll('#sp-view button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === srvView);
-    b.onclick = () => { srvView = b.dataset.k; try { localStorage.setItem('adash.srvview', srvView); } catch {} serverPanel(); render(); };
+    b.onclick = () => { srvView = b.dataset.k; try { localStorage.setItem('adash.srvview', srvView); } catch {} el.hidden = true; render(); };
   });
   el.querySelectorAll('.sp-srv').forEach(row => {
     const id = row.dataset.id, cur = () => api.servers().map(x => ({ ...x }));
@@ -5106,7 +5107,7 @@ async function lpSend() {
   if (r.status !== 200) return lpSay(r.body?.error || `보내지 못했습니다 (${r.status})`, 'bad');
   lp.text = '';
   const said = r.body.started ? `${who} 에 보냈습니다` : `${who} 터미널에 넣었습니다 — 지금 턴이 끝나면 읽습니다`;
-  lpSay(said, 'ok');
+  lpDone();
   toast(said);
 }
 async function lpLaunch() {
@@ -5127,14 +5128,16 @@ async function lpLaunch() {
     : j.state !== 'done' ? '6분 안에 끝나지 않았습니다 — Orca 에서 확인하세요' : j.failed?.[0]?.error;
   if (err) return lpSay(err, 'bad');
   Object.assign(lp, { name: '', title: '', prompt: '', placesOf: null });
-  lpSay(`「${label}」 을(를) 띄웠습니다${j.note ? ' · ' + j.note : ''}`, j.note ? '' : 'ok');
-  $('#toast').show(`「${cut(label, 30)}」 에이전트를 띄웠습니다`, j.handle ? { action: 'Orca 에서 열기', onAction: () => api.focus(j.handle)
+  lpDone();
+  $('#toast').show(`「${cut(label, 30)}」 에이전트를 띄웠습니다${j.note ? ' · ' + j.note : ''}`, j.handle ? { action: 'Orca 에서 열기', onAction: () => api.focus(j.handle)
     .then(x => x.status !== 200 && toast(x.body?.error || 'Orca 전환 실패')) } : {});
 }
 $('#launch-btn').onclick = () => { if ($('#launch-panel').hidden) launchPanel(); else $('#launch-panel').hidden = true; };
 // ---------- chat ----------
 // The conversation with an agent as a chat with its person (chWho): its replies on the left beside its face, the
 // prompts on the right, and a box that types into the agent's Orca terminal (api.send, as 「프롬프트 보내기」). Two
+// done: the toast says so, and the panel closes (it opens next time without the old message)
+const lpDone = () => { lp.msg = ''; lp.cls = ''; $('#launch-panel').hidden = true; };
 // places: the session page (a box under the header) and a sheet over the agents list or the office, opened by a right
 // click or a long press on a card or a person. The conversation is /api/chat, read again when the session's last_ts
 // moves; a live update repaints only the log, so the box keeps what is being typed (and an IME composition).
