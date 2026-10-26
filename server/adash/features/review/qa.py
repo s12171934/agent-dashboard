@@ -95,12 +95,17 @@ def qa_ticket(watch, key):
           "committed": mt(p("ready", f"{key}.md")), "approved": mt(p("approved", f"{key}.md")),
           "delivered": mt(p("delivered", f"{key}.md")), "cleaned": mt(p("cleaned", key))}
     coord = (rec.get("coordinator") or {}).get("handle") or (claims[-1][2] if claims and len(claims[-1]) > 2 else None)
+    # A worker reports to the coordinator of the round it started in (claimed lines and worker records share the
+    # driver's local "YYYY-MM-DD HH:MM:SS" clock), so a previous round's coordinator still heads its own workers.
+    parent = lambda at: next((c[2] for c in reversed(claims) if len(c) > 2 and c[2] and at and c[0] <= at), None) or coord
     return {"stage": stage, "stage_no": QA_STAGES.index(stage) + 1, "blocked": bool(blocked), "blocked_reason": reason,
             "ignored": os.path.exists(p("ignored", key)), "round": len(claims), "coordinator": coord,
             "workers": [{"name": n, **w} for n, w in (rec.get("workers") or {}).items()],
             "worktree": (rec.get("worktree") or {}).get("path"), "at": at, "prs": prs,
             "handoffs": len(hand), "done": len(done), "driver": bool(rec.get("driver")),
             "merge_at": mt(p("merge", f"{key}.md")), "rounds": [claim_at(c) for c in claims],
+            "links": {w["handle"]: parent(w.get("at")) for w in (rec.get("workers") or {}).values()
+                      if w.get("handle") and parent(w.get("at"))},
             "handles": list(dict.fromkeys(h for h in [c[2] for c in claims if len(c) > 2] + [coord]
                                           + [w.get("handle") for w in (rec.get("workers") or {}).values()] if h))}
 
@@ -174,3 +179,22 @@ def qa_cli(epic, watch, *args, timeout=600):
     r = subprocess.run([sys.executable, QA_DRIVER, "--home", os.path.dirname(watch), *args[:1], epic, *args[1:]],
                        capture_output=True, text=True, timeout=timeout)
     return r.returncode, (r.stdout + ("\n" if r.stdout and r.stderr else "") + r.stderr).strip()
+
+
+def qa_family(summaries, focus, sets):
+    """Ties qa-driver sessions into coordinator families. The driver opens coordinators and workers as plain Orca
+    terminals, so no orchestration brief marks them; its ticket records (qa["links"]: worker terminal -> coordinator
+    terminal) do. A session is matched by its terminal (Orca's hook pane, else the handle its transcript names).
+    Roles an orchestration brief or command already set are kept."""
+    links = {w: c for st in sets for t in st.get("tickets") or [] for w, c in ((t.get("qa") or {}).get("links") or {}).items()}
+    heads = set(links.values())
+    for sm in summaries:
+        h = focus.get(sm["id"]) or sm.get("own_handle")
+        if sm["parent"] or not h:
+            continue
+        if sm["role"] == "solo" and h in links and links[h] != h:
+            sm.update(role="worker", coord_handle=links[h], own_handle=sm.get("own_handle") or h)
+        elif sm["role"] != "worker" and h in heads:
+            sm["own_handle"] = sm.get("own_handle") or h
+            if sm["role"] == "solo":
+                sm["role"] = "coordinator"
