@@ -13,6 +13,17 @@ body { padding-top: env(safe-area-inset-top); }
 .conn { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .conn i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
 .conn.on i { background: var(--ok); }
+.plan-usage { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; font-size: 12px; }
+.plan-usage[hidden] { display: none; }
+.pu-h { display: flex; gap: 8px; align-items: baseline; }
+.pu-h .st { margin-left: auto; color: var(--muted); font-size: 11px; }
+.pu-row { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: center; }
+.pu-row b { font-variant-numeric: tabular-nums; }
+.pu-row .ctxbar { grid-column: 1 / -1; height: 6px; }
+.pu-n em { font-style: normal; font-size: 10.5px; color: var(--warn); margin-left: 4px; }
+.pu-r { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.pu-x { color: var(--muted); } .pu-x b { color: var(--text); } .pu-x em { font-style: normal; color: var(--bad); }
+.pu-err { color: var(--bad); }
 .health { margin-top: 12px; font-size: 12px; color: var(--bad); cursor: help; }
 main { padding: 16px var(--gutter); max-width: 1500px; margin: 0 auto; padding-bottom: calc(40px + env(safe-area-inset-bottom));
   padding-left: max(var(--gutter), env(safe-area-inset-left)); padding-right: max(var(--gutter), env(safe-area-inset-right)); }

@@ -34,6 +34,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `projects/` | 프로젝트 진행 `progress.json` 검사·계산, 스텝 노트 | `/api/projects`, `/api/project`, `/api/project/note` |
 | `designs/` | 설계 문서 색인(index·roots·toc), 도구 호출에서 읽은 줄 추적(shell_reads·reads), 섹션별 읽기 기록(refs) | `/api/designs`, `/api/design`, `/api/design/file`, `/api/design/refs` |
 | `review/` | QA 묶음 리뷰(Jira·워크트리·PR), QA 드라이버, 반출 | `/api/reviews`, `POST /api/review/*`, `POST /api/qa/*` |
+| `plan_usage/` | Claude 플랜 사용량(5시간 세션·주간 버킷, 초과 사용 크레딧): Claude Code 의 OAuth 토큰(키체인 → `~/.claude/.credentials.json`)으로 사용량 API 를 5분마다 조회 | (스냅숏에 실림) |
 | `vault/` | 볼트 노트와 그것을 만든 세션 | `/api/vault/recent` |
 | `flow/` | 정상 흐름 계약과 흐름 이탈 판정 | `POST /api/flow/ok` |
 
