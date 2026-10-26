@@ -3667,28 +3667,25 @@ function staffHtml(h, r = hubVal(h)) {
       <span class="ch-meta">${h.name} →</span></span>
   </button>`;
 }
-// The rooms stand like a floor plan rather than a grid: each as wide as its screen weighs (a stuck one widest), a step up
-// or down from its neighbours (STAFF_DY), in the list's own order so nobody changes rooms; and in the corridor between
-// some of them a plant, a bench or a water cooler (STAFF_HALL).
-const STAFF_W = [200, 230, 270, 320], STAFF_DY = [0, 22, 8, 30, 4, 18, 26, 10, 14];
-const STAFF_HALL = { 2: 'plant', 4: 'bench', 6: 'cooler' };
-const HALL_SVG = {
-  plant: () => STAFF_PROP.plant,
-  bench: () => `<svg viewBox="0 0 70 40" width="70" height="40"><ellipse class="w3-shadow" cx="35" cy="37" rx="32" ry="2.6"/><rect class="w3-board" x="4" y="16" width="62" height="6" rx="2"/><rect class="w3-board" x="4" y="6" width="62" height="5" rx="2"/>
-    <path class="w3-dark" d="M9 22h4v14H9zM57 22h4v14h-4zM9 9h3v8H9zM58 9h3v8h-3z"/></svg>`,
-  cooler: () => `<svg viewBox="0 0 34 80" width="34" height="80"><ellipse class="w3-shadow" cx="17" cy="77" rx="14" ry="3"/><rect class="w3-glass" x="5" y="3" width="24" height="30" rx="9"/><rect class="w3-alu" x="3" y="33" width="28" height="44" rx="4"/>
-    <rect class="w3-dark" x="10" y="44" width="14" height="9" rx="2"/><circle class="w3-bad" cx="14" cy="48.5" r="1.5"/><circle class="w3-f1" cx="20" cy="48.5" r="1.5"/></svg>`,
-};
-const staffCell = (h, i) => { const r = hubVal(h), w = hubWeight(r);
-  return `<div class="room-floor staff-cell w${w}" data-room="staff-${h.id}" style="--sh:${h.hue};--cw:${STAFF_W[w]}px;--dy:${STAFF_DY[i % STAFF_DY.length]}px">
+// The rooms stand as a village rather than a grid (운영실 배치 시안 D): a plaza in the middle with the office sign, a road
+// across and one down, and each screen a little house by the road — its room under a roof in the room's colour, as wide
+// as its screen weighs (a stuck one widest). Every house has its own lot (STAFF_LOT, by id), so nobody moves when the
+// weights change; trees stand on the empty lot and round the plaza.
+const STAFF_W = [200, 230, 270, 320];
+const STAFF_LOT = { decide: 'a', agents: 'b', worktrees: 'c', designs: 'd', compare: 'e', tests: 'f', talk: 'g', projects: 'h', usage: 'i' };
+const TREE = (k = 1) => `<svg viewBox="0 0 48 64" width="${48 * k}" height="${64 * k}"><ellipse class="w3-shadow" cx="24" cy="61" rx="16" ry="3"/><rect class="w3-board" x="21" y="40" width="6" height="21" rx="2"/>
+    <circle class="w3-hill" cx="15" cy="32" r="12"/><circle class="w3-hill" cx="33" cy="32" r="12"/><circle class="w3-leaf" cx="24" cy="20" r="16"/></svg>`;
+const staffCell = h => { const r = hubVal(h), w = hubWeight(r);
+  return `<div class="vl-house w${w}" style="--lot:${STAFF_LOT[h.id]};--sh:${h.hue};--cw:${STAFF_W[w]}px"><i class="vl-roof" aria-hidden="true"></i>
+    <div class="room-floor staff-cell" data-room="staff-${h.id}">
     <div class="room-wall" aria-hidden="true">${h.wall.map(k => `<span class="wall-item">${(STAFF_WALL[k] || WALL[k])()}</span>`).join('')}</div>
-    <span class="staff-plate" aria-hidden="true">${h.room}</span><span class="staff-prop" aria-hidden="true">${STAFF_PROP[h.prop] || ''}</span>${staffHtml(h, r)}</div>`
-    + (STAFF_HALL[i] ? `<span class="staff-hall" aria-hidden="true">${HALL_SVG[STAFF_HALL[i]]()}</span>` : ''); };
-function staffRoom() {
+    <span class="staff-plate" aria-hidden="true">${h.room}</span><span class="staff-prop" aria-hidden="true">${STAFF_PROP[h.prop] || ''}</span>${staffHtml(h, r)}</div></div>`; };
+function staffRoom(people) {
   needReviews();  // the QA room's figure needs the 워크트리 리뷰 data
   const todo = hmMine().length;
   return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">화면마다 맡은 사람 · 누르면 그 화면</span><span class="room-n">${todo ? `내 차례 <b>${todo}</b> · ` : ''}전체 <b>${HUB.length}</b></span></div>
-    <div class="staff-rooms">${HUB.map(staffCell).join('')}</div></section>`;
+    <div class="staff-village"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
+      <div class="vl-grove" aria-hidden="true">${TREE(1.1)}${TREE(.8)}${TREE()}</div>${HUB.map(staffCell).join('')}</div></section>`;
 }
 
 // The time of day for the office's light and window sky
@@ -3697,7 +3694,6 @@ const TOD_NAME = { morning: '아침', day: '낮', evening: '저녁', night: '밤
 // The lobby: a glass wall onto the city (its sky follows the time of day), and in front of it a reception desk with a
 // lamp, the office sign, a lounge (sofa, rug), a coffee machine and a water cooler
 function lobbyHtml(people) {
-  const d = new Date(), tod = todOf(d.getHours()), busy = people.filter(s => ['run', 'bg'].includes(subBg(s, agg(s), status(s)))).length;
   const desk = `<svg class="lb-wide" viewBox="0 0 150 96" width="240" height="154"><rect class="lb-wood2" x="6" y="44" width="138" height="50" rx="6"/><rect class="lb-wood" x="2" y="38" width="146" height="12" rx="4"/>
     <rect class="lb-dark" x="88" y="20" width="34" height="20" rx="2"/><rect class="lb-metal" x="100" y="38" width="10" height="3"/><path class="lb-dark" d="M24 38v-22h3v22z"/><path class="lb-lamp" d="M14 14h24l-6-10h-12z"/>
     <rect class="lb-metal" x="44" y="30" width="26" height="8" rx="2"/><rect class="lb-pot" x="128" y="24" width="12" height="14" rx="2"/><path class="lb-leaf" d="M134 24c-8-4-8-14-3-18c3 5 4 11 3 18zM134 24c2-9 7-14 12-14c0 7-5 12-12 14z"/></svg>`;
@@ -3705,9 +3701,13 @@ function lobbyHtml(people) {
     <rect class="lb-sofa2" x="18" y="52" width="104" height="24" rx="8"/><rect class="lb-sofa" x="4" y="46" width="18" height="32" rx="8"/><rect class="lb-sofa" x="118" y="46" width="18" height="32" rx="8"/>
     <rect class="lb-dark" x="154" y="20" width="26" height="58" rx="4"/><rect class="lb-metal" x="158" y="26" width="18" height="12" rx="2"/><rect class="lb-lamp" x="163" y="44" width="8" height="4" rx="1"/><rect class="lb-metal" x="160" y="58" width="14" height="10"/>
     <rect class="lb-metal" x="186" y="46" width="20" height="32" rx="3"/><rect class="lb-water" x="188" y="16" width="16" height="30" rx="6"/></svg>`;
-  return `<div class="ch-lobby" aria-hidden="true"><i class="lb-city"></i>${desk}<div class="lobby-sign"><b>AGENT OFFICE</b>
-      <span>${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]}) · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · ${TOD_NAME[tod]}</span>
-      <small>출근 ${people.length}명 · 일하는 중 ${busy}</small></div>${lounge}</div>`;
+  return `<div class="ch-lobby" aria-hidden="true"><i class="lb-city"></i>${desk}${lobbySign(people)}${lounge}</div>`;
+}
+function lobbySign(people) {
+  const d = new Date(), busy = people.filter(s => ['run', 'bg'].includes(subBg(s, agg(s), status(s)))).length;
+  return `<div class="lobby-sign"><b>AGENT OFFICE</b>
+      <span>${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]}) · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · ${TOD_NAME[todOf(d.getHours())]}</span>
+      <small>출근 ${people.length}명 · 일하는 중 ${busy}</small></div>`;
 }
 // A company's sign (one per metrics server, once two or more are on): across the plane above its rooms, with the
 // server's name, its rooms and people, and the server's address in the tooltip.
@@ -3795,7 +3795,7 @@ function renderOffice() {
   // Two or more servers on: each server is a company of its own — a sign across the plane, then that server's rooms —
   // in the order of the server list. Team lines still cross companies.
   const cos = multiSrv() ? srvOn().map(x => ({ x, rs: placed.filter(r => r.srv === x.id) })).filter(c => c.rs.length) : [];
-  const rooms = [home ? staffRoom() : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...c.rs.map(r => r.html)]) : placed.map(r => r.html)).filter(Boolean);
+  const rooms = [home ? staffRoom(people) : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...c.rs.map(r => r.html)]) : placed.map(r => r.html)).filter(Boolean);
   // rooms in a grid as square as it goes (the biggest company's rooms), one column on a narrow screen; together as wide as the canvas at 100%
   const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : rooms.length;
   const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(most));
@@ -3805,7 +3805,7 @@ function renderOffice() {
   // A live update that keeps the office's shape is written into it (chPatch). Otherwise a phase taken from the clock
   // (a multiple of every loop's length) keeps the characters' motion from restarting.
   const html = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
-      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:@PH@">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
+      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:@PH@">${home ? '' : lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   const now = $('#ch-canvas');
   if (now && now === chLast.el) {
