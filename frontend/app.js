@@ -1211,9 +1211,10 @@ function famHtml(f, wk) {
     ${f.coord ? plansOf(f.coord).map(p => `<div class="pline" style="padding:2px 2px 0">${drvPlanLine(driverPlan(p))}</div>${ticketStrip(driverPlan(p))}`).join('') : ''}
     ${f.workers.length || f.subs.length ? `<div class="tree">${(() => {
       // Workers that belong to a group come first: sub-coordinator trees, then script drivers, then the coordinator's own
-      // workers. Each group by state (attention → idle); an expanded sub-tree is a full-width block, folded ones share a grid.
+      // workers. Each group by state (attention → idle), folded sub-trees after expanded ones; an expanded sub-tree is a
+      // full-width block, folded ones share a grid.
       const drv = new Set((f.drivers || []).map(d => d.handle));
-      const subs = byRank(f.subs.filter(liveFam), famRank), own = byRank(f.workers.filter(w => !drv.has(w.viaHandle) && liveSess(w)), sessRank);
+      const subs = byRank(f.subs.filter(liveFam), x => famRank(x) + (shut(x) ? 20 : 0)), own = byRank(f.workers.filter(w => !drv.has(w.viaHandle) && liveSess(w)), sessRank);
       let out = '', cells = [];
       const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
       const away = [];
@@ -1985,8 +1986,9 @@ async function renderTests() {
 function agentsHtml(fv, sv, srv) {
   const count = (f, k) => (k === 'c' ? (f.coord || !termOwner(f.handle).title ? 1 : 0) : f.workers.filter(liveSess).length) + f.subs.filter(liveFam).reduce((a, x) => a + count(x, k), 0);
   // One list ordered by state (attention first, idle last); within a state orchestrations lead solo sessions, then newest first.
-  const items = [...fv.map(f => ({ started: f.started, f, r: famRank(f), o: 0 })), ...sv.map(s => ({ started: s.started || '', s, r: sessRank(s), o: 1 }))]
-    .sort((a, b) => a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
+  // Minimised coordinators sink below every expanded one.
+  const items = [...fv.map(f => ({ started: f.started, f, r: famRank(f), o: 0, m: +shut(f) })), ...sv.map(s => ({ started: s.started || '', s, r: sessRank(s), o: 1, m: 0 }))]
+    .sort((a, b) => a.m - b.m || a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
   const nc = fv.reduce((a, f) => a + count(f, 'c'), 0), nw = fv.reduce((a, f) => a + count(f, 'w'), 0);
   const title = srv ? `${srvTitle(srv)}<span>에이전트 ${nc + nw + sv.length}</span>` : `<h2>에이전트 ${nc + nw + sv.length}</h2>`;
   if (!items.length) return srv ? `<div class="sec-h srv-h">${title}</div><div class="empty srv-empty">표시할 에이전트가 없습니다.</div>` : '';
@@ -4050,7 +4052,8 @@ function wtSec({ key, items }, drivers = []) {
   }
   const arr = [...ss], min = famMin['wt:' + key], drvs = items.flatMap(it => it.list || [it]).filter(x => x.d);
   if (!arr.length && !drvs.length) return { n: 0 };
-  items.sort((a, b) => a.r - b.r || b.started.localeCompare(a.started));
+  const folded = it => +!!(it.f && shut(it.f));  // minimised coordinators after expanded ones
+  items.sort((a, b) => folded(a) - folded(b) || a.r - b.r || b.started.localeCompare(a.started));
   // span: columns (1–3) the section takes in the worktree tile grid, from its widest row — a card row's length, an open
   // driver's own tile span, 3 for an expanded coordinator family.
   let span = 1;
