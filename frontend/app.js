@@ -3399,15 +3399,19 @@ function chLayout() {
     fl.querySelectorAll('.wall-item').forEach((it, i) => it.hidden = i >= Math.max(2, Math.floor(W / 130)));
     if (!us.length) return;
     // the first row's bubbles sit on the lower wall, below its decorations
-    // grown labels (chApply's --lz) reach past a person's box: the bubble up, the name plate down
-    const grow = (chLz - 1) * ($('#ch-canvas.ch-far') ? 64 : 90);
-    const uw = us[0].offsetWidth, uh = us[0].offsetHeight + grow, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
-    let H = top + Math.ceil(us.length / cols) * (uh + CH_GAP) + CH_GAP;
+    // grown labels (chApply's --lz) reach past a person's box: the bubble up, the name plate down. A row is as tall as
+    // its tallest person (one with two family chips stands taller than one with none), so no name plate runs under
+    // the row below.
+    const hOf = u => u.offsetHeight + (chLz - 1) * ((u.querySelector('.ch-tag')?.offsetHeight || 0) + (u.querySelector('.ch-say')?.offsetHeight || 0));
+    const uw = us[0].offsetWidth, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
+    const rowY = [top];
+    us.forEach((u, i) => { const r = Math.floor(i / cols); rowY[r + 1] = Math.max(rowY[r + 1] || 0, rowY[r] + hOf(u) + CH_GAP); });
+    let H = rowY[rowY.length - 1] + CH_GAP;
     us.forEach((u, i) => {
       const p = chPos[u.dataset.id];
-      const x = p ? p.x * Math.max(0, W - uw) : slot * (i % cols) + (slot - uw) / 2, y = p ? Math.max(0, p.y) : top + Math.floor(i / cols) * (uh + CH_GAP);
+      const x = p ? p.x * Math.max(0, W - uw) : slot * (i % cols) + (slot - uw) / 2, y = p ? Math.max(0, p.y) : rowY[Math.floor(i / cols)];
       chPlace(u, x, y);
-      H = Math.max(H, y + uh + CH_GAP);
+      H = Math.max(H, y + hOf(u) + CH_GAP);
     });
     fl.style.height = H + 'px';
   });
