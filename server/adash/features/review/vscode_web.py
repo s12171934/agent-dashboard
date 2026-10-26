@@ -30,9 +30,11 @@ DATA = os.path.join(HERE, "vscode-web")  # serve-web's server download, extensio
 # must not reuse it).
 SOCK = os.path.join(tempfile.gettempdir(), f"adash-vscode-web-{hashlib.sha1(DATA.encode()).hexdigest()[:10]}.sock")
 PREFIX = "/vscode/"
-SETTINGS = {"files.readonlyInclude": {"**": True}, "workbench.startupEditor": "none",
-            "security.workspace.trust.enabled": False, "chat.disableAIFeatures": True,
+SETTINGS = {"files.readonlyInclude": {"**": True}, "workbench.startupEditor": "none", "chat.disableAIFeatures": True,
             "workbench.secondarySideBar.defaultVisibility": "hidden"}
+# Defaults the workbench page itself carries (configurationDefaults): application-scoped settings, which Machine settings
+# on the server cannot set. No workspace trust, so a worktree opens trusted and Source Control shows without asking.
+DEFAULTS = {"security.workspace.trust.enabled": False}
 # ?theme=light|dark on the workbench page: the dashboard's theme, as the default colour theme of that page (the page asks
 # again when the dashboard's theme changes). A theme the user picked inside VS Code still wins.
 THEMES = {"light": "Default Light Modern", "dark": "Default Dark Modern"}
@@ -129,16 +131,17 @@ def _dechunk(body):
     return out
 
 
-def _themed(head, body, theme):
-    """The workbench page with configurationDefaults setting the colour theme, sent with a Content-Length."""
+def _workbench(head, body, theme):
+    """The workbench page with DEFAULTS (and the colour theme, when given) as configurationDefaults, sent with a
+    Content-Length."""
     lines = head.split("\r\n")
     chunked = any(ln.lower().replace(" ", "") == "transfer-encoding:chunked" for ln in lines[1:])
     page = (_dechunk(body) if chunked else body).decode("utf-8")
 
     def put(m):
         cfg = json.loads(html.unescape(m.group(2)))
-        cfg["configurationDefaults"] = {**cfg.get("configurationDefaults", {}), "workbench.colorTheme": THEMES[theme],
-                                        "window.autoDetectColorScheme": False}
+        themed = {"workbench.colorTheme": THEMES[theme], "window.autoDetectColorScheme": False} if theme else {}
+        cfg["configurationDefaults"] = {**cfg.get("configurationDefaults", {}), **DEFAULTS, **themed}
         return m.group(1) + html.escape(json.dumps(cfg), quote=True) + '"'
     page = re.sub(r'(id="vscode-workbench-web-configuration" data-settings=")([^"]*)"', put, page, count=1).encode()
     lines = [ln for ln in lines if ln.split(":", 1)[0].strip().lower() not in ("transfer-encoding", "content-length")]
@@ -213,11 +216,12 @@ def proxy(h, url):
         return h.send_json({"error": "웹 VS Code 가 떠 있지 않습니다. 대시보드에서 다시 여세요"}, 502)
     with up:
         ws = h.headers.get("Upgrade", "").lower() == "websocket"
-        theme = h.command == "GET" and url.path in (b, b + "/") and (parse_qs(url.query).get("theme") or [""])[0]
+        page = h.command == "GET" and url.path in (b, b + "/")
+        theme = page and (parse_qs(url.query).get("theme") or [""])[0]
         theme = theme if theme in THEMES else None
         lines = [f"{h.command} {h.path} HTTP/1.1"]
         lines += [f"{k}: {v}" for k, v in h.headers.items()
-                  if k.lower() not in _DROP_REQ and not (theme and k.lower() == "accept-encoding")]
+                  if k.lower() not in _DROP_REQ and not (page and k.lower() == "accept-encoding")]
         lines += ["Accept-Language: en"] + (["Connection: Upgrade", "Upgrade: websocket"] if ws else ["Connection: close"])
         up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
         n = int(h.headers.get("Content-Length") or 0)
@@ -231,10 +235,10 @@ def proxy(h, url):
             head, rest = _head(up)
         except OSError:
             return
-        if theme and head.startswith("HTTP/1.1 200"):
+        if page and head.startswith("HTTP/1.1 200"):
             while chunk := up.recv(65536):
                 rest += chunk
-            head, rest = _themed(head, rest, theme)
+            head, rest = _workbench(head, rest, theme)
         h.connection.sendall(_frameable(head).encode("latin-1") + rest)
         if ws:
             t = threading.Thread(target=_pipe, args=(h.rfile.read1, up), daemon=True)
