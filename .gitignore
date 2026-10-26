@@ -15,3 +15,5 @@ history-cache.json
 bak-archive-*.tar.gz
 .wrangler/
 design-refs.json
+# web VS Code: serve-web's data and the relay's secret (review/vscode_web.py)
+vscode-web/

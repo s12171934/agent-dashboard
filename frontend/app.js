@@ -1991,7 +1991,7 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // is recorded in the step note's frontmatter; the server moves its shas along with the worktrees' HEADs (rebases), and it
 // reads 「재오픈」 once the driver starts a later round than the one the review saw. Opening VS Code
 // goes to the set's server and works only when that server is this device's loopback (set.local).
-let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false;
+let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false, wtBodyHtml = '';
 // f: review / Jira filter, q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home 「QA 파이프라인」 sets it.
 const wtf = (() => { try { return { f: 'all', q: '', qa: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '', qa: '' }; } })();
 const wtQaHit = t => !wtf.qa || (wtf.qa === 'blocked' ? !!t.qa?.blocked : t.qa?.stage === wtf.qa);
@@ -2203,14 +2203,14 @@ function wtActs(t, set) {
         ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
-        <button class="act big" data-wt-open="${esc(t.key)}" data-srv="${esc(set.server)}"${set.local ? '' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>VS Code 로 열기</button>
+        <button class="act big" data-wt-web="${esc(t.key)}" data-srv="${esc(set.server)}" aria-expanded="${wtWeb.has(t.key)}"${set.local ? ' title="이 티켓 아래에 웹 VS Code(읽기 전용)를 펼칩니다. 데스크톱 창은 펼친 곳에서 엽니다"' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>${wtWeb.has(t.key) ? 'VS Code 접기' : 'VS Code 로 보기'}</button>
         <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : '';
 }
 function wtTicket(t, set) {
   const [cls, lbl] = WT_REVIEW[t.review];
   const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
   const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
-  return `<div class="rv-tk ${t.review}">
+  return `<div class="rv-tk ${t.review}" data-wt-tk="${esc(t.key)}">
     <div class="rv-head">
       <span class="tkc ${cls}"><i>${TK_IC[cls]}</i>${lbl}${t.review_at && t.review !== 'pending' ? ' · ' + esc(t.review_at) : ''}${t.review === 'reopened' ? `<span title="리뷰 뒤 드라이버가 재오픈으로 ${t.qa?.round}회차를 기동했습니다"> (${t.review_round ? esc(t.review_round) + '회차' : '이전 회차'} 리뷰)</span>` : ''}</span>
       <a href="${esc(wtData.jira)}/browse/${esc(t.key)}" target="_blank" rel="noopener"><b>${esc(t.key)}</b></a>
@@ -2241,6 +2241,7 @@ async function renderWorktrees() {
     $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
     $('#wt-body').onclick = wtClick;
     wtMounted = true;
+    wtBodyHtml = '';
   }
   $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
   $('#wt-qa').innerHTML = [['', 'QA 단계 전체'], ...qaStages().map(x => [x.key, 'QA ' + x.label]), ['blocked', 'QA 막힘']].map(([k, l]) => `<option value="${k}"${k === wtf.qa ? ' selected' : ''}>${esc(l)}</option>`).join('');
@@ -2256,7 +2257,13 @@ async function renderWorktrees() {
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   }).join('');
-  $('#wt-body').innerHTML = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
+  // Unchanged markup is left alone: a web VS Code open under a ticket survives a redraw only where moveBefore exists.
+  const html = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
+  if (html === wtBodyHtml && $('#wt-body').childElementCount) return;
+  wtBodyHtml = html;
+  wtWebStash();
+  $('#wt-body').innerHTML = html;
+  wtWebPlace($('#wt-body'));
   $('#wt-body').querySelectorAll('.qa-legend').forEach(d => d.ontoggle = () => { try { localStorage.setItem(d.classList.contains('qa-stats') ? 'adash.qastats' : 'adash.qalegend', d.open ? '1' : '0'); } catch {} });
   const tip = $('#tip');
   $('#wt-body').querySelectorAll('.qa-stats').forEach(d => { const days = qaStatsDays[d.dataset.set] || [];
@@ -2314,9 +2321,58 @@ async function qaSetClick(b) {
     return idle();
   }
 }
+// 웹 VS Code: 「VS Code 로 보기」 opens the ticket's worktrees, read-only, in the server's web VS Code (serve-web, relayed
+// by the server) in a panel at the bottom of the ticket row — a tab per repo, the desktop window one button away. The
+// panels live outside the rendered markup (wtWeb) and go back under their row after each redraw: moveBefore keeps the
+// iframe loaded where the browser has it, plain append reloads it.
+const wtWeb = new Map();  // ticket key → panel
+let wtWebPark;
+const wtWebMove = (parent, el) => parent.moveBefore && el.isConnected ? parent.moveBefore(el, null) : parent.append(el);
+function wtWebStash() {
+  if (!wtWeb.size) return;
+  if (!wtWebPark) { wtWebPark = document.body.appendChild(document.createElement('div')); wtWebPark.hidden = true; }
+  for (const el of wtWeb.values()) if (el.isConnected && el.parentNode !== wtWebPark) wtWebMove(wtWebPark, el);
+}
+function wtWebPlace(root) {
+  for (const [key, el] of wtWeb) {
+    const row = root.querySelector(`[data-wt-tk="${CSS.escape(key)}"]`);
+    if (row && el.parentNode !== row) wtWebMove(row, el);
+  }
+}
+async function wtWebToggle(b) {
+  const key = b.dataset.wtWeb, srv = b.dataset.srv, label = on => document.querySelectorAll(`button[data-wt-web="${CSS.escape(key)}"]`)
+    .forEach(x => { x.textContent = on ? 'VS Code 접기' : 'VS Code 로 보기'; x.setAttribute('aria-expanded', on); });
+  if (wtWeb.has(key)) { wtWeb.get(key).remove(); wtWeb.delete(key); return label(false); }
+  b.disabled = true; b.textContent = '띄우는 중…';
+  const { status: st, body } = await api.reviewWeb(srv, key);
+  b.disabled = false;
+  if (st !== 200) { label(false); return uiAlert(body.error || `실패 (${st})`); }
+  const rs = body.repos, el = document.createElement('div');
+  el.className = 'rv-web';
+  el.innerHTML = `<div class="rv-web-h">
+      ${rs.length > 1 ? `<div class="seg">${rs.map((r, i) => `<button type="button" data-wt-web-tab="${i}" class="${i ? '' : 'on'}" title="${esc(r.path)}">${esc(r.repo)}</button>`).join('')}</div>` : `<b title="${esc(rs[0].path)}">${esc(rs[0].repo)}</b>`}
+      <span class="st">웹 VS Code · 읽기 전용</span>
+      <span class="rv-acts"><button class="act big" data-wt-open="${esc(key)}" data-srv="${esc(srv)}" title="저장소마다 데스크톱 VS Code 창을 엽니다">데스크톱 VS Code 로 열기</button></span>
+    </div>
+    ${rs.map((r, i) => `<iframe class="rv-web-f" ${i ? 'data-src' : 'src'}="${esc(r.url)}" title="${esc(r.repo)} — 웹 VS Code"${i ? ' hidden' : ''}></iframe>`).join('')}`;
+  wtWeb.set(key, el);
+  document.querySelector(`#view [data-wt-tk="${CSS.escape(key)}"]`)?.append(el);
+  label(true);
+}
+// A repo tab: its iframe loads on first show, so a ticket with several repos starts one VS Code window, not all of them.
+function wtWebTab(b) {
+  const el = b.closest('.rv-web'), i = +b.dataset.wtWebTab;
+  el.querySelectorAll('[data-wt-web-tab]').forEach(x => x.classList.toggle('on', x === b));
+  el.querySelectorAll('.rv-web-f').forEach((f, j) => {
+    f.hidden = j !== i;
+    if (j === i && f.dataset.src) { f.src = f.dataset.src; delete f.dataset.src; }
+  });
+}
 async function wtClick(e) {
   const q = e.target.closest('button[data-qa-auto], button[data-qa-tk], button[data-qa-set]');
   if (q && !q.disabled) return qaClick(q);
+  const w = e.target.closest('button[data-wt-web], button[data-wt-web-tab]');
+  if (w && !w.disabled) return w.dataset.wtWeb ? wtWebToggle(w) : wtWebTab(w);
   const b = e.target.closest('button[data-wt-open], button[data-wt-mark], button[data-wt-ship]');
   if (!b || b.disabled) return;
   if (b.dataset.ship && !await uiConfirm(`${b.dataset.wtMark} 리뷰를 기록하고 반출(push·PR)을 승인합니다.\n코디네이터가 리베이스·검증 뒤 PR 을 엽니다 (머지는 하지 않음). 진행할까요?`)) return;
@@ -6226,7 +6282,7 @@ function hmQaRow(t, set) {
     q.stage === 'delivered' && q.merge_at && `<span class="st">머지 지시 ${esc(clockAt(q.merge_at))}</span>`,
   ].filter(Boolean).join('');
   const acts = q.stage === 'cleaned' ? '' : `${working && coord?.orca_focus ? focusBtn(coord.orca_focus, true) : ''}${wtActs(t, set)}`;
-  return `<div class="hw-qa-tk">
+  return `<div class="hw-qa-tk" data-wt-tk="${esc(t.key)}">
     <div class="hw-qa-h"><a href="${esc(wtData.jira)}/browse/${esc(t.key)}" target="_blank" rel="noopener"><b>${esc(t.key)}</b></a><span class="hw-t" title="${esc(t.summary || '')}">${esc(t.summary || '')}</span><span class="hw-age" title="이 단계에 들어간 시각 ${esc(clockAt(q.at?.[q.stage]))}">${since ? hmAge(since) : ''}</span></div>
     ${info ? `<div class="hw-qa-i">${info}</div>` : ''}${acts ? `<div class="hw-qa-a">${acts}</div>` : ''}</div>`;
 }
@@ -6353,12 +6409,14 @@ function hmWidget(w) {
 function renderHome() {
   if (hmDrag) return;  // a drag in progress keeps its DOM; the next refresh after it draws
   needReviews();
+  wtWebStash();
   const left = Object.keys(HM_W).filter(id => !hmLay.widgets.some(w => w.id === id));
   $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span>
       <span class="hm-tools">${hmEdit ? '<span class="st">⠿ 끌어서 순서 · 크기 S/M/L/W · 📌 고정 · ✕ 빼기</span><button type="button" class="act big" data-hm-act="reset">기본값으로</button><button type="button" class="act big accent" data-hm-act="done">완료</button>'
         : '<button type="button" class="act big" data-hm-act="edit">편집</button>'}</span></div>
     ${hmEdit && left.length ? `<div class="box hm-cat"><b>위젯 추가</b>${left.map(id => `<button type="button" class="hm-add" data-hm-add="${id}"><span>+</span>${HM_W[id].name}<small>${HM_W[id].desc}</small></button>`).join('')}</div>` : ''}
     <div class="hm-grid${hmEdit ? ' editing' : ''}">${hmLay.widgets.map(hmWidget).join('')}</div>`;
+  wtWebPlace($('#view'));
   hmBind();
 }
 

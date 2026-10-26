@@ -959,6 +959,11 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .rv-flag { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid; }
 .rv-flag.warn { color: var(--warn); } .rv-flag.bad { color: var(--bad); }
 .rv-err { color: var(--bad); font-size: 12px; margin-bottom: 8px; }
+/* 웹 VS Code under a ticket (the 「VS Code 로 보기」 panel) */
+.rv-web { display: grid; gap: 6px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); min-width: 0; }
+.rv-web-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
+.rv-web-f { display: block; width: 100%; height: min(72vh, 760px); border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.rv-web-f[hidden] { display: none; }
 /* Jira stage chips: 개발 완료 is outlined, QA 준비 완료 filled — the one the QA reviewer acts on */
 .rv-js { padding: 0 7px; border-radius: 9px; font-size: 11px; line-height: 18px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .rv-js.j-prog { color: var(--run); border-color: color-mix(in srgb, var(--run) 50%, var(--line)); }

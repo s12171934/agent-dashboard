@@ -12,6 +12,7 @@ from adash.core.jira import JIRA_SITE
 from adash.core.orca import orca
 from adash.core.state import bump, lock
 from adash.core.util import short
+from adash.features.review import vscode_web
 from adash.features.review.config import QA_SETS, VSCODE_CLI, WT_KEY
 from adash.features.review.loop import review_ticket
 from adash.features.review.notes import write_review
@@ -100,7 +101,9 @@ def post_review(h, url):
     through `tailscale serve`, whose requests carry the ts.net Host and X-Forwarded-For. mark {"key", "done"}:
     record or clear the review in the ticket's vault step note, with each worktree's HEAD now. On a driver ticket
     whose coordinator has finished its own review (stage committed, ready/ written) a review is also the push·PR
-    approval: `qa-driver approve`. Before committed a review is refused: the worktree is still being changed."""
+    approval: `qa-driver approve`. Before committed a review is refused: the worktree is still being changed.
+    web: the web VS Code (vscode_web) for each worktree, started if needed: {"repos": [{"repo", "path", "url"}]}, the
+    url relative to this server, on the same loopback-only terms as open."""
     action = url.path.rsplit("/", 1)[1]
     try:
         body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))
@@ -136,9 +139,16 @@ def post_review(h, url):
         threading.Thread(target=ship_start, args=(t, qs), daemon=True).start()
         review_kick.set()
         return h.send_json({"ok": True}, 202)
+    if action == "web":
+        if not vscode_web.local(h):
+            return h.send_json({"error": "웹 VS Code 는 이 맥에서 연 화면에서만 됩니다"}, 403)
+        err = vscode_web.ensure()
+        if err:
+            return h.send_json({"error": err}, 502)
+        return h.send_json({"repos": [{"repo": rp["repo"], "path": rp["path"], "url": vscode_web.url_for(rp["path"])}
+                                      for rp in t["repos"]]})
     if action == "open":
-        host = (h.headers.get("Host") or "").lower().rsplit(":", 1)[0].strip("[]")
-        if host not in ("127.0.0.1", "localhost", "::1") or h.headers.get("X-Forwarded-For"):
+        if not vscode_web.local(h):
             return h.send_json({"error": "VS Code 열기는 이 맥에서 연 화면에서만 됩니다"}, 403)
         # Each worktree as itself, one window per repo: a generated .code-workspace held the folders under a
         # /tmp file and renamed them, so the window read as somewhere other than the worktree.
@@ -188,3 +198,7 @@ def post_review(h, url):
         return h.send_json({"error": "리뷰는 기록했지만 반출 승인 실패: " + short(approve[1], 300)}, 502)
     h.send_json({"ok": True, "review_sha": shas if done else {}, "approved": bool(approve),
                     "output": approve[1] if approve else None})
+
+
+def proxy_vscode(h, url):
+    vscode_web.proxy(h, url)

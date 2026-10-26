@@ -52,6 +52,7 @@ POST = {
     "/api/orca/launch": terminals.post_launch,
     "/api/orca/send": terminals.post_send,
     "/api/review/open": review.post_review,
+    "/api/review/web": review.post_review,
     "/api/review/mark": review.post_review,
     "/api/review/ship": review.post_review,
     "/api/qa/automation": review.post_qa,
@@ -63,3 +64,6 @@ POST = {
     **{f"/api/decision/{a}": decisions.post_decision
        for a in ("ask", "answer", "release", "mode", "inbox", "guard", "dismiss")},
 }
+
+# Paths served by prefix, any method: the web VS Code relay (review/vscode_web.py).
+PREFIXES = {"/vscode/": review.proxy_vscode}
