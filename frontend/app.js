@@ -4907,19 +4907,21 @@ const famRank = f => Math.min(...f.members.map(m => m.decision ? -1 : RANK[statu
 
 // ---------- 상호작용 (messages between sessions, from Orca's orchestration inbox) ----------
 const TALK_TYPES = { question: ['질문', 'var(--warn)'], escalation: ['에스컬레이션', 'var(--bad)'], worker_done: ['완료 보고', 'var(--done)'], status: ['상태·답', 'var(--accent)'], heartbeat: ['heartbeat', 'var(--idle)'] };
-const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'list', hours: 24, pair: null, sel: null, pos: {}, open: new Set(), data: null, key: null, at: 0, busy: false, err: null };
+const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'chat', hours: 24, pair: null, sel: null, room: '', inRoom: false, pos: {}, open: new Set(), data: null, key: null, at: 0, busy: false, err: null };
 let talkMounted = false;
 
 // One end of a message -> {name, path, note}. A session that owns the terminal wins; otherwise the Orca terminal
 // title, otherwise what the address itself says (a Run's coordinator, a task's worker).
+// ch: whose face the chat view draws, the session itself, else a stand-in the hash gives a person (a boss for a Run's
+// coordinator), so the same address keeps one face.
 function talkEnd(term, kind, raw, m) {
   const s = term && (state.all || state.sessions).find(x => x.own_handle === term && !x.parent);
-  if (s) return { key: term, name: nameOf(s), path: s.path, model: s.model, st: status(s), coord: s.role === 'coordinator' || isSubCoord(s) };
+  if (s) return { key: term, name: nameOf(s), path: s.path, model: s.model, st: status(s), coord: s.role === 'coordinator' || isSubCoord(s), ch: s };
   const t = term && (state.orca.terminals || []).find(x => x.handle === term);
-  const run = m.run_id && state.orca.runs.find(r => r.id === m.run_id);
-  if (kind === 'run') return { key: term || raw, name: t?.title ? `${t.title} (코디네이터)` : `Run 코디네이터${run ? ' · ' + cut(run.objective, 30) : ''}`, note: '세션 추적 범위 밖' };
-  if (kind === 'dispatch') return { key: term || raw, name: IX.tasks[m.task_id]?.display_name || t?.title || '워커 ' + raw.slice(9, 21), note: '세션 추적 범위 밖' };
-  return { key: term || raw, name: t?.title || (term ? '터미널 ' + term.slice(5, 13) : raw), note: t ? 'Orca 터미널' : '종료된 터미널' };
+  const run = m.run_id && state.orca.runs.find(r => r.id === m.run_id), key = term || raw;
+  if (kind === 'run') return { key, name: t?.title ? `${t.title} (코디네이터)` : `Run 코디네이터${run ? ' · ' + cut(run.objective, 30) : ''}`, note: '세션 추적 범위 밖', coord: true, ch: { id: key, role: 'coordinator' } };
+  if (kind === 'dispatch') return { key, name: IX.tasks[m.task_id]?.display_name || t?.title || '워커 ' + raw.slice(9, 21), note: '세션 추적 범위 밖', ch: { id: key, role: 'worker' } };
+  return { key, name: t?.title || (term ? '터미널 ' + term.slice(5, 13) : raw), note: t ? 'Orca 터미널' : '종료된 터미널', ch: { id: key } };
 }
 
 async function loadTalk(force) {
@@ -4934,7 +4936,7 @@ async function loadTalk(force) {
 function setTalkView(v) {
   talk.view = v; localStorage.setItem('talkView', v);
   $('#view').querySelectorAll('[data-tv]').forEach(b => b.classList.toggle('on', b.dataset.tv === v));
-  $('#talk-th').closest('label').style.display = v === 'graph' ? 'none' : '';
+  $('#talk-th').closest('label').style.display = v === 'list' ? '' : 'none';
   drawTalk();
 }
 
@@ -5001,7 +5003,7 @@ function drawTalkGraph(msgs) {
     const bend = both ? 22 : 0, mx = (a.x + b.x) / 2 - uy * bend, my = (a.y + b.y) / 2 + ux * bend;  // two directions curve apart
     const sx = a.x + ux * r(A), sy = a.y + uy * r(A), ex = b.x - ux * (r(B) + 4), ey = b.y - uy * (r(B) + 4);
     const ty = top(e), w = 1.2 + Math.log2(e.n) * 1.1, dim = near && !(e.a === sel || e.b === sel);
-    const tip = `${A.name} → ${B.name}\n${Object.entries(e.types).map(([k, v]) => `${TALK_TYPES[k]?.[0] || k} ${v}`).join(' · ')}\n마지막 ${hm(e.last)} · ${ago(e.last)}\n누르면 이 둘 사이 메시지를 리스트로`;
+    const tip = `${A.name} → ${B.name}\n${Object.entries(e.types).map(([k, v]) => `${TALK_TYPES[k]?.[0] || k} ${v}`).join(' · ')}\n마지막 ${hm(e.last)} · ${ago(e.last)}\n누르면 이 둘의 대화방으로`;
     return `<g class="tg-e ${dim ? 'dim' : ''}" data-a="${esc(e.a)}" data-b="${esc(e.b)}"><path d="M${sx},${sy} Q${mx},${my} ${ex},${ey}" stroke="${TALK_TYPES[ty]?.[1] || 'var(--muted)'}" stroke-width="${w}" marker-end="url(#tg-${ty})"/>
       <path class="tg-hit" d="M${sx},${sy} Q${mx},${my} ${ex},${ey}"/>${e.n > 1 ? `<text x="${(sx + 2 * mx + ex) / 4}" y="${(sy + 2 * my + ey) / 4 - 3}" class="tg-n">${e.n}</text>` : ''}<title>${esc(tip)}</title></g>`;
   }).join('');
@@ -5023,14 +5025,15 @@ function drawTalkGraph(msgs) {
       <button class="act" id="tg-list">이 세션 메시지를 리스트로</button> <button class="act" id="tg-clear">강조 해제</button></div>`;
   })() : '';
   box.innerHTML = `<div class="gwrap tg-wrap">${info}<svg id="tg-svg" width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}"><defs>${markers}</defs>${edgeSvg}${nodeSvg}</svg>
-    <div class="st">원 = 세션(테두리 보라 = 코디네이터, 점선 = 세션 추적 범위 밖) · 원 크기 = 주고받은 메시지 수 · 화살표 = 보낸 쪽 → 받는 쪽, 굵기 = 건수, 색 = 가장 많은 종류. 노드를 끌어 옮길 수 있고, 화살표를 누르면 그 둘 사이 메시지가 리스트로 열립니다.</div></div>`;
+    <div class="st">원 = 세션(테두리 보라 = 코디네이터, 점선 = 세션 추적 범위 밖) · 원 크기 = 주고받은 메시지 수 · 화살표 = 보낸 쪽 → 받는 쪽, 굵기 = 건수, 색 = 가장 많은 종류. 노드를 끌어 옮길 수 있고, 화살표를 누르면 그 둘의 대화방이 채팅으로 열립니다.</div></div>`;
   if (sel) {
     $('#tg-list').onclick = () => { talk.who = sel; talk.sel = null; $('#talk-who').value = sel; setTalkView('list'); };
     $('#tg-clear').onclick = () => { talk.sel = null; drawTalk(); };
   }
   const svg = $('#tg-svg');
   svg.querySelectorAll('.tg-e').forEach(g => g.onclick = () => {
-    talk.pair = [g.dataset.a, g.dataset.b]; talk.pair.names = [nodes[g.dataset.a].name, nodes[g.dataset.b].name]; setTalkView('list');
+    talk.pair = [g.dataset.a, g.dataset.b]; talk.pair.names = [nodes[g.dataset.a].name, nodes[g.dataset.b].name];
+    talk.room = [...talk.pair].sort((x, y) => x.localeCompare(y)).join('\n'); talk.inRoom = true; setTalkView('chat');
   });
   svg.querySelectorAll('.tg-v').forEach(g => {
     const k = g.dataset.k;
@@ -5047,10 +5050,74 @@ function drawTalkGraph(msgs) {
   });
 }
 
+// Chat: the messages as a messenger, a room per pair that talked. Each message sits beside its sender's face (chFace);
+// in a room the coordinator (else whoever spoke first) talks from the right, so a coordinator and a worker read as a
+// dialogue. A reply quotes what it answers. On a narrow screen the room list and the room take turns.
+function drawTalkChat(msgs) {
+  const rooms = {};
+  msgs.forEach(m => {
+    const [a, b] = [m.f, m.t].sort((x, y) => x.key.localeCompare(y.key)), k = a.key + '\n' + b.key;
+    const r = rooms[k] ||= { k, a, b, msgs: [], last: '', unread: 0 };
+    r.msgs.push(m); if (m.created_at > r.last) r.last = m.created_at; if (!m.read) r.unread++;
+  });
+  const RL = Object.values(rooms).sort((x, y) => y.last.localeCompare(x.last)), box = $('#talk-list');
+  if (!RL.length) { box.innerHTML = `<div class="empty">${talk.data ? '조건에 맞는 메시지가 없습니다.' : '불러오는 중…'}</div>`; return; }
+  const room = rooms[talk.room] || RL[0];
+  room.msgs.sort((x, y) => x.created_at.localeCompare(y.created_at));
+  const right = room.a.coord !== room.b.coord ? (room.a.coord ? room.a : room.b) : room.msgs[0].f;
+  const face = (e, px) => chFace(e.ch, px), nm = e => esc(cutW(e.name, 30));
+  const link = e => e.path ? `<a href="#s=${encodeURIComponent(e.path)}">${nm(e)}</a>` : `<span title="${esc(e.note || '')}">${nm(e)}</span>`;
+  const pair = r => `<span class="tc-pair">${face(r.a, 30)}${face(r.b, 30)}</span>`;
+  const list = RL.slice(0, 300).map(r => {
+    const l = r.msgs.reduce((x, y) => y.created_at > x.created_at ? y : x), c = TALK_TYPES[l.type]?.[1] || 'var(--muted)';
+    return `<button class="tc-room${r === room ? ' on' : ''}" data-room="${esc(r.k)}">${pair(r)}
+      <span class="tc-rt"><b>${nm(r.a)} · ${nm(r.b)}</b><small><i style="background:${c}"></i>${esc(chName(chWho(l.f.ch)))}: ${esc(cut(l.subject || l.question || l.body || '', 60))}</small></span>
+      <span class="tc-rm"><small>${ago(r.last)}</small>${r.unread ? `<em title="안 읽음">${r.unread}</em>` : `<small>${r.msgs.length}</small>`}</span></button>`;
+  }).join('');
+  const byId = Object.fromEntries(room.msgs.map(m => [m.id, m]));
+  let day = '', prev = null;
+  const log = room.msgs.slice(-300).map(m => {
+    const me = m.f.key === right.key, [label, color] = TALK_TYPES[m.type] || [m.type, 'var(--muted)'], isOpen = talk.open.has(m.id);
+    const d = new Date(toDate(m.created_at)).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    const sep = d !== day ? `<div class="tc-day"><span>${d}</span></div>` : '';
+    const first = sep || prev?.f.key !== m.f.key; day = d; prev = m;
+    const q = m.thread_id && m.thread_id !== m.id && byId[m.thread_id];
+    const text = m.question || m.body || '';
+    const extra = [m.outcome && `결과 ${m.outcome}`, m.phase && `단계 ${m.phase}`, m.priority && m.priority !== 'normal' && `우선순위 ${m.priority}`, !m.read && '안 읽음'].filter(Boolean).join(' · ');
+    return `${sep}<div class="chat-b tc-b ${me ? 'me' : 'them'}${first ? '' : ' cont'}" style="--c:${color}">${me ? '' : first ? face(m.f, 34) : '<span class="chat-face"></span>'}
+      <div class="tc-col">${first ? `<span class="tc-who">${esc(chName(chWho(m.f.ch)))} <small>${nm(m.f)}</small></span>` : ''}
+        <div class="tc-row"><div class="chat-t tc-t${isOpen ? ' open' : ''}" data-mid="${esc(m.id)}" title="누르면 ${isOpen ? '접기' : '전체 보기'}">
+          ${q ? `<div class="tc-q">↪ ${esc(cut(q.subject || q.question || q.body || '', 80))}</div>` : ''}
+          <span class="talk-ty">${esc(label)}</span> <b>${esc(m.subject || '(제목 없음)')}</b>
+          ${text ? `<div class="tc-body">${chatText(isOpen ? text : cut(text.replace(/\s+/g, ' '), 280))}${isOpen && m.cut ? '<span class="st"> … (잘림)</span>' : ''}</div>` : ''}
+          ${extra ? `<div class="tc-x">${esc(extra)}</div>` : ''}
+          ${isOpen && m.files.length ? `<div class="tc-x">수정한 파일 ${m.files.length}: ${m.files.map(f => esc(f.split('/').pop())).join(', ')}</div>` : ''}</div>
+        <span class="chat-ts" title="${esc(m.created_at)}">${chatTime(m.created_at)}</span></div></div>
+      ${me ? first ? face(m.f, 34) : '<span class="chat-face"></span>' : ''}</div>`;
+  }).join('');
+  // Repaints keep the room's place: at the bottom when it was there (or the room is new), else where it was read.
+  const oldLog = box.querySelector('.tc-log'), oldList = box.querySelector('.tc-list');
+  const stick = !oldLog || oldLog.dataset.room !== room.k || oldLog.scrollHeight - oldLog.scrollTop - oldLog.clientHeight < 40;
+  const top = oldLog?.scrollTop, listTop = oldList?.scrollTop;
+  box.innerHTML = `<div class="tc-wrap${talk.inRoom ? ' in-room' : ''}"><div class="tc-list" role="list">${list}</div>
+    <div class="tc-room-v"><div class="tc-head"><button class="act tc-back" aria-label="대화 목록">‹</button>${pair(room)}
+      <span class="tc-ht"><b>${link(room.a)} <span class="talk-arrow">↔</span> ${link(room.b)}</b><small class="st">메시지 ${room.msgs.length}${room.msgs.length > 300 ? ' · 최근 300개만' : ''} · 마지막 ${ago(room.last)}</small></span></div>
+      <div class="chat-log tc-log" role="log" data-room="${esc(room.k)}">${log}</div></div></div>`;
+  const nl = box.querySelector('.tc-log');
+  nl.scrollTop = stick ? nl.scrollHeight : top;
+  if (listTop) box.querySelector('.tc-list').scrollTop = listTop;
+  box.querySelectorAll('.tc-room').forEach(b => b.onclick = () => { talk.room = b.dataset.room; talk.inRoom = true; drawTalk(); });
+  box.querySelector('.tc-back').onclick = () => { talk.inRoom = false; drawTalk(); };
+  nl.querySelectorAll('.tc-t').forEach(el => el.onclick = e => {
+    if (e.target.closest('a') || getSelection().toString()) return;
+    const id = el.dataset.mid; talk.open.has(id) ? talk.open.delete(id) : talk.open.add(id); drawTalk();
+  });
+}
+
 async function renderTalk() {
   if (!talkMounted) {
     $('#view').innerHTML = `<div class="controls">
-        <span class="seg" id="talk-view">${[['list', '리스트'], ['graph', '그래프']].map(([k, l]) => `<button data-tv="${k}" class="${talk.view === k ? 'on' : ''}">${l}</button>`).join('')}</span>
+        <span class="seg" id="talk-view">${[['chat', '채팅'], ['list', '리스트'], ['graph', '그래프']].map(([k, l]) => `<button data-tv="${k}" class="${talk.view === k ? 'on' : ''}">${l}</button>`).join('')}</span>
         <span class="talk-types">${Object.entries(TALK_TYPES).map(([k, [l, c]]) => `<label class="chk talk-t" style="--c:${c}"><input type="checkbox" data-tt="${k}" ${talk.types.has(k) ? 'checked' : ''}> ${l} <b id="tc-${k}"></b></label>`).join('')}</span>
         <label>세션 <select id="talk-who" class="field"><option value="">전체</option></select></label>
         <input id="talk-q" class="field talk-q" type="search" placeholder="제목·본문 검색" value="${esc(talk.q)}">
@@ -5066,7 +5133,7 @@ async function renderTalk() {
     $('#talk-hours').onchange = e => { talk.hours = +e.target.value; drawTalk(); };
     $('#talk-lim').onchange = e => { talk.limit = +e.target.value; renderTalk(); };
     $('#view').querySelectorAll('[data-tv]').forEach(b => b.onclick = () => setTalkView(b.dataset.tv));
-    $('#talk-th').closest('label').style.display = talk.view === 'graph' ? 'none' : '';
+    $('#talk-th').closest('label').style.display = talk.view === 'list' ? '' : 'none';
     talkMounted = true;
   }
   if (talk.data) drawTalk();
@@ -5091,10 +5158,10 @@ function drawTalk() {
     && (!q || [m.subject, m.body, m.question, m.f.name, m.t.name].some(x => String(x || '').toLowerCase().includes(q)));
   $('#talk-pair').innerHTML = pk ? `<span class="talk-pchip">${esc(cutW(pk.names[0], 24))} ↔ ${esc(cutW(pk.names[1], 24))} 사이만 <button class="act" id="talk-pair-x">✕</button></span>` : '';
   if (pk) $('#talk-pair-x').onclick = () => { talk.pair = null; drawTalk(); };
-  if (talk.view === 'graph') {
+  if (talk.view !== 'list') {
     const sel = all.filter(hit);
     $('#talk-sub').textContent = `메시지 ${sel.length} · Orca 에서 ${talk.data?.fetched ?? 0}건 읽음${talk.err ? ' · 갱신 실패: ' + talk.err : ''}`;
-    return drawTalkGraph(sel);
+    return talk.view === 'graph' ? drawTalkGraph(sel) : drawTalkChat(sel);
   }
   // Threads: a reply carries the root's id in thread_id; the root keeps the newest activity of the thread.
   let rows;
