@@ -3419,8 +3419,8 @@ function chReveal(id) {
   else return;
   chView.fit = false; chApply(); chViewSave();
 }
-function chBind() {
-  $('#view').querySelectorAll('.ch').forEach(u => {
+function chBind(us = $('#view').querySelectorAll('.ch')) {  // us: the people put in anew by chPatch
+  us.forEach(u => {
     u.onclick = () => {
       if (Date.now() - chPanAt < 400) return;
       if (u.dataset.staff) { chPanel = chPanel === u.dataset.staff ? null : u.dataset.staff; renderOffice(); chReveal(u.dataset.id); return; }
@@ -3625,7 +3625,71 @@ function coSign(x, rs) {
     <span class="co-n">방 <b>${rs.length}</b> · 출근 <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
 }
 
-let chLast = {};  // the office last built (renderOffice) and its HTML, to skip a rebuild that changes nothing
+let chLast = {};  // the office last built (renderOffice): its element, its HTML and that HTML parsed (tree)
+// Live updates change mostly words: 「n분 전」, the lobby's clock, an action in a tooltip, a count. They are written into
+// the office on screen instead of rebuilding it: a rebuild restarts every sprite's animation (the 완료 hop, a 결정's
+// pulse) and Live2D canvas, which showed as the characters blinking every few seconds. chPatch walks the last tree (a),
+// the new one (b) and the office on screen (l) together and gathers the changes (ctx.ops), or returns false to rebuild:
+// a changed part inside CH_SOFT is put in whole, a changed tooltip or label is set, and the rooms on the plane and the
+// people in a room (CH_KEYED) are matched by key (chKey) — one that changed in shape (a person in another state) is
+// put in anew (ctx.fresh), the rest are patched and stay, moved only when the order changed. Anything else rebuilds.
+// The office's own additions (chLinks' lines and team tags, after everything) are not in the trees and are left alone.
+const CH_SOFT = '.ch-say, .ch-meta, .room-n, .lobby-sign, .wall-item, .co-n, .ch-panel', CH_KEYED = '.ch-world, .room-floor';
+const chKey = n => n.dataset.room || n.dataset.id || n.className + '|' + (n.title || '');
+function chPatch(l, a, b, ctx) {
+  if (!l || a.nodeType !== b.nodeType || l.nodeType !== a.nodeType) return false;
+  if (a.nodeType !== 1) { if (a.data !== b.data) ctx.ops.push(() => { l.data = b.data; }); return true; }
+  if (a.tagName !== b.tagName) return false;
+  if (a.matches(CH_SOFT)) {
+    if (a.outerHTML !== b.outerHTML) ctx.ops.push(() => {
+      for (const { name } of a.attributes) if (!b.hasAttribute(name)) l.removeAttribute(name);
+      for (const { name, value } of b.attributes) l.setAttribute(name, value);
+      l.innerHTML = b.innerHTML;
+    });
+    return true;
+  }
+  for (const n of new Set([...a.getAttributeNames(), ...b.getAttributeNames()])) {
+    const v = b.getAttribute(n);
+    if (a.getAttribute(n) === v) continue;
+    if (n === 'style' && a.matches('.ch-world')) {  // the grid's columns and room width; the live style keeps the view
+      ctx.ops.push(() => ['--cols', '--room-w'].forEach(k => l.style.setProperty(k, b.style.getPropertyValue(k))));
+      continue;
+    }
+    if (n !== 'title' && n !== 'aria-label') return false;
+    ctx.ops.push(() => v === null ? l.removeAttribute(n) : l.setAttribute(n, v));
+  }
+  if (a.matches(CH_KEYED)) return chPatchKeyed(l, a, b, ctx);
+  if (a.childNodes.length !== b.childNodes.length) return false;
+  for (let i = 0; i < a.childNodes.length; i++) if (!chPatch(l.childNodes[i], a.childNodes[i], b.childNodes[i], ctx)) return false;
+  return true;
+}
+// The elements of l stand in the order of a's (text between them is only spacing and is left as it is).
+function chPatchKeyed(l, a, b, ctx) {
+  const old = new Map([...a.children].map((x, i) => [chKey(x), [x, l.children[i]]]));
+  const plan = [...b.children].map(y => {
+    const [x, n] = old.get(chKey(y)) || [];
+    if (n && chPatch(n, x, y, ctx)) { old.delete(chKey(y)); return n; }
+    return y;
+  });
+  if (plan.every((n, i) => n === l.children[i]) && plan.length === a.children.length) return true;
+  ctx.ops.push(() => {
+    // what is not kept leaves; then each in its place, a new one cloned from b (which stays the tree for next time)
+    [...old.values()].forEach(([, n]) => n?.remove());
+    let at = l.firstElementChild;
+    for (const p of plan) {
+      const n = p.isConnected ? p : document.importNode(p, true);
+      if (n !== at) {
+        l.insertBefore(n, at);
+        // a moved or new element's animations start again: on the clock's phase like the rest, and a new 완료 hops
+        // from the start while a moved one does not hop again
+        n.style.setProperty('--ph', `${-(Date.now() % 12000) / 1000}s`);
+        n.style.setProperty('--ph-once', n === p ? '-9s' : '0s');
+        if (n !== p) ctx.fresh.push(n);
+      } else at = at.nextElementSibling;
+    }
+  });
+  return true;
+}
 function renderOffice() {
   if (chPts.size) { chStale = true; return; }  // a live update during a pan waits for the release
   const { fams, solos } = families();
@@ -3644,18 +3708,33 @@ function renderOffice() {
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
-  // A live update that changes nothing in the office leaves it as it is: rebuilding restarts every sprite and Live2D
-  // canvas, which showed as the characters blinking every few seconds. Otherwise a phase taken from the clock (a
-  // multiple of every loop's length) keeps their motion from restarting.
+  // A live update that keeps the office's shape is written into it (chPatch). Otherwise a phase taken from the clock
+  // (a multiple of every loop's length) keeps the characters' motion from restarting.
   const html = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       ${home && chPanel ? staffPanel() : ''}
       ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:@PH@">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
-  const now = $('#ch-canvas');
-  if (now && now === chLast.el && html === chLast.html) { chLayout(); chSize(); return; }  // the width may have changed
+  const now = $('#ch-canvas'), panelBind = () => { hmBind(); $('#ch-panel-x').onclick = () => { chPanel = null; renderOffice(); }; };
+  if (now && now === chLast.el) {
+    if (html === chLast.html) { chLayout(); chSize(); return; }  // the width may have changed
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    const ctx = { ops: [], fresh: [] };
+    if (chPatch(now, chLast.tree, t.content.firstElementChild, ctx)) {
+      ctx.ops.forEach(f => f());
+      chLast = { el: now, html, tree: t.content.firstElementChild };
+      if (home && chPanel) panelBind();  // the panel may have been put in anew
+      chLayout();  // a bubble or a label may be taller or shorter, a person new
+      if (ctx.fresh.length) { chBind(ctx.fresh.flatMap(n => n.matches('.ch') ? [n] : [...n.querySelectorAll('.ch')])); L2D.mount($('#view')); }
+      chSize();
+      return;
+    }
+  }
   $('#view').innerHTML = html.replace('@PH@', `${-(Date.now() % 12000) / 1000}s;--ph-once:${-(Date.now() % 2400) / 1000}s`);
-  chLast = { el: $('#ch-canvas'), html };
-  if (home && chPanel) { hmBind(); $('#ch-panel-x').onclick = () => { chPanel = null; renderOffice(); }; }
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  chLast = { el: $('#ch-canvas'), html, tree: t.content.firstElementChild };
+  if (home && chPanel) panelBind();
   chLayout();
   chBind();
   chSize();
