@@ -262,7 +262,19 @@ function route() {
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
   return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
 }
-addEventListener('hashchange', () => { hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0); });
+// 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
+// and the screen stays as it was. Opened, it remembers the screen it came from (decFrom), and goes back there once
+// the last pending question is answered and nothing is left.
+let decFrom = 'home';
+const decLeft = () => { const d = state?.decisions; return d ? d.pending.length + (d.inbox || []).filter(r => !r.read).length : 0; };
+addEventListener('hashchange', e => {
+  const from = new URL(e.oldURL).hash.slice(1) || 'home';
+  if (route().v === 'decide' && from !== 'decide') {
+    if (state?.decisions?.available && !decLeft()) { history.replaceState(null, '', e.oldURL); return toast('결정 대기 중인 질문이 없습니다'); }
+    decFrom = from;
+  }
+  hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0);
+});
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
 const openRun = id => location.hash = 'r=' + id;
 
@@ -287,7 +299,9 @@ function injectPlanTasks() {
 async function refresh() {
   // Merged over the metrics servers that are on; one that fails or speaks another API version is left out and named
   // in state.server_errors (shown with the collector health).
+  const hadDec = state?.decisions?.pending?.length || 0;
   state = await api.state();
+  if (hadDec && !decLeft() && route().v === 'decide') location.hash = decFrom;  // the render below draws that screen
   state.all = state.sessions;
   chPin(state.all);
   injectPlanTasks();
@@ -473,18 +487,14 @@ function decAlert(pending, sessOf) {
     <span class="da-meta">${wait}${pending.length > 1 ? ` · 외 ${pending.length - 1}건` : ''}</span><span class="da-go">답하기 →</span></a>`;
 }
 
-// #decide: a heading with the 메일함 switch above the cards (#decide-head, outside #view like the cards, and
+// #decide: a heading (the 메일함 switch is in 「현황」) above the cards (#decide-head, outside #view like the cards, and
 // rebuilt on every refresh: it holds nothing being typed), and the 메일함 (#inbox) below them.
 function decideHead() {
   const dec = state.decisions, m = inboxMode(), el = $('#decide-head');
   el.hidden = false;
   el.innerHTML = `<a class="back" href="#agents">← 에이전트</a>
     <div class="sec-h"><h2>결정 대기 ${dec.pending.length}</h2>
-      <span>${m.on ? '메일함 모드: 새 질문은 메일함에 쌓이고, 에이전트는 권장안으로 진행합니다.' : '터미널 선택기와 같은 질문입니다. 여기서 답하면 터미널에 대신 입력합니다.'}</span>
-      ${m.ids.length ? `<button class="act big ib-mode${m.on ? ' on' : ''}" aria-pressed="${m.on}" title="켜면 질문을 기다리지 않고 메일함에 남긴 채 에이전트가 권장안으로 진행합니다. 서버에 저장되어 모든 기기에 같이 적용됩니다">
-        <ds-icon name="mail"></ds-icon> 메일함 모드 ${m.on ? '켜짐' : m.some ? '일부 켜짐' : '꺼짐'}</button>` : ''}</div>`;
-  const b = el.querySelector('.ib-mode');
-  if (b) b.onclick = () => { b.disabled = true; setInboxMode(!m.on); };
+      <span>${m.on ? '메일함 모드: 새 질문은 메일함에 쌓이고, 에이전트는 권장안으로 진행합니다.' : '터미널 선택기와 같은 질문입니다. 여기서 답하면 터미널에 대신 입력합니다.'}</span></div>`;
 }
 function renderDecide() {
   const dec = state.decisions;
