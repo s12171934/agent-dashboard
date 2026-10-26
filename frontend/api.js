@@ -285,6 +285,13 @@ const api = (() => {
     // Open every worktree of a ticket in one VS Code window on that server's Mac, or record / clear its review in the
     // vault step note. Resolve to {status, body}: 403 open from anywhere but that Mac's loopback, 409 no worktree / note.
     reviewOpen: (server, key) => post(byId(server), '/api/review/open', { key }),
+    // The ticket's worktrees in that server's web VS Code (read-only, started on first use): body.repos[{repo, path,
+    // url}], url absolute (the server's address + its secret path). Same loopback-only terms as reviewOpen.
+    reviewWeb: async (server, key) => {
+      const srv = byId(server), r = await post(srv, '/api/review/web', { key });
+      (r.body.repos || []).forEach(x => { x.url = srv.url + x.url; });
+      return r;
+    },
     reviewMark: (server, key, done) => post(byId(server), '/api/review/mark', { key, done }),
     reviewShip: (server, key) => post(byId(server), '/api/review/ship', { key }),
     // QA driver control on the set's server. automation: action enable | disable | run on an Orca automation the set

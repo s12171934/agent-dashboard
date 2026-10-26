@@ -5,7 +5,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
-from adash.http.routes import GET, POST
+from adash.http.routes import GET, POST, PREFIXES
 from adash.http.security import host_allowed, origin_allowed
 
 
@@ -67,11 +67,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    @staticmethod
+    def prefixed(url):
+        return next((f for p, f in PREFIXES.items() if url.path.startswith(p)), None)
+
     def do_GET(self):
         url = urlparse(self.path)
         if not self.authorized(url):
             return
-        route = GET.get(url.path)
+        route = GET.get(url.path) or self.prefixed(url)
         if not route:
             return self.send_json({"error": "not found"}, 404)
         route(self, url)
@@ -80,6 +84,9 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if not self.authorized(url):
             return
+        route = self.prefixed(url)
+        if route:
+            return route(self, url)
         # JSON only: a cross-site form cannot send this content type without a CORS preflight, which authorized()
         # already limits to --origin.
         route = POST.get(url.path)
