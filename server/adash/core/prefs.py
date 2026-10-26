@@ -6,7 +6,9 @@ import os
 from adash.core.config import HERE
 
 
-# User choices made in the UI, shared by every device: {"idle": {path: last_ts when marked}}.
+# User choices made in the UI, shared by every device: {"idle": {path: last_ts when marked}, "chars": {path: {"who",
+# "boss", "pick"}}} (the person drawn for a session: picked by hand, or the first one the page drew, kept so every view
+# and device draws the same).
 PREFS_PATH = os.path.join(HERE, "prefs.json")
 try:
     with open(PREFS_PATH) as _f:
@@ -14,6 +16,7 @@ try:
 except (OSError, ValueError):
     prefs = {}
 prefs.setdefault("idle", {})
+prefs.setdefault("chars", {})
 
 
 def save_prefs():

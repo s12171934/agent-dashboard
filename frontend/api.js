@@ -310,11 +310,11 @@ const api = (() => {
       const messages = parts.flatMap(([s, d]) => tag(d.messages, s.id)).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       return { messages: messages.slice(0, limit), fetched: Math.max(...parts.map(([, d]) => d.fetched || 0)) };
     },
-    // action: idle | unidle; paths: session log paths (sent to the servers that own them).
-    pref: async (action, paths) => {
+    // action: idle | unidle | char (extra: { who, boss, pick }); paths: session log paths (sent to the servers that own them).
+    pref: async (action, paths, extra) => {
       const by = {};
       for (const p of paths) (by[owner.path[p] || enabled()[0]?.id] ||= []).push(p);
-      await Promise.all(Object.entries(by).map(([id, ps]) => post(byId(id), '/api/pref', { action, paths: ps })));
+      await Promise.all(Object.entries(by).map(([id, ps]) => post(byId(id), '/api/pref', { action, paths: ps, ...extra })));
     },
     // 「정상으로 표시」 on a flow deviation (ok=false undoes it), sent to the server that judged it.
     flowOk: (server, id, ok, item) => post(byId(server), '/api/flow/ok', { id, ok, item }),

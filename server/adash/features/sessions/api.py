@@ -1,6 +1,7 @@
 """Session endpoints: one session's detail, its conversation, the plans of several, and manual idle marks."""
 
 import json
+import re
 from urllib.parse import parse_qs
 
 from adash.core.prefs import prefs, save_prefs
@@ -64,11 +65,14 @@ def get_plans(h, url):
 
 
 def post_pref(h, url):
-    """{"action": idle|unidle, "paths"}: mark sessions idle by hand, or undo it."""
+    """{"action": idle|unidle, "paths"}: mark sessions idle by hand, or undo it.
+    {"action": "char", "paths", "who", "boss", "pick"}: keep the person drawn for sessions (who null forgets it)."""
     try:
         body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))
         action, paths = body["action"], body["paths"]
-        assert action in ("idle", "unidle") and isinstance(paths, list)
+        assert action in ("idle", "unidle", "char") and isinstance(paths, list)
+        who = body.get("who")
+        assert action != "char" or who is None or isinstance(who, str) and re.fullmatch(r"[a-z0-9-]{1,40}", who)
     except (ValueError, KeyError, AssertionError, TypeError):
         return h.send_json({"error": "bad request"}, 400)
     with lock:
@@ -76,7 +80,12 @@ def post_pref(h, url):
             s = sessions.get(path)
             if not s:
                 continue
-            if action == "idle":
+            if action == "char":
+                if who:
+                    prefs["chars"][path] = {"who": who, "boss": bool(body.get("boss")), "pick": bool(body.get("pick"))}
+                else:
+                    prefs["chars"].pop(path, None)
+            elif action == "idle":
                 prefs["idle"][path] = s.last_ts or ""
             else:
                 prefs["idle"].pop(path, None)

@@ -289,6 +289,7 @@ async function refresh() {
   // in state.server_errors (shown with the collector health).
   state = await api.state();
   state.all = state.sessions;
+  chPin(state.all);
   injectPlanTasks();
   IX = index();
   renderHeader();
@@ -3033,17 +3034,55 @@ async function chLoad() {
     delete CH_ART[who]; delete CH_INFO[who];
     chHidden.add(who);
   }
-  if (state) { chxMounted = false; render(); }
+  chReady = true;
+  if (state) { chPin(state.all); chxMounted = false; render(); }
 }
 // 「캐릭터」 tab: a person switched off (false) is left out of the office; a list with everyone off keeps them all.
 let chPool = {};
 try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch {}
 const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.length ? k : l; };
-// A person picked in a session's detail (chPick, this device only) wins over the hash, so the office shows them too.
-let chPick = {};
+// A session's person is kept in its server's metadata (prefs.json chars → s.char: { who, boss, pick }), so the office,
+// the detail, the chat and every device draw the same one whichever copy of the session they hold. chPin runs over
+// the snapshot after each refresh: a session without one is given the hash's pick (from the list for its role, boss),
+// and a kept one is picked again only when it was the hash's and the role has changed, or its person is gone or
+// switched off here (the 「캐릭터」 tab). Before chars.json is read nothing is kept (a person put up there would look
+// gone), and a session nothing is kept for yet (a pending terminal, a moment before the reply) shows the hash's pick.
+// A person picked in a session's detail is kept the same way with pick, which no role change or switch undoes.
+// adash.chpick: picks this device kept before; sent up once, and the server's wins.
+let chPick = {}, chReady = false;
 try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch {}
-const chWho = s => { const p = chPick[s.id || s.path]; if (p && CH_ART[p]) return p;
-  const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
+const chAuto = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
+// A copy without char (the detail read before the snapshot kept one) goes by the snapshot's copy of the session.
+const chSnap = s => s.char ? s : state?.all?.find(x => x.path === s.path) || s;
+const chWho = s => { const t = chSnap(s); return CH_ART[t.char?.who] ? t.char.who : chAuto(t); };
+const chSent = new Set();
+function chPin(list) {
+  if (!chReady) return;
+  const want = {};
+  for (const s of list) {
+    if (!s.path || s.path.startsWith('orca-terminal:')) continue;
+    const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
+    let n = null;
+    if (old && CH_ART[old] && !c?.pick) n = { who: old, boss, pick: true };
+    else if (!c || !CH_ART[c.who] || !c.pick && (c.boss !== boss || !chIn(boss ? CH_BOSS : CH_CREW).includes(c.who))) n = { who: chAuto(s), boss, pick: false };
+    if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
+    if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
+    s.char = n;
+    const key = JSON.stringify(n);
+    if (chSent.has(s.path + key)) continue;
+    chSent.add(s.path + key);
+    (want[key] ||= []).push(s.path);
+  }
+  for (const [key, ps] of Object.entries(want)) api.pref('char', ps, JSON.parse(key)).catch(() => {});
+}
+// Keep a person for one session by hand (who) or hand it back to the hash (null), on this page at once.
+function chSet(d, who) {
+  const t = state?.all?.find(x => x.path === d.path) || d, boss = isBoss(t);
+  const n = { who: who || chAuto(t), boss, pick: !!who };
+  for (const s of new Set([d, t])) s.char = n;
+  chSent.add(d.path + JSON.stringify(n));
+  api.pref('char', [d.path], n).catch(() => {});
+}
 const chMove = (st, s) => s.decision ? 'dec' : st;
 const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
 const chV = who => chVer[who] ? '?v=' + chVer[who] : '';
@@ -3236,17 +3275,17 @@ const chShown = () => charMode;
 let chPickOpen = false;
 const chName = w => CH_INFO[w]?.[0] || w;
 function chHero(d) {
-  const st = subBg(d, agg(d), status(d)), who = chWho(d), k = d.id || d.path;
+  const st = subBg(d, agg(d), status(d)), who = chWho(d), k = d.id || d.path, pick = d.char?.pick;
   return `<button type="button" class="ch d-ch st-${st}${d.decision ? ' dec' : ''}" id="d-ch" data-id="${esc(k)}" aria-expanded="${chPickOpen}" aria-controls="d-chpick"
-      title="${esc(chName(who))} · 눌러서 캐릭터 바꾸기" aria-label="${esc(`캐릭터 ${chName(who)}${chPick[k] ? ' (직접 고름)' : ''}. 눌러서 바꾸기`)}">
-    ${chFig(st, d, true)}<span class="ch-name">${esc(chName(who))}${chPick[k] ? ' ✎' : ''}</span></button>`;
+      title="${esc(chName(who))} · 눌러서 캐릭터 바꾸기" aria-label="${esc(`캐릭터 ${chName(who)}${pick ? ' (직접 고름)' : ''}. 눌러서 바꾸기`)}">
+    ${chFig(st, d, true)}<span class="ch-name">${esc(chName(who))}${pick ? ' ✎' : ''}</span></button>`;
 }
 function chPicker(d) {
-  const k = d.id || d.path, cur = chWho(d), auto = !chPick[k];
+  const cur = chWho(d), auto = !d.char?.pick;
   const one = w => { const a = CH_ART[w].sdb;
     return `<button type="button" class="d-chopt${w === cur ? ' on' : ''}" data-pick="${w}" aria-pressed="${w === cur}" title="${esc(CH_INFO[w]?.[1] || '')}">
       <span class="d-chspr" style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(w, 'bust')});background-size:${a.pw * 8}px ${a.ph}px"></span>${esc(chName(w))}</button>`; };
-  return `<div class="box d-chpick" id="d-chpick"><div class="d-chpick-h"><b>캐릭터 고르기</b><span class="st">사무실에서도 이 사람으로 보입니다 · 이 기기에만 저장</span>
+  return `<div class="box d-chpick" id="d-chpick"><div class="d-chpick-h"><b>캐릭터 고르기</b><span class="st">사무실·대화·다른 기기에서도 이 사람으로 보입니다</span>
       <button type="button" class="act" data-pick=""${auto ? ' disabled' : ''}>${auto ? '자동 배정 중' : '자동으로 되돌리기'}</button></div>
     <div class="d-chgrp" role="group" aria-label="코디네이터"><span class="st">코디네이터</span>${CH_BOSS.map(one).join('')}</div>
     <div class="d-chgrp" role="group" aria-label="워커"><span class="st">워커</span>${CH_CREW.map(one).join('')}</div></div>`;
@@ -4626,9 +4665,7 @@ function renderSession(navigated) {
   const reSess = () => { const sv = saveScroll(); renderSession(); restoreScroll(sv); };
   if ($('#d-ch')) $('#d-ch').onclick = () => { chPickOpen = !chPickOpen; reSess(); };
   $('#view').querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
-    const k = d.id || d.path;
-    if (b.dataset.pick) chPick[k] = b.dataset.pick; else delete chPick[k];
-    try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {}
+    chSet(d, b.dataset.pick || null);
     reSess();
   });
   if (ch) L2D.mount($('#view'));
