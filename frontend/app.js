@@ -3958,7 +3958,16 @@ const cn = { img: '', fname: '', who: '', name: '', look: '', boss: false, notes
 let cnJobs = null, cnSeen = '', cnTimer = 0;
 const CN_STEPS = [['ref', '원본'], ['desc', '설명'], ['full', '전신'], ['bust', '상반신'], ['sd', 'SD'], ['published', '게시']];
 const CN_WHO = /^[a-z][a-z0-9-]{1,23}$/;
-const cnCan = () => !cn.busy && cn.img && CN_WHO.test(cn.who) && cn.name.trim() && !/'/.test(cn.name + cn.look) && cn.server;
+// Why 「Orca 에 맡기기」 is off, one line per unmet condition; 「검사」 shows them, the button turns on when it is empty.
+const cnWhy = () => [
+  !cn.img && '원본 그림을 고르세요',
+  !cn.name.trim() && '표시 이름이 비었습니다',
+  !cn.who ? '영문 이름이 비었습니다' : !CN_WHO.test(cn.who) && `영문 이름 「${cn.who}」 — 소문자로 시작, 소문자·숫자·- 만, 2~24자`,
+  /'/.test(cn.name + cn.look) && "표시 이름·생김새에 작은따옴표(') 는 못 씁니다",
+  !cn.server && '켜진 메트릭 서버가 없습니다',
+  cn.busy && '앞선 요청을 보내는 중입니다',
+].filter(Boolean);
+const cnCan = () => !cnWhy().length;
 function cnHtml() {
   const on = srvOn();
   if (!on.some(x => x.id === cn.server)) cn.server = on[0]?.id || null;
@@ -3979,6 +3988,7 @@ function cnHtml() {
           ${on.length > 1 ? `<select class="field" data-cn="server" aria-label="서버">${on.map(x => opt(x.id, x.name, cn.server)).join('')}</select>` : ''}</div>
         <p class="lp-help">영문 이름은 파일 이름이 됩니다(소문자·숫자·<code>-</code>). 그림은 그 서버의 Mac 에서 Codex 이미지 생성으로 그리고, 에이전트는 Orca 의 agent-dashboard 탭에 뜹니다.</p>
         <div class="lp-foot"><span class="sp-msg ${cn.cls}">${esc(cn.msg)}</span>
+          <button type="button" class="act big" data-cn-check title="맡기기 버튼이 꺼진 까닭을 봅니다">검사</button>
           <button class="act big accent" data-cn-go${cnCan() ? '' : ' disabled'}>${cn.busy ? '맡기는 중…' : 'Orca 에 맡기기'}</button></div>
       </div>
     </div>
@@ -4033,6 +4043,11 @@ function cnBind() {
     el.querySelector('[data-cn-go]').disabled = !cnCan();
   });
   el.querySelector('[data-cn-go]').onclick = cnCreate;
+  el.querySelector('[data-cn-check]').onclick = () => {
+    const why = cnWhy();
+    cn.msg = why.length ? why.join(' · ') : '맡길 수 있습니다'; cn.cls = why.length ? 'bad' : 'ok';
+    redraw();
+  };
   cnJobsBind();
 }
 function cnJobsBind() {
