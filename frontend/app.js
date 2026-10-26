@@ -389,8 +389,11 @@ function renderHeader() {
   $('#k-cost').textContent = usd(priced.reduce((a, s) => a + s.cost, 0)) + (priced.length < ss.length ? '+' : '');
   $('#k-tokens').textContent = fmt(ss.reduce((a, s) => a + total(s), 0));
   $('#k-turns').textContent = fmt(ss.reduce((a, s) => a + s.turns, 0));
-  { const n = testItems().filter(testLive).length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n; }
-  { const n = hmMine().length; $('#k-home').textContent = n; $('#k-home').hidden = !n; }
+  // a badge's tab names where its count came from in its tooltip
+  { const xs = testItems().filter(testLive), n = xs.length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n;
+    $('#k-tests').parentElement.dataset.tip = n ? '테스트 · ' + hubFrom(['실행 중', xs.map(t => cut(t.label || t.key, 30))]) : '테스트'; }
+  { const mine = hmMine(), n = mine.length; $('#k-home').textContent = n; $('#k-home').hidden = !n;
+    $('#k-home').parentElement.dataset.tip = n ? '홈 · 내 차례 ' + hmFrom(mine) : '홈'; }
   $('#k-runs').textContent = state.orca.error ? '오류' : state.orca.runs.filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
   usageBadge();
@@ -2446,10 +2449,12 @@ document.addEventListener('ds:theme', () => {
     else if (new URL(f.src).searchParams.get('theme') !== document.documentElement.dataset.theme) f.src = wtWebUrl(f.src);
   });
 });
+const wtWebLabel = (key, on) => document.querySelectorAll(`button[data-wt-web="${CSS.escape(key)}"]`)
+  .forEach(x => { x.textContent = on ? 'VS Code 접기' : 'VS Code 로 보기'; x.setAttribute('aria-expanded', on); });
+const wtWebClose = key => { if (!wtWeb.has(key)) return; wtWeb.get(key).remove(); wtWeb.delete(key); wtWebLabel(key, false); };
 async function wtWebToggle(b) {
-  const key = b.dataset.wtWeb, srv = b.dataset.srv, label = on => document.querySelectorAll(`button[data-wt-web="${CSS.escape(key)}"]`)
-    .forEach(x => { x.textContent = on ? 'VS Code 접기' : 'VS Code 로 보기'; x.setAttribute('aria-expanded', on); });
-  if (wtWeb.has(key)) { wtWeb.get(key).remove(); wtWeb.delete(key); return label(false); }
+  const key = b.dataset.wtWeb, srv = b.dataset.srv, label = on => wtWebLabel(key, on);
+  if (wtWeb.has(key)) return wtWebClose(key);
   b.disabled = true; b.textContent = '띄우는 중…';
   const { status: st, body } = await api.reviewWeb(srv, key);
   b.disabled = false;
