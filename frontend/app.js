@@ -6540,7 +6540,7 @@ const HUB = [
     const ages = qs.map(q => ({ q, a: Date.now() / 1000 - q.created_at })), max = Math.max(...ages.map(x => x.a), 1);
     const mine = hmMine(), from = hubFrom(['결정', mine.filter(x => x.kind === 'dec').map(hmName)], ['보고', mine.filter(x => x.kind === 'ask').map(hmName)]);
     return { v: n ? `결정 ${n}` : '없음', sub: [n && `가장 오래 ${human(max)}`, ask && `보고 확인 ${ask}`, unread && `메일함 ${unread}`].filter(Boolean).join(' · ') || '기다리는 질문 없음', from, tone: n ? 'hot' : '', live: n + ask + unread > 0,
-      chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` }))) }; } },
+      chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` })), 'cap') }; } },
   { id: 'agents', name: '에이전트', staff: '매니저', room: '관리실', hue: 220, wall: ['kanban', 'monitors'], prop: 'plant', val: () => {
     const ss = state.sessions.filter(s => !s.parent && hmRecent(s)), c = k => ss.filter(s => k.includes(status(s))).length, dev = state.flow?.items?.length || 0;
     return { v: `실행 ${c(['run', 'bg'])}`, sub: [`입력 대기 ${c(['wait'])}`, c(['stalled']) && `응답 없음 ${c(['stalled'])}`, dev && `흐름 이탈 ${dev}`].filter(Boolean).join(' · '),
@@ -6568,7 +6568,7 @@ const HUB = [
     const nm = t => cut(t.label || t.key, 30);
     return { v: live ? `실행 중 ${live}` : `실패 ${bad}`, sub: `24시간 실행 ${fin.length}${live ? ` · 실패 ${bad}` : ''}`,
       from: hubFrom(['실패', fin.filter(t => t.phase === 'failed' || t.failed).reverse().map(nm)], ['실행', all.filter(testLive).map(nm)]), tone: bad ? 'bad' : live ? 'hot' : '', live: all.length > 0,
-      chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = t.phase === 'failed' || t.failed; return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : '통과'} · ${ago(t.finished_at)}` }; })) }; } },
+      chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = t.phase === 'failed' || t.failed; return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : '통과'} · ${ago(t.finished_at)}` }; }), 'cap') }; } },
   { id: 'compare', name: '비교 · 비용', staff: '회계', room: '회계실', hue: 45, wall: ['coins', 'clock'], prop: 'safe', val: () => {
     const hs = hubCostHours(), sum = hs.reduce((a, x) => a + x, 0), max = Math.max(...hs, 1e-9);
     return { v: usd(sum), sub: '오늘 0시부터', live: sum > 0,

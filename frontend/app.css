@@ -1454,10 +1454,23 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 @media (max-width: 900px) {
   .hm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hw.L { grid-row: auto; }
+  /* a tile left alone at the end takes the row, so no half row stays empty */
+  .hm-grid > .hw.S:nth-child(odd of .hw.S):nth-last-child(1 of .hw.S) { grid-column: 1 / -1; }
+  /* columns with no time axis (one per question, per run) across a full row: a few stay columns, not blocks */
+  .hub-cols.cap { justify-content: flex-end; } .hub-cols.cap i { flex: 0 1 28px; }
+  /* a large tile across the screen holds its chart beside its figure, not below it */
+  .hw.L.hub { container: hub-wide / inline-size; }
+  @container hub-wide (min-width: 560px) {
+    .hw.L.hub .hw-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); column-gap: 20px; align-content: start; }
+    .hw.L.hub .hw-body > :not(.hub-chart) { grid-column: 1; }
+    .hw.L.hub .hub-chart { grid-column: 2; grid-row: 1 / span 4; margin-top: 0; padding-top: 0; align-self: center; }
+    .hw.L .hw-spark.hub-cols { height: 96px; }
+  }
 }
 @media (max-width: 500px) {
   .hm-grid { gap: 10px; grid-auto-rows: auto; }
   .hw.M, .hw.L, .hw.W { grid-column: 1 / -1; }
+  .hw.L .hw-spark.hub-cols { height: 80px; }
   .hw-run { grid-template-columns: minmax(0, 1fr) auto; }
   .hw-run .pbar { grid-column: 1 / -1; grid-row: 2; }
   .hm-h .hm-tools .st { display: none; }
