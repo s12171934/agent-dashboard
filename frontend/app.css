@@ -1307,9 +1307,9 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-big .st { font-size: 12px; font-weight: 400; }
 .hw-big.hot { color: var(--warn); } .hw-big.bad { color: var(--bad); }
 /* 홈's screen tiles (HUB): the whole tile goes to its screen */
-a.hw.hub { color: inherit; text-decoration: none; }
-a.hw.hub:hover { border-color: var(--accent); }
-a.hw.hub:hover .hw-more { color: var(--accent); }
+.hw.hub { cursor: pointer; }
+.hw.hub:hover { border-color: var(--accent); }
+.hw.hub:hover > h3 .hw-more { color: var(--accent); }
 /* a tile's size follows its weight (hubWeight); its chart sits at the bottom and grows with it */
 .hw.hub .hw-body { flex: 1; }
 .hw.hub.quiet { opacity: .72; }
@@ -1328,6 +1328,22 @@ a.hw.hub:hover .hw-more { color: var(--accent); }
 .hub-ml { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-mv { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hub-meter .ctxbar > div { height: 100%; background: var(--accent); }
+/* 워크트리 리뷰: the ring and its legend side by side; a large tile draws the ring larger */
+.hub-donut { display: flex; align-items: center; gap: 14px; }
+.hub-donut .hub-leg { display: grid; gap: 2px; }
+.hw.L .hub-donut .donut { zoom: 1.9; }  /* the ring is a fixed 64px svg without a viewBox */
+/* 상호작용: a line per team */
+.hub-sum { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 3px 0; border-top: 1px solid var(--line); min-width: 0; }
+.hub-sum:first-child { border-top: 0; }
+.hub-sum b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-sum span { margin-left: auto; color: var(--muted); white-space: nowrap; }
+/* 설계문서: a few documents, each a link to it */
+.hub-doc { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); color: inherit; text-decoration: none; font-size: 12.5px; min-width: 0; }
+.hub-doc:first-child { border-top: 0; }
+.hub-doc > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-doc small { margin-left: 6px; color: var(--muted); font-size: 11px; }
+.hub-doc em { font-style: normal; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.hub-doc:hover > span { color: var(--accent); }
 .hw-spark { display: flex; align-items: flex-end; gap: 2px; height: 54px; margin: 4px 0; }
 .hw-spark i { flex: 1; background: var(--accent); opacity: .7; border-radius: 3px 3px 0 0; }
 .hw-spark i.cur { opacity: 1; background: var(--warn); }

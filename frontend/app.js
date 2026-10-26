@@ -6394,7 +6394,7 @@ const HUB = [
   { id: 'decide', name: '결정 대기', staff: '비서', room: '비서실', hue: 200, wall: ['calendar', 'mail'], prop: 'cabinet', val: () => {
     const qs = state.decisions?.pending || [], n = qs.length, unread = (state.decisions?.inbox || []).filter(r => !r.read).length, ask = state.sessions.filter(s => !s.parent && hmAsk(s)).length;
     const ages = qs.map(q => ({ q, a: Date.now() / 1000 - q.created_at })), max = Math.max(...ages.map(x => x.a), 1);
-    return { v: n ? `결정 ${n}` : '없음', sub: [ask && `보고 확인 ${ask}`, unread && `메일함 ${unread}`].filter(Boolean).join(' · ') || '기다리는 질문 없음', tone: n ? 'hot' : '', live: n + ask + unread > 0,
+    return { v: n ? `결정 ${n}` : '없음', sub: [n && `가장 오래 ${human(max)}`, ask && `보고 확인 ${ask}`, unread && `메일함 ${unread}`].filter(Boolean).join(' · ') || '기다리는 질문 없음', tone: n ? 'hot' : '', live: n + ask + unread > 0,
       chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` }))) }; } },
   { id: 'agents', name: '에이전트', staff: '매니저', room: '관리실', hue: 220, wall: ['kanban', 'monitors'], prop: 'plant', val: () => {
     const ss = state.sessions.filter(s => !s.parent && hmRecent(s)), c = k => ss.filter(s => k.includes(status(s))).length, dev = state.flow?.items?.length || 0;
@@ -6402,12 +6402,18 @@ const HUB = [
       chart: z => (z === 'L' ? hubActiveHours() : '') + hubSeg(['run', 'bg', 'wait', 'stalled'].map(k => ({ c: 'k-' + k, l: ST_LABEL[k], n: c([k]) })).concat({ c: 'k-idle', l: '그 밖', n: c(['idle', 'done']) })) }; } },
   { id: 'worktrees', name: '워크트리 리뷰', staff: 'QA 담당', room: 'QA실', hue: 280, wall: ['pipeline', 'checklist'], prop: 'easel', val: () => {
     if (!wtData.sets?.length) return { v: '—', sub: 'QA 묶음 없음' };
-    const ts = wtData.sets.flatMap(x => x.tickets).filter(t => t.qa && !t.qa.ignored), mine = hmMine();
-    const ok = mine.filter(x => x.kind === 'approve').length, bl = mine.filter(x => x.kind === 'blocked').length;
-    const work = ts.filter(t => ['analysis', 'implementing', 'reviewing', 'approved'].includes(t.qa.stage)).length;
-    const st = WT_QA.map(k => ({ k, n: ts.filter(t => t.qa.stage === k).length })), max = Math.max(...st.map(x => x.n), 1);
-    return { v: ok ? `반출 승인 ${ok}` : `작업 중 ${work}`, sub: [`티켓 ${ts.length}`, bl && `막힘 ${bl}`].filter(Boolean).join(' · '), tone: bl ? 'bad' : ok ? 'hot' : '', live: work + ok + bl > 0,
-      chart: () => hubCols(st.map(x => ({ f: x.n / max, c: x.k === 'committed' && ok ? 'cur' : '', t: `${qaName(x.k)} ${x.n}` }))) + `<div class="hub-axis"><span>${esc(qaName(WT_QA[0]))}</span><span>${esc(qaName(WT_QA[WT_QA.length - 1]))}</span></div>` }; } },
+    // a ticket left at 커밋 완료 with no worktree is a driver state left behind, not one waiting for approval (as on 내 차례)
+    const ts = wtData.sets.flatMap(x => x.tickets).filter(t => t.qa && !t.qa.ignored && t.qa.stage !== 'cleaned' && !(t.qa.stage === 'committed' && !t.repos.length)), mine = hmMine();
+    const stuck = t => t.qa.blocked && Date.now() - new Date(t.qa.at?.[t.qa.stage] || 0).getTime() < HM_STALE;  // a 막힘 over a day old counts at its stage
+    const ok = mine.filter(x => x.kind === 'approve').length;
+    // the tickets still in the pipeline (정리 left out) by where they stand, a ring of them with its legend
+    const g = [['막힘', 'var(--bad)', stuck], ['승인 대기', 'var(--warn)', t => t.qa.stage === 'committed'], ['작업 중', 'var(--ok)', t => ['analysis', 'implementing', 'reviewing', 'approved'].includes(t.qa.stage)],
+      ['대기', 'var(--idle)', t => ['selected', 'worktree'].includes(t.qa.stage)], ['반출됨', 'var(--done)', t => t.qa.stage === 'delivered']];
+    const left = new Set(ts), cnt = g.map(([l, c, f]) => { const xs = [...left].filter(f); xs.forEach(t => left.delete(t)); return { l, c, n: xs.length }; });
+    const bl = cnt[0].n, work = cnt[2].n;
+    return { v: ok ? `반출 승인 ${ok}` : `작업 중 ${work}`, sub: [`진행 티켓 ${ts.length}`, bl && `막힘 ${bl}`].filter(Boolean).join(' · '), tone: bl ? 'bad' : ok ? 'hot' : '', live: work + ok + bl > 0,
+      chart: () => `<div class="hub-donut"><ds-donut segments="${cnt.map(x => `${x.n} ${x.c}`).join('; ')}" value="${ts.length}" caption="티켓"></ds-donut>
+        <div class="hub-leg">${cnt.filter(x => x.n).map(x => `<span><i class="sw" style="background:${x.c}"></i> ${x.l} ${x.n}</span>`).join('')}</div></div>` }; } },
   { id: 'tests', name: '테스트', staff: '테스터', room: '시험실', hue: 160, wall: ['flasks', 'checklist'], prop: 'lab', val: () => {
     const all = testItems(), live = all.filter(testLive).length, fin = all.filter(t => !testLive(t)).sort((a, b) => (a.finished_at || '').localeCompare(b.finished_at || ''));
     const bad = fin.filter(t => t.phase === 'failed' || t.failed).length;
@@ -6424,22 +6430,26 @@ const HUB = [
     return { v: `${top}%`, sub: `가장 높은 한도 · 계정 ${live.length}`, tone: top >= 90 ? 'bad' : top >= 70 ? 'hot' : '', live: true,
       chart: z => hubMeters(lim.sort((x, y) => y.b.percent - x.b.percent).slice(0, HUB_ROWS[z]).map(({ a, b }) => ({ l: `${(a.email || '').split('@')[0]} · ${b.name || ''}`, f: b.percent / 100, v: `${b.percent}%`, c: b.percent >= 90 ? 'ctx-bad' : b.percent >= 70 ? 'ctx-warn' : '' }))) }; } },
   { id: 'talk', name: '상호작용', staff: '기록원', room: '기록실', hue: 30, wall: ['timeline', 'clock'], prop: 'boxes', val: () => {
-    const on = families().fams.filter(f => f.members.some(hmRecent)), max = Math.max(...on.map(f => f.members.length), 1);
-    return { v: `묶음 ${on.length}`, sub: `워커 ${on.reduce((a, f) => a + f.members.length - (f.coord ? 1 : 0), 0)}명 · 최근 1시간`, live: on.length > 0,
-      chart: z => hubCols(on.slice(0, HUB_N[z]).map(f => ({ f: f.members.length / max, t: `${cut(f.coord ? nameOf(f.coord) : '묶음', 40)} · ${f.members.length}명` }))) }; } },
+    const on = families().fams.filter(f => f.members.some(hmRecent)), ws = f => f.members.filter(m => m !== f.coord);
+    return { v: `묶음 ${on.length}`, sub: `워커 ${on.reduce((a, f) => a + ws(f).length, 0)}명 · 최근 1시간`, live: on.length > 0,
+      // in words: who leads each team and how its workers stand
+      chart: z => on.slice(0, HUB_ROWS[z]).map(f => { const c = k => ws(f).filter(m => k.includes(status(m))).length;
+        return `<div class="hub-sum"><b>${esc(cut(f.coord ? nameOf(f.coord) : '묶음', 40))}</b><span>워커 ${ws(f).length}${[['실행', ['run', 'bg']], ['대기', ['wait']], ['응답 없음', ['stalled']], ['완료', ['done']]].map(([l, k]) => c(k) ? ` · ${l} ${c(k)}` : '').join('')}</span></div>`; }).join('') }; } },
   { id: 'projects', name: '프로젝트', staff: 'PM', room: 'PM실', hue: 260, wall: ['gantt', 'calendar'], prop: 'easel', val: () => {
     if (!pjData) { hubPjLoad ||= api.projects().then(d => { pjData = d; }, () => { pjData = { enabled: false, projects: [] }; }).finally(() => { hubPjLoad = null; if (route().v === 'home') render(); }); return { v: '…', sub: '불러오는 중' }; }
-    const ps = (pjData.projects || []).filter(p => !p.error);
-    if (!pjData.enabled || !ps.length) return { v: '—', sub: '프로젝트 폴더 없음' };
-    return { v: `${ps.length}개`, sub: `평균 진행 ${Math.round(ps.reduce((a, p) => a + (p.ratio || 0), 0) / ps.length * 100)}%`, live: ps.some(p => (p.ratio || 0) < 1),
+    if (!pjData.enabled) return { v: '—', sub: '프로젝트 폴더 없음' };
+    const ps = (pjData.projects || []).filter(p => !p.error && (p.ratio || 0) < 1);  // a finished project is not shown
+    if (!ps.length) return { v: '없음', sub: '진행 중인 프로젝트 없음' };
+    return { v: `${ps.length}개`, sub: `진행 중 · 평균 ${Math.round(ps.reduce((a, p) => a + (p.ratio || 0), 0) / ps.length * 100)}%`, live: true,
       chart: z => hubMeters(ps.slice(0, HUB_ROWS[z]).map(p => ({ l: p.name, f: p.ratio || 0, v: `${Math.round((p.ratio || 0) * 100)}%`, t: p.current?.name || '' }))) }; } },
   { id: 'designs', name: '설계문서', staff: '설계자', room: '설계실', hue: 210, wall: ['blueprint', 'poster'], prop: 'easel', val: () => {
     const d = hmData('design', () => api.designs(), state.design?.version ?? '');
     if (d === undefined) return { v: '…', sub: '불러오는 중' };
     if (!d?.enabled) return { v: '—', sub: '설계 폴더 없음' };
-    const top = [...d.docs].filter(x => x.sessions).sort((a, b) => b.sessions - a.sessions), max = Math.max(top[0]?.sessions || 1, 1);
+    const top = [...d.docs].filter(x => x.sessions).sort((a, b) => b.sessions - a.sessions);
     return { v: `${d.docs.length}개`, sub: `세션이 읽은 문서 ${top.length}`,
-      chart: z => hubMeters(top.slice(0, HUB_ROWS[z]).map(x => ({ l: x.title || x.key.split('/').pop(), f: x.sessions / max, v: `세션 ${x.sessions}` }))) }; } },
+      // the most read documents, each a link straight to it on 설계문서
+      chart: z => top.slice(0, { S: 3, M: 4, L: 7 }[z]).map(x => `<a class="hub-doc" href="#dz=${encodeURIComponent(x.server + '|' + x.key)}"><span>${esc(cut(x.title || x.key.split('/').pop(), 44))}<small>${esc(x.key.split('/').slice(-2, -1)[0] || '')}</small></span><em>세션 ${x.sessions}</em></a>`).join('') }; } },
 ];
 const hubVal = h => { try { return h.val() || { v: '—', sub: '' }; } catch (e) { return { v: '—', sub: e.message }; } };
 // stuck 3, something to look at 2, something going on 1, nothing 0; the size follows
@@ -6448,8 +6458,8 @@ const HUB_SIZE = ['S', 'S', 'M', 'L'];
 const hubTile = ({ h, r, w }) => { const z = HUB_SIZE[w];
   let g = '';
   try { g = r.chart?.(z) || ''; } catch {}
-  return `<a class="hw ${z} hub${w ? '' : ' quiet'}" href="#${h.id}"><h3><span class="hw-name">${h.name}</span><span class="hw-note">${h.staff}</span><span class="hw-more">→</span></h3>
-    <div class="hw-body"><div class="hw-big${r.tone ? ' ' + r.tone : ''}">${esc(r.v)}</div><div class="st">${esc(r.sub)}</div>${g ? `<div class="hub-chart">${g}</div>` : ''}</div></a>`; };
+  return `<section class="hw ${z} hub${w ? '' : ' quiet'}" data-go="#${h.id}"><h3><span class="hw-name">${h.name}</span><span class="hw-note">${h.staff}</span><a class="hw-more" href="#${h.id}" aria-label="${h.name} 화면으로">→</a></h3>
+    <div class="hw-body"><div class="hw-big${r.tone ? ' ' + r.tone : ''}">${esc(r.v)}</div><div class="st">${esc(r.sub)}</div>${g ? `<div class="hub-chart">${g}</div>` : ''}</div></section>`; };
 // the tiles in weight order (the list's own order within a weight)
 const hubOrder = () => HUB.map((h, i) => { const r = hubVal(h); return { h, r, w: hubWeight(r), i }; }).sort((a, b) => b.w - a.w || a.i - b.i);
 
@@ -6457,6 +6467,7 @@ function renderHome() {
   needReviews();
   $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span></div>
     <div class="hm-grid hub-grid">${hubOrder().map(hubTile).join('')}</div>`;
+  $('#view').querySelectorAll('[data-go]').forEach(t => t.onclick = e => { if (!e.target.closest('a')) location.hash = t.dataset.go; });
 }
 
 function connect() {
