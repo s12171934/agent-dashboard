@@ -537,6 +537,7 @@ function untilText(t) {
   return `${at} 리셋 · ${m < 60 ? m + '분' : m < 1440 ? Math.floor(m / 60) + '시간 ' + m % 60 + '분' : Math.floor(m / 1440) + '일 ' + Math.floor(m % 1440 / 60) + '시간'} 남음`;
 }
 function renderUsage() {
+  if (document.activeElement?.closest?.('.pu-add')) return;  // typing a login name: repaint once it is left
   const list = state.plan_usage || [], multi = new Set(list.map(a => a.server)).size > 1;
   const when = t => t ? `${new Date(t * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 기준 (${ago(new Date(t * 1000).toISOString())})` : '아직 읽지 못함';
   const extra = a => a.extra ? `<div class="pu-x">초과 사용 크레딧 ${a.extra.limit_usd ? `<b>${usd(a.extra.used_usd)}</b> / ${usd(a.extra.limit_usd)}${a.extra.reached ? ' · <em>한도 도달</em>' : ''}` : '<b>꺼짐</b> (월 한도 $0)'}</div>`
@@ -544,7 +545,7 @@ function renderUsage() {
   const card = a => `<section class="box pu-card${a.stale || a.note ? ' stale' : ''}">
     <div class="pu-h"><span class="badge">${PROVIDERS[a.provider] || esc(a.provider)}</span><b>${esc(a.email || '?')}</b>${a.plan ? `<span class="st">${esc(a.plan)}</span>` : ''}
       ${multi ? `<span class="st">${esc(a.server_name)}</span>` : ''}</div>
-    <div class="pu-when" title="${esc(a.source ? '토큰: ' + a.source : '')}">${when(a.at)}</div>
+    <div class="pu-when" title="${esc(a.source ? '토큰: ' + a.source : '')}">${when(a.at)}${a.source === 'dashboard' ? ' · 대시보드 로그인' : a.source === 'orca' ? ' · Orca 토큰' : ''}</div>
     ${a.note ? `<div class="pu-note">${esc(a.note)}</div>` : ''}${a.error ? `<div class="pu-err">⚠ 갱신 실패: ${esc(a.error)}</div>` : ''}
     ${(a.limits || []).map(b => `<div class="pu-row${b.active ? ' on' : ''}">
       <span class="pu-n">${esc(b.name)}${b.active ? ` <em>${a.provider === 'claude' ? '현재 한도' : '한도 도달'}</em>` : ''}</span><b>${b.percent ?? '–'}%</b>
@@ -552,7 +553,27 @@ function renderUsage() {
       <span class="pu-r">${untilText(b.resets_at)}</span></div>`).join('')}
     ${extra(a)}</section>`;
   $('#view').innerHTML = `<div class="sec-h"><h2>플랜 사용량</h2><span>구독 계정마다 사용량 API 를 5분에 한 번 읽습니다. 토큰이 없거나 만료된 계정은 마지막 값을 흐리게 보여 줍니다.</span></div>
-    ${list.length ? `<div class="pu-grid">${list.map(card).join('')}</div>` : '<div class="empty">사용량을 읽는 메트릭 서버가 없습니다.</div>'}`;
+    ${list.length ? `<div class="pu-grid">${list.map(card).join('')}</div>` : '<div class="empty">사용량을 읽는 메트릭 서버가 없습니다.</div>'}
+    ${usageOwn()}`;
+  $('#view').querySelectorAll('.pu-add input').forEach(i => i.oninput = () => {
+    puName = i.value.trim().replace(/[^\w.-]/g, '');
+    i.closest('.pu-add').querySelector('code').textContent = puCmd(i.closest('.pu-add').dataset.dir);
+  });
+  $('#view').querySelectorAll('.pu-add .copy').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.closest('.pu-add').querySelector('code').textContent).then(() => toast('복사했습니다')));
+}
+// 「계정 추가」: a Claude login made for the dashboard alone, so an account shows even when no CLI or Orca keeps its
+// token fresh — the server refreshes it itself. The login happens in a terminal (Claude Code's /login), not here.
+// The name being typed survives the live repaints (the view is rebuilt on every refresh).
+let puName = '';
+const puCmd = dir => `CLAUDE_CONFIG_DIR=${dir}/claude-${puName || '<이름>'} claude`;
+function usageOwn() {
+  return (state.plan_own || []).map(o => `<section class="box pu-add" data-dir="${esc(o.dir)}">
+    <h3>계정 추가${(state.plan_own || []).length > 1 ? ` · ${esc(o.server_name)}` : ''}</h3>
+    <div class="st">Orca·Claude Code 와 따로, 대시보드만 쓰는 로그인을 만듭니다. 토큰은 키체인에 저장되고 서버가 만료 전에 직접 갱신합니다.
+      Orca 가 아닌 터미널에서 아래 명령을 실행하고 <code>/login</code> 으로 로그인한 뒤 <code>/exit</code> 하세요. 이 폴더로 Claude Code 를 다시 쓰지는 마세요(서버가 갱신한 뒤엔 그 로그인이 무효가 됩니다).</div>
+    <div class="pu-cmd"><input placeholder="이름 (예: dante2)" aria-label="로그인 이름" value="${esc(puName)}"><code>${esc(puCmd(o.dir))}</code><button class="act copy">복사</button></div>
+    ${o.own.length ? `<ul class="pu-own">${o.own.map(x => `<li><b>${esc(x.name)}</b> ${x.error ? `<span class="pu-err">${esc(x.error)}</span>` : x.ready ? '<span class="pu-ok">로그인됨</span>' : '<span class="st">로그인 안 됨 — 위 명령으로 로그인하세요</span>'}</li>`).join('')}</ul>` : ''}
+  </section>`).join('');
 }
 
 // ---------- agents (cards) ----------
