@@ -1411,11 +1411,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .room-floor { position: relative; min-height: 220px; overflow: hidden; border-radius: calc(var(--radius) - 4px);
   background: linear-gradient(to bottom, color-mix(in srgb, var(--text) 10%, transparent), transparent 18px) 0 var(--wall-h) / 100% 100% no-repeat,
     linear-gradient(to bottom, var(--wall) 0 calc(var(--wall-h) - 5px), color-mix(in srgb, var(--wood) 55%, var(--panel)) 0 var(--wall-h), var(--floor) 0); }
-.ch-world .room-floor { background: linear-gradient(to bottom, color-mix(in srgb, var(--text) 12%, transparent), transparent 22px) 0 var(--wall-h) / 100% 100% no-repeat,
-    repeating-linear-gradient(to bottom, transparent 0 27px, color-mix(in srgb, var(--wood) 42%, var(--panel2)) 27px 28px) 0 var(--wall-h) / 100% 100% no-repeat,
-    linear-gradient(to bottom, color-mix(in srgb, var(--panel) 50%, var(--wall)), var(--wall) calc(var(--wall-h) - 5px), color-mix(in srgb, var(--wood) 55%, var(--panel)) 0 var(--wall-h),
-      color-mix(in srgb, var(--floor) 80%, var(--panel)) 0, var(--floor)); }
-.room-wall { position: absolute; inset: 0 0 auto; height: calc(var(--wall-h) - 56px); display: flex; justify-content: space-around; align-items: flex-end; pointer-events: none; }
+.room-wall { position: absolute; inset: 0 var(--side, 0) auto; z-index: 2; height: calc(var(--wall-h) - 56px); display: flex; justify-content: space-around; align-items: flex-end; pointer-events: none; }
 .wall-item { flex: none; display: flex; }
 .wall-item[hidden] { display: none; }
 .wall-item svg { display: block; }
@@ -1589,8 +1585,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 /* iOS can lay an installed PWA out shorter than its screen (iPhone Duo sideways: 587 of 669 high, the status bar's
    thickness taken off the height too). Nothing of the page is drawn below the viewport, so that strip
    takes the corridor floor's colour and the office still reaches the edge to the eye; the bar stays in the viewport. */
-:root.ch-full { background-color: color-mix(in srgb, #b98152 34%, var(--panel2)); }
-:root.ch-full[data-theme="dark"] { background-color: color-mix(in srgb, #b98152 22%, var(--bg)); }
+:root.ch-full { background-color: color-mix(in srgb, #8cc66f 62%, var(--panel2)); }
+:root.ch-full[data-theme="dark"] { background-color: color-mix(in srgb, #3f7a3c 40%, var(--bg)); }
 /* the strip itself is painted from the theme-color, which chTint (app.js) sets to this colour; body (--bg) stands aside */
 :root.ch-full body { background: none; }
 :root.ch-full body:not(:has(:is(#decide-head, #decisions, #inbox):not([hidden]))) { padding-top: 0; }
@@ -1615,11 +1611,12 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 /* The canvas backdrop: the corridor floor runs past the rooms in every direction and moves with the view (chApply sets
    --bx --by --bz), wood planks for 3D and tiles for 픽셀. The light follows the local hour (.tod-*: morning, day,
    evening, night) over the floor and in the windows' sky; the lobby (.ch-lobby) opens the plane with the office sign. */
-.ch-canvas { --corridor: color-mix(in srgb, var(--wood) 34%, var(--panel2));
+.ch-canvas { --corridor: color-mix(in srgb, #8cc66f 62%, var(--panel2));
   background-color: var(--corridor);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Cpath d='M0 .5H120M0 20.5H120' stroke='%23000' stroke-opacity='.10'/%3E%3Cpath d='M0 1.5H120M0 21.5H120' stroke='%23fff' stroke-opacity='.16'/%3E%3Cpath d='M.5 0V20M60.5 20V40' stroke='%23000' stroke-opacity='.10'/%3E%3Cpath d='M8 7q20-2 40 0M70 13q22 2 44 0M14 30q18-2 36 0M76 26q20 2 38 0' fill='none' stroke='%23000' stroke-opacity='.05'/%3E%3C/svg%3E");
-  background-size: calc(120px * var(--bz, 1)) calc(40px * var(--bz, 1)); background-position: var(--bx, 0) var(--by, 0); }
-:root[data-theme="dark"] .ch-canvas { --corridor: color-mix(in srgb, var(--wood) 22%, var(--bg)); }
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120'%3E%3Cg fill='none' stroke='%232f6b2a' stroke-opacity='.22' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M14 30l-2-7M17 30l1-8M20 30l3-6'/%3E%3Cpath d='M96 18l-2-6M99 18l1-7M102 18l3-5'/%3E%3Cpath d='M58 82l-2-7M61 82l1-8M64 82l3-6'/%3E%3Cpath d='M132 100l-2-6M135 100l1-7M138 100l3-5'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='40' cy='56' r='2.2' fill='%23fff' fill-opacity='.7'/%3E%3Ccircle cx='40' cy='56' r='.9' fill='%23f2cc8f'/%3E%3Ccircle cx='122' cy='60' r='2' fill='%23f5b3c8' fill-opacity='.8'/%3E%3Ccircle cx='84' cy='110' r='2' fill='%23fff' fill-opacity='.6'/%3E%3C/g%3E%3Cpath d='M0 .5H160' stroke='%23000' stroke-opacity='0'/%3E%3C/svg%3E");
+  background-size: calc(160px * var(--bz, 1)) calc(120px * var(--bz, 1));
+  background-position: var(--bx, 0) var(--by, 0); }
+:root[data-theme="dark"] .ch-canvas { --corridor: color-mix(in srgb, #3f7a3c 40%, var(--bg)); }
 .ch-canvas::after { content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none; transition: background 1s; }
 .ch-canvas.tod-morning { --sky: #ffd6a6; } .ch-canvas.tod-morning::after { background: linear-gradient(115deg, rgb(255 196 120 / .20), transparent 55%); }
 .ch-canvas.tod-day { --sky: #9fd0f5; } .ch-canvas.tod-day::after { background: radial-gradient(120% 80% at 15% 0%, rgb(255 255 235 / .16), transparent 60%); }
@@ -1628,9 +1625,54 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-canvas.tod-night .w3-cloud { opacity: 0; }
 .ch-canvas.tod-night .w3-sky { fill: #23345e; }
 .ch-canvas.tod-night .room-floor { box-shadow: inset 0 0 60px rgb(255 214 106 / .10); }
-/* rooms stand on the floor: a thick wall frame, a shadow, a plant outside the corner */
-.ch-world .room { position: relative; border: 6px solid color-mix(in srgb, var(--wood) 45%, var(--panel)); border-radius: 18px;
-  box-shadow: 0 2px 0 color-mix(in srgb, var(--ink) 25%, transparent), 0 22px 36px -10px rgb(0 0 0 / .28); }
+/* 디오라마: each room is a miniature cut open at the front (roomStage, app.js), set on the ground like a building on a
+   game's home screen — a tiled roof in the room's colour (--rh) carries its name and overhangs the walls; under it the
+   back wall (wallpaper, a ceiling light's glow, a skirting board), a side wall on each hand (.rm-side), the floor in
+   perspective with a rug (.rm-floor), a prop in each back corner (.rm-prop); below, the floor slab's front face and its
+   shadow on the grass. The people stand in front of all of it, each on their own shadow. */
+.office { --side: 34px; }
+.ch-world .room { --roof: hsl(var(--rh, 24) 44% 56%); --roof-d: hsl(var(--rh, 24) 40% 40%);
+  --surface-blur: none; position: relative; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.ch-world .room-h { position: relative; z-index: 3; margin: 0 -12px; padding: 12px 24px 14px; border-radius: 16px 16px 6px 6px; color: #fff;
+  background: repeating-linear-gradient(90deg, transparent 0 26px, rgb(0 0 0 / .08) 26px 28px),
+    repeating-linear-gradient(180deg, transparent 0 12px, rgb(0 0 0 / .12) 12px 14px),
+    linear-gradient(180deg, color-mix(in srgb, var(--roof) 80%, #fff), var(--roof) 45%, var(--roof-d));
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--roof) 55%, #fff), 0 6px 0 var(--roof-d), 0 12px 16px -6px rgb(0 0 0 / .4); }
+.ch-world .room-h > b { text-shadow: 0 1px 0 rgb(0 0 0 / .35); }
+.ch-world .room-h .st, .ch-world .room-h .room-n, .ch-world .room-h .room-n b { color: color-mix(in srgb, #fff 88%, var(--roof)); }
+.ch-world .room-floor { border-radius: 0 0 10px 10px;
+  background: radial-gradient(55% 80% at 50% 0, rgb(255 238 196 / .45), transparent 70%) 0 0 / 100% var(--wall-h) no-repeat,
+    linear-gradient(to bottom, transparent calc(var(--wall-h) - 12px), color-mix(in srgb, var(--wood) 70%, #3b2a20) 0) 0 0 / 100% var(--wall-h) no-repeat,
+    repeating-linear-gradient(90deg, transparent 0 22px, rgb(0 0 0 / .03) 22px 24px) 0 0 / 100% var(--wall-h) no-repeat,
+    linear-gradient(to bottom, color-mix(in srgb, var(--wall) 70%, var(--panel)), var(--wall)) 0 0 / 100% var(--wall-h) no-repeat,
+    var(--floor);
+  box-shadow: 0 16px 0 color-mix(in srgb, var(--wood) 60%, #3b2a20), 0 18px 0 color-mix(in srgb, var(--wood) 30%, #1e1612), 0 44px 30px -16px rgb(0 0 0 / .45); }
+.rm-side, .rm-floor, .rm-prop { position: absolute; z-index: 1; pointer-events: none; }
+.rm-side { top: 0; bottom: 0; width: var(--side); }
+.rm-side.l { left: 0; clip-path: polygon(0 0, 100% 14px, 100% var(--wall-h), 0 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--wall) 84%, #000), color-mix(in srgb, var(--wall) 93%, #000)); }
+.rm-side.r { right: 0; clip-path: polygon(0 14px, 100% 0, 100% 100%, 0 var(--wall-h));
+  background: linear-gradient(270deg, color-mix(in srgb, var(--wall) 84%, #000), color-mix(in srgb, var(--wall) 93%, #000)); }
+.rm-floor { left: 0; right: 0; top: var(--wall-h); bottom: 0; overflow: hidden; clip-path: polygon(var(--side) 0, calc(100% - var(--side)) 0, 100% 100%, 0 100%);
+  perspective: 520px; perspective-origin: 50% -160px; background: linear-gradient(to bottom, color-mix(in srgb, var(--floor) 82%, #000), var(--floor) 120px); }
+/* the planks: a plane laid back from the wall's foot, so its seams run toward the back */
+.rm-floor::before { content: ""; position: absolute; left: -80%; right: -80%; top: 0; height: 500%; transform-origin: 50% 0; transform: rotateX(70deg);
+  background: repeating-linear-gradient(90deg, transparent 0 62px, rgb(0 0 0 / .13) 62px 64px), repeating-linear-gradient(0deg, transparent 0 40px, rgb(0 0 0 / .06) 40px 41px); }
+/* the wall's shadow at its foot, and a rug in the room's colour under the people */
+.rm-floor::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgb(0 0 0 / .2), transparent 34px),
+    radial-gradient(closest-side, hsl(var(--rh, 24) 42% 64% / .32) 93%, hsl(var(--rh, 24) 40% 46% / .4) 94% 99%, transparent 100%) 50% 50% / 56% 56% no-repeat; }
+.rm-prop { background: no-repeat center bottom / contain; }
+.rm-prop.l { left: calc(var(--side) + 2px); } .rm-prop.r { right: calc(var(--side) + 2px); }
+.rm-prop.plant { width: 48px; height: 84px; top: calc(var(--wall-h) - 66px); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 84'%3E%3Cellipse cx='24' cy='81' rx='15' ry='3' fill='%23000' fill-opacity='.2'/%3E%3Cpath d='M24 52C12 48 4 34 8 20C16 28 22 38 24 52zM24 52C25 36 32 22 44 16C46 32 38 46 24 52zM24 52C20 34 21 16 26 4C33 18 31 38 24 52zM24 54C14 56 6 50 2 42C12 40 20 44 24 54zM24 54C34 56 42 50 46 42C36 40 28 44 24 54z' fill='%234f9a5a'/%3E%3Cpath d='M24 51C19 40 14 32 9 22M24 51C29 40 35 30 42 19M24 51V12' stroke='%23000' stroke-opacity='.15' fill='none'/%3E%3Cpath d='M12 56h24l-3 25H15z' fill='%23b8673f'/%3E%3Crect x='10' y='54' width='28' height='6' rx='2' fill='%23c97b52'/%3E%3C/svg%3E"); }
+.rm-prop.lamp { width: 40px; height: 92px; top: calc(var(--wall-h) - 74px); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 92'%3E%3Cellipse cx='20' cy='89' rx='12' ry='3' fill='%23000' fill-opacity='.2'/%3E%3Cellipse cx='20' cy='30' rx='18' ry='12' fill='%23ffd56a' fill-opacity='.25'/%3E%3Cpath d='M8 6h24l5 20H3z' fill='%23f4e3c1'/%3E%3Cpath d='M8 6h24l1 4H7z' fill='%23000' fill-opacity='.08'/%3E%3Crect x='18.5' y='26' width='3' height='58' fill='%233d4452'/%3E%3Cellipse cx='20' cy='86' rx='10' ry='3' fill='%233d4452'/%3E%3C/svg%3E"); }
+.rm-prop.shelf { width: 58px; height: 70px; top: calc(var(--wall-h) - 52px); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 58 70'%3E%3Cellipse cx='29' cy='67' rx='26' ry='3' fill='%23000' fill-opacity='.2'/%3E%3Crect x='3' y='4' width='52' height='62' rx='3' fill='%238a5a3a'/%3E%3Crect x='7' y='8' width='44' height='24' fill='%235e3c26'/%3E%3Crect x='7' y='36' width='44' height='26' fill='%235e3c26'/%3E%3Cpath d='M10 12h6v20h-6zM30 40h6v22h-6z' fill='%23e07a5f'/%3E%3Cpath d='M17 15h5v17h-5zM37 42h5v20h-5z' fill='%2381b29a'/%3E%3Cpath d='M23 10h6v22h-6zM12 44h7v18h-7z' fill='%23f2cc8f'/%3E%3Cpath d='M38 22h10v10H38z' fill='%23c5ccd6'/%3E%3Cpath d='M43 22c-4-5-3-10 0-13c3 3 4 8 0 13z' fill='%234f9a5a'/%3E%3C/svg%3E"); }
+.rm-prop.cooler { width: 34px; height: 80px; top: calc(var(--wall-h) - 62px); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 80'%3E%3Cellipse cx='17' cy='77' rx='14' ry='3' fill='%23000' fill-opacity='.2'/%3E%3Crect x='5' y='3' width='24' height='30' rx='9' fill='%238fd0ff' fill-opacity='.85'/%3E%3Crect x='9' y='7' width='4' height='20' rx='2' fill='%23fff' fill-opacity='.6'/%3E%3Crect x='3' y='33' width='28' height='44' rx='4' fill='%23e3e7ec'/%3E%3Crect x='3' y='33' width='28' height='5' fill='%23c5ccd6'/%3E%3Crect x='10' y='44' width='14' height='9' rx='2' fill='%233d4452'/%3E%3Ccircle cx='14' cy='48' r='1.5' fill='%23e5534b'/%3E%3Ccircle cx='20' cy='48' r='1.5' fill='%234a90d9'/%3E%3C/svg%3E"); }
+/* each person stands on a shadow of their own */
+.ch-world .ch-tag::before { content: ""; position: absolute; z-index: -1; left: 50%; top: -10px; width: 88px; height: 16px; transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / .3), transparent); }
+.ch-canvas.tod-night .rm-floor::after { background: linear-gradient(to bottom, rgb(0 0 0 / .25), transparent 34px), radial-gradient(60% 60% at 50% 30%, rgb(255 214 106 / .14), transparent),
+    radial-gradient(closest-side, hsl(var(--rh, 24) 42% 50% / .32) 93%, hsl(var(--rh, 24) 40% 36% / .4) 94% 99%, transparent 100%) 50% 50% / 56% 56% no-repeat; }
 .ch-world .room::after { content: ""; position: absolute; right: -30px; bottom: -14px; width: 42px; height: 64px; pointer-events: none;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 64'%3E%3Cellipse cx='21' cy='61' rx='15' ry='3' fill='%23000' fill-opacity='.18'/%3E%3Cpath d='M21 40C10 36 4 24 8 14C15 20 20 28 21 40zM21 40C22 26 28 16 38 12C40 24 32 36 21 40zM21 40C18 26 19 12 23 4C29 14 27 30 21 40z' fill='%234f9a5a'/%3E%3Cpath d='M21 39C16 30 12 24 9 17M21 39C26 30 31 22 36 15' stroke='%23000' stroke-opacity='.15' fill='none'/%3E%3Cpath d='M10 40h22l-3 21H13z' fill='%23b8673f'/%3E%3Crect x='9' y='38' width='24' height='5' rx='2' fill='%23c97b52'/%3E%3C/svg%3E") no-repeat center / contain; }
 .ch-world .room:nth-child(even)::after { right: auto; left: -30px; }

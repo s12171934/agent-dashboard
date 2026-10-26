@@ -3342,8 +3342,12 @@ function chPicker(d) {
 }
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
   return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
-const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
-    <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
+// A room is a diorama cut open at the front: a roof in the room's own colour (--rh, a hue from its key) carrying the
+// name, the back wall with its decorations, a side wall on each hand, the floor in perspective and a prop in each back
+// corner, all behind the people. The floor's slab and shadow are the room's CSS.
+const roomStage = key => `<i class="rm-side l"></i><i class="rm-side r"></i><i class="rm-floor"></i><i class="rm-prop ${['plant', 'lamp', 'shelf'][chHash(key) % 3]} l"></i><i class="rm-prop ${['lamp', 'cooler', 'plant'][chHash(key + '>') % 3]} r"></i>${wallHtml(key)}`;
+const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}" style="--rh:${chHash(key) % 360}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
+    <div class="room-floor">${roomStage(key)}${ms.map(charHtml).join('')}</div></section>`;
 // One room per worktree (wtKey): everyone on show sits where they run, so a coordinator and the workers it sent to other
 // worktrees sit in different rooms. Each coordinator with workers on show leads a team with its own colour and name
 // (chFam, FAM_TEAM): its people wear a chip in that colour — the coordinator 「★ 파도팀 팀장 · N명」, a worker 「◆ 파도팀」,
@@ -3636,8 +3640,8 @@ function staffRoom() {
   const ws = hmLay.widgets.filter(w => HM_W[w.id]);
   if (!ws.length) return '';
   const todo = hmMine().length;
-  return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">위젯을 맡은 사람들 · 누르면 그 위젯</span><span class="room-n">${todo ? `내 차례 <b>${todo}</b> · ` : ''}전체 <b>${ws.length}</b></span></div>
-    <div class="room-floor">${wallHtml('staff')}${ws.map(staffHtml).join('')}</div></section>`;
+  return `<section class="box room staff-room" style="--rh:32"><div class="room-h"><b>운영실</b><span class="st">위젯을 맡은 사람들 · 누르면 그 위젯</span><span class="room-n">${todo ? `내 차례 <b>${todo}</b> · ` : ''}전체 <b>${ws.length}</b></span></div>
+    <div class="room-floor">${roomStage('staff')}${ws.map(staffHtml).join('')}</div></section>`;
 }
 // the open staff member's widget (its section keeps data-hm, so hmBind's buttons find their widget)
 function staffPanel() {
