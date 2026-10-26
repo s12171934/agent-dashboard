@@ -78,7 +78,6 @@ class DsDock extends HTMLElement {
       const p = prefs(); p[e.target.dataset.k] = e.target.checked ? 'bar' : 'more';
       save(ITEMS, JSON.stringify(p)); this.place();
     };
-    document.addEventListener('click', e => { if (!menu.hidden && !this.contains(e.target) && !menu.contains(e.target)) menu.hidden = true; });
     // folded (「바 숨기기」): only this button shows; it unfolds the bar
     const show = this.show = document.createElement('button');
     show.className = 'dock-btn dock-show';
@@ -200,3 +199,9 @@ new MutationObserver(records => {
     document.querySelectorAll('.dock-pop').forEach(o => { if (o !== el && !o.hidden) o.hidden = true; });
   }
 }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+// A click outside them closes the open one. The bar is not outside (its buttons toggle their popover themselves), nor
+// is a <dialog> (a popover's confirm). Capture phase: a popover that redraws on the click still holds the target.
+document.addEventListener('click', e => {
+  if (e.target.closest?.('.dock-pop, ds-dock, dialog')) return;
+  document.querySelectorAll('.dock-pop').forEach(o => { if (!o.hidden) o.hidden = true; });
+}, true);

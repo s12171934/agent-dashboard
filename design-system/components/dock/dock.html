@@ -19,7 +19,7 @@
      and name, summary, a dot when a count badge is up) and .dock-head (sheet-title, default 「이동과 설정」, and a close
      button) itself, and the scrim at the end of <body>; do not write them.
      Popovers opened from the bar: <div class="… dock-pop" hidden> at the end of <body>, toggled with hidden; opening
-     one closes the others. Placement before first paint needs components/dock/dock-boot.js in <head>. -->
+     one closes the others, and a click outside them (not on the bar or a <dialog>) closes the open one. Placement before first paint needs components/dock/dock-boot.js in <head>. -->
 <!-- @story 기본 — 탭·토글·버튼과 구분선. 휴대폰 폭(390)에서는 런처 알약 -->
 <ds-dock summary="실행 1 · 대기 0">
   <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
