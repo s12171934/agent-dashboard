@@ -25,6 +25,16 @@ decisions = {"available": True, "pending": [], "inbox_mode": False, "inbox": []}
 # cards, oldest first; whether 메일함 mode is on; the 메일함, newest first
 decision_lock = threading.Lock()  # guards decision_store and inbox_store
 decision_store = {}  # id -> {"card": the public card, "state": pending|answered|cancelled, "terminal", "busy"}
+# Open cards outlive restarts too (pending.json, {id: {"card", "terminal"}}): the hook registers a question once,
+# so a restart while its picker is open used to drop the card for good. sweep_decisions closes the ones answered
+# or cancelled in the meantime, as it does any card.
+PENDING_PATH = os.path.join(HERE, "pending.json")
+try:
+    with open(PENDING_PATH) as _f:
+        decision_store = {d["card"]["id"]: {"card": d["card"], "state": "pending", "terminal": d.get("terminal"),
+                                            "busy": False} for d in json.load(_f)["items"]}
+except (OSError, ValueError, KeyError, TypeError):
+    pass
 
 # 메일함 모드 (prefs "decision_inbox", one switch for the whole server): the user is away. The hook still registers
 # each question, but it is filed in the 메일함 instead of opening a card, and /api/decision/ask answers {"deny": reason};
@@ -69,9 +79,21 @@ def publish_decisions():
     inbox = sorted((dict(d["card"]) for d in inbox_store.values()), key=lambda c: c["created_at"], reverse=True)
     with lock:
         mode = bool(prefs.get("decision_inbox"))
-        if pending != decisions["pending"] or inbox != decisions["inbox"] or mode != decisions["inbox_mode"]:
+        moved = pending != decisions["pending"]
+        if moved or inbox != decisions["inbox"] or mode != decisions["inbox_mode"]:
             decisions.update(pending=pending, inbox=inbox, inbox_mode=mode)
             bump()
+    if moved:
+        save_pending()
+
+
+def save_pending():
+    """Call holding decision_lock."""
+    items = [{"card": d["card"], "terminal": d["terminal"]} for d in decision_store.values() if d["state"] == "pending"]
+    tmp = PENDING_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"items": items}, f, ensure_ascii=False)
+    os.replace(tmp, PENDING_PATH)
 
 
 def settle_decision(rid, state):

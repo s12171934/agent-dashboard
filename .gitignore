@@ -3,6 +3,7 @@
 prefs.json
 settled.json
 inbox.json
+pending.json
 plan-history.json
 test-history.json
 server.log
