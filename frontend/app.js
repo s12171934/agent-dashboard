@@ -3174,10 +3174,15 @@ const L2D = (() => {
   }
   const kick = () => { if (!raf) raf = requestAnimationFrame(frame); };
   // after each render: watch the new canvases, draw only those on screen
+  // A canvas rebuilt for the same person starts with the old one's picture, so it is never blank until its first frame.
+  let prev = new Map();
+  const key = c => `${c.closest('.ch')?.dataset.id || ''}|${c.dataset.who}|${c.width}x${c.height}`;
   function mount(root) {
     if (!cv) init();
     io?.disconnect(); shown.clear();
     const cs = root.querySelectorAll('canvas.fig-l2d');
+    const old = prev; prev = new Map();
+    cs.forEach(c => { const k = key(c), o = old.get(k); if (o && o !== c) c.getContext('2d').drawImage(o, 0, 0); prev.set(k, c); });
     if (!cs.length) return;
     io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? shown.add(e.target) : shown.delete(e.target)); kick(); });
     cs.forEach(c => { c.dataset.fr ||= charFrame; io.observe(c); });  // the 캐릭터 tab names its own frame
@@ -3629,6 +3634,7 @@ function coSign(x, rs) {
     <span class="co-n">방 <b>${rs.length}</b> · 출근 <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
 }
 
+let chLast = {};  // the office last built (renderOffice) and its HTML, to skip a rebuild that changes nothing
 function renderOffice() {
   if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
   const { fams, solos } = families();
@@ -3647,11 +3653,17 @@ function renderOffice() {
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
-  // Live updates rebuild the HTML; a phase taken from the clock keeps the characters' motion from restarting each time.
-  $('#view').innerHTML = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
+  // A live update that changes nothing in the office leaves it as it is: rebuilding restarts every sprite and Live2D
+  // canvas, which showed as the characters blinking every few seconds. Otherwise a phase taken from the clock (a
+  // multiple of every loop's length) keeps their motion from restarting.
+  const html = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
       ${home && chPanel ? staffPanel() : ''}
-      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:${-(Date.now() % 2400) / 1000}s">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
+      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:@PH@">${lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
+  const now = $('#ch-canvas');
+  if (now && now === chLast.el && html === chLast.html) { chLayout(); chSize(); return; }  // the width may have changed
+  $('#view').innerHTML = html.replace('@PH@', `${-(Date.now() % 12000) / 1000}s;--ph-once:${-(Date.now() % 2400) / 1000}s`);
+  chLast = { el: $('#ch-canvas'), html };
   if (home && chPanel) { hmBind(); $('#ch-panel-x').onclick = () => { chPanel = null; renderOffice(); }; }
   chLayout();
   chBind();

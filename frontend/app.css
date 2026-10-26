@@ -1455,7 +1455,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
   animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -2px; }
 .ch.st-run .fig-ai { animation-duration: .8s; }
-.ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph, 0s); --bob: -4px; }
+.ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph-once, 0s); --bob: -4px; }
 .ch.dec .fig-ai { animation-duration: 1.2s; --bob: -2px; }
 .ch.st-stalled .fig-ai { animation: shake .4s steps(1, end) infinite; }
 .ch.st-idle .fig-ai { animation-duration: 4s; }
