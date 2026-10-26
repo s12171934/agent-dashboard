@@ -3775,7 +3775,9 @@ function renderOffice() {
   const sv = byRank(solos.filter(liveSess), sessRank);
   const home = route().v === 'home';
   const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
-  const placed = officeRooms(people);
+  // 홈 seats only the 운영실; the agents' rooms are the agents tab's
+  if (home) chLinkList = [];
+  const placed = home ? [] : officeRooms(people);
   // Two or more servers on: each server is a company of its own — a sign across the plane, then that server's rooms —
   // in the order of the server list. Team lines still cross companies.
   const cos = multiSrv() ? srvOn().map(x => ({ x, rs: placed.filter(r => r.srv === x.id) })).filter(c => c.rs.length) : [];
@@ -6373,10 +6375,11 @@ function hmTkState(ms, qa) {
   return [8, ms.some(s => st(s) === 'done') ? 'done' : 'idle', ms.some(s => st(s) === 'done') ? '완료' : '유휴'];
 }
 function hmTickets(all) {
-  const ss = state.sessions.filter(s => !s.parent), keyOf = hmTkKeys(ss), up = coordOf(families().fams), by = new Map(), rest = [];
+  // a session with no ticket is left to the agents tab
+  const ss = state.sessions.filter(s => !s.parent), keyOf = hmTkKeys(ss), up = coordOf(families().fams), by = new Map();
   for (const s of ss) {
     const c = up.get(s.path)?.coord, k = keyOf(s) || (c && keyOf(c));
-    if (k) (by.get(k) || by.set(k, []).get(k)).push(s); else rest.push(s);
+    if (k) (by.get(k) || by.set(k, []).get(k)).push(s);
   }
   const qaOf = new Map();
   for (const set of wtData.sets || []) for (const t of set.tickets) if (t.qa) qaOf.set(t.key, t);
@@ -6391,10 +6394,10 @@ function hmTickets(all) {
     tks.push({ key, ms, t, qa, rank, pst, label, last, named });
   }
   tks.sort((a, b) => a.rank - b.rank || toDate(b.last.last_ts) - toDate(a.last.last_ts));
-  return { tks, rest: byRank(rest.filter(s => all || hmRecent(s)), sessRank) };
+  return tks;
 }
 function hmTicketsHtml(all) {
-  const { tks, rest } = hmTickets(all);
+  const tks = hmTickets(all);
   const row = (cls, name, sub, cells, right, href) => `<a class="hw-run ${cls}" href="${href}"><span class="hw-who"><b>${name}</b><small>${sub}</small></span>${cells}<span class="hw-right">${right}</span></a>`;
   const out = [];
   for (const x of tks) {
@@ -6411,9 +6414,7 @@ function hmTicketsHtml(all) {
     for (const m of kids.slice(0, 4)) out.push(row('sub', esc(cut(nameOf(m), 40)), said1(m), hmPlanCells(m), pill(status(m), m), sessHref(m)));
     if (kids.length > 4) out.push(`<div class="hw-run sub st">외 ${kids.length - 4}개</div>`);
   }
-  if (rest.length) out.push(`<div class="hw-sub">티켓 없는 세션 ${rest.length}</div>`);
-  for (const s of rest) out.push(row('solo', esc(cut(nameOf(s), 40)), s.plan ? `계획 ${s.plan.done}/${s.plan.total}${s.plan.cur_text ? ' · ' + esc(cut(s.plan.cur_text, 30)) : ''}` : '단독', hmPlanCells(s), pill(status(s), s), sessHref(s)));
-  return { n: tks.length, note: `티켓 ${tks.length}${rest.length ? ` · 그 밖의 세션 ${rest.length}` : ''}`, body: out.join('') || '<div class="st">지금 움직이는 작업이 없습니다</div>' };
+  return { n: tks.length, note: `티켓 ${tks.length}`, body: out.join('') || '<div class="st">지금 움직이는 작업이 없습니다</div>' };
 }
 
 // ---------- 「홈」: one tile per screen — the office's 운영실 staff — then the ticket board ----------
