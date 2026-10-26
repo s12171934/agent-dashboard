@@ -1277,6 +1277,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 
 /* ---------- 홈: widget grid (S 1 column, M 2, L 2×2, W the row) ---------- */
 .hm-h .hm-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hm-h .hm-todo { margin-left: auto; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-h .hm-todo b { color: var(--warn); font-variant-numeric: tabular-nums; }
 .hm-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(140px, auto); grid-auto-flow: dense; gap: 14px; }
 .hw { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .hw.S { grid-column: span 1; } .hw.M { grid-column: span 2; } .hw.L { grid-column: span 2; grid-row: span 2; } .hw.W { grid-column: 1 / -1; }
@@ -1311,6 +1313,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hw-big .st { font-size: 12px; font-weight: 400; }
 .hw-big.hot { color: var(--warn); } .hw-big.bad { color: var(--bad); }
+.hw-from { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 홈's screen tiles (HUB): the whole tile goes to its screen */
 .hw.hub { cursor: pointer; }
 .hw.hub:hover { border-color: var(--accent); }
