@@ -1305,6 +1305,11 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .hw-dev { color: var(--bad); font-weight: 600; }
 .hw-big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hw-big .st { font-size: 12px; font-weight: 400; }
+.hw-big.hot { color: var(--warn); } .hw-big.bad { color: var(--bad); }
+/* 홈's screen tiles (HUB): the whole tile goes to its screen */
+a.hw.hub { color: inherit; text-decoration: none; }
+a.hw.hub:hover { border-color: var(--accent); }
+a.hw.hub:hover .hw-more { color: var(--accent); }
 .hw-spark { display: flex; align-items: flex-end; gap: 2px; height: 54px; margin: 4px 0; }
 .hw-spark i { flex: 1; background: var(--accent); opacity: .7; border-radius: 3px 3px 0 0; }
 .hw-spark i.cur { opacity: 1; background: var(--warn); }
@@ -1682,17 +1687,44 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-co .co-n b { color: #ffe2a3; }
 .ch-world .room + .ch-co { margin-top: 28px; }
 
-/* 홈's 운영실: staff (one per home widget) wear the accent and a name tag; the open one's widget is .ch-panel, over the right
-   side of the canvas (a bottom sheet on a narrow screen) */
+/* 홈's 운영실 (staffRoom): across the plane, a room per screen — the wall in the room's colour (--sh), its name plate in
+   the lobby sign's wood and brass, two decorations of the trade on the wall and a piece of furniture in the corner — and
+   in each its staff member, in the accent; pressing them goes to that screen */
+.ch-world .staff-room { grid-column: 1 / -1; }
+.staff-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; align-items: start; }
+.room-floor.staff-cell { --wall-h: 140px; --wall: color-mix(in srgb, hsl(var(--sh, 30) 60% 62%) 16%, var(--panel2)); min-height: 0; }
+.staff-cell .room-wall { height: calc(var(--wall-h) - 56px); }
+.staff-plate { position: absolute; z-index: 2; left: 50%; top: 8px; transform: translateX(-50%); padding: 2px 12px; border-radius: 7px; white-space: nowrap;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; color: #ffe2a3; background: linear-gradient(180deg, #4a3426, #2f2119); box-shadow: inset 0 0 0 1.5px #c9a46a, 0 3px 6px -2px rgb(0 0 0 / .35); }
+.staff-prop { position: absolute; z-index: 1; right: 6px; bottom: 8px; display: flex; pointer-events: none; }
+.staff-prop svg { display: block; filter: drop-shadow(0 4px 4px rgb(0 0 0 / .12)); }
 .ch.staff .ch-name { color: var(--accent); }
-.ch.staff.open .ch-name { color: var(--on-accent); background: var(--accent); }
-.ch-panel { position: absolute; z-index: 6; top: 10px; right: 10px; bottom: 10px; width: min(440px, calc(100% - 20px)); overflow: auto; overscroll-behavior: contain;
-  padding: 12px 16px; border-radius: 18px; cursor: auto; touch-action: auto; user-select: text; -webkit-user-select: text; }
-.ch-panel-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.ch-panel-h > b { margin-right: auto; }
-.ch-panel-note { margin-bottom: 8px; }
-.ch-panel .hw { border: 0; padding: 0; background: none; box-shadow: none; }
-@media (max-width: 700px) { .ch-panel { top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); height: 62%; } }  /* keeps the bubble's room so people stay on one line */
+.ch.staff:hover .ch-meta { color: var(--accent); }
+/* the trade's decorations (STAFF_WALL, STAFF_PROP): the office's palette, in the w3- set of the wall's own */
+.w3-edge { stroke: color-mix(in srgb, var(--ink) 25%, transparent); stroke-width: 1; }
+.w3-bad { fill: var(--bad); } .w3-okf { fill: var(--ok); } .w3-warnf { fill: var(--lamp); } .w3-inkf { fill: var(--ink); }
+.w3-alu { fill: var(--alu); } .w3-dark { fill: var(--chair); } .w3-dim { fill: color-mix(in srgb, var(--ink) 30%, transparent); }
+.w3-ring { stroke: var(--chair); stroke-width: 2.4; stroke-linecap: round; }
+.w3-circ { fill: none; stroke: var(--bad); stroke-width: 1.6; }
+.w3-env { fill: none; stroke: color-mix(in srgb, var(--ink) 40%, transparent); stroke-width: 1; }
+.w3-scr { fill: color-mix(in srgb, var(--night) 85%, var(--sky)); }
+.w3-pen.ok { stroke: var(--ok); }
+.w3-chk { fill: none; stroke: var(--ok); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.w3-x { fill: none; stroke: var(--bad); stroke-width: 1.8; stroke-linecap: round; }
+.w3-line { fill: none; stroke: color-mix(in srgb, var(--ink) 28%, transparent); stroke-width: 1.6; stroke-linecap: round; }
+.w3-line.thick { stroke-width: 2.4; } .w3-line.light { stroke: color-mix(in srgb, var(--mug) 35%, transparent); stroke-width: 1; }
+.w3-glass { fill: color-mix(in srgb, var(--sky) 35%, var(--mug)); stroke: color-mix(in srgb, var(--ink) 30%, transparent); stroke-width: 1; }
+.w3-f1 { fill: var(--c1); } .w3-f2 { fill: var(--c2); } .w3-f3 { fill: var(--c3); } .w3-f4 { fill: var(--c4); } .w3-f5 { fill: var(--c5); }
+.w3-coin { fill: var(--lamp); stroke: color-mix(in srgb, var(--lamp) 55%, var(--ink)); stroke-width: 1; }
+.w3-coin-t { font: 700 8px system-ui, sans-serif; fill: color-mix(in srgb, var(--lamp) 35%, var(--ink)); }
+.w3-bp { fill: color-mix(in srgb, #2f6fb5 85%, var(--ink)); }
+.w3-bpl { fill: none; stroke: var(--mug); stroke-width: 1.4; opacity: .85; } .w3-bpl.thin { stroke-width: 1; stroke-dasharray: 2 2; }
+.w3-shadow { fill: var(--ink); opacity: .16; }
+.w3-seam { fill: none; stroke: color-mix(in srgb, var(--ink) 35%, transparent); stroke-width: 1; }
+.w3-safe { fill: color-mix(in srgb, var(--chair) 75%, var(--alu)); }
+.w3-box { fill: color-mix(in srgb, var(--wood) 65%, var(--mug)); } .w3-box2 { fill: color-mix(in srgb, var(--wood) 85%, var(--ink)); }
+.w3-led { animation: blink 1.8s infinite; }
+@media (prefers-reduced-motion: reduce) { .w3-led { animation: none; } }
 @media (max-width: 700px) { .ch-world { padding: 12px; } }
 @media (max-width: 500px) { .ch { width: 124px; } .fig-l2d { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
 /* a tab moved into the bar's ⋯ menu (data-more) shows it is the open one */
