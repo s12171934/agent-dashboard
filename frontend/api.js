@@ -127,8 +127,11 @@ const api = (() => {
       for (const q of [...d.decisions?.pending || [], ...d.decisions?.inbox || []]) next.decision[q.id] = id;
     }
     out.decisions.inbox.sort((a, b) => b.created_at - a.created_at);
-    // Claude plan usage: one entry per server that reads it (each Mac's own Claude account).
-    out.plan_usage = parts.filter(([, d]) => d.plan_usage?.available).map(([s, d]) => ({ ...d.plan_usage, server: s.id, server_name: s.name }));
+    // Plan usage: one card per subscription account; an account two servers both read is shown once, freshest read wins.
+    const accts = {};
+    for (const [s, d] of parts) for (const a of d.plan_usage?.accounts || [])
+      if (!accts[a.key] || (a.at || 0) > (accts[a.key].at || 0)) accts[a.key] = { ...a, server: s.id, server_name: s.name };
+    out.plan_usage = Object.values(accts);
     out.tests.history_at = parts.map(([s, d]) => `${s.id}:${d.tests?.history_at ?? ''}`).join(',') || null;
     out.reviews_at = parts.map(([s, d]) => `${s.id}:${d.reviews_at ?? ''}`).join(',') || null;
     out.orca.error = errors.join(' · ') || null;

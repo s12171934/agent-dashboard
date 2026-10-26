@@ -40,6 +40,7 @@
   <a href="#designs" data-v="designs" data-tip="설계문서" aria-label="설계문서"><ds-icon name="book"></ds-icon></a>
   <a href="#worktrees" data-v="worktrees" data-tip="워크트리 리뷰" aria-label="워크트리 리뷰"><ds-icon name="layers"></ds-icon></a>
   <a href="#decide" data-v="decide" data-tip="결정 대기" aria-label="결정 대기: 에이전트가 답을 기다리는 질문과 메일함"><ds-icon name="help"></ds-icon><b class="dn" id="k-dec-n" hidden>0</b></a>
+  <a href="#usage" data-v="usage" data-tip="플랜 사용량" aria-label="플랜 사용량: 구독 계정별 5시간·주간 한도와 초과 크레딧"><ds-icon name="zap"></ds-icon><b class="dn" id="k-usage" hidden></b></a>
   <a href="#tests" data-v="tests" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" id="k-tests" hidden>0</b></a>
   <button class="dock-btn" id="launch-btn" data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
   <button class="dock-btn ch-dock" id="zoom-btn" data-tip="확대 비율 · 누르면 맞춤" aria-label="사무실 확대 비율: 누르면 모든 방이 한눈에 들어오게 맞춤" aria-pressed="false" hidden><span id="k-zoom">100%</span></button>
@@ -71,7 +72,6 @@
     <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
     <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b><em id="k-dec">0</em><em id="k-mail" hidden></em></b><span id="k-dec-l">결정 대기</span></div>
   </div>
-  <div class="plan-usage" id="plan-usage" hidden></div>
   <div class="health" id="health" hidden></div>
 </div>
 <div id="server-panel" class="popover dock-pop" hidden></div>
