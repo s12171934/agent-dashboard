@@ -1924,6 +1924,11 @@ const TEST_STALE_S = 300, TEST_RECENT_S = 86400;
 const TEST_PHASE = { building: '빌드', running: '실행 중', done: '통과', failed: '실패' };
 const testLive = t => t.phase !== 'done' && t.phase !== 'failed';
 const ageS = ts => ts ? (Date.now() - toDate(ts)) / 1000 : Infinity;
+// A run's cases ({id, title, status, msg, ms}): the case code apart from what it checks. A live run-tc run has them in its
+// tests; a finished one gets them from the server's archive (e2e-runs/<run>.tests.json).
+const TC_LEAD = /^\s*(TC-[\w.-]+)\s*[:·—-]?\s*/;
+const runCases = ts => ts.map(t => { const m = TC_LEAD.exec(t.title || ''), own = m && (!t.tc || m[1] === t.tc);
+  return { id: own ? m[1] : t.tc || '', title: own ? t.title.slice(m[0].length) : t.title || '', status: t.status, msg: t.error || null, ms: t.duration_ms }; });
 function testItems() {
   const m = memo();
   if (m.tests) return m.tests;
@@ -1938,7 +1943,7 @@ function testItems() {
       const ts = r.tests || [], c = st => ts.filter(t => st.includes(t.status)).length;
       out.push({ src: 'run-tc', key: id, kind: 'e2e', label: `E2E ${(r.ids || []).join(', ')}`, owner: r.caller, phase: r.phase === 'testing' ? 'running' : 'building',
         detail: E2E_PHASE[r.phase] || r.phase, total: ts.length || null, done: c(['passed', 'skipped', ...E2E_BAD]), passed: c(['passed']), failed: c(E2E_BAD),
-        started_at: r.started_at, updated_at: d.updated_at, log: r.log, sess: e2eSessOf(r),
+        started_at: r.started_at, updated_at: d.updated_at, log: r.log, sess: e2eSessOf(r), cases: runCases(ts),
         failures: ts.filter(t => E2E_BAD.includes(t.status)).map(t => ({ id: `${t.tc || ''} ${t.title || ''}`.trim(), msg: t.error || '' })) });
     }
     for (const h of d.history || []) {
@@ -1961,10 +1966,23 @@ function testRow(t, inCard, allFails) {
     : `<span class="st">${ago(t.finished_at)}${t.started_at && t.finished_at ? ` · 소요 ${dur(t.started_at, t.finished_at)}` : ''}</span>`;
   const who = inCard ? '' : t.sess ? `<a href="#s=${encodeURIComponent(t.sess.path)}">${esc(cut(nameOf(t.sess), 34))}</a>` : t.owner ? `<span class="st">${esc(cut(t.owner, 34))}</span>` : '';
   const nf = allFails ? 20 : 3;
-  const fails = (t.failures || []).length ? `<details class="tfails"><summary>실패 ${t.failures.length}건${t.failures.length > nf ? ` (상위 ${nf})` : ''}</summary>${t.failures.slice(0, nf).map(f => `<div><code>${esc(cut(f.id, 90))}</code> <span class="st">${esc(cut(f.msg, 160))}</span></div>`).join('')}</details>` : '';
+  const fails = t.cases?.length ? casesHtml(t) : (t.failures || []).length ? `<details class="tfails"><summary>실패 ${t.failures.length}건${t.failures.length > nf ? ` (상위 ${nf})` : ''}</summary>${t.failures.slice(0, nf).map(f => `<div><code>${esc(cut(f.id, 90))}</code> <span class="st">${esc(cut(f.msg, 160))}</span></div>`).join('')}</details>` : '';
   const tip = `${t.src === 'file' ? 'agent-test-progress/' + t.key + '.json' : 'run-tc ' + t.key}${t.log ? '\n로그 ' + t.log : ''}${t.detail ? '\n' + t.detail : ''}`;
   return `<div class="trow"><div class="cbr" title="${esc(tip)}"><b class="e2e-tag">${esc((t.kind || 'test').toUpperCase())}</b><span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(live ? (t.src === 'run-tc' ? t.detail : TEST_PHASE[t.phase] || t.phase || '진행') : t.phase === 'failed' || t.failed ? '실패' : '통과')}</span>${inCard ? '' : `<b>${esc(cut(t.label || t.key, 60))}</b>`}${who}${bar}${pf}${when}${stale ? `<span class="tstale">⚠ ${dur(t.updated_at)}째 갱신 없음</span>` : ''}${live && t.detail && t.src === 'file' ? `<span class="st">${esc(cut(t.detail, 60))}</span>` : ''}</div>${fails}</div>`;
 }
+// The cases toggle under a run: each case's code, what it checks and how it ended (failed first). Open ones stay open
+// across re-renders (caseOpen, by run id).
+const CASE_ORDER = s => E2E_BAD.includes(s) ? 0 : s === 'running' ? 1 : s === 'passed' ? 3 : 2;
+const caseCls = s => E2E_BAD.includes(s) ? 'fail' : s === 'passed' ? 'done' : s === 'running' ? 'run' : s === 'queued' ? 'pending' : 'wait';
+const caseOpen = new Set();
+function casesHtml(t) {
+  const cs = t.cases.map((c, i) => [c, i]).sort((a, b) => CASE_ORDER(a[0].status) - CASE_ORDER(b[0].status) || a[1] - b[1]).map(x => x[0]);
+  const n = s => cs.filter(c => s.includes(c.status)).length, bad = n(E2E_BAD), ok = n(['passed']), rest = cs.length - bad - ok, id = testId(t);
+  return `<details class="tcases" data-case="${esc(id)}"${caseOpen.has(id) ? ' open' : ''}><summary>케이스 ${cs.length} · 통과 ${ok}${bad ? ` · <b style="color:var(--bad)">실패 ${bad}</b>` : ''}${rest ? ` · 기타 ${rest}` : ''}</summary>
+    <div class="tcase-list">${cs.map(c => { const k = caseCls(c.status);
+      return `<div class="tcase ${k}"><span class="tkc ${k}"><i>${TK_IC[k] || '·'}</i>${esc(E2E_TEST[c.status] || c.status || '?')}</span><code>${esc(c.id || '—')}</code><span class="tcase-t">${esc(c.title || '')}</span>${c.ms ? `<span class="st">${Math.round(c.ms / 1000)}s</span>` : ''}${c.msg ? `<span class="tcase-msg">${esc(cut(c.msg, 200))}</span>` : ''}</div>`; }).join('')}</div></details>`;
+}
+document.addEventListener('toggle', e => { const id = e.target.dataset?.case; if (id != null) e.target.open ? caseOpen.add(id) : caseOpen.delete(id); }, true);
 let testsOpen = true;
 // The agents view keeps only running tests; finished ones are in the 「테스트」 tab.
 function testsHtml() {
@@ -1990,8 +2008,9 @@ const testId = t => t.id || (t.src === 'file' ? `file:${t.key}:${t.started_at ||
 // Current items win over their archived copy (same id); archived ones get their session back when it is still tracked.
 function allTestRuns() {
   const cur = testItems(), seen = new Set(cur.map(testId));
+  const kept = new Map(testHist.runs.map(r => [r.id, r]));
   const old = testHist.runs.filter(r => !seen.has(r.id)).map(r => ({ ...r, sess: e2eSessOf({ terminal: r.terminal, session_id: r.session_id, caller: r.owner }) }));
-  return [...cur, ...old];
+  return [...cur.map(t => t.cases?.length || !kept.get(testId(t))?.cases?.length ? t : { ...t, cases: kept.get(testId(t)).cases }), ...old];
 }
 const DOW = '일월화수목금토';
 const dayKey = ts => { const d = ts ? toDate(ts) : null; return d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : ''; };
@@ -2007,7 +2026,7 @@ async function renderTests() {
         <div class="seg" id="tests-span">${Object.entries(TEST_SPANS).map(([k, l]) => `<button data-k="${k}">최근 ${l}</button>`).join('')}</div>
         <div class="seg" id="tests-result">${Object.entries(TEST_RESULTS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
         <div class="seg" id="tests-kind" data-kinds="${esc(kinds.join(','))}"><button data-k="all">모든 종류</button>${kinds.map(k => `<button data-k="${esc(k)}">${esc(k.toUpperCase())}</button>`).join('')}</div>
-        <input type="search" id="tests-q" class="field" placeholder="이름·실행자·실패 검색" value="${esc(tst.q)}">
+        <input type="search" id="tests-q" class="field" placeholder="이름·실행자·케이스·실패 검색" value="${esc(tst.q)}">
       </div><div id="tests-body"></div>`;
     for (const [id, key] of [['#tests-span', 'span'], ['#tests-result', 'result'], ['#tests-kind', 'kind']])
       $(id).querySelectorAll('button').forEach(b => b.onclick = () => { tst[key] = key === 'span' ? +b.dataset.k : b.dataset.k; save(); renderTests(); });
@@ -2018,7 +2037,7 @@ async function renderTests() {
     $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === String(tst[key])));
   const q = tst.q.trim().toLowerCase();
   const hit = t => (tst.kind === 'all' || (t.kind || 'test') === tst.kind)
-    && (!q || [t.label, t.key, t.owner, t.detail, t.sess && nameOf(t.sess), ...(t.failures || []).map(f => f.id + ' ' + f.msg)].some(x => x && String(x).toLowerCase().includes(q)));
+    && (!q || [t.label, t.key, t.owner, t.detail, t.sess && nameOf(t.sess), ...(t.failures || []).map(f => f.id + ' ' + f.msg), ...(t.cases || []).map(c => c.id + ' ' + c.title)].some(x => x && String(x).toLowerCase().includes(q)));
   const live = all.filter(t => testLive(t) && hit(t) && tst.result === 'all').sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
   const tms = ts => ts ? +toDate(ts) || 0 : 0;  // sources mix "Z" and "+09:00": compare instants, not strings
   const done = all.filter(t => !testLive(t) && ageS(t.finished_at) <= tst.span * 86400 && hit(t)).sort((a, b) => tms(b.finished_at) - tms(a.finished_at));

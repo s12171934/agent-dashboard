@@ -474,6 +474,11 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 .tstale { color: var(--warn); font-weight: 600; }
 .tfails { font-size: 11.5px; margin: 3px 0 0 4px; } .tfails summary { cursor: pointer; color: var(--bad); }
 .tfails div { margin: 2px 0 0 12px; } .tfails code { font-size: 11px; }
+.tcases { font-size: 11.5px; margin: 3px 0 0 4px; } .tcases summary { cursor: pointer; color: var(--muted); }
+.tcase-list { display: grid; gap: 3px; margin: 4px 0 2px 12px; }
+.tcase { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; } .tcase .tkc { flex: none; }
+.tcase code { font-size: 11px; flex: none; } .tcase-t { flex: 1 1 240px; min-width: 0; }
+.tcase-msg { flex-basis: 100%; padding-left: 4px; color: var(--bad); }
 
 /* 상호작용 */
 .talk-types { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }

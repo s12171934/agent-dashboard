@@ -54,7 +54,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | Codex 세션 | `~/.codex/sessions/**/rollout-*.jsonl`, Orca 의 Codex 계정 세션 |
 | Orca Run·터미널 | `orca` CLI 호출 |
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
-| 테스트 진행 | `/private/tmp/agent-test-progress/*.json` |
+| 테스트 진행 | `/private/tmp/agent-test-progress/*.json`, run-tc 진행 파일과 그 옆 `e2e-runs/<run>.tests.json`(케이스별 제목·결과) |
 | 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문. 터미널 선택기와 같은 질문이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
@@ -533,7 +533,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 - `aplan` CLI 와 그 기록 형식 (`~/.agent-plans/*.jsonl`)
 - `server/server.py` 실행 옵션과 `server/launchd/install.sh` 환경 변수
-- 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`
+- 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`, 선택 `cases` — `[{"id", "title", "status", "msg", "ms"}]`. `cases` 가 있으면 「테스트」의 실행 줄 아래 「케이스」 토글에 케이스 코드(`id`, 예: `TC-A-23`)와 그 케이스가 확인하는 내용(`title`), 통과·실패(`status`: `passed`·`failed`·`skipped` 등), 실패 메시지가 실패 먼저 나온다. run-tc 실행은 진행 파일 옆 `e2e-runs/<run>.tests.json` 에서 같은 목록을 읽는다(제목 앞의 `TC-…` 를 코드로 뗀다)
 
 - 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 서버는 `--projects-dir` 아래에서 읽어 위 「프로젝트 진행 API」로 준다. 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
 
