@@ -15,6 +15,7 @@ from adash.features.orca_runs.store import orca_state
 from adash.features.plans.owners import plan_owners, plan_with_owner, resolve_plan_owner, with_plan_terms
 from adash.features.plans.store import EXTERNAL_PLANS, ext_plans
 from adash.features.projects.store import PROJECTS_DIRS
+from adash.features.review.qa import qa_family
 from adash.features.review.store import review_state
 from adash.features.sessions.idle import apply_prefs
 from adash.features.terminals.pending import pending_sessions
@@ -65,6 +66,7 @@ def build_state(encode):
         plan_owners.update({p: resolve_plan_owner(p, plan, summaries) for p, plan in ext_plans.items()})
         summaries = [apply_prefs(with_plan_terms(sm)) for sm in summaries]
         focus = focus_targets(summaries)
+        qa_family(summaries, focus, review_state["sets"])
         terms = {t["handle"] for t in orca_state.get("terminals", []) if t.get("connected")}
         trees = {}
         for sm in summaries:
