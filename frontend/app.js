@@ -380,8 +380,9 @@ function renderHeader() {
   $('#k-mail').hidden = !unread;
   $('#k-dec-l').textContent = '결정 대기' + (unread ? ' · 메일' : '');
   $('#k-dec-wrap').classList.toggle('on', dec.pending.length > 0 || unread > 0);
-  $('#k-dec-n').textContent = dec.pending.length + unread;  // the bar's 「현황」 button: what is waiting on the user
+  $('#k-dec-n').textContent = dec.pending.length + unread;  // the bar's 「결정 대기」 tab: what is waiting on the user
   $('#k-dec-n').hidden = !(dec.pending.length + unread);
+  document.title = (dec.pending.length ? `(${dec.pending.length}) 결정 대기 · ` : '') + 'Agent Dashboard';
   $('#k-dec-wrap').classList.toggle('away', inboxMode().on);
   $('#k-dec-wrap').title = inboxMode().on ? '메일함 모드 켜짐: 질문은 메일함에 쌓이고 에이전트는 권장안으로 진행합니다' : '';
   $('#inbox-mode-btn').hidden = !inboxMode().ids.length;
@@ -449,8 +450,23 @@ function showDecisions() {
     return { ...s ? { name: nameOf(s), href: r.v === 'session' ? null : '#s=' + encodeURIComponent(s.path) } : { name: (q.agent || '에이전트') + ' · 세션 목록에 없음' }, badge: srvBadge(q) };
   };
   decisions.show(items, pending, owner);
+  decAlert(r.v === 'decide' || r.v === 'session' && items.length ? [] : pending, sessOf);
   if (r.v === 'decide') { decideHead(); inbox.show(state.decisions?.inbox || [], owner); }
   else { $('#decide-head').hidden = true; inbox.hide(); }
+}
+
+// A strip over every other screen while questions wait: the oldest one (whose session, what it asks, how long) and
+// how many more, all of it a link to #decide, so a question never waits unseen behind a tab or a closed popover.
+function decAlert(pending, sessOf) {
+  const el = $('#dec-alert');
+  el.hidden = !pending.length;
+  if (!pending.length) return void (el.innerHTML = '');
+  const q = pending[0], s = sessOf(q), q0 = q.questions?.[0] || {}, sec = Math.max(0, Date.now() / 1000 - q.created_at);
+  const wait = sec < 60 ? '방금' : sec < 3600 ? `${Math.round(sec / 60)}분째` : `${Math.round(sec / 3600)}시간째`;
+  el.innerHTML = `<a class="dec-alert" href="#decide"><ds-icon name="help"></ds-icon><b>결정 대기 ${pending.length}</b>
+    <span class="da-who">${esc(cut(s ? nameOf(s) : q.agent || '에이전트', 40))}</span>
+    <span class="da-q" title="${esc(q0.question || '')}">${esc(q0.question || '')}</span>
+    <span class="da-meta">${wait}${pending.length > 1 ? ` · 외 ${pending.length - 1}건` : ''}</span><span class="da-go">답하기 →</span></a>`;
 }
 
 // #decide: a heading with the 메일함 switch above the cards (#decide-head, outside #view like the cards, and
@@ -1106,10 +1122,11 @@ function card(s, cls) {
   const own = status(s), st = subBg(s, a, own), la = s.last_action;
   const t = s.role === 'worker' ? IX.tasks[s.task_id] : null;
   const role = s.role === 'coordinator' ? '<span class="badge coord">코디네이터</span>' : isSubCoord(s) ? '<span class="badge subcoord">하위 코디네이터</span>' : s.role === 'worker' ? `<span class="badge worker"${s.viaScript ? ` title="${esc(s.viaScript)} 스크립트가 띄운 워커"` : ''}>워커${s.viaScript ? ' · 스크립트' : ''}</span>` : '';
-  return `<div class="card ${cls || ''} st-${st}" data-path="${esc(s.path)}">
+  const dq = s.decision?.questions?.[0]?.question;
+  return `<div class="card ${cls || ''} st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}">
     <div class="c-top"><span class="c-title" title="${esc(nameOf(s))}">${esc(nameOf(s))}</span>${s.decision ? '<span class="badge dec" title="카드를 열면 답할 수 있습니다">결정 대기</span>' : ''}${role}</div>
     <div class="c-top">${pill(st, s)}${actBtns(s)}</div>
-    <div class="now" title="${esc(la?.text || '')}">${la ? `<b>${st === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[la.role] || '')} · ${esc(la.text)}` : ''}</div>
+    ${dq ? `<div class="now dq" title="${esc(dq)}"><b>질문</b> ${esc(dq)}</div>` : `<div class="now" title="${esc(la?.text || '')}">${la ? `<b>${st === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[la.role] || '')} · ${esc(la.text)}` : ''}</div>`}
     <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span>${srvBadge(s)}${t ? `<span class="badge" style="color:${STATUS_COLOR(t.status)};border-color:currentColor">태스크 ${esc(t.status)}</span>` : ''}</div>
     ${addedHtml(s)}
     <div class="c-metrics">
