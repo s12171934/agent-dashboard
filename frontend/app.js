@@ -2009,7 +2009,8 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // Each server joins its QA sets' Jira children, Orca worktrees, vault step notes and test runs (/api/reviews). A review
 // is recorded in the step note's frontmatter; the server moves its shas along with the worktrees' HEADs (rebases), and it
 // reads 「재오픈」 once the driver starts a later round than the one the review saw. Opening VS Code
-// goes to the set's server and works only when that server is this device's loopback (set.local).
+// goes to the set's server and works only when that server is this device's loopback (set.local); elsewhere (a phone,
+// another machine) the button is not drawn.
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false, wtBodyHtml = '';
 // f: review / Jira filter, q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home 「QA 파이프라인」 sets it.
 const wtf = (() => { try { return { f: 'all', q: '', qa: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '', qa: '' }; } })();
@@ -2222,7 +2223,7 @@ function wtActs(t, set) {
         ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
-        <button class="act big" data-wt-web="${esc(t.key)}" data-srv="${esc(set.server)}" aria-expanded="${wtWeb.has(t.key)}"${set.local ? ' title="이 티켓 아래에 웹 VS Code(읽기 전용)를 펼칩니다. 데스크톱 창은 펼친 곳에서 엽니다"' : ' disabled title="이 워크트리가 있는 맥에서 연 화면에서만 열 수 있습니다"'}>${wtWeb.has(t.key) ? 'VS Code 접기' : 'VS Code 로 보기'}</button>
+        ${set.local ? `<button class="act big" data-wt-web="${esc(t.key)}" data-srv="${esc(set.server)}" aria-expanded="${wtWeb.has(t.key)}" title="이 티켓 아래에 웹 VS Code(읽기 전용)를 펼칩니다. 데스크톱 창은 펼친 곳에서 엽니다">${wtWeb.has(t.key) ? 'VS Code 접기' : 'VS Code 로 보기'}</button>` : ''}
         <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : '';
 }
 function wtTicket(t, set) {
