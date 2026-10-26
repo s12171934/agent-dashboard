@@ -23,6 +23,7 @@ from adash.features.terminals.targets import close_tree, focus_targets
 from adash.features.tests.tests import test_progress
 import adash.core.state as core_state
 import adash.features.designs.store as designs_store
+import adash.features.plan_usage.usage as plan_usage_mod
 import adash.features.projects.store as projects_store
 import adash.features.terminals.targets as terminals_targets
 
@@ -102,6 +103,7 @@ def build_state(encode):
             "health": {"now": time.time(), "loops": health},
             "decisions": decisions,
             "flow": flow,
+            "plan_usage": plan_usage_mod.plan_usage,
         })
     return v, body
 

@@ -376,6 +376,7 @@ function renderHeader() {
   { const n = hmMine().length; $('#k-home').textContent = n; $('#k-home').hidden = !n; }
   $('#k-runs').textContent = state.orca.error ? '오류' : state.orca.runs.filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
+  renderPlanUsage();
   const dec = state.decisions || { available: false, pending: [] }, unread = (dec.inbox || []).filter(r => !r.read).length;
   $('#k-dec-wrap').hidden = !dec.available;
   $('#k-dec').textContent = dec.pending.length;
@@ -493,7 +494,7 @@ function renderDecide() {
 // Server collector loops (state.health.loops: name -> {ok, error, at}). SSE pings keep 「실시간」 on even when a
 // collector has stopped, so a loop whose last clean pass is older than its limit is called out here, as is a
 // failure in the last 10 minutes. A refresh that failed in the page itself is shown the same way.
-const LOOPS = { scan: ['세션 로그', 60], orca: ['Orca', 300], ext_plan: ['외부 계획', 60], history: ['지난 기록', 1800], decision: ['결정 버튼', 30],
+const LOOPS = { plan_usage: ['플랜 사용량', 1800], scan: ['세션 로그', 60], orca: ['Orca', 300], ext_plan: ['외부 계획', 60], history: ['지난 기록', 1800], decision: ['결정 버튼', 30],
   design: ['설계문서', 60], design_backfill: ['설계문서 지난 로그', 3600] };
 let refreshError = null;
 function renderHealth() {
@@ -512,6 +513,32 @@ function renderHealth() {
   el.title = failed.join('\n') || '마지막 정상 수집이 오래됐습니다. 서버 로그를 확인하세요.';
   $('#stat-btn').classList.toggle('bad', !el.hidden);
   $('#stat-btn').dataset.tip = el.hidden ? '현황' : '현황 · ' + el.textContent;
+}
+
+// Claude plan usage (state.plan_usage: per server, from the account's usage API every 5 minutes): the 5-hour session
+// and weekly buckets as bars, the one that is holding the account back marked, and the extra usage credits. The bar
+// tip carries the most used bucket so it shows without opening 「현황」.
+function renderPlanUsage() {
+  const list = state.plan_usage || [], el = $('#plan-usage');
+  el.hidden = !list.length;
+  if (!list.length) return;
+  const until = t => {
+    if (!t) return '';
+    const m = Math.max(0, Math.round((t - Date.now() / 1000) / 60)), d = new Date(t * 1000);
+    const at = m < 1440 ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' });
+    return `${at} 리셋 · ${m < 60 ? m + '분' : m < 1440 ? Math.floor(m / 60) + '시간 ' + m % 60 + '분' : Math.floor(m / 1440) + '일'} 남음`;
+  };
+  const tone = p => p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--accent)';
+  el.innerHTML = list.map(u => `<div class="pu-h"><b>플랜 사용량</b>${list.length > 1 ? `<span>${esc(u.server_name)}</span>` : ''}
+      <span class="st" title="Claude Code 토큰으로 사용량 API 를 5분마다 조회 (${esc(u.source || '')})">${new Date(u.at * 1000).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 기준</span></div>
+    ${u.error ? `<div class="pu-err">⚠ 갱신 실패: ${esc(u.error)}</div>` : ''}
+    ${(u.limits || []).map(b => `<div class="pu-row${b.active ? ' on' : ''}" title="${b.active ? '지금 걸려 있는 한도' : ''}">
+      <span class="pu-n">${esc(b.name)}${b.active ? ' <em>현재 한도</em>' : ''}</span><b>${b.percent ?? '–'}%</b>
+      <div class="ctxbar"><div style="width:${Math.min(100, b.percent || 0)}%;background:${tone(b.percent || 0)}"></div></div>
+      <span class="pu-r">${until(b.resets_at)}</span></div>`).join('')}
+    ${u.extra ? `<div class="pu-x">초과 사용 크레딧 ${u.extra.limit_usd ? `<b>${usd(u.extra.used_usd)}</b> / ${usd(u.extra.limit_usd)}${u.extra.reached ? ' · <em>한도 도달</em>' : ''}` : '<b>꺼짐</b> (월 한도 $0)'}</div>` : ''}`).join('');
+  const top = list.flatMap(u => u.limits || []).sort((a, b) => (b.percent || 0) - (a.percent || 0))[0];
+  if (top && $('#stat-btn').dataset.tip === '현황') $('#stat-btn').dataset.tip = `현황 · ${top.name} ${top.percent}%`;
 }
 
 // ---------- agents (cards) ----------

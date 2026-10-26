@@ -10,6 +10,7 @@ from adash.features.designs.loop import design_backfill_loop, design_loop
 from adash.features.designs.store import DESIGN_DIRS, design_bases
 from adash.features.history.history import history_loop
 from adash.features.orca_runs.loop import orca_loop
+from adash.features.plan_usage.usage import plan_usage_loop
 from adash.features.plans.external import ext_plan_loop
 from adash.features.plans.store import EXTERNAL_PLANS
 from adash.features.projects.loop import projects_loop
@@ -58,6 +59,7 @@ def main():
     threading.Thread(target=history_loop, daemon=True).start()
     threading.Thread(target=decision_loop, daemon=True).start()
     threading.Thread(target=review_loop, daemon=True).start()
+    threading.Thread(target=plan_usage_loop, daemon=True).start()
     if PROJECTS_DIRS:
         threading.Thread(target=projects_loop, daemon=True).start()
     if DESIGN_DIRS or EXTERNAL_PLANS:  # an external plan's design_root is a design folder too
