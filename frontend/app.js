@@ -3499,16 +3499,22 @@ let chLz = 1;  // the label growth chLayout last spaced the rows for
 try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}') }; } catch {}
 let chPanAt = 0, chSaveT;
 const chViewSave = () => { clearTimeout(chSaveT); chSaveT = setTimeout(() => { try { localStorage.setItem('adash.chview', JSON.stringify(chView)); } catch {} }, 300); };
+// the part of the canvas a fit fills: beside an open staff panel and clear of the bar floating on the bottom (or top)
+function chFrame(cv) {
+  const cw = cv.clientWidth, ch = cv.clientHeight;
+  const dt = document.documentElement.dataset.dock === 'top' && $('ds-dock:not([open])')?.getBoundingClientRect();
+  const top = dt ? Math.max(14, dt.bottom - cv.getBoundingClientRect().top + 8) : 14;
+  const dk = document.documentElement.dataset.dock === 'bottom' && $('ds-dock:not([open])')?.getBoundingClientRect();
+  const room = ch - top - (dk ? Math.max(8, cv.getBoundingClientRect().bottom - dk.top + 8) : 8);
+  const pn = cv.querySelector('.ch-panel'), side = pn && cw > 700 ? pn.offsetWidth + 20 : 0;
+  return { top, room, fw: cw - side };
+}
 function chApply() {
   const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world');
   if (!w) return;
   const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
-  if (chView.fit) {  // beside an open staff panel and clear of the bar floating on the bottom (or top) of the canvas
-    const dt = document.documentElement.dataset.dock === 'top' && $('ds-dock:not([open])')?.getBoundingClientRect();
-    const top = dt ? Math.max(14, dt.bottom - cv.getBoundingClientRect().top + 8) : 14;
-    const dk = document.documentElement.dataset.dock === 'bottom' && $('ds-dock:not([open])')?.getBoundingClientRect();
-    const room = ch - top - (dk ? Math.max(8, cv.getBoundingClientRect().bottom - dk.top + 8) : 8);
-    const pn = cv.querySelector('.ch-panel'), side = pn && cw > 700 ? pn.offsetWidth + 20 : 0, fw = cw - side;
+  if (chView.fit) {
+    const { top, room, fw } = chFrame(cv);
     let z = Math.min(1, (fw - 24) / ww, room / wh);
     if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
     chView.z = z;
@@ -3536,6 +3542,28 @@ function chZoom(k, px, py) {
   chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = false;
   chApply(); chViewSave();
 }
+// a worktree room pressed (its title or floor, not a person): the view fits that room, up to 200%; pressed again while
+// it is so (not moved since), back to 맞춤. Twice, as the labels' growth (--lz) re-spaces the room's rows when the zoom changes.
+let chFocused = '';
+function chFocus(key) {
+  const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world'), r = [...(w?.querySelectorAll('.room[data-room]') || [])].find(n => n.dataset.room === key);
+  if (!r) return;
+  const at = () => [key, chView.x, chView.y, chView.z, chView.fit].join('|');
+  if (chFocused === at()) { chFocused = ''; chView.fit = true; chApply(); chViewSave(); return; }
+  for (let i = 0; i < 2; i++) {
+    const { top, room, fw } = chFrame(cv), wr = w.getBoundingClientRect(), rr = r.getBoundingClientRect();
+    const x = (rr.left - wr.left) / chView.z, y = (rr.top - wr.top) / chView.z, rw = rr.width / chView.z, rh = rr.height / chView.z;
+    const z = Math.min(2, (fw - 24) / rw, room / rh);
+    chView = { ...chView, z, fit: false, x: (fw - rw * z) / 2 - x * z, y: top + Math.max(0, (room - rh * z) / 2) - y * z };
+    chApply();
+  }
+  chFocused = at(); chViewSave();
+}
+document.addEventListener('click', e => {
+  const r = e.target.closest?.('#ch-canvas .ch-world .room[data-room]');
+  if (!r || e.target.closest('.ch, a, button, .ch-panel') || Date.now() - chPanAt < 400) return;
+  chFocus(r.dataset.room);
+});
 // the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
 // when that is the lower half); the page itself does not scroll. It keeps to the viewport: when iOS lays an installed
 // PWA out shorter than its screen (iPhone Duo sideways, now and then: 867×587 of 951×669), a box reaching past it is
@@ -3695,10 +3723,10 @@ const STAFF_LOT = { decide: 'a', agents: 'b', worktrees: 'c', designs: 'd', comp
 const TREE = (k = 1) => `<svg viewBox="0 0 48 64" width="${48 * k}" height="${64 * k}"><ellipse class="w3-shadow" cx="24" cy="61" rx="16" ry="3"/><rect class="w3-board" x="21" y="40" width="6" height="21" rx="2"/>
     <circle class="w3-hill" cx="15" cy="32" r="12"/><circle class="w3-hill" cx="33" cy="32" r="12"/><circle class="w3-leaf" cx="24" cy="20" r="16"/></svg>`;
 const staffCell = h => { const r = hubVal(h), w = hubWeight(r);
-  return `<div class="vl-house w${w}" style="--lot:${STAFF_LOT[h.id]};--sh:${h.hue};--cw:${STAFF_W[w]}px"><i class="vl-roof" aria-hidden="true"></i>
+  return `<div class="vl-house w${w}" style="--lot:${STAFF_LOT[h.id]};--sh:${h.hue};--cw:${STAFF_W[w]}px"><i class="vl-roof" aria-hidden="true"></i><span class="staff-plate" aria-hidden="true">${h.room}</span>
     <div class="room-floor staff-cell" data-room="staff-${h.id}">
     <div class="room-wall" aria-hidden="true">${h.wall.map(k => `<span class="wall-item">${(STAFF_WALL[k] || WALL[k])()}</span>`).join('')}</div>
-    <span class="staff-plate" aria-hidden="true">${h.room}</span><span class="staff-prop" aria-hidden="true">${STAFF_PROP[h.prop] || ''}</span>${staffHtml(h, r)}</div></div>`; };
+    <span class="staff-prop" aria-hidden="true">${STAFF_PROP[h.prop] || ''}</span>${staffHtml(h, r)}</div></div>`; };
 function staffRoom(people) {
   needReviews();  // the QA room's figure needs the 워크트리 리뷰 data
   const todo = hmMine().length;
@@ -3819,12 +3847,14 @@ function renderOffice() {
   const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : rooms.length;
   const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(most));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
+  // 홈's village on a landscape screen lies in two rows of wide houses (app.css): it needs the width of five of them
+  const wide = home && matchMedia('(min-width: 701px) and (min-aspect-ratio: 5/4)').matches ? 1560 : 0;
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
   // A live update that keeps the office's shape is written into it (chPatch). Otherwise a phase taken from the clock
   // (a multiple of every loop's length) keeps the characters' motion from restarting.
   const html = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
-      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${roomW}px;--ph:@PH@">${home ? '' : lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
+      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${Math.max(roomW, wide)}px;--ph:@PH@">${home ? '' : lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   const now = $('#ch-canvas');
   if (now && now === chLast.el) {
