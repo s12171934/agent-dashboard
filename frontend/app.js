@@ -2974,9 +2974,8 @@ function agViewBind() {
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
 // (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터 설정」 panel (charPanel): 「AI 생성」
 // shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
-// (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card, a
-// drag (a long press on touch) or the arrow keys move them anywhere in the room.
-// Moved places are kept on this device (adash.chpos).
+// (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card. People
+// stand on the room's grid in order (chLayout) and are not moved by hand.
 let charStyle = 'ai';  // ai | l2d
 try { charStyle = localStorage.getItem('adash.charstyle') === 'l2d' ? 'l2d' : 'ai'; } catch {}
 let charFrame = 'bust';  // bust | full
@@ -3351,7 +3350,7 @@ function famChips(s) {
 // The family lines, over the plane: a dotted thread in the family's colour from the coordinator's side to the side of
 // each of its workers in another room (the sides facing each other, at the waist, clear of bubbles and name tags),
 // sagging a little across the corridor, a dot at each end and, at the bottom of the first thread of each family, the
-// team's name. People move (layout, drag), so it is redrawn after each move.
+// team's name. It is redrawn after each layout.
 function chLinks() {
   const w = $('#view .ch-world');
   if (!w) return;
@@ -3387,11 +3386,9 @@ function chHot(fam) {
   w.querySelectorAll('.ch-link, .ch-link-tag, .ch[data-fam]').forEach(x => x.classList.toggle('fam-on', !!fam && x.dataset.fam.split(' ').includes(fam)));
 }
 
-// Places: a moved person keeps {x: share of the free width, y: px from the room's top}; the rest sit on the grid.
-let chPos = {};
-try { chPos = JSON.parse(localStorage.getItem('adash.chpos') || '{}') || {}; } catch {}
-const chPosSave = () => { try { localStorage.setItem('adash.chpos', JSON.stringify(chPos)); } catch {} };
-let chDrag = false, chStale = false;  // a live update during a drag waits for the drop
+// Places: everyone sits on the room's grid, in order. Places once moved by hand (adash.chpos) are dropped.
+try { localStorage.removeItem('adash.chpos'); } catch {}
+let chStale = false;  // a live update during a pan waits for the release
 const CH_GAP = 6;
 function chLayout() {
   $('#view').querySelectorAll('.room-floor').forEach(fl => {
@@ -3406,24 +3403,12 @@ function chLayout() {
     const uw = us[0].offsetWidth, cols = Math.max(1, Math.floor(W / uw)), slot = W / cols, top = parseFloat(getComputedStyle(fl).getPropertyValue('--wall-h')) - 54;
     const rowY = [top];
     us.forEach((u, i) => { const r = Math.floor(i / cols); rowY[r + 1] = Math.max(rowY[r + 1] || 0, rowY[r] + hOf(u) + CH_GAP); });
-    let H = rowY[rowY.length - 1] + CH_GAP;
-    us.forEach((u, i) => {
-      const p = chPos[u.dataset.id];
-      const x = p ? p.x * Math.max(0, W - uw) : slot * (i % cols) + (slot - uw) / 2, y = p ? Math.max(0, p.y) : rowY[Math.floor(i / cols)];
-      chPlace(u, x, y);
-      H = Math.max(H, y + hOf(u) + CH_GAP);
-    });
-    fl.style.height = H + 'px';
+    us.forEach((u, i) => chPlace(u, slot * (i % cols) + (slot - uw) / 2, rowY[Math.floor(i / cols)]));
+    fl.style.height = rowY[rowY.length - 1] + CH_GAP + 'px';
   });
   chLinks();
 }
 const chPlace = (u, x, y) => { u.style.left = x + 'px'; u.style.top = y + 'px'; u.style.zIndex = 10 + Math.round(y); };
-function chKeep(u) {
-  const fl = u.parentElement, free = Math.max(1, fl.clientWidth - u.offsetWidth);
-  chPos[u.dataset.id] = { x: Math.min(1, Math.max(0, u.offsetLeft / free)), y: u.offsetTop };
-  chPosSave();
-  if (u.offsetTop + u.offsetHeight + CH_GAP > fl.clientHeight) { fl.style.height = u.offsetTop + u.offsetHeight + CH_GAP + 'px'; chLinks(); }
-}
 // keep a person in sight beside (or above, on a narrow screen) the staff panel that just opened
 function chReveal(id) {
   const u = $(`#ch-canvas .ch[data-id="${id}"]`), pn = $('#ch-canvas .ch-panel');
@@ -3436,49 +3421,12 @@ function chReveal(id) {
 }
 function chBind() {
   $('#view').querySelectorAll('.ch').forEach(u => {
-    let dragged = false;
     u.onclick = () => {
-      if (dragged) { dragged = false; return; }
       if (Date.now() - chPanAt < 400) return;
       if (u.dataset.staff) { chPanel = chPanel === u.dataset.staff ? null : u.dataset.staff; renderOffice(); chReveal(u.dataset.id); return; }
       openSession(u.dataset.path);
     };
-    u.onpointerdown = e => {
-      if (e.button) return;
-      const fl = u.parentElement, x0 = u.offsetLeft, y0 = u.offsetTop, px = e.clientX, py = e.clientY;
-      // a mouse drags at once; a finger holds still first, so a swipe over the room pans the canvas
-      let armed = e.pointerType !== 'touch', moved = false;
-      const hold = armed ? 0 : setTimeout(() => { armed = true; u.classList.add('lift'); }, 280);
-      const move = ev => {
-        const dx = (ev.clientX - px) / chView.z, dy = (ev.clientY - py) / chView.z;
-        if (!armed) { if (Math.hypot(dx, dy) > 8) end(); return; }
-        if (!moved && Math.hypot(dx, dy) < 4) return;
-        if (!moved) { moved = chDrag = true; u.classList.add('dragging'); }
-        const x = Math.min(Math.max(0, x0 + dx), fl.clientWidth - u.offsetWidth), y = Math.min(Math.max(0, y0 + dy), fl.clientHeight - u.offsetHeight + 60);
-        chPlace(u, x, y);
-        if (y + u.offsetHeight + CH_GAP > fl.clientHeight) fl.style.height = y + u.offsetHeight + CH_GAP + 'px';
-        if (u.dataset.fam) chLinks();
-      };
-      const end = () => {
-        clearTimeout(hold);
-        removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
-        u.classList.remove('lift', 'dragging');
-        if (moved) { dragged = true; chDrag = false; chKeep(u); if (chStale) { chStale = false; renderOffice(); } }
-      };
-      addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
-    };
     if (u.dataset.fam) { u.onpointerenter = u.onfocus = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = u.onblur = () => chHot(null); }
-    u.addEventListener('touchmove', ev => { if (u.classList.contains('lift')) ev.preventDefault(); }, { passive: false });
-    u.addEventListener('contextmenu', ev => { if (u.classList.contains('lift')) ev.preventDefault(); });
-    u.onkeydown = e => {
-      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-      if (!d) return;
-      e.preventDefault();
-      const fl = u.parentElement, step = e.shiftKey ? 40 : 10;
-      chPlace(u, Math.min(Math.max(0, u.offsetLeft + d[0] * step), fl.clientWidth - u.offsetWidth), Math.max(0, u.offsetTop + d[1] * step));
-      chKeep(u);
-      if (u.dataset.fam) chLinks();
-    };
   });
 }
 addEventListener('resize', () => { if ($('#view .office')) { chLayout(); chApply(); } });
@@ -3549,13 +3497,12 @@ $('#zoom-btn').onclick = () => { if (!$('#ch-canvas')) return; chView.fit = true
 const chPts = new Map();
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-panel')) return;
-  if (e.pointerType === 'mouse' && (e.button || e.target.closest('.ch'))) return;  // a mouse on a person drags the person
+  if (e.pointerType === 'mouse' && e.button) return;
   chPts.set(e.pointerId, [e.clientX, e.clientY]);
 });
 addEventListener('pointermove', e => {
   const p = chPts.get(e.pointerId);
   if (!p) return;
-  if (document.querySelector('.ch.lift, .ch.dragging')) { chPts.clear(); return; }  // a long press picked a person up
   const r = $('#ch-canvas')?.getBoundingClientRect();
   if (!r) return;
   if (chPts.size === 1) {
@@ -3574,7 +3521,7 @@ addEventListener('pointermove', e => {
 const chUp = e => {
   if (!chPts.delete(e.pointerId) || chPts.size) return;
   chViewSave();
-  if (chStale && !chDrag) { chStale = false; renderOffice(); }
+  if (chStale) { chStale = false; renderOffice(); }
 };
 addEventListener('pointerup', chUp); addEventListener('pointercancel', chUp);
 document.addEventListener('wheel', e => {
@@ -3680,7 +3627,7 @@ function coSign(x, rs) {
 
 let chLast = {};  // the office last built (renderOffice) and its HTML, to skip a rebuild that changes nothing
 function renderOffice() {
-  if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
+  if (chPts.size) { chStale = true; return; }  // a live update during a pan waits for the release
   const { fams, solos } = families();
   const fv = fams.filter(liveFam).sort((a, b) => famRank(a) - famRank(b) || b.started.localeCompare(a.started));
   const sv = byRank(solos.filter(liveSess), sessRank);
@@ -5315,7 +5262,7 @@ function chatOpen(p) {
   if (!COARSE.matches && !ta.disabled) ta.focus(); else d.querySelector('[data-chat-close]').focus();
 }
 // Right click, or a still press of half a second (finger or pen), on an agent card or a person in the office. The
-// click that ends a long press does not also open the session; a person's drag (armed by its own hold) is let go.
+// click that ends a long press does not also open the session; a pan under it is let go.
 const chatTarget = el => el.closest?.('.card[data-path], .ch[data-path]');
 const chatSkip = el => el.closest('[data-act], a, input, textarea, select, .acts');
 document.addEventListener('contextmenu', e => {
@@ -5331,7 +5278,7 @@ document.addEventListener('pointerdown', e => {
   if (!t || chatSkip(e.target)) return;
   chatHold = { x: e.clientX, y: e.clientY, t: setTimeout(() => {
     chatHold = null; chatHeld = true;
-    dispatchEvent(new PointerEvent('pointercancel'));  // ends a person's drag before the sheet covers it
+    dispatchEvent(new PointerEvent('pointercancel'));  // ends a pan before the sheet covers it
     navigator.vibrate?.(10);
     chatOpen(t.dataset.path);
   }, 500) };
