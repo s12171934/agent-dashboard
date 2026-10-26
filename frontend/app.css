@@ -365,8 +365,6 @@ ds-dock:not([open]) > #inbox-mode-btn:has(input:checked) { color: var(--on-accen
 .card.dec { outline: 2px solid var(--warn); outline-offset: -2px; }
 .card .now.dq { color: var(--text); } .card .now.dq b { color: var(--warn); }
 #decide-head .sec-h h2 { font-size: 17px; }
-.ib-mode { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
-.ib-mode.on { color: var(--accent); border-color: var(--accent); }
 #inbox .sec-h { margin-top: 4px; }
 #inbox .sec-h h2 { font-size: 17px; }
 .ib-card { border-color: var(--accent); }
