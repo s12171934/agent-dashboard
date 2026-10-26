@@ -1749,18 +1749,17 @@ a.hw-row:hover .hw-t { color: var(--accent); }
   background: repeating-linear-gradient(90deg, transparent 0 18px, rgb(0 0 0 / .1) 18px 20px), hsl(var(--sh, 30) 42% 46%); }
 .vl-house .room-floor.staff-cell { border-radius: 0 0 10px 10px; }
 .vl-house .staff-plate { top: 7px; }  /* the name plate hangs on the roof, leaving the wall to its decorations */
-/* a landscape screen (a desktop, a 듀오 spread on its side): two rows of houses with the plaza between them, so the
-   village is wider than tall and is not zoomed out to fit its height */
-@media (min-width: 701px) and (min-aspect-ratio: 5/4) {
-  .staff-village { grid-template: "a b c d e" 1fr ". p p p ." auto "f g h t i" 1fr / 1fr 1fr 1fr 1fr 1fr; gap: 12px 22px; padding: 18px 22px; }
-  .vl-plaza { width: min(100%, 340px); aspect-ratio: 3 / 1; }
-  .vl-house, .vl-house:nth-of-type(odd) { align-self: center; width: min(100%, calc(var(--cw, 220px) + 90px)); }
-  /* the houses lie wide: the bubble beside the staff member, not above, so a house is no taller than a person */
-  .vl-house .ch.staff { width: 290px; display: grid; grid-template: "f s" auto "t s" auto / 150px 140px; align-items: center; justify-items: center; }
-  .vl-house .ch.staff > :not(.ch-say, .ch-tag) { grid-area: f; } .vl-house .ch.staff > .ch-tag { grid-area: t; }
-  .vl-house .ch.staff > .ch-say { grid-area: s; justify-self: start; height: auto; max-width: calc(140px / var(--lz, 1)); margin: 0; padding: 5px 9px; transform-origin: left center; }
-  .vl-house .ch.staff > .ch-say > span { -webkit-line-clamp: 4; }
-  .vl-house .ch.staff > .ch-say::after { left: -5px; top: 50%; bottom: auto; border-width: 0 0 1px 1px; transform: translateY(-50%) rotate(45deg); } }
+/* a landscape view (.vl-wide, staffWide: a desktop, a 듀오 opened on its side): two rows of houses with the plaza
+   between them, so the village is wider than tall and is not zoomed out to fit its height */
+.staff-village.vl-wide { grid-template: "a b c d e" 1fr ". p p p ." auto "f g h t i" 1fr / 1fr 1fr 1fr 1fr 1fr; gap: 12px 22px; padding: 18px 22px; }
+.vl-wide .vl-plaza { width: min(100%, 340px); aspect-ratio: 3 / 1; }
+.vl-wide .vl-house, .vl-wide .vl-house:nth-of-type(odd) { align-self: center; width: min(100%, calc(var(--cw, 220px) + 90px)); }
+/* the houses lie wide: the bubble beside the staff member, not above, so a house is no taller than a person */
+.vl-wide .ch.staff { width: 290px; display: grid; grid-template: "f s" auto "t s" auto / 150px 140px; align-items: center; justify-items: center; }
+.vl-wide .ch.staff > :not(.ch-say, .ch-tag) { grid-area: f; } .vl-wide .ch.staff > .ch-tag { grid-area: t; }
+.vl-wide .ch.staff > .ch-say { grid-area: s; justify-self: start; height: auto; max-width: calc(140px / var(--lz, 1)); margin: 0; padding: 5px 9px; transform-origin: left center; }
+.vl-wide .ch.staff > .ch-say > span { -webkit-line-clamp: 4; }
+.vl-wide .ch.staff > .ch-say::after { left: -5px; top: 50%; bottom: auto; border-width: 0 0 1px 1px; transform: translateY(-50%) rotate(45deg); }
 @media (max-width: 700px) {
   .staff-village { grid-template: none; grid-auto-flow: row; gap: 22px; padding: 18px 12px; background: var(--grass); }
   .staff-village > * { grid-area: auto; }

@@ -3488,7 +3488,12 @@ function chBind(us = $('#view').querySelectorAll('.ch')) {  // us: the people pu
     if (u.dataset.fam) { u.onpointerenter = u.onfocus = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = u.onblur = () => chHot(null); }
   });
 }
-addEventListener('resize', () => { if ($('#view .office')) { chLayout(); chApply(); } });
+addEventListener('resize', () => {
+  if (!$('#view .office')) return;
+  const v = $('#view .staff-village');  // turned between landscape and portrait: the village lies the other way
+  if (v && v.classList.contains('vl-wide') !== staffWide()) { renderOffice(); return; }
+  chLayout(); chApply();
+});
 
 // The office is a canvas: the rooms are laid out on one plane (.ch-world) inside a box that fills the screen below the
 // header (.ch-canvas, no page scroll), moved by dragging the floor (one finger on touch), the wheel or trackpad, and
@@ -3727,11 +3732,14 @@ const staffCell = h => { const r = hubVal(h), w = hubWeight(r);
     <div class="room-floor staff-cell" data-room="staff-${h.id}">
     <div class="room-wall" aria-hidden="true">${h.wall.map(k => `<span class="wall-item">${(STAFF_WALL[k] || WALL[k])()}</span>`).join('')}</div>
     <span class="staff-prop" aria-hidden="true">${STAFF_PROP[h.prop] || ''}</span>${staffHtml(h, r)}</div></div>`; };
+// On a landscape view (wider than tall, past the phone width) the village lies in two rows of wide houses (.vl-wide in
+// app.css), so it is not taller than the screen and zoomed out to fit
+const staffWide = () => { const v = $('#view'); return v.clientWidth > 700 && v.clientWidth >= innerHeight; };
 function staffRoom(people) {
   needReviews();  // the QA room's figure needs the 워크트리 리뷰 data
   const todo = hmMine().length;
   return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">화면마다 맡은 사람 · 누르면 그 화면</span><span class="room-n">${todo ? `내 차례 <b>${todo}</b> · ` : ''}전체 <b>${HUB.length}</b></span></div>
-    <div class="staff-village"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
+    <div class="staff-village${staffWide() ? ' vl-wide' : ''}"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
       <div class="vl-grove" aria-hidden="true">${TREE(1.1)}${TREE(.8)}${TREE()}</div>${HUB.map(staffCell).join('')}</div></section>`;
 }
 
@@ -3847,8 +3855,8 @@ function renderOffice() {
   const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : rooms.length;
   const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(most));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
-  // 홈's village on a landscape screen lies in two rows of wide houses (app.css): it needs the width of five of them
-  const wide = home && matchMedia('(min-width: 701px) and (min-aspect-ratio: 5/4)').matches ? 1560 : 0;
+  // 홈's village on a landscape view lies in two rows of wide houses (staffWide): it needs the width of five of them
+  const wide = home && staffWide() ? 1560 : 0;
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);
   // A live update that keeps the office's shape is written into it (chPatch). Otherwise a phase taken from the clock
