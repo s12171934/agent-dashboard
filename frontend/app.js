@@ -2065,21 +2065,23 @@ const QA_DESC = {
   delivered: ['PR 을 올려 넘겼다', '사용자가 머지를 지시하면 코디네이터가 머지하고, 머지되면 드라이버가 정리한다', true],
   cleaned: ['워크트리와 브랜치를 정리했다 — 끝', ''],
 };
+// The worktree review tab's track stops at 반출: 정리 removes the worktree, so the tab never has a ticket to show in it.
+const WT_QA = Object.keys(QA_ST).filter(k => k !== 'cleaned');
 const qaTip = (k, i, at) => `${i + 1}. ${QA_ST[k]} — ${QA_DESC[k][0]}${at ? '\n들어간 시각 ' + clockAt(at) : ''}`;
 function qaLegend() {
   const open = (() => { try { return localStorage.getItem('adash.qalegend') === '1'; } catch { return false; } })();
-  return `<details class="qa-legend"${open ? ' open' : ''}><summary>QA 드라이버 9단계란?</summary><ol>${Object.keys(QA_ST).map(k =>
+  return `<details class="qa-legend"${open ? ' open' : ''}><summary>QA 드라이버 ${WT_QA.length}단계란?</summary><ol>${WT_QA.map(k =>
     `<li><b>${QA_ST[k]}</b> — ${esc(QA_DESC[k][0])}${QA_DESC[k][1] ? `<span class="st"> → 다음: ${esc(QA_DESC[k][1])}</span>` : ''}</li>`).join('')}</ol>
     <div class="st">막힘: 그 단계에서 멈춰 사람의 판단을 기다린다 (빨간 번호, 사유는 마우스). N회차: 재오픈으로 다시 기동한 횟수. 제외: 드라이버가 처리하지 않는 티켓.</div></details>`;
 }
 function qaTrack(q) {
   if (!q) return '';
-  const keys = Object.keys(QA_ST), cur = keys.indexOf(q.stage);
+  const keys = WT_QA, cur = keys.indexOf(q.stage);
   let [, next, user] = QA_DESC[q.stage] || [];
   if (q.stage === 'delivered' && q.merge_at) [next, user] = ['코디네이터가 머지하고, 머지되면 드라이버가 정리한다', false];
   const nodes = keys.map((k, i) => `<span class="qa-step${i < cur ? ' done' : i === cur ? (q.blocked ? ' bad' : ' cur') : ''}" title="${esc(qaTip(k, i, q.at?.[k]))}"><i class="qa-n">${i + 1}</i><small>${QA_ST[k]}</small></span>`).join('<b></b>');
   const nextTxt = q.blocked ? '막힘 — 사람이 판단해야 다음으로 간다' : next ? '다음: ' + next : '';
-  return `<div class="qa-track"><span class="qa-steps">${nodes}</span><span class="qa-lbl">${q.stage_no}/${keys.length} ${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}${nextTxt ? `<span class="qa-next${user && !q.blocked ? ' user' : ''}">${esc(nextTxt)}</span>` : ''}</span>
+  return `<div class="qa-track"><span class="qa-steps">${nodes}</span><span class="qa-lbl">${cur + 1}/${keys.length} ${QA_ST[q.stage]}${q.driver && q.handoffs ? ` · 워커 ${q.done}/${q.handoffs}` : ''}${nextTxt ? `<span class="qa-next${user && !q.blocked ? ' user' : ''}">${esc(nextTxt)}</span>` : ''}</span>
     ${q.round > 1 ? `<span class="rv-flag warn" title="재오픈으로 다시 기동">${q.round}회차</span>` : ''}
     ${q.blocked ? `<span class="rv-flag bad" title="${esc(q.blocked_reason || '')}">막힘${q.blocked_reason ? ' · ' + esc(cut(q.blocked_reason, 40)) : ''}</span>` : ''}
     ${q.ignored ? '<span class="rv-flag">제외</span>' : ''}
@@ -2105,8 +2107,8 @@ function qaAutoHtml(s) {
         <button class="act big" data-qa-auto="run" data-id="${esc(a.id)}" data-epic="${esc(s.epic)}" data-srv="${esc(s.server)}" title="스케줄을 기다리지 않고 한 회차 실행 (precheck 가 할 일이 없으면 건너뜀)">지금 실행</button></span>
     </div>`).join('');
   const qs = s.tickets.map(t => t.qa).filter(Boolean);
-  const counts = Object.keys(QA_ST).map(k => [k, qs.filter(q => q.stage === k).length]).filter(([, n]) => n);
-  const sum = qs.length ? `<div class="rv-jsum">진행 ${Object.keys(QA_ST).length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
+  const counts = WT_QA.map(k => [k, qs.filter(q => q.stage === k).length]).filter(([, n]) => n);
+  const sum = qs.length ? `<div class="rv-jsum">진행 ${WT_QA.length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
   return (qs.length ? qaLegend() : '') + (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
 }
 // 「QA 통계」 of a set, all from /api/reviews: a summary, rounds started and finished per day, and the change size.
@@ -2264,8 +2266,9 @@ async function renderWorktrees() {
     wtBodyHtml = '';
   }
   $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
-  $('#wt-qa').innerHTML = [['', 'QA 단계 전체'], ...qaStages().map(x => [x.key, 'QA ' + x.label]), ['blocked', 'QA 막힘']].map(([k, l]) => `<option value="${k}"${k === wtf.qa ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  $('#wt-qa').innerHTML = [['', 'QA 단계 전체'], ...qaStages().filter(x => WT_QA.includes(x.key)).map(x => [x.key, 'QA ' + x.label]), ['blocked', 'QA 막힘']].map(([k, l]) => `<option value="${k}"${k === wtf.qa ? ' selected' : ''}>${esc(l)}</option>`).join('');
   if (!(wtf.f in WT_FILTERS || wtf.f.slice(2) in WT_JIRA)) wtf.f = 'all';
+  if (wtf.qa && wtf.qa !== 'blocked' && !WT_QA.includes(wtf.qa)) wtf.qa = '';
   const num = k => +k.split('-').pop();
   const body = wtData.sets.map(s => {
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
@@ -6334,7 +6337,7 @@ function hmQaHtml(w) {
       const gone = pick === 'cleaned' ? 0 : rows.filter(t => !t.repos.length).length;
       list = `<div class="hw-qa-list"><div class="hw-sub">${esc(name)} ${rows.length}${gone ? ` (워크트리 없음 ${gone})` : ''} · 이 단계에 오래 머문 순${QA_DESC[pick]?.[1] ? ` · 다음: ${esc(QA_DESC[pick][1])}` : ''}</div>
         ${shown.map(t => hmQaRow(t, s)).join('')}
-        ${rows.length > shown.length ? `<div class="hw-rest">외 ${rows.length - shown.length}건 — <a href="#worktrees" data-hm-wtqa="${esc(pick)}">워크트리 리뷰 탭에서 이 단계 전부 보기</a></div>` : ''}</div>`;
+        ${rows.length > shown.length ? `<div class="hw-rest">외 ${rows.length - shown.length}건${WT_QA.includes(pick) || pick === 'blocked' ? ` — <a href="#worktrees" data-hm-wtqa="${esc(pick)}">워크트리 리뷰 탭에서 이 단계 전부 보기</a>` : ''}</div>` : ''}</div>`;
     }
     return `${sets.length > 1 ? `<div class="hw-sub">${esc(s.epic)} ${esc(cut(s.summary || '', 30))}</div>` : ''}
       <div class="hw-stages">${stages.map(st => cell(st.key, st.label, cnt(st.key), gate(st.key) ? ' gate' : '', QA_DESC[st.key]?.[0] || st.label)).join('')}${blocked.length ? cell('blocked', '막힘', blocked.length, ' bad', '그 단계에서 멈춰 사람의 판단을 기다리는 티켓') : ''}</div>
