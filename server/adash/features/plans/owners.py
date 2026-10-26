@@ -2,6 +2,7 @@
 
 import os
 
+import adash.features.sessions.scan as sessions_scan
 from adash.core.files import save_json
 from adash.features.orca_runs.store import orca_state
 from adash.features.plans.external import PLAN_HISTORY_PATH, plan_history
@@ -13,7 +14,9 @@ def resolve_plan_owner(path, plan, summaries):
     it names, else the one running in its coordinator terminal, else the one that opened or runs in its scheduler
     terminal — and whichever session that is, its coordinators are followed up to the top: a scheduler relaunched
     from a worker's terminal still belongs to that worker's coordinator. A resolved owner is remembered in
-    plan_history, so a plan whose trail goes cold (relaunched with nohup, a reused terminal) keeps its owner."""
+    plan_history, so a plan whose trail goes cold (relaunched with nohup, a reused terminal) keeps its owner.
+    Until the first scan has read every transcript, a missing owner proves nothing: the remembered one stands and no
+    problem is reported (a restart used to cut the scheduler loose from its coordinator for the first snapshots)."""
     top = [sm for sm in summaries if not sm["parent"]]
     by_handle = {sm["own_handle"]: sm for sm in sorted(top, key=lambda sm: sm["last_ts"] or "") if sm.get("own_handle")}
     by_id = {}
@@ -39,7 +42,7 @@ def resolve_plan_owner(path, plan, summaries):
             plan_history[path] = {**(plan_history.get(path) or {}), "owner": owner}
             save_json(PLAN_HISTORY_PATH, plan_history)
         return owner, None
-    if remembered in by_id:
+    if remembered in by_id or not sessions_scan.scan_ready:
         return remembered, None
     if plan.get("coordinator_session"):
         return None, f"계획이 적은 코디네이터 세션 {plan['coordinator_session'][:8]} 을 찾지 못함"
