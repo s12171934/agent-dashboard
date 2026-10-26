@@ -2,6 +2,7 @@
 (ChatGPT rate-limit windows), each from its provider's usage API with the token the CLI or Orca keeps."""
 
 import base64
+import glob
 import hashlib
 import json
 import os
@@ -22,7 +23,12 @@ from adash.core.util import short
 # account is learned once per token from /api/oauth/profile, so an Orca account that is the host login right now is
 # one card, read with whichever token is still valid.
 # Codex: ~/.codex/auth.json and Orca's codex-accounts/*/home/auth.json, one card per ChatGPT account id.
-# Tokens are only read: never refreshed (that would rotate the copy the CLI or Orca holds), logged or sent to the page.
+# Claude Code keeps a login made with CLAUDE_CONFIG_DIR=<dir> in keychain `Claude Code-credentials-<first 8 hex of
+# sha256(dir)>`; Orca runs each account's Claude with <orca>/claude-profiles/<id>/home, so that item is read too.
+# Tokens of the CLI and Orca are only read: refreshing one would rotate the copy they hold. The exception is a login
+# made for the dashboard alone (OWN_DIR/claude-<name>, see the 「사용량」 tab): its token is refreshed here before it
+# expires, and the refreshed one is kept in the dashboard's own keychain item (OWN_ITEM, account <name>), which is
+# read first from then on. Tokens are never logged or sent to the page.
 # An account with no valid token keeps its last figures (plan-usage.json) and says why they are not moving.
 # Calls close together get 429: each account is read at most once per USAGE_EVERY, also across restarts (the last
 # call time is kept in plan-usage.json), and a 429 or 401 pushes the next call out, doubling up to USAGE_BACKOFF_MAX
@@ -30,18 +36,26 @@ from adash.core.util import short
 CLAUDE_USAGE = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_PROFILE = "https://api.anthropic.com/api/oauth/profile"
 CODEX_USAGE = "https://chatgpt.com/backend-api/wham/usage"
+CLAUDE_TOKEN = "https://platform.claude.com/v1/oauth/token"
+CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # Claude Code's: the token was issued to it
+REFRESH_AHEAD = 600  # refresh an own login this many seconds before it expires
 USAGE_EVERY = 300
 USAGE_BACKOFF = 900
 USAGE_BACKOFF_MAX = 3600
 REAL_HOME = pwd.getpwuid(os.getuid()).pw_dir  # an Aside shell remaps $HOME
 ORCA = os.path.join(REAL_HOME, "Library/Application Support/orca")
 CACHE = os.path.join(HERE, "plan-usage.json")
+OWN_DIR = os.path.join(REAL_HOME, ".agent-dashboard")
+OWN_ITEM = "agent-dashboard plan usage"
 BUCKET_NAMES = {"session": "5시간 세션", "weekly_all": "주간 전체", "weekly_scoped": "주간"}
 CLAUDE_PLANS = {"claude_team": "Team", "claude_enterprise": "Enterprise", "claude_max": "Max", "claude_pro": "Pro"}
 plan_usage = {"available": False, "accounts": []}  # rebound whole, so readers need no lock
 profiles = {}  # sha256 of a host token -> {uuid, email, plan}: which account that login is
 next_at = {}  # account key -> earliest time to call its usage API again
 backoff = {}  # account key -> the wait after its last 429/401, doubled on each one in a row
+own_errors = {}  # own login name -> why its token could not be refreshed
+own_ready = {}  # own login name -> whether a token was found for it
+own_retry = {}  # own login name -> no refresh attempt before this time (after a failed one)
 
 
 def keychain(service, account=None):
@@ -82,9 +96,59 @@ def epoch(iso):
     return iso and datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
 
 
+def config_item(config_dir):
+    return "Claude Code-credentials-" + hashlib.sha256(config_dir.encode()).hexdigest()[:8]
+
+
+def keychain_write(service, account, data):
+    """Through `security -i` on stdin, so the token never shows in a process list."""
+    hexed = json.dumps(data).encode().hex()
+    out = subprocess.run(["security", "-i"], input=f"add-generic-password -U -a {account} -s '{service}' -X {hexed}\n",
+                         capture_output=True, text=True, timeout=10)
+    if out.returncode != 0 or "error" in (out.stderr + out.stdout).lower():
+        raise RuntimeError("키체인에 쓰지 못함")
+
+
+def refresh_own(name, data):
+    """An own login's oauth dict, refreshed when it is about to expire; the new one goes to OWN_ITEM."""
+    o = data.get("claudeAiOauth") or {}
+    if not o.get("refreshToken") or (o.get("expiresAt") or 0) / 1000 - time.time() > REFRESH_AHEAD or time.time() < own_retry.get(name, 0):
+        return o
+    own_retry[name] = time.time() + USAGE_BACKOFF_MAX  # one attempt an hour while it keeps failing
+    body = json.dumps({"grant_type": "refresh_token", "refresh_token": o["refreshToken"], "client_id": CLAUDE_CLIENT_ID,
+                       "scope": " ".join(o.get("scopes") or [])}).encode()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(CLAUDE_TOKEN, data=body, headers={"Content-Type": "application/json"}), timeout=30) as r:
+            t = json.load(r)
+    except urllib.error.HTTPError as e:
+        own_errors[name] = "토큰 갱신 실패 — 다시 로그인 필요" if e.code in (400, 401) else f"토큰 갱신 실패 (HTTP {e.code})"
+        return o
+    o = {**o, "accessToken": t["access_token"], "refreshToken": t.get("refresh_token") or o["refreshToken"],
+         "expiresAt": int((time.time() + t.get("expires_in", 3600)) * 1000)}
+    if t.get("scope"):
+        o["scopes"] = t["scope"].split()
+    keychain_write(OWN_ITEM, name, {**data, "claudeAiOauth": o})
+    own_errors.pop(name, None)
+    own_retry.pop(name, None)
+    return o
+
+
 def claude_tokens():
-    """-> [(source, token, expires_at or None, known account {uuid, email, plan} or None)]."""
+    """-> [(source, token, expires_at or None, known account {uuid, email, plan} or None)]; own logins first."""
     out = []
+    own_ready.clear()
+    for d in sorted(glob.glob(os.path.join(OWN_DIR, "claude-*"))):
+        name = os.path.basename(d)[len("claude-"):]
+        data = (keychain(OWN_ITEM, name) or keychain(config_item(d))
+                or read_json(os.path.join(d, ".credentials.json")) or {})
+        own_ready[name] = bool((data.get("claudeAiOauth") or {}).get("accessToken"))
+        if own_ready[name]:
+            try:
+                o = refresh_own(name, data)
+            except Exception as e:
+                own_errors[name] = short(str(e), 120)
+                o = data["claudeAiOauth"]
+            out.append(("dashboard", o["accessToken"], o.get("expiresAt") and o["expiresAt"] / 1000, None))
     for source, data in (("keychain", keychain("Claude Code-credentials")),
                          ("credentials.json", read_json(os.path.join(REAL_HOME, ".claude", ".credentials.json")))):
         o = (data or {}).get("claudeAiOauth") or {}
@@ -95,10 +159,13 @@ def claude_tokens():
         acct = read_json(os.path.join(root, oid, "auth", "oauth-account.json")) or {}
         if not acct.get("accountUuid"):
             continue
-        o = (keychain("Orca Claude Code Managed Credentials", oid) or {}).get("claudeAiOauth") or {}
-        out.append(("orca", o.get("accessToken"), o.get("expiresAt") and o["expiresAt"] / 1000,
-                    {"uuid": acct["accountUuid"], "email": acct.get("emailAddress"),
-                     "plan": CLAUDE_PLANS.get(acct.get("organizationType"), acct.get("organizationType"))}))
+        who = {"uuid": acct["accountUuid"], "email": acct.get("emailAddress"),
+               "plan": CLAUDE_PLANS.get(acct.get("organizationType"), acct.get("organizationType"))}
+        for item in (keychain(config_item(os.path.join(ORCA, "claude-profiles", oid, "home"))),
+                     keychain("Orca Claude Code Managed Credentials", oid)):
+            o = (item or {}).get("claudeAiOauth") or {}
+            if o.get("accessToken"):
+                out.append(("orca", o["accessToken"], o.get("expiresAt") and o["expiresAt"] / 1000, who))
     return out
 
 
@@ -198,7 +265,7 @@ def collect(prev):
     for key, c in cards.items():
         live = [t for t in c.pop("tokens") if t[1] and not (t[2] and t[2] <= now)]
         if not live:
-            c["note"] = ("토큰 만료 — Orca 에서 이 계정으로 전환해 쓰면 다시 읽힙니다" if c["provider"] == "claude"
+            c["note"] = ("토큰 만료 — 「사용량」 탭의 「계정 추가」로 대시보드 전용 로그인을 만들면 계속 읽힙니다" if c["provider"] == "claude"
                          else "토큰 만료 — Codex 를 한 번 실행하면 다시 읽힙니다")
             continue
         if now < next_at.setdefault(key, c.get("checked", 0) + USAGE_EVERY):
@@ -249,7 +316,9 @@ def plan_usage_loop():
             save(cards)
             order = {"claude": 0, "codex": 1}
             with lock:
-                plan_usage = {"available": bool(cards), "accounts": sorted(cards.values(), key=lambda c: (order.get(c["provider"], 9), bool(c.get("note")), c.get("email") or ""))}
+                plan_usage = {"available": bool(cards), "own_dir": OWN_DIR,
+                              "own": [{"name": n, "ready": own_ready.get(n, False), "error": own_errors.get(n)} for n in sorted(own_ready)],
+                              "accounts": sorted(cards.values(), key=lambda c: (order.get(c["provider"], 9), bool(c.get("note")), c.get("email") or ""))}
                 bump()
             loop_ok("plan_usage")
         except Exception as e:
