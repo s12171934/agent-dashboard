@@ -1547,10 +1547,14 @@ a.hw-row:hover .hw-t { color: var(--accent); }
    view (a decision, the inbox) — under the status bar and the home bar, edge to edge, no frame — with the bar floating
    on it; chSize sets its box (the first half when half folded). The page does not scroll. .ch-world is the plane of
    rooms, moved and scaled by a transform (chApply). touch-action: none hands every gesture to the canvas. */
-/* The page is not made overflow: hidden: on an installed PWA, iOS answered a root that cannot scroll by taking the status
-   bar's thickness off the viewport's height (iPhone Duo: 587 of 669, upright and sideways, a strip left below) and kept
-   it until the app restarted — once the office had been shown, every view had the strip. Nothing overflows anyway (the
-   canvas is fixed), overscroll-behavior stops the rubber band and the canvas takes every gesture (touch-action). */
+/* iOS 26+ gives an installed web app a viewport short by the status bar's thickness while the page is shorter than the
+   screen, and keeps it until the page is dragged (WebKit bug 301108). The office is a fixed layer, so its page is
+   empty: once shown, the viewport stayed short (iPhone Duo: 587 of 669, a strip below) upright and sideways. In the
+   installed app the page is therefore never shorter than the large viewport — lvh, which does not follow the viewport
+   iOS hands out, so the floor cannot feed back into it. Not capped by calc(100% + safe-area-inset-top) as is common:
+   the Duo held sideways has its status bar on the right and no top inset. overscroll-behavior stops the rubber band
+   and the canvas takes every gesture (touch-action). */
+@media (display-mode: standalone) { :root { min-height: 100lvh; } }
 :root.ch-full, :root.ch-full body { overscroll-behavior: none; }
 /* iOS can lay an installed PWA out shorter than its screen (iPhone Duo sideways: 587 of 669 high, the status bar's
    thickness taken off the height too). Nothing of the page is drawn below the viewport, so that strip
