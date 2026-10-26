@@ -3200,9 +3200,10 @@ function officeRooms(people) {
   for (const k of by.keys()) (groups.get(find(k)) || groups.set(find(k), []).get(find(k))).push(k);
   const order = [...groups.values()].map(ks => ks.sort((x, y) => lead(y) - lead(x) || rank(x) - rank(y) || late(y).localeCompare(late(x))))
     .sort((x, y) => (y.length > 1) - (x.length > 1) || Math.min(...x.map(rank)) - Math.min(...y.map(rank)) || late(y[0]).localeCompare(late(x[0]))).flat();
+  // the server goes with each room, so renderOffice can put each server's rooms in its own company
   return order.map(k => {
     const ms = by.get(k).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y)), p = ms.find(m => m.place)?.place, name = roomName(p);
-    return roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}${srvBadge(ms[0])}`);
+    return { srv: ms[0].server || '', ms, html: roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}`) };
   });
 }
 // A person's family chips (charHtml): as a coordinator, then as a worker (a sub-coordinator wears both).
@@ -3531,6 +3532,13 @@ function lobbyHtml(people) {
       <span>${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]}) · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · ${TOD_NAME[tod]}</span>
       <small>출근 ${people.length}명 · 일하는 중 ${busy}</small></div>${lounge}</div>`;
 }
+// A company's sign (one per metrics server, once two or more are on): across the plane above its rooms, with the
+// server's name, its rooms and people, and the server's address in the tooltip.
+function coSign(x, rs) {
+  const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(subBg(s, agg(s), status(s)))).length, dec = ms.filter(s => s.decision).length;
+  return `<div class="ch-co" title="${esc(`메트릭 서버 ${x.url}`)}"><b class="co-name">${esc(x.name)}</b>
+    <span class="co-n">방 <b>${rs.length}</b> · 출근 <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
+}
 
 function renderOffice() {
   if (chDrag || chPts.size) { chStale = true; return; }  // a live update during a drag or a pan waits for the drop
@@ -3539,9 +3547,14 @@ function renderOffice() {
   const sv = byRank(solos.filter(liveSess), sessRank);
   const home = route().v === 'home';
   const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
-  const rooms = [home ? staffRoom() : ''].concat(officeRooms(people)).filter(Boolean);
-  // rooms in a grid as square as it goes, one column on a narrow screen; together as wide as the canvas at 100%
-  const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(rooms.length));
+  const placed = officeRooms(people);
+  // Two or more servers on: each server is a company of its own — a sign across the plane, then that server's rooms —
+  // in the order of the server list. Team lines still cross companies.
+  const cos = multiSrv() ? srvOn().map(x => ({ x, rs: placed.filter(r => r.srv === x.id) })).filter(c => c.rs.length) : [];
+  const rooms = [home ? staffRoom() : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...c.rs.map(r => r.html)]) : placed.map(r => r.html)).filter(Boolean);
+  // rooms in a grid as square as it goes (the biggest company's rooms), one column on a narrow screen; together as wide as the canvas at 100%
+  const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : rooms.length;
+  const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(most));
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   document.documentElement.classList.add('ch-full');
   if (scrollY) scrollTo(0, 0);

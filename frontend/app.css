@@ -1652,6 +1652,14 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-lobby .lb-leaf { fill: var(--leaf); } .ch-lobby .lb-pot { fill: var(--pot); } .ch-lobby .lb-lamp { fill: var(--lamp); }
 .ch-lobby .lb-rug { fill: color-mix(in srgb, var(--accent) 30%, var(--corridor)); }
 @media (max-width: 700px) { .ch-lobby { justify-content: center; min-height: 200px; } .ch-lobby .lb-wide { display: none; } .lobby-sign b { font-size: 20px; } }
+/* a company (one per metrics server, once two or more are on): its sign across the plane, in the lobby sign's wood and
+   brass, opens that server's rooms (its type grows with --lz, like the name tags); a company after another one stands further off */
+.ch-co { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; padding: calc(12px * var(--lz, 1)) 24px; border-radius: 14px; color: #f6efe4;
+  background: linear-gradient(180deg, #4a3426, #2f2119); box-shadow: inset 0 0 0 3px #c9a46a, 0 14px 24px -8px rgb(0 0 0 / .4); }
+.ch-co .co-name { font-size: calc(22px * var(--lz, 1)); letter-spacing: .08em; color: #ffe2a3; }
+.ch-co .co-n { font-size: calc(13px * var(--lz, 1)); opacity: .85; }
+.ch-co .co-n b { color: #ffe2a3; }
+.ch-world .room + .ch-co { margin-top: 28px; }
 
 /* 홈's 운영실: staff (one per home widget) wear the accent and a name tag; the open one's widget is .ch-panel, over the right
    side of the canvas (a bottom sheet on a narrow screen) */
