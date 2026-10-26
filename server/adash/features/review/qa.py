@@ -76,6 +76,8 @@ def qa_ticket(watch, key):
     else:
         stage = "worktree" if rec.get("worktree") else "selected"
     blocked = qa_signal(watch, "blocked", key)
+    if stage == "cleaned":  # cleanup follows the merge, so a 막힘 written before it was settled (a resolved conflict)
+        blocked = [f for f in blocked if mt(p("blocked", f)) > mt(p("cleaned", key))]
     reason = None
     if blocked:
         try:
