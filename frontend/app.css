@@ -1596,16 +1596,36 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .d-chspr { display: block; background-repeat: no-repeat; image-rendering: pixelated; }
 @media (max-width: 500px) { .d-hero { grid-template-areas: "fig head" "top top"; column-gap: 10px; row-gap: 8px; } .d-chgrp > .st { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
-/* 「캐릭터」 tab: a card per person; its three stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows */
-.cx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 12px; margin-bottom: 14px; }
-.cx { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; min-width: 0; }
-.cx.off .cx-flow, .cx.off .cx-poses { opacity: .45; }
+/* 「캐릭터」 tab: the people as small tiles on the left, the one picked on the right (below on a narrow screen): its three
+   stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows, all 32 poses a row a set, the office's looks, and
+   managing them */
+.cx-top { justify-content: space-between; }
+.cx-wrap { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.cx-side { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.cx-grp h3 { margin: 0 0 6px; font-size: 13px; }
+.cx-grp h3 small { font-weight: 400; color: var(--muted); }
+.cx-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
+.cx-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px 5px; min-width: 0; border: 1px solid var(--surface-edge); border-radius: 10px;
+  background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+.cx-tile:hover { border-color: var(--muted); }
+.cx-tile.on { border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.cx-tile.off .cx-face { opacity: .4; }
+.cx-tile b { font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-tile small { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.cx-face { display: block; flex: none; background-repeat: no-repeat; image-rendering: pixelated; }
+.cx-busy { display: inline-block; width: 7px; height: 7px; margin-right: 4px; border-radius: 50%; background: var(--run); animation: pulse 1.6s infinite; }
+.cx-detail { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; min-width: 0; }
 .cx-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
-.cx-h h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.cx-h h2, .cx-h h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.cx-h h2 { font-size: 17px; }
+.cx-h code { font-size: 11px; color: var(--muted); }
 .cx-look { color: var(--muted); font-size: 12px; }
 .cx-n { margin-left: auto; font-size: 12px; color: var(--muted); }
 .cx-n b { color: var(--text); }
 .cx-on { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.cx-sub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: 12.5px; }
+.cx-hd { margin: 6px 0 0; font-size: 13px; }
+.cx-hd small { font-weight: 400; color: var(--muted); margin-left: 6px; }
 .cx-flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 2px; }
 .cx-st { margin: 0; flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .cx-pic { height: 210px; min-width: 120px; padding: 0 8px; display: flex; align-items: flex-end; justify-content: center; border-radius: 10px;
@@ -1617,18 +1637,28 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .cx-arr { flex: 1 0 64px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 0 4px 30px; color: var(--accent); font-size: 11px; cursor: help; }
 .cx-arr i { position: relative; display: block; width: 100%; height: 2px; background: currentColor; border-radius: 2px; }
 .cx-arr i::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left: 7px solid currentColor; border-right: 0; }
-.cx-poses { display: flex; flex-wrap: wrap; gap: 4px; }
-.cx-pose { display: flex; align-items: flex-end; justify-content: center; width: 86px; height: 104px; padding: 2px; border: 1px solid var(--surface-edge); border-radius: 8px;
+/* the 32 poses: a row a set, each row scrolls on its own when the panel is narrower than its 8 */
+.cx-grid { display: flex; flex-direction: column; gap: 4px; }
+.cx-row { display: flex; align-items: center; gap: 4px; overflow-x: auto; }
+.cx-set { flex: 0 0 18px; font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; }
+.cx-pose { flex: none; display: flex; align-items: flex-end; justify-content: center; width: 86px; height: 92px; padding: 2px; border: 1px solid var(--surface-edge); border-radius: 8px;
   background: var(--control-fill); cursor: pointer; overflow: hidden; }
 .cx-pose:hover { border-color: var(--muted); }
 .cx-pose.on { border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: -2px; }
 .cx-pose span { display: block; flex: none; background-repeat: no-repeat; image-rendering: pixelated; max-width: none; }
+/* the office's looks: the session detail's figure (.d-ch) once a state */
+.cx-pvs { display: flex; flex-wrap: wrap; gap: 8px; }
+.ch.cx-pv { cursor: default; }
+.ch.cx-pv .ch-name { font-size: 11.5px; }
+.cx-mng .lp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12.5px; }
+.cx-mng .lp-row > span:first-child:not(.seg) { flex: 0 0 72px; color: var(--muted); }
+.cx-mng .field { flex: 0 1 140px; min-width: 100px; }
+.cx-mng .cx-look-in { flex: 1 1 220px; }
+.cx-mng .sp-msg { margin: 0; display: inline-flex; align-items: center; }
 .cx-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
-.cx-files .act { margin-left: auto; }
-.cx-gone { display: flex; flex-wrap: wrap; gap: 8px; }
-.cx-gone-1 { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; font-size: 12.5px; }
-.cx-gone-1 code { font-size: 11px; color: var(--muted); }
-/* 「새 캐릭터」: the picture on the left, the form beside it, the jobs below */
+.cx-files .act:first-of-type { margin-left: auto; }
+@media (max-width: 900px) { .cx-wrap { grid-template-columns: 1fr; } .cx-side { position: static; } }
+/* 「새 캐릭터」 (behind its button): the picture on the left, the form beside it; the jobs in a box of their own below */
 .cn { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; margin-bottom: 14px; }
 .cn-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px; }
 .cn-drop { display: flex; align-items: center; justify-content: center; min-height: 220px; border: 1.5px dashed var(--surface-edge); border-radius: 10px;
@@ -1641,9 +1671,9 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .cn-form .lp-row > span:first-child:not(.seg) { flex: 0 0 64px; color: var(--muted); }
 .cn-form .lp-row .field { flex: 1; min-width: 140px; }
 .cn-form textarea { width: 100%; margin-bottom: 8px; resize: vertical; }
-.cn-jobs { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--surface-edge); padding-top: 10px; }
+.cn-jobs { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; margin-bottom: 14px; }
 .cn-job { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
-.cn-pics { display: flex; gap: 6px; }
+.cn-pics { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; }
 .cn-pics img { display: block; height: 76px; max-width: 116px; object-fit: contain; border-radius: 6px; border: 1px solid var(--surface-edge); background: var(--control-fill); }
 .cn-meta { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 6px; }
 .cn-meta .sp-msg { margin: 0; }

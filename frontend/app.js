@@ -3098,10 +3098,16 @@ const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['ren', 'hina'];
 // scripts/char-publish.py) is { chars: { <who>: { name, look, boss, v, art: { full, bust, sd, sdb } } } }, the strips
 // beside it. Read on load and again with every build check (each minute, and when the page comes back), so a person
 // put up — from the 「캐릭터」 tab's 「새 캐릭터」 or by hand — shows without a reload; v goes on their picture URLs, so a
-// redrawn one shows too. Each read starts again from the built-in people, so a person taken down leaves. Added people
-// join the lists after the built-in ones, so a session already drawn may change hands once. hidden: [<who>] lists built-in people
+// redrawn one shows too. meta: { <who>: { name, look, boss } } lays the tab's changes over a built-in person. Each read
+// starts again from the built-in people, so a person taken down leaves. Added people join the lists after the built-in
+// ones, so a session already drawn may change hands once. hidden: [<who>] lists built-in people
 // deleted for good from the tab (char-publish.py --remove); they leave the lists, but never the last one of a list.
 let chSeen = '', chBase = null;
+// Move a person to the coordinators (boss) or the workers, never emptying the list they leave.
+function chRole(who, boss) {
+  const from = boss ? CH_CREW : CH_BOSS, to = boss ? CH_BOSS : CH_CREW;
+  if (from.includes(who) && from.length > 1) { from.splice(from.indexOf(who), 1); to.push(who); }
+}
 const chVer = {}, chR2 = new Set(), chHidden = new Set();  // chR2: everyone chars.json lists; chHidden: built-ins taken down
 async function chLoad() {
   let t, j;
@@ -3122,6 +3128,13 @@ async function chLoad() {
     if (c.v) chVer[who] = String(c.v);
     chR2.add(who);
     if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) (c.boss ? CH_BOSS : CH_CREW).push(who);
+    else chRole(who, !!c.boss);  // a built-in person redrawn from the tab (their entry carries the role)
+  }
+  // meta: a built-in person's name, look and role as changed in the tab (char-publish.py --meta)
+  for (const [who, x] of Object.entries(j?.meta || {})) {
+    if (!(who in chBase.art) || chR2.has(who)) continue;
+    CH_INFO[who] = [String(x.name || CH_INFO[who][0]), String(x.look ?? CH_INFO[who][1])];
+    chRole(who, !!x.boss);
   }
   chHidden.clear();
   for (const who of Array.isArray(j?.hidden) ? j.hidden : []) {
@@ -3975,12 +3988,21 @@ const CH_POSE_L = [  // per set (A–D), as char-gen.sh's CELLS draws them
   ['뒷짐 · 입력 대기', '휴대폰 입력 · 실행 중', '휴대폰 · 백그라운드', '경악 · 응답 없음', '코 풍선 · 유휴', '주먹 불끈 · 완료', '클립보드 · 결정 대기', '눈 감기 · 깜빡임'],
 ];
 const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait'];
-let chx = { fr: 'bust', pose: 1, set: 0 }, chxMounted = false;  // set: the action set shown (A–D); a person with one set shows A
+const cx = { kind: 'bust', set: 'a' };  // the redraw's choice
+let cxRedraws = [];  // every server's redraws (/api/chars/jobs), polled with the jobs
+let chx = { fr: 'bust', pose: 1, sel: '' }, chxMounted = false;  // pose: set × 8 + pose (0–31); sel: the person shown
 try { Object.assign(chx, JSON.parse(localStorage.getItem('adash.chars') || '{}')); } catch {}
-if (![0, 1, 2, 3].includes(chx.set)) chx.set = 0;
-const chxSet = who => Math.min(chx.set, chSets(who) - 1);
+if ('set' in chx) { chx.pose = chx.pose % 8 + 8 * (chx.set | 0); delete chx.set; }
+if (!(chx.pose >= 0 && chx.pose < 32)) chx.pose = 1;
+const chxSave = () => { try { localStorage.setItem('adash.chars', JSON.stringify(chx)); } catch {} };
+const chxPose = who => chx.pose < chSets(who) * 8 ? chx.pose : chx.pose % 8;  // a person with set A only shows its pose
+const chxSel = () => { const l = [...CH_BOSS, ...CH_CREW]; return l.includes(chx.sel) ? chx.sel : l[0]; };
+const chxR2 = who => chR2.has(who) && !(who in (chBase?.art || {}));  // put up from the page, not built in
+const CX_SET = 'ABCD', CX_KIND = [['full', '전신'], ['bust', '상반신'], ['sd', 'SD 픽셀']];
+// The office's seven looks, in the office's style and frame, each set coming in turn as it does there.
+const CX_PV = [['run', 0], ['bg', 0], ['wait', 0], ['stalled', 0], ['idle', 0], ['done', 0], ['wait', 1]];
 function chxStages(who) {
-  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], si = chxSet(who), f = chx.pose + 8 * si, n = a.top.length, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 2, ph = sd.ph * 2;
+  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], f = chxPose(who), n = a.top.length, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 2, ph = sd.ph * 2;
   const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * n}px ${h}px;background-position:${-f * w}px 0"></span>`;
   const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
@@ -3988,23 +4010,57 @@ function chxStages(who) {
     + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(hina 외는 hina 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
     + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
     + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
-    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[chx.pose]}" data-pose="${chx.pose}" data-set="${si}" data-fr="${fr}" aria-hidden="true"></canvas>`);
+    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f % 8]}" data-pose="${f % 8}" data-set="${f >> 3}" data-fr="${fr}" aria-hidden="true"></canvas>`);
 }
-function chxCard(who, boss, n) {
-  const [name, look] = CH_INFO[who].map(esc), on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)], si = chxSet(who), L = CH_POSE_L[si];
-  const thumbs = [...Array(8).keys()].map(i => `<button type="button" class="cx-pose${i === chx.pose ? ' on' : ''}" data-pose="${i}" aria-pressed="${i === chx.pose}" data-tip="${esc(L[i])}" aria-label="${esc(L[i])}">
-      <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${a.pw * a.top.length}px ${a.ph}px;background-position:${-(i + 8 * si) * a.pw}px 0"></span></button>`).join('');
-  return `<section class="cx surface${on ? '' : ' off'}" data-who="${who}">
-    <div class="cx-h"><h3>${name}<span class="badge">${boss ? '코디네이터' : '워커'}</span></h3><span class="cx-look">${look}</span>
+// The list: one small tile a person — face, name, how many sessions they draw now (liveSess), off when left out.
+function chxTile(who, n, cur) {
+  const a = CH_ART[who].sdb, on = chPool[who] !== false, rd = cxRedraws.find(r => r.who === who && r.state === 'running');
+  return `<button type="button" class="cx-tile${who === cur ? ' on' : ''}${on ? '' : ' off'}" data-sel="${who}" aria-pressed="${who === cur}" title="${esc(CH_INFO[who]?.[1] || '')}">
+    <span class="cx-face" style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(who, 'bust')});background-size:${a.pw * a.top.length}px ${a.ph}px" aria-hidden="true"></span>
+    <b>${esc(chName(who))}</b><small>${rd ? '<i class="cx-busy"></i>다시 그리는 중' : on ? `세션 ${n}` : '배치 안 함'}${chxR2(who) ? ' · R2' : ''}</small></button>`;
+}
+// The person shown: the chosen pose in the three stages, all 32 poses (a row a set), the office's looks, and managing
+// them — name, look and role (chars.json), one sheet redrawn (a metric server's Mac draws it and puts it up), delete.
+function chxDetail(who, n) {
+  const [name, look] = CH_INFO[who], boss = CH_BOSS.includes(who), on = chPool[who] !== false, sets = chSets(who), f = chxPose(who);
+  const sd = CH_ART[who][chSd(chx.fr)], last = (boss ? CH_BOSS : CH_CREW).length < 2, srv = srvOn().find(x => x.live);
+  const rows = [...Array(sets).keys()].map(s => `<div class="cx-row" role="group" aria-label="세트 ${CX_SET[s]}"><span class="cx-set">${CX_SET[s]}</span>${[...Array(8).keys()].map(i => {
+    const k = s * 8 + i, l = `세트 ${CX_SET[s]} · ${CH_POSE_L[s][i]}`;
+    return `<button type="button" class="cx-pose${k === f ? ' on' : ''}" data-pose="${k}" aria-pressed="${k === f}" data-tip="${esc(l)}" aria-label="${esc(l)}">
+      <span style="width:${sd.pw}px;height:${sd.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${sd.pw * sd.top.length}px ${sd.ph}px;background-position:${-k * sd.pw}px 0"></span></button>`;
+  }).join('')}</div>`).join('');
+  const pv = CX_PV.map(([st, dec]) => {
+    const s = { id: `cxpv-${who}-${st}-${dec}`, path: '', char: { who }, decision: dec ? {} : null };
+    return `<div class="ch d-ch cx-pv st-${st}${dec ? ' dec' : ''}" data-id="${s.id}">${chFig(st, s, true)}<span class="ch-name">${dec ? '결정 대기' : ST_LABEL[st]}</span></div>`;
+  }).join('');
+  const rd = cxRedraws.find(r => r.who === who);
+  const rdMsg = !rd ? '' : rd.state === 'running' ? `<span class="sp-msg"><i class="cx-busy"></i>${CX_KIND.find(k => k[0] === rd.kind)[1]} 세트 ${rd.set.toUpperCase()} — ${rd.step === 'draw' ? 'Codex 가 그리는 중' : 'R2 에 올리는 중'} · ${Math.max(1, Math.round((Date.now() / 1000 - rd.started) / 60))}분째</span>`
+    : rd.state === 'failed' ? `<span class="sp-msg bad">${esc(rd.error || '실패했습니다')}</span>` : `<span class="sp-msg ok">${CX_KIND.find(k => k[0] === rd.kind)[1]} 세트 ${rd.set.toUpperCase()} 를 다시 그려 올렸습니다</span>`;
+  const seg = (id, l, cur) => `<span class="seg" id="${id}">${l.map(([k, t]) => `<button type="button" data-k="${k}" class="${k === cur ? 'on' : ''}" aria-pressed="${k === cur}">${t}</button>`).join('')}</span>`;
+  return `<section class="cx-detail surface" data-who="${who}" aria-label="${esc(name)}">
+    <div class="cx-h"><h2>${esc(name)}</h2><span class="badge">${boss ? '코디네이터' : '워커'}</span>${chxR2(who) ? '<span class="badge" title="배포 없이 R2 에 올린 캐릭터">R2</span>' : ''}<code>${who}</code>
+      <span class="cx-look">${esc(look)}</span>
       <span class="cx-n">${on ? `맡은 세션 <b>${n}</b>` : '배치 안 함'}</span>
       <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
+    <div class="cx-sub"><b>${esc(`세트 ${CX_SET[f >> 3]} · ${CH_POSE_L[f >> 3][f % 8]}`)}</b>${seg('cx-fr', [['bust', '상반신'], ['full', '전신']], chx.fr)}</div>
     <div class="cx-flow">${chxStages(who)}</div>
-    <div class="cx-poses" role="group" aria-label="포즈">${thumbs}</div>
-    <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd${chx.fr === 'bust' ? '-bust' : ''}.png</code>
-      ${chR2.has(who) ? `<span class="badge" title="배포 없이 R2 에 올린 캐릭터 (scripts/char-publish.py)">R2</span>
-      <button type="button" class="act danger" data-cx-del="${who}" title="R2 와 작업 폴더에서 지워 모든 기기의 사무실에서 영구히 뺌 (되돌릴 수 없음)">삭제</button>` : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
-      <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button>
-      ${(boss ? CH_BOSS : CH_CREW).length > 1 ? `<button type="button" class="act danger" data-cx-del="${who}" title="기본 캐릭터를 모든 기기의 사무실에서 영구히 뺌 (되돌릴 수 없음)">삭제</button>` : ''}`}</div>
+    <h3 class="cx-hd">포즈 ${sets * 8}개 <small>세트마다 같은 8포즈를 다른 동작으로 — 사무실은 ${CH_ACT_T}초마다 세트를 무작위로 바꿉니다${sets < 4 ? ' · 이 캐릭터는 세트 A 뿐 (다시 그리면 생김)' : ''}</small></h3>
+    <div class="cx-grid">${rows}</div>
+    <h3 class="cx-hd">사무실에서 <small>${charStyle === 'l2d' ? 'Live2D' : 'AI 생성'} · ${charFrame === 'bust' ? '상반신' : '전신'} (캐릭터 설정에서 바꿈)</small></h3>
+    <div class="cx-pvs">${pv}</div>
+    <h3 class="cx-hd">관리</h3>
+    <div class="cx-mng">
+      <div class="lp-row"><span>이름</span><input class="field" data-cx-meta="name" value="${esc(name)}" maxlength="20" autocomplete="off">
+        <input class="field cx-look-in" data-cx-meta="look" value="${esc(look)}" maxlength="80" placeholder="생김새 (예: 빨간 단발 · 노란 우비)" autocomplete="off">
+        ${seg('cx-role', [['', '워커'], ['1', '코디네이터']], boss ? '1' : '')}
+        <button type="button" class="act" data-cx-save${srv ? '' : ' disabled'} title="${srv ? '모든 기기의 목록·사무실에 반영 (chars.json)' : '연결된 메트릭 서버가 없습니다'}">저장</button></div>
+      <div class="lp-row"><span>다시 그리기</span>${seg('cx-rk', CX_KIND, cx.kind)}${seg('cx-rs', [...CX_SET].map(l => [l.toLowerCase(), l]), cx.set)}
+        <button type="button" class="act" data-cx-redraw${srv && rd?.state !== 'running' ? '' : ' disabled'} title="${srv ? '이 시트 한 장만 Codex 로 다시 그리고, 네 장을 다시 잘라 R2 에 올림 (몇 분)' : '연결된 메트릭 서버가 없습니다'}">${CX_KIND.find(k => k[0] === cx.kind)[1]} 세트 ${cx.set.toUpperCase()} 다시 그리기</button>${rdMsg}</div>
+      <p class="lp-help">전신을 다시 그려도 같은 세트의 상반신·SD 는 예전 전신을 따른 그대로입니다 — 필요하면 이어서 다시 그리세요. 그림은 서버의 Mac 에서 ChatGPT 구독의 Codex 로 그립니다.</p>
+      <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd${chx.fr === 'bust' ? '-bust' : ''}.png</code>
+        <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr} ~/.cache/agent-dashboard/char-sheets ${CX_SET[f >> 3].toLowerCase()}" title="이 시트를 터미널에서 다시 그리는 명령을 복사">명령 복사</button>
+        ${last ? '' : `<button type="button" class="act danger" data-cx-del="${who}" title="모든 기기의 사무실에서 영구히 뺌 (되돌릴 수 없음)">영구 삭제</button>`}</div>
+    </div>
   </section>`;
 }
 // 「새 캐릭터」: one picture (and a name) from this device goes to a metric server, which hands it with a brief to an Orca
@@ -4012,7 +4068,7 @@ function chxCard(who, boss, n) {
 // and the SD sheet from that (scripts/char-gen.sh), and puts them up (scripts/char-publish.py). The job list below the
 // form reads how far each got from the files the agent leaves (/api/chars/jobs), every few seconds while one runs; a
 // job turning 「게시됨」 reloads chars.json, so the new person joins without a reload. The form survives re-renders (cn).
-const cn = { img: '', fname: '', who: '', name: '', look: '', boss: false, notes: '', agent: 'claude', server: null, busy: false, msg: '', cls: '' };
+const cn = { open: false, img: '', fname: '', who: '', name: '', look: '', boss: false, notes: '', agent: 'claude', server: null, busy: false, msg: '', cls: '' };
 let cnJobs = null, cnSeen = '', cnTimer = 0;
 const CN_STEPS = [['ref', '원본'], ['desc', '설명'], ['full', '전신'], ['bust', '상반신'], ['sd', 'SD'], ['published', '게시']];
 const CN_WHO = /^[a-z][a-z0-9-]{1,23}$/;
@@ -4050,13 +4106,14 @@ function cnHtml() {
           <button class="act big accent" data-cn-go${cnCan() ? '' : ' disabled'}>${cn.busy ? '맡기는 중…' : 'Orca 에 맡기기'}</button></div>
       </div>
     </div>
-    <div id="cn-jobs">${cnJobsHtml()}</div>
   </section>`;
 }
+// The jobs worth a look: running or failed ones, and the ones done in the last day.
 function cnJobsHtml() {
-  if (!cnJobs?.length) return '';
+  const jobs = (cnJobs || []).filter(j => j.state === 'running' || j.state === 'failed' || j.state === 'published' && Date.now() / 1000 - j.updated < 86400);
+  if (!jobs.length) return '';
   const ago = t => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : `${Math.round(m / 60)}시간 전`; };
-  return `<div class="cn-jobs">${cnJobs.map(j => {
+  return `<div class="cn-jobs surface">${jobs.map(j => {
     const st = j.state === 'published' ? ['ok', '게시됨'] : j.state === 'removed' ? ['', '삭제됨'] : j.state === 'failed' ? ['bad', '실패'] : ['run', '만드는 중'];
     const steps = CN_STEPS.map(([k, l], i) => {
       const d = k === 'ref' || j.done.includes(k), next = !d && j.state === 'running' && CN_STEPS.slice(0, i).every(([x]) => x === 'ref' || j.done.includes(x));
@@ -4131,13 +4188,22 @@ async function cnCreate() {
   toast(`「${cut(name, 20)}」 캐릭터 생성을 Orca 에 맡겼습니다`);
   cnPoll();
 }
-// The job list, refreshed in place (the form keeps its focus): every 5 s while a job runs and this tab is shown.
+// The job list, refreshed in place (the form keeps its focus): every 5 s while a job or a redraw runs and this tab is
+// shown. A redraw's news rebuilds the tab unless a field in it has the focus; one done reads chars.json again.
+let cxSeen = '';
 async function cnPoll() {
   clearTimeout(cnTimer);
   if (route().v !== 'chars') return;
   if (document.hidden) { cnTimer = setTimeout(cnPoll, 5000); return; }
-  let jobs;
-  try { jobs = await api.charJobs(); } catch { jobs = cnJobs || []; }
+  let jobs, redraws;
+  try { ({ jobs, redraws } = await api.charState()); } catch { jobs = cnJobs || []; redraws = cxRedraws; }
+  const run = redraws.some(r => r.state === 'running'), rk = JSON.stringify(redraws) + (run ? Math.floor(Date.now() / 60000) : '');
+  if (rk !== cxSeen) {
+    const done = redraws.some(r => r.state === 'done' && !cxRedraws.some(x => x.who === r.who && x.state === 'done' && x.ended === r.ended));
+    cxSeen = rk; cxRedraws = redraws;
+    if (done) { chSeen = ''; await chLoad(); }
+    if (!$('#view').contains(document.activeElement) || !document.activeElement.matches('input, textarea, select')) { chxMounted = false; renderChars(true); }
+  }
   const before = new Set((cnJobs || []).filter(j => j.state === 'published').map(j => j.id));
   const key = JSON.stringify(jobs);
   if (key !== cnSeen) {
@@ -4148,11 +4214,11 @@ async function cnPoll() {
     if (el) { el.innerHTML = cnJobsHtml(); cnJobsBind(); }
     if (!first && jobs.some(j => j.state === 'published' && !before.has(j.id))) chLoad();
   }
-  if (jobs.some(j => j.state === 'running')) cnTimer = setTimeout(cnPoll, 5000);
+  if (jobs.some(j => j.state === 'running') || redraws.some(r => r.state === 'running')) cnTimer = setTimeout(cnPoll, 5000);
 }
 // 「삭제」: a metric server runs char-publish.py --remove, then this page reads chars.json again at once (other pages
 // within a minute). A person put up without a deploy (R2) loses their pictures there; a built-in one (in the deploy) is
-// listed as hidden instead and can be brought back below the lists (chRestore). The last of a list stays.
+// listed as hidden instead, for good. The last of a list stays.
 async function chDelete(who, b) {
   const name = CH_INFO[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id, r2 = chR2.has(who) && !(who in chBase?.art);
   if (!srv) return toast('연결된 메트릭 서버가 없습니다');
@@ -4167,42 +4233,61 @@ async function chDelete(who, b) {
   cnPoll();
   toast(`「${cut(name, 20)}」 캐릭터를 영구 삭제했습니다`);
 }
-function renderChars() {
+function renderChars(fromPoll) {
   if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
-  const save = () => { try { localStorage.setItem('adash.chars', JSON.stringify(chx)); } catch {} };
   const cnt = {}; state.sessions.filter(liveSess).forEach(s => { const w = chWho(s); cnt[w] = (cnt[w] || 0) + 1; });
-  const group = (title, l, boss) => `<div class="sec-h"><h2>${title}</h2><span>${l.filter(w => chPool[w] !== false).length}/${l.length}명 배치</span></div>
-    <div class="cx-list">${l.map(w => chxCard(w, boss, cnt[w] || 0)).join('')}</div>`;
-  $('#view').innerHTML = `<div class="controls">
-      <span class="seg" id="cx-fr"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>
-      <span class="seg" id="cx-set" title="포즈마다 액션 세트가 4개 — 사무실에서는 ${CH_ACT_T}초마다 무작위로 바뀝니다 (세트가 하나뿐인 캐릭터는 A)">${'ABCD'.split('').map((l, i) => `<button data-k="${i}">세트 ${l}</button>`).join('')}</span>
-      <span class="st">${esc(CH_POSE_L[chx.set][chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
-    </div>
-    ${cnHtml()}
-    ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
-    <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 기본 캐릭터 그림은 <code>scripts/char-gen.sh</code> 로 만듭니다. 새 캐릭터는 위 「새 캐릭터」나 <code>scripts/char-publish.py</code> 로 올리면 배포 없이 더해집니다.</div>`;
-  $('#cx-fr').querySelectorAll('button').forEach(b => {
-    b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
-    b.onclick = () => { chx.fr = b.dataset.k; save(); chxMounted = false; renderChars(); };
-  });
-  $('#cx-set').querySelectorAll('button').forEach(b => {
-    const on = +b.dataset.k === chx.set;
-    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
-    b.onclick = () => { chx.set = +b.dataset.k; save(); chxMounted = false; renderChars(); };
-  });
-  $('#view').querySelectorAll('.cx-pose').forEach(b => b.onclick = () => { chx.pose = +b.dataset.pose; save(); chxMounted = false; renderChars(); });
-  $('#view').querySelectorAll('[data-pool]').forEach(c => c.onchange = () => {
+  const who = chxSel(), all = [...CH_BOSS, ...CH_CREW], placed = all.filter(w => chPool[w] !== false).length;
+  const group = (title, l) => `<div class="cx-grp"><h3>${title} <small>${l.filter(w => chPool[w] !== false).length}/${l.length}명 배치</small></h3>
+    <div class="cx-tiles">${l.map(w => chxTile(w, cnt[w] || 0, who)).join('')}</div></div>`;
+  $('#view').innerHTML = `<div class="controls cx-top"><span class="st">캐릭터 ${all.length}명 · 사무실에 ${placed}명 — 한 목록에서 모두 끄면 그 목록 전원이 배치됩니다(이 기기에만 저장).</span>
+      <button type="button" class="act${cn.open ? ' on' : ''}" id="cx-new" aria-expanded="${cn.open}">${cn.open ? '새 캐릭터 닫기' : '+ 새 캐릭터'}</button></div>
+    ${cn.open ? cnHtml() : ''}
+    <div id="cn-jobs">${cnJobsHtml()}</div>
+    <div class="cx-wrap"><nav class="cx-side" aria-label="캐릭터">${group('코디네이터', CH_BOSS)}${group('워커', CH_CREW)}</nav>${chxDetail(who, cnt[who] || 0)}</div>`;
+  const again = () => { chxSave(); chxMounted = false; renderChars(); };
+  const v = $('#view'), srv = () => srvOn().find(x => x.live)?.id;
+  v.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { chx.sel = b.dataset.sel; again(); });
+  v.querySelectorAll('#cx-fr button').forEach(b => b.onclick = () => { chx.fr = b.dataset.k; again(); });
+  v.querySelectorAll('.cx-pose').forEach(b => b.onclick = () => { chx.pose = +b.dataset.pose; again(); });
+  v.querySelectorAll('#cx-rk button').forEach(b => b.onclick = () => { cx.kind = b.dataset.k; again(); });
+  v.querySelectorAll('#cx-rs button').forEach(b => b.onclick = () => { cx.set = b.dataset.k; again(); });
+  v.querySelectorAll('#cx-role button').forEach(b => b.onclick = () => v.querySelectorAll('#cx-role button').forEach(x => {
+    x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }));
+  $('#cx-new').onclick = () => { cn.open = !cn.open; again(); };
+  v.querySelectorAll('[data-pool]').forEach(c => c.onchange = () => {
     if (c.checked) delete chPool[c.dataset.pool]; else chPool[c.dataset.pool] = false;
     try { localStorage.setItem('adash.chpool', JSON.stringify(chPool)); } catch {}
-    chxMounted = false; renderChars();
+    again();
   });
-  $('#view').querySelectorAll('[data-cx-del]').forEach(b => b.onclick = () => chDelete(b.dataset.cxDel, b));
-  $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
+  const meta = () => ({ who, name: v.querySelector('[data-cx-meta="name"]').value.trim(), look: v.querySelector('[data-cx-meta="look"]').value.trim(),
+    boss: !!v.querySelector('#cx-role button.on')?.dataset.k });
+  v.querySelector('[data-cx-save]').onclick = async e => {
+    const b = e.currentTarget, m = meta();
+    if (!m.name) return toast('이름이 비었습니다');
+    b.disabled = true; b.textContent = '저장 중…';
+    const r = await api.charMeta(srv(), m);
+    b.disabled = false; b.textContent = '저장';
+    if (r.status !== 200) return toast(r.body?.error || `저장하지 못했습니다 (${r.status})`);
+    chSeen = ''; await chLoad();
+    toast(`「${cut(m.name, 20)}」 을(를) 저장했습니다`);
+  };
+  v.querySelector('[data-cx-redraw]').onclick = async e => {
+    const b = e.currentTarget, m = meta(), what = `${CX_KIND.find(k => k[0] === cx.kind)[1]} 세트 ${cx.set.toUpperCase()}`;
+    if (!await uiConfirm(`「${chName(who)}」 의 ${what} 시트를 다시 그릴까요?\n\n서버의 Mac 에서 Codex 가 한 장을 새로 그리고, 네 세트를 다시 잘라 R2 에 올립니다(몇 분). 올라가면 모든 기기에서 바뀝니다.`, { ok: '다시 그리기' })) return;
+    b.disabled = true;
+    const r = await api.charRedraw(srv(), { ...m, name: CH_INFO[who][0], look: CH_INFO[who][1], boss: CH_BOSS.includes(who), kind: cx.kind, set: cx.set });
+    if (r.status !== 202) { b.disabled = false; return toast(r.body?.error || `시작하지 못했습니다 (${r.status})`); }
+    cxRedraws = [...cxRedraws.filter(x => x.who !== who), { ...r.body.redraw, server: srv() }];
+    toast(`${what} 을(를) 다시 그리기 시작했습니다`);
+    again();
+  };
+  v.querySelectorAll('[data-cx-del]').forEach(b => b.onclick = () => chDelete(b.dataset.cxDel, b));
+  v.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
     .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
-  cnBind();
+  if (cn.open) cnBind(); else cnJobsBind();
   chxMounted = true;
-  L2D.mount($('#view'));
-  cnPoll();
+  L2D.mount(v);
+  if (!fromPoll) cnPoll();
 }
 
 function renderAgents() {

@@ -4,6 +4,7 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
 
     scripts/char-publish.py <who> --name 미오 --look '빨간 단발 · 노란 우비' [--boss] [--dir <folder>]
     scripts/char-publish.py <who> --remove
+    scripts/char-publish.py <who> --meta --name 미오 --look '…' [--boss]
     scripts/char-publish.py --list
 
 <who> is the file name (a-z, 0-9, -); its strips hold 8 frames or 32 (four sets of the 8 poses), all four alike. --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
@@ -13,6 +14,8 @@ workers. A built-in name (ren …) replaces that person's pictures. --dry-run pr
 --remove deletes for good: an added person's strips and entry go from R2; a built-in person (they live in the deploy until
 their files are taken out of the repo) is listed under hidden in chars.json, so every page leaves them out, and may not
 be put up again. Neither list may be emptied: one coordinator and one worker always stay.
+--meta changes only the name, look and role (--boss or not) everywhere, no pictures: an added person's entry, or for a
+built-in one meta[<who>] in chars.json, which the page lays over its built-in name, look and list.
 Each entry carries v (when it was put up), which the page adds to the picture URLs so a redrawn person shows at once,
 and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
 Needs `npx wrangler login` once, and Pillow with numpy (run it with "$(scripts/char-python.sh)").
@@ -73,12 +76,20 @@ def put_manifest(m):
         os.unlink(fh.name)
 
 
+def roles(m):
+    """{who: boss} for everyone on the page: built-ins not deleted, added people, meta's roles over both."""
+    r = {w: b for w, b in BUILTIN.items() if w not in m.get('hidden', [])}
+    r.update({w: bool(x.get('boss')) for w, x in m['chars'].items()})
+    r.update({w: bool(x.get('boss')) for w, x in m.get('meta', {}).items() if w in r})
+    return r
+
+
 ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
 ap.add_argument('who', nargs='?')
 ap.add_argument('--name'); ap.add_argument('--look', default='')
 ap.add_argument('--boss', action='store_true')
 ap.add_argument('--dir', default='.')
-ap.add_argument('--remove', action='store_true')
+ap.add_argument('--remove', action='store_true'); ap.add_argument('--meta', action='store_true')
 ap.add_argument('--list', action='store_true')
 ap.add_argument('--dry-run', action='store_true')
 o = ap.parse_args()
@@ -94,18 +105,38 @@ if not o.who or not re.fullmatch(r'[a-z0-9-]+', o.who):
     ap.error('<who> 는 영문 소문자·숫자·- 로 된 이름이어야 합니다')
 m = manifest()
 hidden = m.setdefault('hidden', [])
+if o.meta:
+    if o.who in hidden or not (o.who in m['chars'] or o.who in BUILTIN):
+        sys.exit(f'{o.who}: 없는 캐릭터입니다')
+    if not o.name or len(o.name) > 20 or len(o.look) > 80:
+        sys.exit('표시 이름은 1~20자, 생김새는 80자까지입니다')
+    left = roles(m)
+    was = left[o.who]; left[o.who] = o.boss
+    if was != o.boss and was not in left.values():
+        sys.exit(f"{o.who}: 마지막 {'코디네이터' if was else '워커'}라 역할을 바꿀 수 없습니다")
+    entry = {'name': o.name, 'look': o.look, 'boss': o.boss}
+    if o.who in m['chars']:
+        m['chars'][o.who].update(entry)
+    if o.who in BUILTIN:
+        m.setdefault('meta', {})[o.who] = entry
+    if o.dry_run:
+        print(json.dumps(m, ensure_ascii=False, indent=1))
+        sys.exit()
+    put_manifest(m)
+    print(f'{o.who} 의 이름·생김새·역할을 바꿨습니다')
+    sys.exit()
 if o.remove:
     builtin = o.who in BUILTIN and o.who not in hidden
     c = m['chars'].pop(o.who, None)
     if c is None and not builtin:
         sys.exit(f'{o.who}: chars.json 에 없습니다')
-    left = {w: b for w, b in BUILTIN.items() if w not in hidden and w != o.who}
-    left.update({w: bool(x.get('boss')) for w, x in m['chars'].items()})
-    boss = c.get('boss') if c and o.who not in BUILTIN else BUILTIN.get(o.who)
+    left = roles(m)
+    boss = left.pop(o.who, bool(c and c.get('boss')))
     if boss not in left.values():
         sys.exit(f"{o.who}: 마지막 {'코디네이터' if boss else '워커'}는 삭제할 수 없습니다")
     if builtin:
         hidden.append(o.who)
+    m.get('meta', {}).pop(o.who, None)
     put_manifest(m)
     if c is not None:
         for f in FILES.values():
