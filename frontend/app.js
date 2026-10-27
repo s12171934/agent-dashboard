@@ -3209,10 +3209,10 @@ const CH_H = { bust: 132, full: 196 };
 // Only a running person changes action: of four sets one shows at random, picked again every CH_ACT_T seconds (offset
 // per person, so a room does not change at once). Every other state keeps set A, so a still state always looks the same.
 // The same id, pose and time give the same pick on every render and device. A person drawn with the run motion (sdr,
-// sdbr: 8 frames a set, scripts/char-gen.sh run) plays it through once a slot, CH_RUN_MS a frame — working, a pause to
-// think, back to work — so each set's loop is one slot.
-const CH_RUN_MS = [700, 400, 400, 400, 1100, 800, 450, 750];
-const CH_ACT_T = CH_RUN_MS.reduce((a, b) => a + b) / 1000, chSets = who => CH_ART[who].full.top.length / 8;
+// sdbr: 8 frames a set, scripts/char-gen.sh run) loops it, CH_RUN_MS a frame — working, a pause to think, back to work —
+// four times a slot, so a set changes only at a loop's end.
+const CH_RUN_MS = [700, 400, 400, 400, 1100, 800, 450, 750], CH_RUN_LOOP = CH_RUN_MS.reduce((a, b) => a + b);
+const CH_ACT_T = 4 * CH_RUN_LOOP / 1000, chSets = who => CH_ART[who].full.top.length / 8;
 const chMix = n => { n = Math.imul(n ^ n >>> 16, 0x45d9f3b); n = Math.imul(n ^ n >>> 16, 0x45d9f3b); return (n ^ n >>> 16) >>> 0; };
 function chAct(id, mv, sets, t) {  // → [set now, set of the slot before, seconds into this slot]
   if (sets < 2 || mv !== 'run') return [0, 0, CH_ACT_T];
@@ -3224,7 +3224,7 @@ const chMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const chRunArt = (who, fr) => CH_ART[who][chSd(fr) + 'r'];  // the run strip (sdr, sdbr), when there is one
 function chRunFrame(id, sets) {  // → the run strip's frame now: the slot's set, and the frame by the time into it
   const [si, , into] = chAct(id, 'run', sets, Date.now() / 1000);
-  let k = 0, ms = chMotion.matches ? 0 : into * 1000;
+  let k = 0, ms = chMotion.matches ? 0 : into * 1000 % CH_RUN_LOOP;
   while (k < 7 && ms >= CH_RUN_MS[k]) ms -= CH_RUN_MS[k++];
   return 8 * si + k;
 }
@@ -4068,7 +4068,7 @@ function chxDetail(who, n) {
       <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
     <div class="cx-sub"><b>${esc(`세트 ${CX_SET[f >> 3]} · ${CH_POSE_L[f >> 3][f % 8]}`)}</b>${seg('cx-fr', [['bust', '상반신'], ['full', '전신']], chx.fr)}</div>
     <div class="cx-flow">${chxStages(who)}</div>
-    <h3 class="cx-hd">포즈 ${sets * 8}개 <small>세트마다 같은 8포즈를 다른 동작으로 — 사무실은 실행 중일 때만 ${CH_ACT_T}초마다 세트를 무작위로 바꾸고(실행 중 모션이 있으면 한 바퀴 재생), 다른 상태는 세트 A${sets < 4 ? ' · 이 캐릭터는 세트 A 뿐 (다시 그리면 생김)' : ''}</small></h3>
+    <h3 class="cx-hd">포즈 ${sets * 8}개 <small>세트마다 같은 8포즈를 다른 동작으로 — 사무실은 실행 중일 때만 ${CH_ACT_T}초마다 세트를 무작위로 바꾸고(그동안 5초 실행 중 모션을 되풀이), 다른 상태는 세트 A${sets < 4 ? ' · 이 캐릭터는 세트 A 뿐 (다시 그리면 생김)' : ''}</small></h3>
     <div class="cx-grid">${rows}</div>
     <h3 class="cx-hd">사무실에서 <small>${charStyle === 'l2d' ? 'Live2D' : 'AI 생성'} · ${charFrame === 'bust' ? '상반신' : '전신'} (캐릭터 설정에서 바꿈)</small></h3>
     <div class="cx-pvs">${pv}</div>
