@@ -142,6 +142,11 @@ def collect_tests():
         mtime = e2e_cache[p][0]
         if not d or not mtime or now - mtime > TEST_KEEP_S:
             continue
+        if not d.get("phase") and d.get("status"):  # a hand-written file: {"status", "exit", "summary", "task"}
+            st = str(d["status"])
+            d = {**d, "phase": "failed" if st == "failed" or (st == "done" and d.get("exit")) else st,
+                 "detail": d.get("detail") or d.get("summary"), "label": d.get("task") or d.get("label"),
+                 "updated_at": d.get("updated_at") or d.get("finished_at")}
         fails = [{"id": short(str(f.get("id") or ""), 200), "msg": short(str(f.get("msg") or ""), 300)}
                  for f in (d.get("failures") or [])[:20] if isinstance(f, dict)] if isinstance(d.get("failures"), list) else []
         files.append({**{k: d.get(k) for k in TEST_FIELDS}, "key": n[:-5], "mtime": mtime, "failures": fails,

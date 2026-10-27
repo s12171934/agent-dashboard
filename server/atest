@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+"""atest — report a test run's progress, case by case, so the agent dashboard can draw it like an E2E run.
+
+Writes /private/tmp/agent-test-progress/<key>.json (the README's progress file format), tied to the calling
+session (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID, ORCA_TERMINAL_HANDLE).
+
+  atest run [--kind K] [--label L] [--key K] -- <command ...>
+      run a test command, pass its output through and keep its exit code. RSpec gets a formatter (via SPEC_OPTS)
+      that reports the running example; jest·vitest·node --test·playwright are read from their per-test lines.
+  atest start [--kind K] [--label L] [--key K] [--total N] [ID=제목 ...]
+      begin a run whose cases the agent checks by hand (e.g. --kind figma: Storybook stories against Figma)
+  atest case ID running|passed|failed|skipped [메모] [--title 제목] [--key K]
+  atest note "지금 하는 일"          the run's detail line (e.g. "Figma 스냅숏 수집")
+  atest end [passed|failed] [메모]   finish (default: failed when a case failed)
+start without --key names the run; later commands of the same session use it.
+"""
+import fcntl
+import json
+import os
+import re
+import shlex
+import signal
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+
+DIR = os.environ.get("ATEST_DIR") or "/private/tmp/agent-test-progress"  # override only for trying atest out
+HERE = os.path.dirname(os.path.realpath(__file__))
+CASES_MAX = 500
+STATES = ("running", "passed", "failed", "skipped")
+
+
+def die(msg):
+    print(f"atest: {msg}\n\n" + __doc__.split("\n\n", 2)[2], file=sys.stderr)
+    sys.exit(2)
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def ident():
+    return os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID") \
+        or os.environ.get("ORCA_TERMINAL_HANDLE") or "anon"
+
+
+def cur_path():
+    return os.path.join(DIR, ".cur-" + re.sub(r"[^\w.-]", "_", ident()))
+
+
+def new_key(kind):
+    return f"{kind}-{datetime.now().strftime('%m%d-%H%M%S')}-{os.getpid()}"
+
+
+class Run:
+    """One progress file; cases keep their first-seen order."""
+
+    def __init__(self, key, **fields):
+        self.key, self.path = key, os.path.join(DIR, key + ".json")
+        self.d = {"phase": "running", "started_at": now(), "owner": os.environ.get("ATEST_OWNER"),
+                  "terminal": os.environ.get("ORCA_TERMINAL_HANDLE"),
+                  "session_id": os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID"), **fields}
+        self.cases = {}  # case key -> {id, title, status, msg, ms}
+        self.open_ended = False  # cases appear as they finish (jest·vitest lines): no total until the end
+
+    @classmethod
+    def load(cls, key):
+        r = cls(key)
+        with open(r.path) as f:
+            r.d = json.load(f)
+        r.cases = {c["id"]: c for c in r.d.pop("cases", None) or []}
+        return r
+
+    def case(self, k, cid=None, title=None, status=None, msg=None, ms=None):
+        c = self.cases.setdefault(k, {"id": cid or k, "title": title or "", "status": "queued"})
+        for f, v in (("title", title), ("status", status), ("msg", msg), ("ms", ms)):
+            if v is not None:
+                c[f] = v
+        if status == "running":
+            c["t0"] = time.time()
+        elif status and "t0" in c:
+            t0 = c.pop("t0")
+            if ms is None:
+                c["ms"] = round((time.time() - t0) * 1000)
+        return c
+
+    def save(self):
+        cs = list(self.cases.values())
+        n = lambda *s: sum(c["status"] in s for c in cs)
+        done, total = n("passed", "failed", "skipped", "interrupted"), self.d.get("total") or 0
+        if total < len(cs):  # no count from the runner, or one the cases outgrew (several rspec processes)
+            total = None if self.open_ended and self.d["phase"] == "running" else len(cs)
+        d = {**self.d, "total": total or None, "done": done, "passed": n("passed"), "failed": n("failed", "interrupted"), "pending": n("skipped") or None,
+             "updated_at": now(), "eta_s": None}
+        if d["phase"] == "running" and total and done:
+            el = time.time() - datetime.fromisoformat(d["started_at"].replace("Z", "+00:00")).timestamp()
+            d["eta_s"] = round(el / done * (total - done))
+        if len(cs) > CASES_MAX:  # failed and running cases first, then the latest others
+            keep = [c for c in cs if c["status"] in ("failed", "running")][:CASES_MAX]
+            rest = [c for c in cs if c["status"] not in ("failed", "running")]
+            cs = keep + rest[len(rest) - (CASES_MAX - len(keep)):] if len(keep) < CASES_MAX else keep
+        d["cases"] = cs
+        d["failures"] = [{"id": c["id"] + (" " + c["title"] if c["title"] else ""), "msg": c.get("msg") or ""}
+                         for c in cs if c["status"] in ("failed", "interrupted")][:20]
+        os.makedirs(DIR, exist_ok=True)
+        tmp = f"{self.path}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, self.path)
+
+
+# ---------- atest run: wrap a test command ----------
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# jest/vitest verbose, node --test spec, playwright list, mocha: "✓ name (12 ms)" / "× name" / "↓ name [skipped]"
+LINE = re.compile(r"^\s*(?:\d+\s+)?(✓|✔|√|✗|✕|×|✖|✘|↓)\s+(.+?)(?:\s+\(?(\d+(?:\.\d+)?)\s*(ms|s)\)?)?\s*$")
+MARK = {"✓": "passed", "✔": "passed", "√": "passed", "✗": "failed", "✕": "failed", "×": "failed", "✖": "failed",
+        "✘": "failed", "↓": "skipped"}
+FILE_LINE = re.compile(r"\(\d+ tests?(?: \| [^)]*)?\)")  # vitest's per-file line above its tests
+PROJ = re.compile(r"^\|[^|]+\|\s+")  # vitest's "|unit| " project prefix
+ARROW = re.compile(r"^\s*→\s+(.+)")  # vitest's failure message under a failed test
+
+
+def split_title(title, n):
+    """(case code, what it checks): vitest's "file > suite > test" keeps the file as the code."""
+    title = PROJ.sub("", title)
+    head, sep, rest = title.partition(" > ")
+    return (head, rest) if sep and "/" in head or sep and "." in head else (f"#{n}", title)
+
+
+def detect(argv):
+    words = " ".join(os.path.basename(a) for a in argv)
+    for kind, pat in (("rspec", r"\brspec\b|parallel:spec"), ("vitest", r"\bvitest\b"), ("jest", r"\bjest\b"),
+                      ("playwright", r"\bplaywright\b"), ("node-test", r"(\bnode|\btsx)\b.*--test\b")):
+        if re.search(pat, words):
+            return kind
+    return "test"
+
+
+def rspec_has_format(argv):
+    if any(a in ("-f", "--format") or a.startswith(("--format=", "-f")) and len(a) > 2 for a in argv[1:]):
+        return True
+    for p in (".rspec", ".rspec-local", os.path.expanduser("~/.rspec")):
+        try:
+            if re.search(r"^\s*(-f|--format)\b", open(p).read(), re.M):
+                return True
+        except OSError:
+            pass
+    return bool(re.search(r"(-f|--format)\b", os.environ.get("SPEC_OPTS", "")))
+
+
+def tail_events(path, run, stop, pos):
+    """Follow the RSpec formatter's JSON lines from pos[0] (kept for the last read after the run)."""
+    while True:
+        try:
+            with open(path, "rb") as f:
+                f.seek(pos[0])
+                for raw in f:
+                    if not raw.endswith(b"\n"):
+                        break
+                    pos[0] += len(raw)
+                    line = raw.decode(errors="replace")
+                    try:
+                        e = json.loads(line)
+                    except ValueError:
+                        continue
+                    if e.get("ev") == "start":
+                        run.d["total"] = (run.d.get("total") or 0) + (e.get("total") or 0)
+                        run.d["detail"] = None
+                    elif e.get("ev") == "case":
+                        run.case(e["key"], e.get("id"), e.get("title"), e.get("status"), e.get("msg"), e.get("ms"))
+        except OSError:
+            pass
+        if stop.is_set():
+            return
+        time.sleep(0.3)
+
+
+def cmd_run(opts, argv):
+    if not argv:
+        die("run needs a command after --")
+    kind = opts.get("kind") or detect(argv)
+    key = opts.get("key") or new_key(kind)
+    os.makedirs(os.path.join(DIR, "logs"), exist_ok=True)
+    log = os.path.join(DIR, "logs", key + ".log")
+    run = Run(key, kind=kind, label=opts.get("label") or f"{kind} " + " ".join(argv[-3:])[:80],
+              detail="준비 중", log=log, cmd=" ".join(map(shlex.quote, argv))[:300])
+    env, events = dict(os.environ), None
+    if kind == "rspec":
+        events = os.path.join(DIR, "logs", key + ".events")
+        open(events, "w").close()
+        extra = f"--require {shlex.quote(os.path.join(HERE, 'atest-rspec.rb'))} --format AtestFormatter --out /dev/null"
+        env["SPEC_OPTS"] = " ".join(x for x in (env.get("SPEC_OPTS"), "" if rspec_has_format(argv) else "--format progress", extra) if x)
+        env["ATEST_EVENTS"] = events
+    elif kind == "vitest" and not any(a.startswith("--reporter") for a in argv):
+        argv = [*argv, "--reporter=verbose"]
+    elif kind == "jest" and "--verbose" not in argv:
+        argv = [*argv, "--verbose"]
+    elif kind == "node-test" and not any(a.startswith("--test-reporter") for a in argv):
+        i = argv.index("--test") if "--test" in argv else len(argv)
+        argv = [*argv[:i], "--test-reporter=spec", *argv[i:]]
+    env.setdefault("FORCE_COLOR", "0")
+    run.open_ended = kind != "rspec"
+    run.save()
+    print(f"atest: {kind} 진행을 {run.path} 에 기록 (로그 {log})", file=sys.stderr, flush=True)
+
+    stop, lock, pos = threading.Event(), threading.Lock(), [0]
+    child = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=False)
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda s, _f: child.send_signal(s))
+    threads = [threading.Thread(target=tail_events, args=(events, run, stop, pos), daemon=True)] if events else []
+
+    def saver():
+        while not stop.wait(1.0):
+            with lock:
+                run.save()
+    threads.append(threading.Thread(target=saver, daemon=True))
+    for t in threads:
+        t.start()
+    n, last = 0, None
+    with open(log, "wb") as lf:
+        for raw in iter(child.stdout.readline, b""):
+            sys.stdout.buffer.write(raw)
+            sys.stdout.flush()
+            lf.write(raw)
+            if kind == "rspec":
+                continue
+            line = ANSI.sub("", raw.decode(errors="replace")).rstrip("\n")
+            m, a = LINE.match(line), ARROW.match(line)
+            if a and last and last["status"] == "failed" and not last.get("msg"):
+                with lock:
+                    last["msg"] = a.group(1)[:500]
+            elif m and not FILE_LINE.search(line):
+                n += 1
+                ms = m.group(3) and round(float(m.group(3)) * (1000 if m.group(4) == "s" else 1))
+                with lock:
+                    run.d["detail"] = None
+                    last = run.case(f"{n}", *split_title(m.group(2), n), MARK[m.group(1)], ms=ms)
+    code = child.wait()
+    stop.set()
+    for t in threads:
+        t.join(timeout=2)
+    if events:
+        tail_events(events, run, stop, pos)  # the last lines
+    with lock:
+        for c in run.cases.values():
+            if c["status"] in ("running", "queued"):
+                c["status"] = "interrupted" if code else "skipped"
+        failed = any(c["status"] == "failed" for c in run.cases.values())
+        run.d.update(phase="failed" if code or failed else "done", exit=code,
+                     detail=f"종료 코드 {code}" if code and not failed else None)
+        run.save()
+    sys.exit(code)
+
+
+# ---------- atest start / case / note / end: a run the agent reports by hand ----------
+def locked(key, fn):
+    os.makedirs(DIR, exist_ok=True)
+    with open(os.path.join(DIR, f".{key}.lock"), "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            run = Run.load(key)
+        except (OSError, ValueError):
+            die(f"no run '{key}' (atest start first)")
+        fn(run)
+        run.save()
+
+
+def cur_key(opts):
+    if opts.get("key"):
+        return opts["key"]
+    try:
+        return open(cur_path()).read().strip()
+    except OSError:
+        die("no run started in this session (atest start, or --key)")
+
+
+def cmd_start(opts, args):
+    kind = opts.get("kind") or "check"
+    key = opts.get("key") or new_key(kind)
+    run = Run(key, kind=kind, label=opts.get("label") or kind, total=int(opts["total"]) if opts.get("total") else None)
+    for a in args:
+        cid, _, title = a.partition("=")
+        run.case(cid.strip(), cid.strip(), title.strip())
+    run.save()
+    os.makedirs(DIR, exist_ok=True)
+    with open(cur_path(), "w") as f:
+        f.write(key)
+    print(f"atest: run {key} started ({len(run.cases)} cases)")
+
+
+def cmd_case(opts, args):
+    if len(args) < 2 or args[1] not in STATES:
+        die("case needs ID and one of " + "|".join(STATES))
+    msg = " ".join(args[2:]) or None
+    locked(cur_key(opts), lambda r: r.case(args[0], args[0], opts.get("title"), args[1], msg))
+    print(f"atest: {args[0]} {args[1]}")
+
+
+def cmd_note(opts, args):
+    locked(cur_key(opts), lambda r: r.d.update(detail=" ".join(args) or None))
+    print("atest: note recorded")
+
+
+def cmd_end(opts, args):
+    verdict = args[0] if args and args[0] in ("passed", "failed") else None
+    note = " ".join(args[1:] if verdict else args) or None
+
+    def fin(r):
+        for c in r.cases.values():
+            if c["status"] == "running":
+                r.case(c["id"], status="interrupted")
+        bad = any(c["status"] in ("failed", "interrupted") for c in r.cases.values())
+        r.d.update(phase="failed" if (verdict == "failed" or (verdict is None and bad)) else "done", detail=note)
+    key = cur_key(opts)
+    locked(key, fin)
+    try:
+        os.remove(os.path.join(DIR, f".{key}.lock"))
+    except OSError:
+        pass
+    if not opts.get("key"):
+        try:
+            os.remove(cur_path())
+        except OSError:
+            pass
+    print(f"atest: run {key} finished")
+
+
+def main(argv):
+    if not argv or argv[0] not in ("run", "start", "case", "note", "end"):
+        die("unknown command")
+    op, rest, opts, args = argv[0], argv[1:], {}, []
+    while rest:
+        a = rest.pop(0)
+        if a == "--" and op == "run":
+            args = rest
+            break
+        if a in ("--kind", "--label", "--key", "--total", "--title"):
+            if not rest:
+                die(f"{a} needs a value")
+            opts[a[2:]] = rest.pop(0)
+        elif op == "run":
+            args = [a, *rest]  # no "--": the command starts at the first non-option word
+            break
+        else:
+            args.append(a)
+    {"run": cmd_run, "start": cmd_start, "case": cmd_case, "note": cmd_note, "end": cmd_end}[op](opts, args)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

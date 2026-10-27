@@ -21,7 +21,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `exports/` | 공개 스키마 | |
 
@@ -358,6 +358,25 @@ aplan skip N [메모] / aplan fail N [메모]
 
 - 호출한 세션은 `CLAUDE_CODE_SESSION_ID` · `CODEX_THREAD_ID` · Orca 터미널 핸들 순으로 식별한다.
 - 기록은 출력만 하는 명령이다. 실패해도 에이전트의 본 작업을 멈추지 않는다.
+
+## atest — 테스트 진행 기록 (RSpec·프론트엔드·Figma 대조)
+
+E2E(run-tc)처럼 다른 테스트도 케이스 단위로 진행을 보이게 한다. `server/atest` 가 아래 「테스트 진행 파일 형식」대로 `/private/tmp/agent-test-progress/<key>.json` 을 쓰고, 세션 카드와 「테스트」 탭이 진행 막대·남은 시간·「▶ 지금 실행 중인 케이스」·케이스 칩(케이스 40개 이하일 때)·실패 메시지를 그린다.
+
+```sh
+atest run [--kind K] [--label L] -- bundle exec rspec spec/...   # 명령을 감싸 실행 (출력·종료 코드 그대로)
+atest run --label "fc unit" -- npx vitest run --project=unit
+
+atest start --kind figma --label "F1 Dialog 시안 대조" "Dialog/Default=기본 103:57122" "Dialog/Compact=compact 수치"
+atest note "Figma 스냅숏 수집"                 # 지금 하는 일
+atest case Dialog/Default running             # running|passed|failed|skipped [메모] [--title 제목]
+atest case Dialog/Default failed "패딩 24→20"
+atest end [passed|failed] [메모]               # 기본: 실패 케이스가 있으면 failed
+```
+
+- `run` 은 러너를 명령에서 알아낸다(`--kind` 로 지정 가능). RSpec 은 `SPEC_OPTS` 로 `server/atest-rspec.rb` 포매터를 붙여 예제마다 시작·결과·소요 시간·실패 메시지를 받는다(총 개수를 알아 남은 시간이 나온다. 다른 포매터가 지정돼 있지 않으면 `progress` 를 함께 단다). vitest·jest·`node`/`tsx --test`·playwright 는 테스트별 줄(✓·×)을 읽고, 그 줄이 나오도록 vitest 에는 `--reporter=verbose`, jest 에는 `--verbose`, node 에는 `--test-reporter=spec` 을 붙인다(이미 지정했으면 두고, `yarn <스크립트>` 처럼 러너가 명령에 직접 없으면 붙이지 않는다). 전체 출력은 `/private/tmp/agent-test-progress/logs/<key>.log`.
+- `start`·`case`·`note`·`end` 는 에이전트가 손으로 확인하는 실행(Storybook 스토리를 Figma 시안과 대조 등)용이다. `start` 가 정한 실행을 같은 세션의 다음 명령이 이어 쓴다(다른 실행은 `--key`).
+- 세션은 `aplan` 과 같이 `CLAUDE_CODE_SESSION_ID`·`CODEX_THREAD_ID`·`ORCA_TERMINAL_HANDLE` 로 잇는다.
 
 ## 세션이 만든 볼트 문서
 
