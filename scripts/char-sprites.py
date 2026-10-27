@@ -12,7 +12,7 @@ and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph,
   scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png> [<sheet B> <sheet C> <sheet D>]
 Needs Pillow, numpy and scipy.
 """
-import sys, json
+import sys, json, os
 import numpy as np
 from PIL import Image, ImageFilter
 from scipy import ndimage
@@ -23,6 +23,7 @@ SD_BODY = 80  # an SD sprite's standing height (frame 0, head to feet) in pixels
 SD_MERGE = 30  # colours of a sheet closer than this (summed over R, G, B) become one
 SD_CUT, SD_BUST = .75, 80  # an SD bust: the top 75 % of the standing height, that part 80 rows high
 H = 320 if kind == 'full' else 240  # output frame height
+SOCKS = os.environ.get('CHAR_WHITE_SOCKS') == '1'
 W0, H0 = Image.open(src).size
 cw, ch = W0 // 4, H0 // 2
 cells = []
@@ -49,7 +50,8 @@ for sheet in srcs:
                         v = a[region].astype(float)
                         cy = np.where(region)[0].mean() / region.shape[0]
                         # gaps between the legs and pockets inside the hair; not the middle, where a flat white shirt is
-                        low = {'full': cy > .45 or cy < .14, 'sd': cy < .1}.get(kind, cy < .4)  # an SD's short legs leave no gap, but white socks
+                        # CHAR_WHITE_SOCKS=1: flat white socks would go with the gaps, so only the hair's pockets do
+                        low = {'full': cy > .45 and not SOCKS or cy < .14, 'sd': cy < .1}.get(kind, cy < .4)  # an SD's short legs leave no gap, but white socks
                         if low and v.mean() > 244 and v.std() < 5: bg |= region
             alpha = (~bg).astype(np.uint8) * 255
             alpha = ndimage.binary_erosion(ndimage.binary_opening(alpha > 0, iterations=1), iterations=1)

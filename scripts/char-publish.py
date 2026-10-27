@@ -4,16 +4,15 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
 
     scripts/char-publish.py <who> --name 미오 --look '빨간 단발 · 노란 우비' [--boss] [--dir <folder>]
     scripts/char-publish.py <who> --remove
-    scripts/char-publish.py <who> --restore
     scripts/char-publish.py --list
 
 <who> is the file name (a-z, 0-9, -); its strips hold 8 frames or 32 (four sets of the 8 poses), all four alike. --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
 as scripts/char-gen.sh leaves them (default: the current folder). The frame sizes and head tops (CH_ART) are measured
 from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), otherwise with the
-workers. A built-in name (aoi …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
---remove on a built-in person (they live in the deploy) lists them under hidden in chars.json, so every page leaves them
-out; --restore (or putting them up again) takes them off it. Neither list may be emptied: one coordinator and one
-worker always stay.
+workers. A built-in name (ren …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
+--remove deletes for good: an added person's strips and entry go from R2; a built-in person (they live in the deploy until
+their files are taken out of the repo) is listed under hidden in chars.json, so every page leaves them out, and may not
+be put up again. Neither list may be emptied: one coordinator and one worker always stay.
 Each entry carries v (when it was put up), which the page adds to the picture URLs so a redrawn person shows at once,
 and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
 Needs `npx wrangler login` once, and Pillow with numpy (run it with "$(scripts/char-python.sh)").
@@ -29,7 +28,7 @@ if not shutil.which('npx'):  # started by launchd (the metric server's 「삭제
     if nvm:
         os.environ['PATH'] = nvm[-1] + os.pathsep + os.environ.get('PATH', '')
 WRANGLER = ['npx', '--yes', 'wrangler@' + os.environ.get('WRANGLER_VERSION', '4.151.3')]
-BUILTIN = {'kaede': True, 'yuki': True, 'aoi': False, 'ren': False, 'hina': False, 'sora': False}  # who: boss
+BUILTIN = {'kaede': True, 'yuki': True, 'ren': False, 'hina': False}  # who: boss
 FILES = {'full': '{}-full.webp', 'bust': '{}-bust.webp', 'sd': '{}-sd.png', 'sdb': '{}-sd-bust.png'}
 
 
@@ -79,7 +78,7 @@ ap.add_argument('who', nargs='?')
 ap.add_argument('--name'); ap.add_argument('--look', default='')
 ap.add_argument('--boss', action='store_true')
 ap.add_argument('--dir', default='.')
-ap.add_argument('--remove', action='store_true'); ap.add_argument('--restore', action='store_true')
+ap.add_argument('--remove', action='store_true')
 ap.add_argument('--list', action='store_true')
 ap.add_argument('--dry-run', action='store_true')
 o = ap.parse_args()
@@ -95,13 +94,6 @@ if not o.who or not re.fullmatch(r'[a-z0-9-]+', o.who):
     ap.error('<who> 는 영문 소문자·숫자·- 로 된 이름이어야 합니다')
 m = manifest()
 hidden = m.setdefault('hidden', [])
-if o.restore:
-    if o.who not in hidden:
-        sys.exit(f'{o.who}: 삭제한 기본 캐릭터가 아닙니다')
-    hidden.remove(o.who)
-    put_manifest(m)
-    print(f'{o.who} 를 되살렸습니다')
-    sys.exit()
 if o.remove:
     builtin = o.who in BUILTIN and o.who not in hidden
     c = m['chars'].pop(o.who, None)
@@ -118,7 +110,7 @@ if o.remove:
     if c is not None:
         for f in FILES.values():
             r2('delete', f'{BUCKET}/chars/' + f.format(o.who))
-    print(f'{o.who} 를 내렸습니다')
+    print(f'{o.who} 를 영구 삭제했습니다')
     sys.exit()
 
 paths = {k: os.path.join(o.dir, f.format(o.who)) for k, f in FILES.items()}
@@ -129,7 +121,7 @@ art = {k: measure(p, k in ('sd', 'sdb')) for k, p in paths.items()}
 if len({len(a['top']) for a in art.values()}) > 1:
     sys.exit('네 스트립의 프레임 수가 다릅니다: ' + ', '.join(f"{k} {len(a['top'])}" for k, a in art.items()))
 if o.who in hidden:
-    hidden.remove(o.who)
+    sys.exit(f'{o.who}: 영구 삭제한 기본 캐릭터입니다 — 다른 이름으로 올리세요')
 m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'v': int(time.time()), 'art': art}
 if o.dry_run:
     print(json.dumps(m, ensure_ascii=False, indent=1))

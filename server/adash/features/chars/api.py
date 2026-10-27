@@ -6,7 +6,7 @@ import subprocess
 from urllib.parse import parse_qs
 
 from adash.core.util import short
-from adash.features.chars.jobs import check_create, create, list_jobs, remove, restore, sheet_file, unpublish
+from adash.features.chars.jobs import check_create, create, list_jobs, remove, sheet_file, unpublish
 
 BODY_MAX = 15 << 20  # a 10MB picture as base64 in JSON
 
@@ -31,8 +31,7 @@ def get_file(h, url):
 
 def post_char(h, url):
     """create: {who, name, look, boss, notes, agent, model, image (base64)} -> 202 {job}. remove: {id} -> {ok} (a job's
-    folder). unpublish: {who} -> {ok} once the character is gone from R2 (takes ~10-30 s: wrangler). restore: {who} -> {ok} once a
-    built-in character taken down is back."""
+    folder). unpublish: {who} -> {ok} once the character is deleted for good (takes ~10-30 s: wrangler)."""
     action = url.path.rsplit("/", 1)[1]
     try:
         n = int(h.headers.get("Content-Length") or 0)
@@ -43,9 +42,9 @@ def post_char(h, url):
             raise ValueError
         if action == "remove":
             return h.send_json({"ok": remove(body.get("id") or "")})
-        if action in ("unpublish", "restore"):
+        if action == "unpublish":
             try:
-                (unpublish if action == "unpublish" else restore)(body.get("who"))
+                unpublish(body.get("who"))
             except subprocess.TimeoutExpired:
                 return h.send_json({"error": "wrangler 가 제때 끝나지 않았습니다 — 잠시 뒤 다시 확인하세요"}, 504)
             except RuntimeError as e:

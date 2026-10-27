@@ -3064,7 +3064,7 @@ function agViewBind() {
 }
 // ---------- 캐릭터 모드: the agents tab as an office ----------
 // Same sessions and filters as the tree. A worktree is one room (coordinators first, then by state), and rooms one
-// family spans are linked person to person by a line in the family's colour (officeRooms, chLinks). A room is one scene (wall with decorations, floor); each agent is one of six original
+// family spans are linked person to person by a line in the family's colour (officeRooms, chLinks). A room is one scene (wall with decorations, floor); each agent is one of the original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
 // (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터 설정」 panel (charPanel): 「AI 생성」
 // shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
@@ -3084,21 +3084,19 @@ const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.char
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
 // The coordinators (kaede, yuki) wear a headset; a session's hash picks the person, so they keep theirs across refreshes.
 const CH_ART = {
-  aoi: {full:{w:157,h:320,top:[0.016,0.025,0.019,0.016,0.031,0.016,0.038,0.019]},bust:{w:189,h:240,top:[0.096,0.096,0.096,0.096,0.092,0.096,0.096,0.096]},sd:{pw:60,ph:83,top:[0.024,0.024,0.024,0.024,0.036,0.012,0.036,0.012]},sdb:{pw:81,ph:83,top:[0.036,0.036,0.036,0.036,0.06,0.024,0.048,0.024]}},
-  ren: {full:{w:151,h:320,top:[0.022,0.028,0.022,0.025,0.031,0.028,0.031,0.031]},bust:{w:189,h:240,top:[0.058,0.058,0.058,0.058,0.054,0.058,0.058,0.058]},sd:{pw:58,ph:81,top:[0.037,0.037,0.037,0.025,0.037,0.037,0.037,0.037]},sdb:{pw:77,ph:81,top:[0.049,0.049,0.049,0.037,0.049,0.049,0.049,0.037]}},
-  hina: {full:{w:138,h:320,top:[0.025,0.016,0.022,0.019,0.009,0.031,0.05,0.019]},bust:{w:182,h:240,top:[0.021,0.021,0.021,0.021,0.021,0.017,0.021,0.021]},sd:{pw:58,ph:81,top:[0.012,0.012,0.012,0.012,0.037,0.037,0.025,0.025]},sdb:{pw:77,ph:81,top:[0.025,0.025,0.025,0.025,0.049,0.049,0.049,0.049]}},
-  sora: {full:{w:147,h:320,top:[0.025,0.028,0.028,0.025,0.053,0.038,0.066,0.031]},bust:{w:174,h:240,top:[0.125,0.125,0.121,0.121,0.129,0.121,0.121,0.125]},sd:{pw:57,ph:82,top:[0.049,0.037,0.024,0.037,0.061,0.061,0.073,0.049]},sdb:{pw:77,ph:81,top:[0.037,0.049,0.037,0.037,0.074,0.086,0.086,0.062]}},
-  kaede: {full:{w:175,h:320,top:[0.025,0.025,0.019,0.034,0.022,0.019,0.031,0.038]},bust:{w:180,h:240,top:[0.108,0.108,0.112,0.108,0.108,0.108,0.112,0.108]},sd:{pw:61,ph:82,top:[0.024,0.012,0.024,0.012,0.024,0.012,0.024,0.012]},sdb:{pw:81,ph:82,top:[0.024,0.024,0.024,0.024,0.037,0.024,0.037,0.024]}},
-  yuki: {full:{w:157,h:320,top:[0.028,0.031,0.031,0.034,0.031,0.031,0.034,0.028]},bust:{w:184,h:240,top:[0.067,0.067,0.067,0.067,0.067,0.067,0.067,0.088]},sd:{pw:60,ph:84,top:[0.048,0.012,0.012,0.036,0.048,0.024,0.012,0.024]},sdb:{pw:80,ph:85,top:[0.059,0.024,0.012,0.035,0.071,0.024,0.024,0.035]}},
+  ren: {full:{w:168,h:320,top:[0.031,0.037,0.031,0.034,0.047,0.028,0.05,0.031,0.05,0.041,0.037,0.034,0.034,0.044,0.037,0,0.031,0.037,0.031,0.034,0.047,0.028,0.031,0.028,0.031,0.037,0.037,0.034,0.041,0.028,0.025,0.028]},bust:{w:181,h:240,top:[0.054,0.067,0.071,0.062,0.071,0.075,0.133,0.058,0.037,0.071,0.067,0.062,0.1,0.117,0.096,0.037,0.05,0.058,0.062,0.062,0.067,0.079,0.062,0.058,0.071,0.058,0.067,0.062,0.067,0.037,0.075,0.071]},sd:{pw:62,ph:83,top:[0.048,0.048,0.048,0.048,0.072,0.048,0.048,0.048,0,0.036,0.036,0.036,0.024,0.012,0.024,0,0.036,0.036,0.036,0.036,0.024,0.024,0.024,0.036,0.048,0.048,0.06,0.048,0.036,0.024,0.024,0.024]},sdb:{pw:82,ph:83,top:[0.072,0.072,0.06,0.06,0.096,0.072,0.06,0.072,0,0.048,0.048,0.048,0.036,0.024,0.036,0.012,0.036,0.024,0.024,0.024,0.036,0.036,0.024,0.024,0.048,0.048,0.048,0.048,0.036,0.06,0.024,0.048]}},
+  hina: {full:{w:172,h:320,top:[0.022,0.022,0.025,0.025,0.025,0.022,0.025,0.022,0.006,0.019,0.019,0.019,0.009,0.022,0.016,0,0.022,0.019,0.019,0.019,0.013,0.016,0.016,0.016,0.028,0.013,0.016,0.022,0.013,0.019,0.013,0.013]},bust:{w:185,h:240,top:[0.042,0.037,0.037,0.037,0.042,0.037,0.042,0.037,0.008,0.008,0.008,0.008,0.029,0.029,0.029,0.008,0.042,0.033,0.037,0.033,0.025,0.025,0.025,0.029,0.042,0.033,0.033,0.037,0.008,0.008,0.008,0.008]},sd:{pw:61,ph:82,top:[0.024,0.024,0.012,0.012,0.024,0.012,0.024,0.012,0.012,0.024,0.024,0.012,0.037,0.024,0.037,0.012,0,0,0,0,0.024,0.024,0.024,0.024,0.012,0,0,0,0.012,0,0.012,0.012]},sdb:{pw:81,ph:82,top:[0.037,0.024,0.024,0.024,0.037,0.024,0.037,0.024,0.012,0.037,0.037,0.024,0.049,0.037,0.049,0.012,0.012,0.012,0.012,0,0.024,0.024,0.024,0.024,0.012,0,0,0.012,0.024,0.012,0.012,0.024]}},
+  kaede: {full:{w:161,h:320,top:[0.019,0.022,0.019,0.019,0.025,0.022,0.05,0.019,0,0.028,0.022,0.022,0.013,0.025,0.019,0.025,0.016,0.019,0.016,0.016,0.009,0.013,0.013,0.006,0.016,0.019,0.031,0.019,0.016,0.022,0.016,0.016]},bust:{w:183,h:240,top:[0.033,0.037,0.033,0.037,0.05,0.046,0.121,0.05,0.008,0.054,0.05,0.054,0.058,0.075,0.054,0.008,0.033,0.033,0.033,0.033,0.046,0.037,0.05,0.042,0.025,0.029,0.033,0.025,0.029,0.033,0.029,0.029]},sd:{pw:60,ph:83,top:[0.036,0.036,0.036,0.036,0.048,0.048,0.048,0.048,0.012,0.036,0.036,0.036,0.048,0.048,0.048,0.012,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.048,0.036,0.036,0.048]},sdb:{pw:81,ph:84,top:[0.048,0.048,0.048,0.048,0.071,0.06,0.06,0.06,0.012,0.06,0.06,0.06,0.06,0.06,0.06,0.024,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.06,0.048,0.048,0.06]}},
+  yuki: {full:{w:193,h:320,top:[0.025,0.028,0.025,0.031,0.028,0.025,0.053,0.025,0.019,0.047,0.05,0.047,0.041,0.047,0.037,0,0.022,0.028,0.022,0.025,0.025,0.019,0.037,0.022,0.025,0.028,0.022,0.028,0.009,0.009,0.013,0.013]},bust:{w:182,h:240,top:[0.054,0.05,0.054,0.058,0.054,0.05,0.071,0.054,0.021,0.05,0.054,0.025,0.025,0.087,0.062,0.025,0.054,0.046,0.054,0.021,0.054,0.05,0.054,0.054,0.054,0.058,0.083,0.092,0.067,0.037,0.058,0.075]},sd:{pw:61,ph:82,top:[0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0,0.024,0.024,0.024,0.024,0.024,0.012,0,0.024,0.037,0.037,0.024,0.037,0.037,0.037,0.037,0,0,0,0,0.024,0.024,0.024,0.024]},sdb:{pw:81,ph:82,top:[0.037,0.037,0.037,0.037,0.037,0.024,0.037,0.024,0,0.037,0.037,0.037,0.024,0.024,0.024,0,0.037,0.049,0.049,0.037,0.049,0.049,0.049,0.049,0,0,0,0,0.037,0.037,0.037,0.024]}},
 };
-const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['aoi', 'ren', 'hina', 'sora'];
+const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['ren', 'hina'];
 // More people without a deploy: chars/chars.json (the R2 bucket behind functions/chars, written by
 // scripts/char-publish.py) is { chars: { <who>: { name, look, boss, v, art: { full, bust, sd, sdb } } } }, the strips
 // beside it. Read on load and again with every build check (each minute, and when the page comes back), so a person
 // put up — from the 「캐릭터」 tab's 「새 캐릭터」 or by hand — shows without a reload; v goes on their picture URLs, so a
-// redrawn one shows too. Each read starts again from the built-in six, so a person taken down leaves. Added people
-// join the lists after the six, so a session already drawn may change hands once. hidden: [<who>] lists built-in people
-// taken down from the tab (char-publish.py --remove); they leave the lists, but never the last one of a list.
+// redrawn one shows too. Each read starts again from the built-in people, so a person taken down leaves. Added people
+// join the lists after the built-in ones, so a session already drawn may change hands once. hidden: [<who>] lists built-in people
+// deleted for good from the tab (char-publish.py --remove); they leave the lists, but never the last one of a list.
 let chSeen = '', chBase = null;
 const chVer = {}, chR2 = new Set(), chHidden = new Set();  // chR2: everyone chars.json lists; chHidden: built-ins taken down
 async function chLoad() {
@@ -3764,7 +3762,7 @@ const STAFF_PROP = {
 };
 const hubSt = r => r.tone === 'bad' ? 'stalled' : r.tone === 'hot' ? 'run' : 'wait';
 function staffHtml(h, r = hubVal(h)) {
-  // the staff take the six people in turn, so the rooms next to each other have different faces
+  // the staff take the people in turn, so the rooms next to each other have different faces
   const who = [...CH_CREW, ...CH_BOSS][HUB.indexOf(h) % 6], st = hubSt(r), me = { id: 'staff-' + h.id, path: 'staff-' + h.id, role: 'staff', char: { who } }, say = [r.v, r.sub, r.from && '← ' + r.from].filter(Boolean).join(' · ');
   return `<button type="button" class="ch staff st-${st}${h.id === 'decide' && r.tone ? ' dec' : ''}" data-staff="${h.id}" data-id="staff-${h.id}" style="--c:var(--accent)"
       title="${esc(`${h.staff} · ${h.name}\n${say}\n누르면 ${h.name} 화면으로`)}" aria-label="${esc(`${h.staff}: ${h.name}. ${say}`)}">
@@ -3963,8 +3961,7 @@ function renderOffice() {
 // 「AI 생성」 in the office) → Live2D (the base deformed live by L2D). A person can be left out of the office (chPool, this device only);
 // the counts are the sessions on show (liveSess) drawn as that person now. Live updates leave the page alone (chxMounted).
 const CH_INFO = {
-  aoi: ['아오이', '청록 단발 · 크림색 후드'], ren: ['렌', '검은 머리 · 둥근 안경 · 남색 카디건'],
-  hina: ['히나', '분홍빛 포니테일 · 니트 조끼'], sora: ['소라', '주황 머리 · 올리브 항공 점퍼'],
+  ren: ['렌', '검은 머리 · 둥근 안경 · 남색 카디건'], hina: ['히나', '분홍빛 포니테일 · 니트 조끼'],
   kaede: ['카에데', '검은 긴 머리 · 헤드셋 · 차콜 재킷'], yuki: ['유키', '은발 · 헤드셋 · 하늘색 셔츠'],
 };
 const CH_POSE_L = [  // per set (A–D), as char-gen.sh's CELLS draws them
@@ -3984,7 +3981,7 @@ function chxStages(who) {
   const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
   return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
-    + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(aoi 외는 aoi 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
+    + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(hina 외는 hina 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
     + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
     + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
     + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[chx.pose]}" data-pose="${chx.pose}" data-set="${si}" data-fr="${fr}" aria-hidden="true"></canvas>`);
@@ -4001,9 +3998,9 @@ function chxCard(who, boss, n) {
     <div class="cx-poses" role="group" aria-label="포즈">${thumbs}</div>
     <div class="cx-files"><code>chars/${who}-${chx.fr}.webp</code><code>chars/${who}-sd${chx.fr === 'bust' ? '-bust' : ''}.png</code>
       ${chR2.has(who) ? `<span class="badge" title="배포 없이 R2 에 올린 캐릭터 (scripts/char-publish.py)">R2</span>
-      <button type="button" class="act danger" data-cx-del="${who}" title="R2 에서 내려 모든 기기의 사무실에서 뺌">삭제</button>` : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
+      <button type="button" class="act danger" data-cx-del="${who}" title="R2 와 작업 폴더에서 지워 모든 기기의 사무실에서 영구히 뺌 (되돌릴 수 없음)">삭제</button>` : `<button type="button" class="act" data-copy="scripts/char-gen.sh ${who} ${chx.fr}" title="이 그림을 다시 만드는 명령을 복사 (전신을 먼저 만들어야 상반신이 그 모습을 따름)">재생성 명령 복사</button>
       <button type="button" class="act" data-copy="scripts/char-gen.sh ${who} sd" title="SD 픽셀 시트를 다시 만드는 명령을 복사 (전신 베이스를 참조함)">SD 재생성 명령 복사</button>
-      ${(boss ? CH_BOSS : CH_CREW).length > 1 ? `<button type="button" class="act danger" data-cx-del="${who}" title="기본 캐릭터를 모든 기기의 사무실에서 뺌 (아래에서 되살릴 수 있음)">삭제</button>` : ''}`}</div>
+      ${(boss ? CH_BOSS : CH_CREW).length > 1 ? `<button type="button" class="act danger" data-cx-del="${who}" title="기본 캐릭터를 모든 기기의 사무실에서 영구히 뺌 (되돌릴 수 없음)">삭제</button>` : ''}`}</div>
   </section>`;
 }
 // 「새 캐릭터」: one picture (and a name) from this device goes to a metric server, which hands it with a brief to an Orca
@@ -4155,8 +4152,7 @@ async function cnPoll() {
 async function chDelete(who, b) {
   const name = CH_INFO[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id, r2 = chR2.has(who) && !(who in chBase?.art);
   if (!srv) return toast('연결된 메트릭 서버가 없습니다');
-  if (!await uiConfirm(r2 ? `「${name}」(${who}) 캐릭터를 삭제할까요?\n\nR2 에서 그림과 목록 항목을 지워 모든 기기의 사무실에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다. 작업 폴더의 원본·시트는 남습니다.`
-    : `기본 캐릭터 「${name}」(${who}) 을(를) 삭제할까요?\n\n모든 기기의 사무실과 캐릭터 목록에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다. 그림은 배포본에 남아 이 탭 아래 「삭제한 기본 캐릭터」에서 되살릴 수 있습니다.`, { ok: '삭제', danger: true })) return;
+  if (!await uiConfirm(`「${name}」(${who}) 캐릭터를 영구 삭제할까요? 되돌릴 수 없습니다.\n\n${r2 ? 'R2 의 그림과 목록 항목, 메트릭 서버의 작업 폴더(원본·시트)까지 지웁니다.' : '기본 캐릭터라 다시 올릴 수 없게 목록에서 지웁니다.'} 모든 기기의 사무실에서 빠지고, 맡던 세션은 다른 캐릭터가 이어받습니다.`, { ok: '영구 삭제', danger: true })) return;
   b.disabled = true; b.textContent = '삭제 중…';
   const r = await api.charUnpublish(srv, who);
   if (r.status !== 200) { b.disabled = false; b.textContent = '삭제'; return toast(r.body?.error || `삭제하지 못했습니다 (${r.status})`); }
@@ -4165,17 +4161,7 @@ async function chDelete(who, b) {
   chSeen = '';
   await chLoad();
   cnPoll();
-  toast(`「${cut(name, 20)}」 캐릭터를 삭제했습니다`);
-}
-async function chRestore(who, b) {
-  const name = chBase?.info[who]?.[0] || who, srv = srvOn().find(x => x.live)?.id;
-  if (!srv) return toast('연결된 메트릭 서버가 없습니다');
-  b.disabled = true; b.textContent = '되살리는 중…';
-  const r = await api.charRestore(srv, who);
-  if (r.status !== 200) { b.disabled = false; b.textContent = '되살리기'; return toast(r.body?.error || `되살리지 못했습니다 (${r.status})`); }
-  chSeen = '';
-  await chLoad();
-  toast(`「${cut(name, 20)}」 캐릭터를 되살렸습니다`);
+  toast(`「${cut(name, 20)}」 캐릭터를 영구 삭제했습니다`);
 }
 function renderChars() {
   if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
@@ -4190,9 +4176,6 @@ function renderChars() {
     </div>
     ${cnHtml()}
     ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
-    ${chHidden.size ? `<div class="sec-h"><h2>삭제한 기본 캐릭터</h2><span>${chHidden.size}명</span></div>
-    <div class="cx-gone">${[...chHidden].map(w => `<span class="cx-gone-1 surface"><b>${esc(chBase.info[w][0])}</b><code>${w}</code>
-      <button type="button" class="act" data-cx-back="${w}" title="모든 기기의 사무실과 목록에 다시 넣음">되살리기</button></span>`).join('')}</div>` : ''}
     <div class="st" style="margin-top:10px">한 목록에서 모두 끄면 그 목록 전원이 배치됩니다. 기본 캐릭터 그림은 <code>scripts/char-gen.sh</code> 로 만듭니다. 새 캐릭터는 위 「새 캐릭터」나 <code>scripts/char-publish.py</code> 로 올리면 배포 없이 더해집니다.</div>`;
   $('#cx-fr').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
@@ -4210,7 +4193,6 @@ function renderChars() {
     chxMounted = false; renderChars();
   });
   $('#view').querySelectorAll('[data-cx-del]').forEach(b => b.onclick = () => chDelete(b.dataset.cxDel, b));
-  $('#view').querySelectorAll('[data-cx-back]').forEach(b => b.onclick = () => chRestore(b.dataset.cxBack, b));
   $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy)
     .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
   cnBind();
