@@ -3204,12 +3204,13 @@ const chV = (who, f) => chVer[who] ? '?v=' + chVer[who] : CH_FILEV[f] ? '?v=' + 
 const chSrc = (who, fr) => { const f = `${who}-${fr}.webp`; return `chars/${f}${chV(who, f)}`; };
 const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => { const f = `${who}-sd${fr === 'bust' ? '-bust' : ''}.png`; return `chars/${f}${chV(who, f)}`; };
 const CH_H = { bust: 132, full: 196 };
-// A person drawn with four sets shows one at random per pose, picked again every CH_ACT_T seconds (offset per person,
-// so a room does not change at once). The same id, pose and time give the same pick on every render and device.
-const CH_ACT_T = 10, chSets = who => CH_ART[who].full.top.length / 8;
+// Only a running person changes action: of four sets one shows at random, picked again every CH_ACT_T seconds (offset
+// per person, so a room does not change at once). Every other state keeps set A, so a still state always looks the same.
+// The same id, pose and time give the same pick on every render and device.
+const CH_ACT_T = 4, chSets = who => CH_ART[who].full.top.length / 8;
 const chMix = n => { n = Math.imul(n ^ n >>> 16, 0x45d9f3b); n = Math.imul(n ^ n >>> 16, 0x45d9f3b); return (n ^ n >>> 16) >>> 0; };
 function chAct(id, mv, sets, t) {  // → [set now, set of the slot before, seconds into this slot]
-  if (sets < 2) return [0, 0, CH_ACT_T];
+  if (sets < 2 || mv !== 'run') return [0, 0, CH_ACT_T];
   const h = chHash(id), u = t + h % 1000 / 1000 * CH_ACT_T, k = Math.floor(u / CH_ACT_T), pick = k => chMix(h + chHash(mv) + k * 7919) % sets;
   return [pick(k), pick(k - 1), u - k * CH_ACT_T];
 }
@@ -3239,11 +3240,12 @@ setInterval(() => {
 // before over CH_FADE seconds. Without WebGL the frame is drawn flat with the same bob.
 const CH_FADE = .5;
 const L2D_MOVE = {  // t in seconds → tilt (rad), breath, sway, bob (shares of the frame), blink allowed
-  wait: t => [.03 * Math.sin(t * .9), .006 * Math.sin(t * 2.1), .004 * Math.sin(t * .7), 0, true],
-  run: t => [.04 + .025 * Math.sin(t * 4.2), .007 * Math.sin(t * 3.4), .002 * Math.sin(t * 1.3), .004 * Math.abs(Math.sin(t * 4.2)), false],
-  bg: t => [.04 * Math.sin(t * .8), .007 * Math.sin(t * 1.8), .006 * Math.sin(t * .8), 0, false],
+  // still (wait, bg, idle): slow breath and blinks; lively (run, dec, stalled) and the one-off done move more
+  wait: t => [.012 * Math.sin(t * .5), .004 * Math.sin(t * 1.4), .002 * Math.sin(t * .4), 0, true],
+  run: t => [.05 + .03 * Math.sin(t * 6), .008 * Math.sin(t * 4.5), .003 * Math.sin(t * 1.7), .006 * Math.abs(Math.sin(t * 6)), false],
+  bg: t => [.015 * Math.sin(t * .4), .005 * Math.sin(t * 1.1), .003 * Math.sin(t * .4), 0, true],
   stalled: t => [.012 * Math.sin(t * 23), .004 * Math.sin(t * 5), .003 * Math.sin(t * 31), 0, false],
-  idle: t => [.06 + .03 * Math.sin(t * .6), .011 * Math.sin(t * 1.2), .003 * Math.sin(t * .6), .004 * (1 + Math.sin(t * 1.2)), false],
+  idle: t => [.06 + .01 * Math.sin(t * .3), .006 * Math.sin(t * .8), .001 * Math.sin(t * .3), 0, false],
   done: t => [.05 * Math.sin(t * 1.6), .006 * Math.sin(t * 3), .006 * Math.sin(t * 1.6), .022 * Math.abs(Math.sin(t * 3.2)), false],
   dec: t => [.06 * Math.sin(t * 2), .006 * Math.sin(t * 2.6), .01 * Math.sin(t * 2.4), .006 * Math.abs(Math.sin(t * 2)), false],
 };
@@ -4049,7 +4051,7 @@ function chxDetail(who, n) {
       <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
     <div class="cx-sub"><b>${esc(`세트 ${CX_SET[f >> 3]} · ${CH_POSE_L[f >> 3][f % 8]}`)}</b>${seg('cx-fr', [['bust', '상반신'], ['full', '전신']], chx.fr)}</div>
     <div class="cx-flow">${chxStages(who)}</div>
-    <h3 class="cx-hd">포즈 ${sets * 8}개 <small>세트마다 같은 8포즈를 다른 동작으로 — 사무실은 ${CH_ACT_T}초마다 세트를 무작위로 바꿉니다${sets < 4 ? ' · 이 캐릭터는 세트 A 뿐 (다시 그리면 생김)' : ''}</small></h3>
+    <h3 class="cx-hd">포즈 ${sets * 8}개 <small>세트마다 같은 8포즈를 다른 동작으로 — 사무실은 실행 중일 때만 ${CH_ACT_T}초마다 세트를 무작위로 바꾸고, 다른 상태는 세트 A${sets < 4 ? ' · 이 캐릭터는 세트 A 뿐 (다시 그리면 생김)' : ''}</small></h3>
     <div class="cx-grid">${rows}</div>
     <h3 class="cx-hd">사무실에서 <small>${charStyle === 'l2d' ? 'Live2D' : 'AI 생성'} · ${charFrame === 'bust' ? '상반신' : '전신'} (캐릭터 설정에서 바꿈)</small></h3>
     <div class="cx-pvs">${pv}</div>
