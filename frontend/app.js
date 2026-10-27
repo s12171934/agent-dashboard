@@ -4948,9 +4948,11 @@ const cutW = (t, units) => { t = String(t ?? ''); let w = 0, i = 0; for (; i < t
 const RANK = { stalled: 0, wait: 1, run: 2, bg: 2, planned: 3, blocked: 3, done: 4, idle: 5 };
 const famRank = f => Math.min(...f.members.map(m => m.decision ? -1 : RANK[status(m)] ?? 5), workerPlan(f.handle, f.extra)?.waiting ? 3 : 9);
 
-// ---------- 상호작용 (messages between sessions, from Orca's orchestration inbox) ----------
-const TALK_TYPES = { question: ['질문', 'var(--warn)'], escalation: ['에스컬레이션', 'var(--bad)'], worker_done: ['완료 보고', 'var(--done)'], status: ['상태·답', 'var(--accent)'], heartbeat: ['heartbeat', 'var(--idle)'] };
-const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'chat', hours: 24, pair: null, sel: null, room: '', inRoom: false, pos: {}, open: new Set(), data: null, key: null, at: 0, busy: false, err: null };
+// ---------- 상호작용 (messages between sessions, from Orca's orchestration inbox and the QA driver's terminal-send log) ----------
+const TALK_TYPES = { question: ['질문', 'var(--warn)'], escalation: ['에스컬레이션', 'var(--bad)'], worker_done: ['완료 보고', 'var(--done)'], status: ['상태·답', 'var(--accent)'], dispatch: ['지시', 'var(--c7)'], heartbeat: ['heartbeat', 'var(--idle)'] };
+// A message typed into the receiver's terminal (`qa-driver tell`) rather than mailed through the inbox.
+const viaBadge = m => m.via === 'terminal' ? `<span class="talk-via" title="orca terminal send 로 입력창에 넣은 메시지 (qa-driver tell 기록)">터미널</span>` : '';
+const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status', 'dispatch']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'chat', hours: 24, pair: null, sel: null, room: '', inRoom: false, pos: {}, open: new Set(), data: null, key: null, at: 0, busy: false, err: null };
 let talkMounted = false;
 
 // One end of a message -> {name, path, note}. A session that owns the terminal wins; otherwise the Orca terminal
@@ -5126,12 +5128,12 @@ function drawTalkChat(msgs) {
     const first = sep || prev?.f.key !== m.f.key; day = d; prev = m;
     const q = m.thread_id && m.thread_id !== m.id && byId[m.thread_id];
     const text = m.question || m.body || '';
-    const extra = [m.outcome && `결과 ${m.outcome}`, m.phase && `단계 ${m.phase}`, m.priority && m.priority !== 'normal' && `우선순위 ${m.priority}`, !m.read && '안 읽음'].filter(Boolean).join(' · ');
+    const extra = [m.key, m.outcome && `결과 ${m.outcome}`, m.phase && `단계 ${m.phase}`, m.priority && m.priority !== 'normal' && `우선순위 ${m.priority}`, !m.read && '안 읽음', m.failed && '전달 실패'].filter(Boolean).join(' · ');
     return `${sep}<div class="chat-b tc-b ${me ? 'me' : 'them'}${first ? '' : ' cont'}" style="--c:${color}">${me ? '' : first ? face(m.f, 34) : '<span class="chat-face"></span>'}
       <div class="tc-col">${first ? `<span class="tc-who">${esc(chName(chWho(m.f.ch)))} <small>${nm(m.f)}</small></span>` : ''}
         <div class="tc-row"><div class="chat-t tc-t${isOpen ? ' open' : ''}" data-mid="${esc(m.id)}" title="누르면 ${isOpen ? '접기' : '전체 보기'}">
           ${q ? `<div class="tc-q">↪ ${esc(cut(q.subject || q.question || q.body || '', 80))}</div>` : ''}
-          <span class="talk-ty">${esc(label)}</span> <b>${esc(m.subject || '(제목 없음)')}</b>
+          <span class="talk-ty">${esc(label)}</span>${viaBadge(m)} <b>${esc(m.subject || '(제목 없음)')}</b>
           ${text ? `<div class="tc-body">${chatText(isOpen ? text : cut(text.replace(/\s+/g, ' '), 280))}${isOpen && m.cut ? '<span class="st"> … (잘림)</span>' : ''}</div>` : ''}
           ${extra ? `<div class="tc-x">${esc(extra)}</div>` : ''}
           ${isOpen && m.files.length ? `<div class="tc-x">수정한 파일 ${m.files.length}: ${m.files.map(f => esc(f.split('/').pop())).join(', ')}</div>` : ''}</div>
@@ -5222,10 +5224,10 @@ function drawTalk() {
   const end = e => e.path ? `<a href="#s=${encodeURIComponent(e.path)}">${esc(cutW(e.name, 44))}</a>${e.model ? ' ' + modelChip(e.model) : ''}` : `<span title="${esc(e.note || '')}">${esc(cutW(e.name, 44))}</span>`;
   const one = (m, reply) => {
     const [label, color] = TALK_TYPES[m.type] || [m.type, 'var(--muted)'], isOpen = talk.open.has(m.id);
-    const extra = [m.outcome && `결과 ${m.outcome}`, m.phase && `단계 ${m.phase}`, m.priority && m.priority !== 'normal' && `우선순위 ${m.priority}`, !m.read && '안 읽음'].filter(Boolean).join(' · ');
+    const extra = [m.key, m.outcome && `결과 ${m.outcome}`, m.phase && `단계 ${m.phase}`, m.priority && m.priority !== 'normal' && `우선순위 ${m.priority}`, !m.read && '안 읽음', m.failed && '전달 실패'].filter(Boolean).join(' · ');
     const text = m.question || m.body || '';
     return `<div class="talk-m ${reply ? 'reply' : ''} ${isOpen ? 'open' : ''}" data-mid="${esc(m.id)}" style="--c:${color}">
-      <div class="talk-h"><span class="talk-ty">${esc(label)}</span><span class="talk-ends">${end(m.f)} <span class="talk-arrow">→</span> ${end(m.t)}</span>
+      <div class="talk-h"><span class="talk-ty">${esc(label)}</span>${viaBadge(m)}<span class="talk-ends">${end(m.f)} <span class="talk-arrow">→</span> ${end(m.t)}</span>
         <span class="st talk-when" title="${esc(m.created_at)}">${hm(m.created_at)} · ${ago(m.created_at)}</span></div>
       <div class="talk-s">${esc(m.subject || '(제목 없음)')}${extra ? ` <span class="st">· ${esc(extra)}</span>` : ''}</div>
       ${text ? `<div class="talk-b">${esc(isOpen ? text : cut(text.replace(/\s+/g, ' '), 220))}${isOpen && m.cut ? '<span class="st"> … (잘림)</span>' : ''}</div>` : ''}
