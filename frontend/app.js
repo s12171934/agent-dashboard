@@ -3189,74 +3189,22 @@ function chFig(st, s, small) {  // small: the session detail's header (1.5× pix
   // AI 생성: the SD pixel sprite at a whole 2× (in the detail 1.5×, a whole 3 device pixels on a 2× screen), so every
   // sprite pixel is a crisp block
   const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * x, ph = sd.ph * x;
-  return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" data-who="${who}" data-mv="${mv}" data-act="${chActNow(s.id || s.path, mv)}" aria-hidden="true"></span>`;
+  return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
 }
-// AI 생성 moves in CSS by data-act: each second a sprite whose slot has passed takes the new pick (one held by data-fix
-// stays), so its animation starts again in the clock's phase like the rest.
-setInterval(() => {
-  if (document.hidden) return;
-  document.querySelectorAll('.fig-ai[data-mv]:not([data-fix])').forEach(n => {
-    const a = String(chActNow(n.closest('.ch')?.dataset.id || n.dataset.who, n.dataset.mv));
-    if (n.dataset.act !== a) n.dataset.act = a;
-  });
-}, 1000);
 
 // Live2D: one shared WebGL canvas (a page may hold only ~16 contexts) renders each visible person's frame as a mesh the
 // vertex shader bends — the head turns about the neck, the upper body rises with each breath, hair beside the face
 // swings behind the head on a damped spring, the whole figure sways — and each person's own 2D canvas copies it. While
 // standing still the face blinks by crossfading to frame 7. Without WebGL the frame is drawn flat with the same bob.
-// Each pose has three actions (CH_ACT_L names them); chAct picks one at random every CH_ACT_T seconds.
 const L2D_MOVE = {  // t in seconds → tilt (rad), breath, sway, bob (shares of the frame), blink allowed
-  wait: [
-    t => [.03 * Math.sin(t * .9), .006 * Math.sin(t * 2.1), .004 * Math.sin(t * .7), 0, true],
-    t => [.07 * Math.sin(t * .45) ** 3, .006 * Math.sin(t * 2.1), .003 * Math.sin(t * .45), 0, true],  // looks one way, then the other
-    t => [.015 * Math.sin(t * 2.4), .005 * Math.sin(t * 2.4), .002 * Math.sin(t * 1.2), .008 * Math.abs(Math.sin(t * 2.4)), true],  // rocks on its heels
-  ],
-  run: [
-    t => [.04 + .025 * Math.sin(t * 4.2), .007 * Math.sin(t * 3.4), .002 * Math.sin(t * 1.3), .004 * Math.abs(Math.sin(t * 4.2)), false],
-    t => [.075 + .008 * Math.sin(t * 7), .004 * Math.sin(t * 5), 0, .003 * Math.abs(Math.sin(t * 7)), false],  // leans in, quick small nods
-    t => [.03 * Math.sin(t * 2.6), .006 * Math.sin(t * 5.2), .005 * Math.sin(t * 2.6), .006 * Math.abs(Math.sin(t * 5.2)), false],  // bobs to a beat
-  ],
-  bg: [
-    t => [.04 * Math.sin(t * .8), .007 * Math.sin(t * 1.8), .006 * Math.sin(t * .8), 0, false],
-    t => { const s = Math.max(0, Math.sin(t * 2.1)) ** 4 * (t % 6 < 1.5); return [-.06 * s, .006 * Math.sin(t * 1.8), 0, .006 * s, true]; },  // a sip now and then
-    t => [.05 * Math.sin(t * .6), .008 * Math.sin(t * 1.2), .012 * Math.sin(t * .6), 0, true],  // sways at ease
-  ],
-  stalled: [
-    t => [.012 * Math.sin(t * 23), .004 * Math.sin(t * 5), .003 * Math.sin(t * 31), 0, false],
-    t => [.06 * Math.sin(t * 9) * Math.max(0, Math.sin(t * .9)), .004 * Math.sin(t * 5), 0, 0, false],  // shakes its head in bursts
-    t => [.08 + .01 * Math.sin(t * .9), .015 * Math.sin(t * .9), 0, .006 * (1 + Math.sin(t * .9)), false],  // slumps with a heavy sigh
-  ],
-  idle: [
-    t => [.06 + .03 * Math.sin(t * .6), .011 * Math.sin(t * 1.2), .003 * Math.sin(t * .6), .004 * (1 + Math.sin(t * 1.2)), false],
-    t => { const s = (t * .3 % 1) ** 3; return [.02 + .1 * s, .008 * Math.sin(t * 1.2), 0, .007 * s, false]; },  // nods off and jerks awake
-    t => [.09 + .01 * Math.sin(t * .8), .016 * Math.sin(t * .8), .002 * Math.sin(t * .4), .003 * (1 + Math.sin(t * .8)), false],  // sound asleep
-  ],
-  done: [
-    t => [.05 * Math.sin(t * 1.6), .006 * Math.sin(t * 3), .006 * Math.sin(t * 1.6), .022 * Math.abs(Math.sin(t * 3.2)), false],
-    t => [.07 * Math.sin(t * 2.2), .006 * Math.sin(t * 4.4), .014 * Math.sin(t * 2.2), .01 * Math.abs(Math.sin(t * 4.4)), false],  // a little dance
-    t => { const s = t % 2.4 < 1 ? Math.sin(t % 2.4 * Math.PI) : 0; return [.03 * s, .006 * Math.sin(t * 2), 0, .04 * s, true]; },  // one big hop, then a rest
-  ],
-  dec: [
-    t => [.06 * Math.sin(t * 2), .006 * Math.sin(t * 2.6), .01 * Math.sin(t * 2.4), .006 * Math.abs(Math.sin(t * 2)), false],
-    t => [.04 * Math.sin(t * 3), .005 * Math.sin(t * 3), .016 * Math.sin(t * 6), 0, false],  // waves
-    t => [.03 * Math.sin(t * 1.8), .006 * Math.sin(t * 3.6), .004 * Math.sin(t * 1.8), .02 * Math.abs(Math.sin(t * 3.6)), false],  // jumps to be seen
-  ],
+  wait: t => [.03 * Math.sin(t * .9), .006 * Math.sin(t * 2.1), .004 * Math.sin(t * .7), 0, true],
+  run: t => [.04 + .025 * Math.sin(t * 4.2), .007 * Math.sin(t * 3.4), .002 * Math.sin(t * 1.3), .004 * Math.abs(Math.sin(t * 4.2)), false],
+  bg: t => [.04 * Math.sin(t * .8), .007 * Math.sin(t * 1.8), .006 * Math.sin(t * .8), 0, false],
+  stalled: t => [.012 * Math.sin(t * 23), .004 * Math.sin(t * 5), .003 * Math.sin(t * 31), 0, false],
+  idle: t => [.06 + .03 * Math.sin(t * .6), .011 * Math.sin(t * 1.2), .003 * Math.sin(t * .6), .004 * (1 + Math.sin(t * 1.2)), false],
+  done: t => [.05 * Math.sin(t * 1.6), .006 * Math.sin(t * 3), .006 * Math.sin(t * 1.6), .022 * Math.abs(Math.sin(t * 3.2)), false],
+  dec: t => [.06 * Math.sin(t * 2), .006 * Math.sin(t * 2.6), .01 * Math.sin(t * 2.4), .006 * Math.abs(Math.sin(t * 2)), false],
 };
-const CH_ACT_L = {
-  wait: ['살랑', '두리번', '들썩'], run: ['타닥', '몰입', '리듬'], bg: ['느긋', '한 모금', '흔들'],
-  stalled: ['떨림', '도리도리', '한숨'], idle: ['꾸벅', '졸다 깸', '푹 잠'], done: ['폴짝', '춤', '크게 점프'], dec: ['손짓', '손 흔들기', '점프'],
-};
-// An action is picked at random per person and pose for each CH_ACT_T-second slot (offset per person, so a room
-// does not change all at once); the same id, pose and time give the same pick on every render and in both styles.
-// A data-act on the figure (the 「캐릭터」 tab's choice) holds one action instead.
-const CH_ACT_T = 9;
-const chMix = n => { n = Math.imul(n ^ n >>> 16, 0x45d9f3b); n = Math.imul(n ^ n >>> 16, 0x45d9f3b); return (n ^ n >>> 16) >>> 0; };
-function chAct(id, mv, t) {  // → [action now, action of the slot before, seconds into this slot]
-  const h = chHash(id), u = t + h % 1000 / 1000 * CH_ACT_T, k = Math.floor(u / CH_ACT_T), pick = k => chMix(h + chHash(mv) + k * 7919) % 3;
-  return [pick(k), pick(k - 1), u - k * CH_ACT_T];
-}
-const chActNow = (id, mv) => chAct(id, mv, Date.now() / 1000)[0];
 const L2D = (() => {
   const VS = `attribute vec2 a; uniform vec4 m; uniform vec4 p; uniform vec2 h; varying vec2 q;
     void main() {
@@ -3319,11 +3267,7 @@ const L2D = (() => {
   function draw(c, t, dt) {
     const who = c.dataset.who, mv = c.dataset.mv, fr = c.dataset.fr, a = CH_ART[who][fr], f = CH_POSE[mv] ?? 0, src = chSrc(who, fr);
     const id = c.closest('.ch')?.dataset.id || who, ph = (chHash(id) % 1000) / 160, T = t + ph;
-    // the action: held by data-fix, or the slot's pick, eased in from the one before over its first .8s
-    const mvs = L2D_MOVE[mv] || L2D_MOVE.wait, fix = c.dataset.fix;
-    const [ai, bi, into] = fix ? [+fix, +fix, 1] : chAct(id, mv, t), w = Math.min(1, into / .8), e = w * w * (3 - 2 * w);
-    const now = mvs[ai](T), was = ai === bi || w >= 1 ? now : mvs[bi](T);
-    const [tilt, br, sway, bob] = now.map((v, i) => i < 4 ? was[i] + (v - was[i]) * e : v), blinks = now[4];
+    const [tilt, br, sway, bob, blinks] = (L2D_MOVE[mv] || L2D_MOVE.wait)(T);
     // hair: a damped spring pulled by the head's tilt and the body's sway, so it lags and overshoots
     const sp = spring.get(id) || { x: 0, v: 0 }; spring.set(id, sp);
     const pull = -(tilt * .05 + sway * 2.5);
@@ -3997,20 +3941,18 @@ const CH_INFO = {
 };
 const CH_POSE_L = ['서 있기 · 입력 대기', '타이핑 · 실행 중', '커피 · 백그라운드', '걱정 · 응답 없음', '졸음 · 유휴', '브이 · 완료', '손 들기 · 결정 대기', '눈 감기 · 깜빡임'];
 const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait'];
-let chx = { fr: 'bust', pose: 1, act: 'r' }, chxMounted = false;  // act: 'r' (the office's random turns) or an action held
+let chx = { fr: 'bust', pose: 1 }, chxMounted = false;
 try { Object.assign(chx, JSON.parse(localStorage.getItem('adash.chars') || '{}')); } catch {}
-if (![0, 1, 2].includes(chx.act)) chx.act = 'r';
 function chxStages(who) {
   const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 2, ph = sd.ph * 2;
-  const mv = CH_POSE_MV[f], act = chx.act === 'r' ? `data-act="${chActNow(who, mv)}"` : `data-act="${chx.act}" data-fix="${chx.act}"`;
-  const spr = (src, w, h, cls, more = '') => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * 8}px ${h}px;background-position:${-f * w}px 0"${more}></span>`;
+  const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * 8}px ${h}px;background-position:${-f * w}px 0"></span>`;
   const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
   return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
     + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(aoi 외는 aoi 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
-    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px fig-ai', ` data-who="${who}" data-mv="${mv}" ${act}`))
+    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
     + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
-    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" data-fr="${fr}"${chx.act === 'r' ? '' : ` data-fix="${chx.act}"`} aria-hidden="true"></canvas>`);
+    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f]}" data-fr="${fr}" aria-hidden="true"></canvas>`);
 }
 function chxCard(who, boss, n) {
   const [name, look] = CH_INFO[who].map(esc), on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)];
@@ -4208,7 +4150,6 @@ function renderChars() {
     <div class="cx-list">${l.map(w => chxCard(w, boss, cnt[w] || 0)).join('')}</div>`;
   $('#view').innerHTML = `<div class="controls">
       <span class="seg" id="cx-fr"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>
-      <span class="seg" id="cx-act" title="포즈마다 액션이 3종 — 사무실에서는 ${CH_ACT_T}초마다 무작위로 바뀝니다"><button data-k="r">랜덤</button>${CH_ACT_L[CH_POSE_MV[chx.pose]].map((l, i) => `<button data-k="${i}">${esc(l)}</button>`).join('')}</span>
       <span class="st">${esc(CH_POSE_L[chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
     </div>
     ${cnHtml()}
@@ -4220,11 +4161,6 @@ function renderChars() {
   $('#cx-fr').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
     b.onclick = () => { chx.fr = b.dataset.k; save(); chxMounted = false; renderChars(); };
-  });
-  $('#cx-act').querySelectorAll('button').forEach(b => {
-    const on = b.dataset.k === String(chx.act);
-    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
-    b.onclick = () => { chx.act = b.dataset.k === 'r' ? 'r' : +b.dataset.k; save(); chxMounted = false; renderChars(); };
   });
   $('#view').querySelectorAll('.cx-pose').forEach(b => b.onclick = () => { chx.pose = +b.dataset.pose; save(); chxMounted = false; renderChars(); });
   $('#view').querySelectorAll('[data-pool]').forEach(c => c.onchange = () => {
