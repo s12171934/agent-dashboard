@@ -13,9 +13,9 @@ from adash.features.designs.refs import DesignReads, note_design_stats
 from adash.features.orca_runs.store import orca_state
 from adash.features.sessions.config import (CHAT_CHARS, CHAT_LIMIT, CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS,
     STALL_SECONDS, WAIT_SECONDS, hooks)
-from adash.features.sessions.patterns import (APLAN_CMD, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS, BG_NOTE,
-    BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD, RUN_CREATE,
-    RUN_ID, TERM_CREATE, classify_tool, tool_hint)
+from adash.features.sessions.patterns import (APLAN_CMD, APLAN_SET, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS,
+    BG_NOTE, BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD,
+    RELAY, RELAY_BACK, RUN_CREATE, RUN_ID, TERM_CREATE, classify_tool, tool_hint)
 from adash.features.sessions.places import place_of
 from adash.features.sessions.plans import build_plans
 from adash.features.sessions.pricing import price_for
@@ -51,6 +51,7 @@ class Session:
         self.own_handle = None  # this session's own Orca terminal, when the log reveals it
         self.task_id = None
         self.issues_orchestration = False
+        self.awaits = set()  # terminals this session handed a message to and has had no answer from (see RELAY)
         self.error = None  # last turn ended on an API error (usage limit etc.) and nothing has run since
         self.busy = False  # a turn is open: the model is generating or a tool is running
         self.bg = {}  # background task id -> (kind, started ts): run_in_background Bash, Monitor, async agents
@@ -157,6 +158,11 @@ class Session:
                 self.own_handle = own.most_common(1)[0][0]
 
     def note_call(self, call_id, cmd):
+        if isinstance(cmd, str) and (RELAY_BACK.search(cmd) or APLAN_SET.search(cmd)):
+            self.awaits.clear()  # the answer read, or a new plan: a new piece of work
+        if isinstance(cmd, str) and RELAY.search(cmd):
+            # the handles written out in the command; a terminal named by a shell variable is not followed
+            self.awaits.update(h for h in HANDLE.findall(cmd) if h != self.own_handle)
         if call_id and isinstance(cmd, str) and OWN_RUN_CMD.search(cmd):
             self.own_run_calls.add(call_id)
             if RUN_CREATE.search(cmd):
@@ -487,7 +493,7 @@ class Session:
                 cost[k] += v
         return {
             "role": self.role, "coord_handle": self.coord_handle, "task_id": cur_task, "task_ids": task_ids,
-            "own_handle": self.own_handle, "coordinates": self.issues_orchestration,
+            "own_handle": self.own_handle, "coordinates": self.issues_orchestration, "awaits": sorted(self.awaits),
             "cost": round(sum(cost.values()), 4) if priced else None,
             "cost_parts": {k: round(v, 4) for k, v in cost.items()} if priced else None,
             "id": self.id, "path": self.path, "kind": self.kind, "title": self.title or self.id[:8],
