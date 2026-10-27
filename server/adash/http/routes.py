@@ -60,7 +60,8 @@ POST = {
     "/api/chars/create": chars.post_char,
     "/api/chars/remove": chars.post_char,
     "/api/chars/unpublish": chars.post_char,
-    "/api/chars/restore": chars.post_char,
+    "/api/chars/meta": chars.post_char,
+    "/api/chars/redraw": chars.post_char,
     **{f"/api/decision/{a}": decisions.post_decision
        for a in ("ask", "answer", "release", "mode", "inbox", "guard", "dismiss")},
 }

@@ -18,6 +18,7 @@ from adash.features.terminals.launch import AGENTS, MODEL, places, start_launch
 
 REPO = os.path.dirname(HERE)
 WORK = os.path.join(HOME, ".cache/agent-dashboard/chars")
+STORE = os.path.join(HOME, ".cache/agent-dashboard/char-sheets")  # every person's sheets, for redraws (redraw.py)
 WHO = re.compile(r"[a-z][a-z0-9-]{1,23}")
 BUILTIN = {"ren", "hina", "kaede", "yuki"}
 MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"RIFF", "webp"))
@@ -184,8 +185,18 @@ def status(d, job):
             "updated": max((os.path.getmtime(os.path.join(d, n)) for n in os.listdir(d)), default=job["created"])}
 
 
+def keep_sheets(d, who):
+    """Copy a published job's sheets, strips, description and picture into STORE (as <who>_… and <who>-…)."""
+    os.makedirs(STORE, exist_ok=True)
+    for n in os.listdir(d):
+        if n.startswith((who + "_", who + "-")) and n.endswith((".png", ".webp")):
+            shutil.copy2(os.path.join(d, n), STORE)
+        elif n == "desc.txt" or n.startswith("ref."):
+            shutil.copy2(os.path.join(d, n), os.path.join(STORE, f"{who}-{n}"))
+
+
 def list_jobs():
-    """Newest first. Finished jobs past KEEP are removed with their folder."""
+    """Newest first. Finished jobs past KEEP are removed with their folder (a published one's sheets kept in STORE)."""
     out = []
     try:
         names = sorted(os.listdir(WORK), reverse=True)
@@ -198,6 +209,8 @@ def list_jobs():
             continue
         s = status(d, job)
         if s["state"] != "running" and time.time() - s["updated"] > KEEP:
+            if s["state"] == "published":
+                keep_sheets(d, job["who"])
             shutil.rmtree(d, ignore_errors=True)
             continue
         out.append(s)
@@ -234,12 +247,12 @@ def remove(jid):
     return True
 
 
-def publish_script(who, flag):
-    """char-publish.py <who> --remove. -> None, or RuntimeError with its last line."""
+def publish_script(who, *args):
+    """char-publish.py <who> --remove (or --meta …). -> None, or RuntimeError with its last line."""
     if not (isinstance(who, str) and WHO.fullmatch(who)):
         raise ValueError("잘못된 이름입니다")
     py = subprocess.run([os.path.join(REPO, "scripts/char-python.sh")], capture_output=True, text=True, timeout=300).stdout.strip()
-    out = subprocess.run([py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, flag],
+    out = subprocess.run([py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, *args],
                          capture_output=True, text=True, timeout=180, cwd=REPO)
     if out.returncode:
         if "CLOUDFLARE_API_TOKEN" in out.stdout + out.stderr:  # no wrangler login on this Mac (launchd can't prompt)

@@ -1,5 +1,6 @@
 """「캐릭터」 tab endpoints: start a character from an uploaded picture (an Orca agent draws and publishes it), the jobs
-and how far each got, a job's picture or sheets, dropping a finished job, and taking a character down."""
+and how far each got, a job's picture or sheets, dropping a finished job, deleting a character for good, changing a
+person's name, look and role, and redrawing one of their sheets."""
 
 import json
 import subprocess
@@ -7,12 +8,13 @@ from urllib.parse import parse_qs
 
 from adash.core.util import short
 from adash.features.chars.jobs import check_create, create, list_jobs, remove, sheet_file, unpublish
+from adash.features.chars.redraw import forget, list_redraws, set_meta, start
 
 BODY_MAX = 15 << 20  # a 10MB picture as base64 in JSON
 
 
 def get_jobs(h, url):
-    h.send_json({"jobs": list_jobs()})
+    h.send_json({"jobs": list_jobs(), "redraws": list_redraws()})
 
 
 def get_file(h, url):
@@ -31,7 +33,9 @@ def get_file(h, url):
 
 def post_char(h, url):
     """create: {who, name, look, boss, notes, agent, model, image (base64)} -> 202 {job}. remove: {id} -> {ok} (a job's
-    folder). unpublish: {who} -> {ok} once the character is deleted for good (takes ~10-30 s: wrangler)."""
+    folder). unpublish: {who} -> {ok} once the character is deleted for good (takes ~10-30 s: wrangler). meta: {who,
+    name, look, boss} -> {ok} once chars.json has them. redraw: {who, kind full|bust|sd, set a-d, name, look, boss} ->
+    202 {redraw}, which /api/chars/jobs follows (redraws) until it is done or failed."""
     action = url.path.rsplit("/", 1)[1]
     try:
         n = int(h.headers.get("Content-Length") or 0)
@@ -42,9 +46,17 @@ def post_char(h, url):
             raise ValueError
         if action == "remove":
             return h.send_json({"ok": remove(body.get("id") or "")})
-        if action == "unpublish":
+        if action == "redraw":
+            b = body
+            return h.send_json({"ok": True, "redraw": start(b.get("who"), b.get("kind"), b.get("set"), b.get("name"),
+                                                            b.get("look") or "", b.get("boss"))}, 202)
+        if action in ("unpublish", "meta"):
             try:
-                unpublish(body.get("who"))
+                if action == "meta":
+                    set_meta(body.get("who"), body.get("name") or "", body.get("look") or "", body.get("boss"))
+                else:
+                    unpublish(body.get("who"))
+                    forget(body.get("who"))
             except subprocess.TimeoutExpired:
                 return h.send_json({"error": "wrangler 가 제때 끝나지 않았습니다 — 잠시 뒤 다시 확인하세요"}, 504)
             except RuntimeError as e:
