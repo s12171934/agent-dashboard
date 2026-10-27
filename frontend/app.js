@@ -6530,9 +6530,8 @@ function hmMine() {
     else if (qa.stage === 'committed' && t.repos.length) out.push({ kind: 'approve', at: qa.at?.committed ? new Date(qa.at.committed).getTime() : null, t, set });
   }
   // an agent waiting for its next instruction (입력 대기) is not the user's to do, unless its plan stopped at a step that
-  // asks for the person (HM_ASK)
-  for (const s of state.sessions) if (!s.parent && !s.decision && status(s) === 'wait' && s.plan?.cur_text && s.plan.done < s.plan.total && HM_ASK.test(s.plan.cur_text))
-    out.push({ kind: 'ask', at: toDate(s.last_ts).getTime(), s });
+  // asks for the person (hmAsk)
+  for (const s of state.sessions) if (!s.parent && hmAsk(s)) out.push({ kind: 'ask', at: toDate(s.last_ts).getTime(), s });
   const order = { dec: 0, ask: 1, blocked: 2, approve: 3 };
   return out.sort((a, b) => order[a.kind] - order[b.kind] || (a.at || Infinity) - (b.at || Infinity));
 }
@@ -6540,8 +6539,10 @@ function hmMine() {
 // six hours (a session stalled since yesterday is a leftover, not work in progress).
 const hmRecent = s => { const st = status(s); return ['run', 'bg', 'wait'].includes(st) || s.decision || ageS(s.last_ts) < (st === 'stalled' ? 6 * 3600 : 3600); };
 
-// An agent at a step of its plan that hands the turn to the person (보고 확인).
-const hmAsk = s => !s.decision && status(s) === 'wait' && s.plan?.cur_text && s.plan.done < s.plan.total && HM_ASK.test(s.plan.cur_text);
+// An agent at a step of its plan that hands the turn to the person (보고 확인). One whose last turn handed a message to
+// another agent (s.awaits: their terminals) waits for that agent while it is still at work, whatever its step says.
+const hmAwaits = s => s.awaits?.length && state.all.some(x => x !== s && s.awaits.includes(x.orca_focus || x.own_handle) && ['run', 'bg'].includes(status(x)));
+const hmAsk = s => !s.decision && status(s) === 'wait' && s.plan?.cur_text && s.plan.done < s.plan.total && HM_ASK.test(s.plan.cur_text) && !hmAwaits(s);
 
 // ---------- 「홈」: one tile per screen — the office's 운영실 staff ----------
 // Every screen on the bar has a tile on 홈 with a rough figure of what is there now, a small chart of it, and a click

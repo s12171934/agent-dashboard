@@ -10,6 +10,10 @@ BRIEF_COORD = re.compile(r"Your coordinator's terminal handle is:\s*(term_[0-9a-
 BRIEF_TASK = re.compile(r"Your task ID is:\s*(task_[0-9a-f]{12})")
 COORD_CMD = re.compile(r"(?:^|[;&|\n(\"'/]\s*)orca orchestration (?:run-create|run-use|dispatch|worker-start)(?![\w-])")  # not dispatch-show etc.
 HANDLE = re.compile(r"term_[0-9a-f-]{36}")
+# A message handed to another terminal (RELAY) leaves the turn with the agent there until an answer comes back; a
+# blocking ask or a `check --wait` is that answer, read within the same turn (RELAY_BACK).
+RELAY = re.compile(r"\borca (?:terminal send|orchestration (?:send|dispatch|task-create|worker-start))(?![\w-])")
+RELAY_BACK = re.compile(r"\borca orchestration (?:ask(?![\w-])|check\b[^;&|\n]*--wait)")
 # Tool calls are counted by what they are for, not by tool name: a skill load, an MCP server, sub-agents,
 # orchestration, shell, files, web. Codex has no Skill tool, so a read of .../skills/<name>/SKILL.md counts.
 SKILL_PATH = re.compile(r"skills/([A-Za-z0-9_.-]+)/SKILL\.md")
@@ -60,6 +64,7 @@ BG_NOTE = re.compile(r"<task-id>(\w+)</task-id>")
 BG_END = re.compile(r"<status>(?:completed|failed|killed|stopped|cancelled|error)</status>|Monitor (?:expired|stopped|ended)")
 BG_MAX_SECONDS = 6 * 3600  # a task whose end was never recorded (session killed, notice lost) stops counting
 APLAN_CMD = re.compile(r"\baplan\b")
+APLAN_SET = re.compile(r"\baplan set\b")
 # Only a Run this session created or bound names its own terminal; run-list etc. echo other coordinators.
 # A real `terminal create` call, however orca is invoked (orca, a full path, or a shell variable like $O),
 # including inside $(...); a mention in text or a --help call does not count.
