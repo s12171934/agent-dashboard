@@ -3516,8 +3516,8 @@ function chBind(us = $('#view').querySelectorAll('.ch')) {  // us: the people pu
 addEventListener('resize', () => {
   if (!$('#view .office')) return;
   const v = $('#view .staff-village');  // turned between landscape and portrait: the village lies the other way
-  if (v && v.classList.contains('vl-wide') !== staffWide()) { renderOffice(); return; }
-  chLayout(); chApply();
+  if (v && (v.classList.contains('vl-wide') !== staffWide() || v.classList.contains('vl-tall') !== staffTall())) { renderOffice(); return; }
+  chLayout(); staffBoardFit(); chApply();
 });
 
 // The office is a canvas: the rooms are laid out on one plane (.ch-world) inside a box that fills the screen below the
@@ -3608,6 +3608,7 @@ function chSize() {
   const posture = document.documentElement.dataset.posture, sheet = posture === 'laptop' && $('ds-dock[open]');
   const v = $('#view').getBoundingClientRect(), bottom = sheet ? sheet.getBoundingClientRect().top - 7 : innerHeight;
   Object.assign(cv.style, { left: v.left + 'px', top: v.top + 'px', width: v.width + 'px', height: Math.max(240, bottom - v.top) + 'px' });
+  staffBoardFit();
   chApply();
 }
 // the bar's zoom figure: pressed, 맞춤 (the view is zoomed by a pinch, Ctrl/⌘ + wheel or the trackpad; no buttons)
@@ -3761,12 +3762,25 @@ const staffCell = h => { const r = hubVal(h), w = hubWeight(r);
 // On a landscape view (wider than tall, past the phone width) the village lies in two rows of wide houses (.vl-wide in
 // app.css), so it is not taller than the screen and zoomed out to fit
 const staffWide = () => { const v = $('#view'); return v.clientWidth > 700 && v.clientWidth >= innerHeight; };
+// On a screen stood on end (HUB_TALL, as 홈's tiles) the village stands three houses across round a plaza in the middle
+// (.vl-tall), and below it a notice board carries 「최근 활동」 (hubEvents) down to the bottom of the screen (staffBoardFit).
+const staffTall = () => HUB_TALL.matches && !staffWide();
+const staffBoard = () => `<div class="vl-board"><b class="vl-board-h">게시판 · 최근 활동</b><div class="vl-board-list">${hubEvents().map(e =>
+  `<a class="vl-note" href="#${e.go}"><time>${hubEvTime(e)}</time><span>${esc(e.t)}</span><em>${e.k}</em></a>`).join('') || '<span class="st">지난 24시간 동안 기록 없음</span>'}</div></div>`;
+function staffBoardFit() {
+  const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world'), b = w?.querySelector('.vl-board');
+  if (!b) return;
+  // as tall as makes the plane, fitted to the width, reach the bottom of the frame (chApply's fit)
+  const { room, fw } = chFrame(cv), z = Math.min(1, (fw - 24) / w.offsetWidth);
+  b.style.height = '0px';
+  b.style.height = Math.max(220, Math.floor(room / z - w.offsetHeight - 1)) + 'px';
+}
 function staffRoom(people) {
   needReviews();  // the QA room's figure needs the 워크트리 리뷰 data
   const mine = hmMine(), todo = mine.length, from = hmFrom(mine);
   return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">화면마다 맡은 사람 · 누르면 그 화면</span><span class="room-n">${todo ? `<span title="${esc(from)}">내 차례 <b>${todo}</b> (${esc(cut(from, 60))})</span> · ` : ''}전체 <b>${HUB.length}</b></span></div>
-    <div class="staff-village${staffWide() ? ' vl-wide' : ''}"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
-      <div class="vl-grove" aria-hidden="true">${TREE(1.1)}${TREE(.8)}${TREE()}</div>${HUB.map(staffCell).join('')}</div></section>`;
+    <div class="staff-village${staffWide() ? ' vl-wide' : staffTall() ? ' vl-tall' : ''}"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
+      <div class="vl-grove" aria-hidden="true">${TREE(1.1)}${TREE(.8)}${TREE()}</div>${HUB.map(staffCell).join('')}</div>${staffTall() ? staffBoard() : ''}</section>`;
 }
 
 // The time of day for the office's light and window sky
@@ -3807,7 +3821,7 @@ let chLast = {};  // the office last built (renderOffice): its element, its HTML
 // people in a room (CH_KEYED) are matched by key (chKey) — one that changed in shape (a person in another state) is
 // put in anew (ctx.fresh), the rest are patched and stay, moved only when the order changed. Anything else rebuilds.
 // The office's own additions (chLinks' lines and team tags, after everything) are not in the trees and are left alone.
-const CH_SOFT = '.ch-say, .ch-meta, .room-n, .lobby-sign, .wall-item, .co-n', CH_KEYED = '.ch-world, .room-floor';
+const CH_SOFT = '.ch-say, .ch-meta, .room-n, .lobby-sign, .wall-item, .co-n, .vl-board-list', CH_KEYED = '.ch-world, .room-floor';
 const chKey = n => n.dataset.room || n.dataset.id || n.className + '|' + (n.title || '');
 function chPatch(l, a, b, ctx) {
   if (!l || a.nodeType !== b.nodeType || l.nodeType !== a.nodeType) return false;
@@ -6675,8 +6689,8 @@ function renderHome() {
 // plan step), a session starting, a test run ending, a question asked, a QA ticket reaching a stage, a message between
 // agents. The card reaches the bottom of the screen and scrolls inside.
 const HUB_FEED_N = 80;
-function hubFeed() {
-  if (!talk.busy && Date.now() - talk.at > 60e3) loadTalk().then(() => { if (route().v === 'home' && HUB_TALL.matches && !charMode) render(); });
+function hubEvents() {
+  if (!talk.busy && Date.now() - talk.at > 60e3) loadTalk().then(() => { if (route().v === 'home' && HUB_TALL.matches) render(); });
   const now = Date.now(), ev = [], add = (at, t, k, go) => { if (at && now - at < 24 * 3600e3 && at < now + 60e3) ev.push({ at, t, k, go }); };
   for (const s of state.sessions) if (!s.parent) {
     const st = status(s), step = s.plan?.cur_text && s.plan.done < s.plan.total ? ` · ${s.plan.cur_text}` : '';
@@ -6690,9 +6704,13 @@ function hubFeed() {
   for (const set of wtData.sets || []) for (const t of set.tickets) for (const [k, at] of Object.entries(t.qa?.at || {})) add(new Date(at).getTime(), `${t.key} ${QA_ST[k] || k}`, '워크트리 리뷰', 'worktrees');
   for (const m of talk.data?.messages || []) if (talk.types.has(m.type) && m.created_at)
     add(msOf(m.created_at), `${talkEnd(m.from_term, m.from_kind, m.from, m).name} → ${talkEnd(m.to_term, m.to_kind, m.to, m).name} · ${TALK_TYPES[m.type]?.[0] || m.type}${m.subject ? ' · ' + m.subject : ''}`, '상호작용', 'talk');
-  const rows = ev.sort((a, b) => b.at - a.at).slice(0, HUB_FEED_N);
+  return ev.sort((a, b) => b.at - a.at).slice(0, HUB_FEED_N);
+}
+const hubEvTime = e => new Date(e.at).toTimeString().slice(0, 5);
+function hubFeed() {
+  const rows = hubEvents();
   return `<section class="hw hm-feed"><h3><span class="hw-name">최근 활동</span><span class="hw-note">모든 화면 · 24시간 · 시간순</span></h3>
-    <div class="hw-body">${rows.map(e => `<a class="hm-ev" href="#${e.go}"><time>${new Date(e.at).toTimeString().slice(0, 5)}</time><span>${esc(e.t)}</span><em>${e.k}</em></a>`).join('') || '<div class="st">지난 24시간 동안 기록 없음</div>'}</div></section>`;
+    <div class="hw-body">${rows.map(e => `<a class="hm-ev" href="#${e.go}"><time>${hubEvTime(e)}</time><span>${esc(e.t)}</span><em>${e.k}</em></a>`).join('') || '<div class="st">지난 24시간 동안 기록 없음</div>'}</div></section>`;
 }
 // the card runs from where it starts to the bottom of the screen, above the bar (main's bottom padding)
 function hubFeedFit() {
