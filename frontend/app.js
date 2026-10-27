@@ -1928,6 +1928,7 @@ function foldAll(open) {
 // updated_at, finished_at, failures, log, detail}. run-tc's active rows and its last 24 h of history join in.
 const TEST_STALE_S = 300, TEST_RECENT_S = 86400;
 const TEST_PHASE = { building: '빌드', running: '실행 중', done: '통과', failed: '실패' };
+const TEST_CHIPS_MAX = 40;  // more cases than this (a whole rspec suite) stay in the cases toggle only
 const testLive = t => t.phase !== 'done' && t.phase !== 'failed';
 const ageS = ts => ts ? (Date.now() - toDate(ts)) / 1000 : Infinity;
 // A run's cases ({id, title, status, msg, ms}): the case code apart from what it checks. A live run-tc run has them in its
@@ -1974,7 +1975,14 @@ function testRow(t, inCard, allFails) {
   const nf = allFails ? 20 : 3;
   const fails = t.cases?.length ? casesHtml(t) : (t.failures || []).length ? `<details class="tfails"><summary>실패 ${t.failures.length}건${t.failures.length > nf ? ` (상위 ${nf})` : ''}</summary>${t.failures.slice(0, nf).map(f => `<div><code>${esc(cut(f.id, 90))}</code> <span class="st">${esc(cut(f.msg, 160))}</span></div>`).join('')}</details>` : '';
   const tip = `${t.src === 'file' ? 'agent-test-progress/' + t.key + '.json' : 'run-tc ' + t.key}${t.log ? '\n로그 ' + t.log : ''}${t.detail ? '\n' + t.detail : ''}`;
-  return `<div class="trow"><div class="cbr" title="${esc(tip)}"><b class="e2e-tag">${esc((t.kind || 'test').toUpperCase())}</b><span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(live ? (t.src === 'run-tc' ? t.detail : TEST_PHASE[t.phase] || t.phase || '진행') : t.phase === 'failed' || t.failed ? '실패' : '통과')}</span>${inCard ? '' : `<b>${esc(cut(t.label || t.key, 60))}</b>`}${who}${bar}${pf}${when}${stale ? `<span class="tstale">⚠ ${dur(t.updated_at)}째 갱신 없음</span>` : ''}${live && t.detail && t.src === 'file' ? `<span class="st">${esc(cut(t.detail, 60))}</span>` : ''}</div>${fails}</div>`;
+  // A live run shows what it is on now (▶) and, when it has few cases (a Figma check, one spec file), a chip per case
+  const cur = live ? (t.cases || []).filter(c => c.status === 'running') : [];
+  const now = cur.length ? `<span class="e2e-now">▶ ${cur.slice(0, 3).map(c => esc(`${c.id && !c.id.startsWith('#') ? c.id + ' ' : ''}${c.title || ''}`)).join(' · ')}${cur.length > 3 ? ` 외 ${cur.length - 3}` : ''}</span>` : '';
+  // chip names: the case code, unless codes repeat (rspec's file:line for generated examples) — then what it checks
+  const byId = t.cases && new Set(t.cases.map(c => c.id)).size === t.cases.length;
+  const chips = live && t.cases?.length > 1 && t.cases.length <= TEST_CHIPS_MAX ? `<div class="cbr e2e-tcs">${t.cases.map(c => { const k = caseCls(c.status);
+    return `<span class="tkc ${k}" title="${esc(`${c.id || ''} ${c.title || ''}\n${E2E_TEST[c.status] || c.status || '?'}${c.ms ? ` · ${Math.round(c.ms / 1000)}s` : ''}${c.msg ? '\n' + c.msg : ''}`)}"><i>${TK_IC[k] || '·'}</i>${esc(cut(byId && c.id && !c.id.startsWith('#') ? c.id : c.title || c.id || '?', 28))}</span>`; }).join('')}</div>` : '';
+  return `<div class="trow"><div class="cbr" title="${esc(tip)}"><b class="e2e-tag">${esc((t.kind || 'test').toUpperCase())}</b><span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(live ? (t.src === 'run-tc' ? t.detail : TEST_PHASE[t.phase] || t.phase || '진행') : t.phase === 'failed' || t.failed ? '실패' : '통과')}</span>${inCard ? '' : `<b>${esc(cut(t.label || t.key, 60))}</b>`}${who}${bar}${pf}${when}${stale ? `<span class="tstale">⚠ ${dur(t.updated_at)}째 갱신 없음</span>` : ''}${live && t.detail && t.src === 'file' ? `<span class="st">${esc(cut(t.detail, 60))}</span>` : ''}${now}</div>${chips}${fails}</div>`;
 }
 // The cases toggle under a run: each case's code, what it checks and how it ended (failed first). Open ones stay open
 // across re-renders (caseOpen, by run id).
