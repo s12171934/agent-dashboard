@@ -1852,10 +1852,18 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .vl-note span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vl-note em { font-style: normal; font-size: 11px; color: #8a6d4b; white-space: nowrap; }
 .vl-note:hover span { text-decoration: underline; }
+/* a phone: the plaza across the top, then the houses two to a row (a house as wide as its staff member, so no house is
+   a wide empty room round one person) and the grove on the lot left over */
 @media (max-width: 700px) {
-  .staff-village { grid-template: none; grid-auto-flow: row; gap: 22px; padding: 18px 12px; background: var(--grass); }
+  .staff-village { grid-template: none; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 18px 10px; padding: 16px 10px; background: var(--grass); }
   .staff-village > * { grid-area: auto; }
-  .vl-plaza { width: 100%; } .vl-grove, .vl-tree { display: none; } .vl-house { width: 100%; align-self: auto; } }
+  .vl-plaza { grid-column: 1 / -1; width: 100%; } .vl-tree { display: none; }
+  .vl-grove { grid-row: auto; align-self: center; flex-wrap: wrap; order: 1; }
+  .vl-house, .vl-house:nth-of-type(odd) { width: 100%; align-self: stretch; }
+  .vl-roof { height: 26px; margin: 0 -6px -2px; }
+  .room-floor.staff-cell { --wall-h: 92px; }
+  .staff-cell .wall-item { transform: scale(.75); transform-origin: top center; }
+  .staff-cell .staff-prop { display: none; } }
 .room-floor.staff-cell { --wall-h: 112px; --wall: color-mix(in srgb, hsl(var(--sh, 30) 60% 62%) 16%, var(--panel2)); min-height: 0; }
 .staff-cell .room-wall { height: calc(var(--wall-h) - 56px); }
 .staff-plate { position: absolute; z-index: 2; left: 50%; top: 8px; transform: translateX(-50%); padding: 2px 12px; border-radius: 7px; white-space: nowrap;
