@@ -17,6 +17,7 @@ from adash.features.orca_runs.store import orca_state
 from adash.features.review.config import JIRA_EVERY, PR_EVERY, QA_SETS, REVIEW_BASES, REVIEW_FIRST, WT_KEY
 from adash.features.review.notes import note_review, project_notes, reopened_since, write_review_sha
 from adash.features.review.qa import QA_STAGES, driver_worktree_repos, qa_automations, qa_config, qa_ticket
+from adash.features.review.report import set_report
 from adash.features.review.ship import SHIP_PROMPT, jira_stage, ship_launch, ship_state, ship_tasks
 from adash.features.review.store import review_state
 from adash.features.review.tickets import ticket_test, wt_repo
@@ -148,6 +149,7 @@ def review_pass(jira, prs, stats):
         for t in s["tickets"]:
             if t.get("qa"):
                 t["qa"]["live"] = [h for h in t["qa"]["handles"] if h in live]
+        s["report"] = set_report(s)
     with lock:
         review_state.update(sets=sets, updated=datetime.now(timezone.utc).isoformat())
         bump()
