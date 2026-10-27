@@ -5668,7 +5668,7 @@ async function renderProjects() {
     ${!d.enabled ? pjNoSource(d)
       : !d.projects.length ? '<div class="empty">progress.json 이 있는 프로젝트 폴더가 없습니다.</div>'
       : tl ? `<div class="pj-tlwrap${vert ? ' side' : ''}${pjFocus ? ' focused' : ''}"><div class="box pj-tl hscroll" id="pj-tl"></div><div class="pj-focus" id="pj-focus"></div></div>`
-      : `<div class="pj-list">${d.projects.map(pjRow).join('')}</div>`}
+      : `<div class="pj-list">${pjByStart(d.projects).map(pjRow).join('')}</div>`}
     ${broken.map(e => `<div class="pj-err">${esc(e)}</div>`).join('')}`;
   if (!d.enabled || !d.projects.length) return;
   if (tl) {
@@ -5689,6 +5689,9 @@ function pjNoSource(d) {
     <small><code>--projects-dir</code> 로 띄운 서버를 「메트릭 서버」에서 추가하거나 켜세요.</small><br>
     <button type="button" class="act big accent" data-pj-servers>메트릭 서버 열기</button></div>`;
 }
+
+// 프로젝트별 order: by start date, earliest first; undated and broken ones last, then by name.
+const pjByStart = ps => [...ps].sort((a, b) => (a.error ? '\uffff' : a.start || '\ufffe').localeCompare(b.error ? '\uffff' : b.start || '\ufffe') || a.name.localeCompare(b.name));
 
 // 프로젝트별: a project is a <details class="box"> whose summary is its line of stages; opening it shows the detail.
 function pjRow(p) {
