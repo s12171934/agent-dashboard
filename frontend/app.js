@@ -2272,36 +2272,66 @@ function qaStatsHtml(s) {
     <div class="st">완료는 티켓의 마지막 회차 시각만 남아 앞 회차의 완료는 세지 않습니다. 정리된 티켓의 코드 변경은 빠집니다.</div></details>`;
 }
 const qaStatsDays = {};
-// The closing report of an ended set (report.json the server wrote once when it saw the set retired): what the 「종료된
-// QA」 card shows first when opened, the ticket list folded under it.
-function qaReportHtml(r) {
+// The closing report of an ended set: the figures (report.json, written once when the server saw the set retired) and
+// the analysis a headless claude writes from them, the tickets' notes and PRs (report.md) — issue types, how much was
+// fixed, why tickets reopened, proposals for less QA next time. The ticket list is folded under it.
+const QA_ANA = { launching: ['wait', '워커 기동 중'], launch_failed: ['fail', '워커 기동 실패'], running: ['run', '작성 중'], completed: ['done', '작성 완료'], failed: ['fail', '작성 실패'] };
+const QA_ANA_BUSY = ['launching', 'running'];
+function qaReportHtml(s) {
+  const r = s.report, a = s.analysis || {};
   if (!r) return '<div class="st">보고서를 아직 쓰지 않았습니다 (다음 갱신에 작성).</div>';
-  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—', fin = r.jira?.qa || 0;
+  const pct = (x, y) => y ? Math.round(x / y * 100) + '%' : '—', fin = r.jira?.qa || 0;
   const span = r.begin ? (new Date(r.end) - new Date(r.begin)) / 864e5 : null;
   const tile = (v, l, tip) => `<div class="qs-tile"${tip ? ` title="${esc(tip)}"` : ''}><b>${v}</b><span>${l}</span></div>`;
-  const tk = x => `<a href="${esc(wtData.jira)}/browse/${esc(x.key)}" target="_blank" rel="noopener"><b>${esc(x.key)}</b></a> <span class="rv-sum" title="${esc(x.summary || '')}">${esc(x.summary || '')}</span>`;
   const max = Math.max(1, ...(r.days || []).map(d => d.rounds));
   const days = (r.days || []).map(d => `<div class="qs-day" title="${esc(d.day)} · 기동 ${d.rounds}회차"><div class="qs-bars"><span class="qs-b"><em>${d.rounds}</em><i style="height:${d.rounds / max * 100}%;background:var(--c1)"></i></span></div><small>${+d.day.slice(5, 7)}/${+d.day.slice(8)}</small></div>`).join('');
-  const repos = Object.entries(r.repos || {});
-  return `<div class="qa-report">
-    <div class="qs-h">요약 <span class="st">${r.begin ? `${esc(clockAt(r.begin))} ~ ` : ''}${esc(clockAt(r.end))}${span != null ? ` · ${span < 1 ? Math.round(span * 24) + '시간' : span.toFixed(1) + '일'}` : ''} · 작성 ${esc(clockAt(r.written_at))}</span></div>
-    <div class="qs-tiles">
-      ${tile(`${fin}/${r.tickets}`, `QA 완료 ${pct(fin, r.tickets)}`, 'Jira 가 QA 완료인 티켓 / 에픽의 하위 티켓')}
-      ${tile(r.shipped, 'PR 반출 티켓', '드라이버가 PR 을 올렸거나 반출·정리까지 간 티켓')}
-      ${tile(r.prs, 'PR')}
-      ${tile(r.rounds, '기동 회차', `드라이버가 잡은 티켓 ${r.driven} · 평균 ${r.driven ? (r.rounds / r.driven).toFixed(1) : '—'}회차`)}
-      ${tile(r.reopened, `재오픈 ${pct(r.reopened, r.driven)}`, '2회차 이상 기동한 티켓')}
-      ${tile(r.lead?.median != null ? r.lead.median + 'h' : '—', '처리 시간 중앙값', `첫 회차 기동 → 커밋 완료 이후 마지막 단계, 티켓 ${r.lead?.n || 0}개`)}
-    </div>
-    ${days ? `<div class="qs-h">일별 기동 회차</div><div class="qs-chart">${days}</div>` : ''}
-    ${repos.length ? `<div class="qs-h">저장소별 PR</div><div class="rv-jsum">${repos.map(([k, n]) => `<span class="rv-js">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
-    ${r.lead?.longest?.length ? `<div class="qs-h">오래 걸린 티켓</div><ol class="qa-rep-list">${r.lead.longest.map(x => `<li>${tk(x)}<span class="st">${x.hours}h · ${x.round}회차</span></li>`).join('')}</ol>` : ''}
-    ${r.most_rounds?.length ? `<div class="qs-h">재오픈이 많은 티켓</div><ol class="qa-rep-list">${r.most_rounds.map(x => `<li>${tk(x)}<span class="st">${x.round}회차</span></li>`).join('')}</ol>` : ''}
-    <div class="qs-h">남은 것</div>${r.left?.length || r.blocked?.length || r.ignored ? `<ul class="qa-rep-list">
-      ${(r.left || []).map(x => `<li>${tk(x)}<span class="rv-js j-${jiraStage(x)}">${esc(x.status || '?')}</span></li>`).join('')}
-      ${r.blocked?.length ? `<li><span class="st">종료 때 막힘으로 남은 티켓</span> ${r.blocked.map(esc).join(', ')}</li>` : ''}
-      ${r.ignored ? `<li><span class="st">드라이버가 제외한 티켓 ${r.ignored}</span></li>` : ''}</ul>` : '<div class="st">없음 — 모든 티켓이 QA 완료입니다.</div>'}
+  const busy = QA_ANA_BUSY.includes(a.status), [cls, lbl] = QA_ANA[a.status] || (a.md ? ['done', '작성 완료'] : ['pending', '작성 전']);
+  const k = s.epic + '|' + s.server;
+  const head = `<div class="qa-ana-h"><span class="tkc ${cls}"><i>${TK_IC[cls]}</i>분석 ${lbl}${a.md_at ? ' · ' + esc(clockAt(a.md_at)) : a.at ? ' · ' + esc(clockAt(a.at)) : ''}</span>
+    ${a.error ? `<span class="rv-flag bad" title="${esc(a.error)}">${esc(cut(a.error, 60))}</span>` : ''}
+    <span class="rv-acts"><button class="act big" data-qa-set="report" data-epic="${esc(s.epic)}" data-srv="${esc(s.server)}"${busy ? ' disabled title="워커가 쓰는 중입니다"' : ` title="헤드리스 claude 가 티켓 노트·PR 을 다시 읽고 분석 보고서를 새로 씁니다"`}>${a.md ? '보고서 다시 작성' : '보고서 작성'}</button></span></div>`;
+  const body = a.md ? `<article class="qa-ana dz-doc" data-ana="${esc(k)}"><pre class="dz-raw">${esc(a.md)}</pre></article>`
+    : `<div class="st qa-ana-wait">${busy ? '워커(헤드리스 claude)가 티켓 노트와 PR 을 읽고 이슈 유형·수정 규모·재오픈 원인·다음 QA 를 줄일 제안을 쓰고 있습니다. 끝나면 여기에 나타납니다.' : '분석 보고서가 없습니다. 「보고서 작성」으로 워커를 띄웁니다.'}</div>`;
+  qaAnaMd[k] = a.md || '';
+  return `<div class="qa-report">${head}${body}
+    <details class="qa-arch-list"><summary>지표</summary>
+      <div class="st" style="margin-bottom:6px">${r.begin ? `${esc(clockAt(r.begin))} ~ ` : ''}${esc(clockAt(r.end))}${span != null ? ` · ${span < 1 ? Math.round(span * 24) + '시간' : span.toFixed(1) + '일'}` : ''}</div>
+      <div class="qs-tiles">
+        ${tile(`${fin}/${r.tickets}`, `QA 완료 ${pct(fin, r.tickets)}`, 'Jira 가 QA 완료인 티켓 / 에픽의 하위 티켓')}
+        ${tile(r.shipped, 'PR 반출 티켓', '드라이버가 PR 을 올렸거나 반출·정리까지 간 티켓')}
+        ${tile(r.prs, 'PR')}
+        ${tile(r.rounds, '기동 회차', `드라이버가 잡은 티켓 ${r.driven} · 평균 ${r.driven ? (r.rounds / r.driven).toFixed(1) : '—'}회차`)}
+        ${tile(r.reopened, `재오픈 ${pct(r.reopened, r.driven)}`, '2회차 이상 기동한 티켓')}
+        ${tile(r.lead?.median != null ? r.lead.median + 'h' : '—', '처리 시간 중앙값', `첫 회차 기동 → 커밋 완료 이후 마지막 단계, 티켓 ${r.lead?.n || 0}개`)}
+      </div>
+      ${days ? `<div class="qs-h">일별 기동 회차</div><div class="qs-chart">${days}</div>` : ''}
+    </details>
   </div>`;
+}
+// report.md of each ended set by its card, rendered with marked once the card's markup is in place.
+const qaAnaMd = {};
+async function qaAnaRender(root) {
+  const arts = [...root.querySelectorAll('.qa-ana[data-ana]')].filter(x => qaAnaMd[x.dataset.ana]);
+  if (!arts.length) return;
+  let marked;
+  try { marked = await dzLib('marked'); } catch { return; }  // the raw text stays
+  const renderer = {
+    html: ({ text }) => esc(text),
+    code: ({ text }) => `<pre><code>${esc(text)}</code></pre>`,
+    link({ href, title, tokens }) { const label = this.parser.parseInline(tokens);
+      return /^(https?:|mailto:)/i.test(href) ? `<a href="${esc(href)}"${title ? ` title="${esc(title)}"` : ''} target="_blank" rel="noreferrer">${label}</a>` : `<span>${label}</span>`; },
+    image: ({ text }) => `<span class="st">[그림: ${esc(text || '')}]</span>`,
+  };
+  // ticket keys in the text (not already in a link) become Jira links
+  const keyRe = /\b[A-Z][A-Z0-9]+-\d+\b/g;
+  const linkKeys = el => {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement.closest('a, code, pre') || !/\b[A-Z][A-Z0-9]+-\d+\b/.test(n.data) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+    const ns = []; while (w.nextNode()) ns.push(w.currentNode);
+    for (const n of ns) { const f = document.createElement('span');
+      f.innerHTML = esc(n.data).replace(keyRe, k => `<a href="${esc(wtData.jira)}/browse/${k}" target="_blank" rel="noopener">${k}</a>`);
+      n.replaceWith(...f.childNodes); }
+  };
+  for (const art of arts) if (art.isConnected) { art.innerHTML = new marked.Marked({ gfm: true, renderer }).parse(qaAnaMd[art.dataset.ana]); linkKeys(art); }
 }
 // The set's watcher itself: an older watcher (not qa-driver) can hand its automation to qa-driver; coordinators of
 // tickets that are past 진행 중 can be closed together; once every ticket is QA 완료 the QA can be ended (retire).
@@ -2421,7 +2451,7 @@ async function renderWorktrees() {
         return `<details class="qa-arch${wtJustRetired === k ? ' just' : ''}" data-arch="${esc(k)}"${wtArch.has(k) ? ' open' : ''}><summary>
           <span class="tkc done"><i>✓</i>QA 종료${s.retired_at ? ' · ' + esc(clockAt(s.retired_at)) : ''}</span><b>${esc(s.epic)}</b><span class="rv-sum">${esc(s.summary || '')}</span>
           <span class="st">티켓 ${s.tickets.length} · QA 완료 ${fin}${prs ? ` · PR ${prs}` : ''}</span></summary>
-          <div class="qa-arch-body">${qaReportHtml(s.report)}
+          <div class="qa-arch-body">${qaReportHtml(s)}
             <details class="qa-arch-list"><summary>티켓 목록 (${s.tickets.length})</summary>${setHtml(s, true)}</details></div></details>`; }).join('')}` : '');
   // Unchanged markup is left alone: a web VS Code open under a ticket survives a redraw only where moveBefore exists.
   const html = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
@@ -2430,6 +2460,7 @@ async function renderWorktrees() {
   wtWebStash();
   $('#wt-body').innerHTML = html;
   wtWebPlace($('#wt-body'));
+  qaAnaRender($('#wt-body'));
   $('#wt-body').querySelectorAll('.qa-arch').forEach(d => d.ontoggle = () => { d.open ? wtArch.add(d.dataset.arch) : wtArch.delete(d.dataset.arch);
     try { localStorage.setItem('adash.wtarch', JSON.stringify([...wtArch])); } catch {} });
   const just = wtJustRetired && $('#wt-body').querySelector(`.qa-arch[data-arch="${CSS.escape(wtJustRetired)}"]`);
@@ -2460,6 +2491,10 @@ async function qaSetClick(b) {
   const { qaSet, epic, srv, keys } = b.dataset, txt = b.textContent, call = (a, extra) => api.qaTicket(srv, epic, undefined, a, extra);
   const done = r => { if (r.status !== 200 || r.body.ok === false) uiAlert(r.body.error || r.body.output || `실패 (${r.status})`); else toast(cut(r.body.output || '처리했습니다', 200)); };
   const busy = l => { b.disabled = true; b.textContent = l; }, idle = () => { b.disabled = false; b.textContent = txt; };
+  if (qaSet === 'report') {
+    if (!await uiConfirm(`${epic} 종료 보고서를 워커(헤드리스 claude)가 새로 씁니다 (티켓 노트·PR 을 다시 읽어 몇십 분 걸릴 수 있습니다). 진행할까요?`)) return;
+    busy('기동 중…'); done(await call('report')); return idle();
+  }
   if (qaSet === 'close_finished') {
     const ks = keys.split(',');
     if (!await uiConfirm(`끝난 티켓 ${ks.length}개의 코디네이터·워커 터미널을 닫습니다:\n\n${ks.join(', ')}\n\n진행할까요?`)) return;

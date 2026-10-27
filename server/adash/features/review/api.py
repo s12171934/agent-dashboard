@@ -17,6 +17,7 @@ from adash.features.review.config import QA_SETS, VSCODE_CLI, WT_KEY
 from adash.features.review.loop import review_ticket
 from adash.features.review.notes import write_review
 from adash.features.review.qa import QA_STAGES, qa_auto_cache, qa_cli
+from adash.features.review.report import report_busy, report_launch, report_start
 from adash.features.review.ship import SHIP_PROMPT, SHIP_SETTLED, jira_stage, ship_launch, ship_start
 from adash.features.review.store import review_kick, review_state
 
@@ -34,7 +35,8 @@ def post_qa(h, url):
     stop: uncommitted or unpushed work) and cleanup removes the worktree; restart starts the coordinator again; close
     closes its live terminals; ignore / unignore. Per set: close_finished {"keys"}; retire_check / retire (end of QA:
     automations off, shared coordination worktree removed; exit 3 = it would stop); adopt_check / adopt {"set":
-    {KEY: value}, "automation"} hands an older watcher's automation to qa-driver."""
+    {KEY: value}, "automation"} hands an older watcher's automation to qa-driver; report starts the closing report's
+    analysis worker of an ended set again."""
     what = url.path.rsplit("/", 1)[1]
     try:
         body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))
@@ -62,6 +64,16 @@ def post_qa(h, url):
         return h.send_json({"ok": True})
     if not st.get("watch"):
         return h.send_json({"error": "이 묶음에는 상태 디렉터리(watch)가 없습니다"}, 409)
+    if action == "report":  # 「보고서 다시 작성」: the ended set's analysis worker, once more
+        if not st.get("retired"):
+            return h.send_json({"error": "종료된 QA 만 보고서를 씁니다"}, 409)
+        with lock:
+            if report_busy(st.get("analysis")) or (epic in report_launch and not report_launch[epic].get("error")):
+                return h.send_json({"error": "보고서 워커가 이미 돌고 있습니다"}, 409)
+            report_launch[epic] = {"at": datetime.now(timezone.utc).isoformat(), "error": None}
+            bump()
+        threading.Thread(target=report_start, args=(st, next((q for q in QA_SETS if q.get("epic") == epic), None)), daemon=True).start()
+        return h.send_json({"ok": True, "output": "보고서 워커를 띄웁니다"})
     keys = {t["key"] for t in st["tickets"]}
     if action in ("close_finished", "retire_check", "retire", "adopt_check", "adopt"):  # the whole set
         if action == "close_finished":

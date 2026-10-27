@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -17,7 +18,7 @@ from adash.features.orca_runs.store import orca_state
 from adash.features.review.config import JIRA_EVERY, PR_EVERY, QA_SETS, REVIEW_BASES, REVIEW_FIRST, WT_KEY
 from adash.features.review.notes import note_review, project_notes, reopened_since, write_review_sha
 from adash.features.review.qa import QA_STAGES, driver_worktree_repos, qa_automations, qa_config, qa_ticket
-from adash.features.review.report import set_report
+from adash.features.review.report import REPORT_TASK, report_analysis, report_launch, report_start, set_report
 from adash.features.review.ship import SHIP_PROMPT, jira_stage, ship_launch, ship_state, ship_tasks
 from adash.features.review.store import review_state
 from adash.features.review.tickets import ticket_test, wt_repo
@@ -150,6 +151,14 @@ def review_pass(jira, prs, stats):
             if t.get("qa"):
                 t["qa"]["live"] = [h for h in t["qa"]["handles"] if h in live]
         s["report"] = set_report(s)
+        if s["report"]:
+            s["analysis"] = report_analysis(s)
+            # the analysis is written once by itself: no report.md, never started, nothing starting now
+            if not s["analysis"]["md"] and not s["analysis"]["status"] and not os.path.exists(os.path.join(s["watch"], REPORT_TASK)):
+                with lock:
+                    report_launch[s["epic"]] = {"at": datetime.now(timezone.utc).isoformat(), "error": None}
+                s["analysis"].update(status="launching", at=report_launch[s["epic"]]["at"])
+                threading.Thread(target=report_start, args=(s, next((q for q in QA_SETS if q.get("epic") == s["epic"]), None)), daemon=True).start()
     with lock:
         review_state.update(sets=sets, updated=datetime.now(timezone.utc).isoformat())
         bump()
