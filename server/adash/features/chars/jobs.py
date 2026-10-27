@@ -58,8 +58,8 @@ BRIEF = """# 캐릭터 만들기: {name} ({who})
    `CHAR_REF='{ref}' CHAR_DESC="$(cat '{work}/desc.txt')" '{repo}/scripts/char-gen.sh' {who} full '{work}'`
    끝나면 세트 A~D 시트 `{work}/{who}_full.png`·`{who}_full_b.png`·`_c`·`_d` 를 열어 확인한다: 4×2 칸, 흰 배경, 여덟 칸 모두 같은 캐릭터의 머리부터 신발까지(잘림 없음), 칸 순서가 `CELLS` 의 동작, 네 장의 생김새·크기가 같음. 원본·`features.md` 와 대조해 빠지거나 바뀐 특징(머리 모양·색, 옷 디테일, 소품)이 없는지도 본다. A 가 어긋나면 설명에서 놓친 특징을 앞쪽에 더 분명히 써서 다시 돌린다(최대 두 번 더). B~D 중 한 장만 어긋나면 그 세트만 다시 그린다: 넷째 인자로 세트를 준다(예: `... {who} full '{work}' c`, 자르기는 네 장으로 다시 한다).
 3. **상반신과 SD.** 둘 다 전신을 참조하므로 전신 뒤에, 둘은 동시에 돌린다(같은 환경 변수로 `bust` 와 `sd`, 백그라운드 두 개 후 기다리기). SD 는 hina 의 SD 시트(세트마다)를 비율 템플릿으로 쓴다(없으면 스크립트가 만든다). `{who}_bust*.png`·`{who}_sd*.png` 를 열어 같은 캐릭터인지, SD 가 2등신 픽셀 아트인지 확인하고, 크게 어긋난 세트만 다시 돌린다.
-   이어서 실행 중 모션을 같은 환경 변수로 `... {who} run '{work}'` 로 그린다(SD 시트를 참조, 세트마다 8프레임의 5초 모션 — 작업 → 생각 → 다시 작업). `{who}_run*.png` 에서 여덟 칸이 이어지는 동작이고 SD 시트와 생김새·크기가 같은지 보고, 어긋난 세트만 다시 돌린다.
-4. **스트립 확인.** `{who}-full.webp`·`{who}-bust.webp`·`{who}-sd.png`·`{who}-sd-bust.png` 네 개(각 32프레임)와 실행 중 모션 `{who}-sd-run.png`·`{who}-sd-bust-run.png` 가 작업 폴더에 있어야 한다.
+   이어서 실행 중 모션을 같은 환경 변수로 `... {who} run '{work}'` 로 그린다(SD 시트를 참조, 세트마다 8프레임의 5초 모션 — 작업 → 생각 → 다시 작업). `{who}_run*.png` 에서 여덟 칸이 이어지는 동작이고 SD 시트와 생김새·크기가 같은지 보고, 어긋난 세트만 다시 돌린다. 끝나면 완료 모션도 `... {who} done '{work}'` 로 그린다(세트 A 한 장, 잔잔한 5초 모션).
+4. **스트립 확인.** `{who}-full.webp`·`{who}-bust.webp`·`{who}-sd.png`·`{who}-sd-bust.png` 네 개(각 32프레임)와 실행 중·완료 모션 `{who}-sd-run.png`·`{who}-sd-bust-run.png`·`{who}-sd-done.png`·`{who}-sd-bust-done.png` 가 작업 폴더에 있어야 한다.
 5. **올리기.**
    `"$('{repo}/scripts/char-python.sh')" '{repo}/scripts/char-publish.py' {who} --name '{name}' --look '<한국어 생김새 요약>'{boss_flag} --dir '{work}'`
    `--look` 은 사용자가 적은 생김새가 있으면 그대로, 없으면 「빨간 웨이브 단발 · 노란 우비 · 빨간 장화」처럼 「·」로 나눈 세 토막으로 쓴다. 성공하면 `.published` 가 생기고, 열려 있는 대시보드가 1분 안에 이 캐릭터를 더한다.

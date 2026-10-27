@@ -1569,7 +1569,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
   animation: none; --bob: -2px; }
 .ch.st-run .fig-ai { animation: bob .5s steps(1, end) infinite var(--ph, 0s); }
-.ch.st-run .fig-ai[data-run] { animation: none; }  /* drawn with the run motion: its frames move it */
+.ch .ch-fig.fig-ai[data-loop] { animation: none; }  /* drawn with the run or done motion: its frames move it */
 .ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph-once, 0s); --bob: -4px; }
 .ch.dec .fig-ai { animation: bob 1s steps(1, end) infinite var(--ph, 0s); }
 .ch.st-stalled .fig-ai { animation: shake-rest 2s steps(1, end) infinite var(--ph, 0s); }
