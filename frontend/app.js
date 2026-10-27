@@ -6544,6 +6544,13 @@ const HM_KIND = { dec: '결정', ask: '보고', blocked: '막힘', approve: '반
 const hmFrom = (mine = hmMine()) => hubFrom(...Object.entries(HM_KIND).map(([k, l]) => [l, mine.filter(x => x.kind === k).map(hmName)]));
 const HUB_N = { S: 6, M: 12, L: 18 };
 const HUB_ROWS = { S: 2, M: 3, L: 6 };
+// A screen stood on end (세로 방향, wider than 900): the tiles run two to a row (app.css), each tile lists a few more
+// lines (hubRows, r.list) and 「최근 활동」 fills the screen below them (hubFeed).
+const HUB_TALL = matchMedia('(orientation: portrait) and (min-width: 901px)');
+HUB_TALL.addEventListener('change', () => { if (route().v === 'home') render(); });
+const hubRows = z => HUB_ROWS[z] + (HUB_TALL.matches ? 2 : 0);
+const HUB_LIST = 3;
+const hubList = xs => xs.map(([l, v]) => `<div class="hub-sum"><b>${esc(l)}</b><span>${esc(v)}</span></div>`).join('');
 // Today's cost from midnight per hour, over every session's 5-minute slots.
 function hubCostHours() {
   const day0 = new Date().setHours(0, 0, 0, 0), hours = new Array(new Date().getHours() + 1).fill(0);
@@ -6564,12 +6571,16 @@ const HUB = [
     const ages = qs.map(q => ({ q, a: Date.now() / 1000 - q.created_at })), max = Math.max(...ages.map(x => x.a), 1);
     const mine = hmMine(), from = hubFrom(['결정', mine.filter(x => x.kind === 'dec').map(hmName)], ['보고', mine.filter(x => x.kind === 'ask').map(hmName)]);
     return { v: n ? `결정 ${n}` : '없음', sub: [n && `가장 오래 ${human(max)}`, ask && `보고 확인 ${ask}`, unread && `메일함 ${unread}`].filter(Boolean).join(' · ') || '기다리는 질문 없음', from, tone: n ? 'hot' : '', live: n + ask + unread > 0,
-      chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` })), 'cap') }; } },
+      chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` })), 'cap'),
+      list: n => hubList([...ages].sort((x, y) => y.a - x.a).slice(0, n).map(x => [cut(x.q.questions?.[0]?.header || x.q.questions?.[0]?.question || '질문', 50), `${human(x.a)} 기다림`])) }; } },
   { id: 'agents', name: '에이전트', staff: '매니저', room: '관리실', hue: 220, wall: ['kanban', 'monitors'], prop: 'plant', val: () => {
     const ss = state.sessions.filter(s => !s.parent && hmRecent(s)), c = k => ss.filter(s => k.includes(status(s))).length, dev = state.flow?.items?.length || 0;
     return { v: `실행 ${c(['run', 'bg'])}`, sub: [`입력 대기 ${c(['wait'])}`, c(['stalled']) && `응답 없음 ${c(['stalled'])}`, dev && `흐름 이탈 ${dev}`].filter(Boolean).join(' · '),
       from: hubFrom(['응답 없음', ss.filter(s => status(s) === 'stalled').map(s => cut(nameOf(s), 30))]), tone: c(['stalled']) ? 'bad' : '', live: ss.length > 0,
-      chart: z => (z === 'L' ? hubActiveHours() : '') + hubSeg(['run', 'bg', 'wait', 'stalled'].map(k => ({ c: 'k-' + k, l: ST_LABEL[k], n: c([k]) })).concat({ c: 'k-idle', l: '그 밖', n: c(['idle', 'done']) })) }; } },
+      chart: z => (z === 'L' ? hubActiveHours() : '') + hubSeg(['run', 'bg', 'wait', 'stalled'].map(k => ({ c: 'k-' + k, l: ST_LABEL[k], n: c([k]) })).concat({ c: 'k-idle', l: '그 밖', n: c(['idle', 'done']) })),
+      // the ones to look at: 응답 없음 first, then 입력 대기, the longest quiet first
+      list: n => hubList(ss.filter(s => ['stalled', 'wait'].includes(status(s))).sort((a, b) => (status(a) === 'stalled' ? 0 : 1) - (status(b) === 'stalled' ? 0 : 1) || (a.last_ts || '').localeCompare(b.last_ts || ''))
+        .slice(0, n).map(s => [cut(nameOf(s), 50), `${ST_LABEL[status(s)]} · ${ago(s.last_ts)}`])) }; } },
   { id: 'worktrees', name: '워크트리 리뷰', staff: 'QA 담당', room: 'QA실', hue: 280, wall: ['pipeline', 'checklist'], prop: 'easel', val: () => {
     if (!wtData.sets?.length) return { v: '—', sub: 'QA 묶음 없음' };
     // a ticket left at 커밋 완료 with no worktree is a driver state left behind, not one waiting for approval (as on 내 차례);
@@ -6585,30 +6596,36 @@ const HUB = [
     return { v: ok ? `반출 승인 ${ok}` : `작업 중 ${work}`, sub: [`진행 티켓 ${ts.length}`, bl && `막힘 ${bl}`].filter(Boolean).join(' · '),
       from: hubFrom(['막힘', cnt[0].xs.map(t => t.key)], ['승인', oks.map(x => x.t.key)], ['작업', ok || bl ? [] : cnt[2].xs.map(t => t.key)]), tone: bl ? 'bad' : ok ? 'hot' : '', live: work + ok + bl > 0,
       chart: () => `<div class="hub-donut"><ds-donut segments="${cnt.map(x => `${x.n} ${x.c}`).join('; ')}" value="${ts.length}" caption="티켓"></ds-donut>
-        <div class="hub-leg">${cnt.filter(x => x.n).map(x => `<span><i class="sw" style="background:${x.c}"></i> ${x.l} ${x.n}</span>`).join('')}</div></div>` }; } },
+        <div class="hub-leg">${cnt.filter(x => x.n).map(x => `<span><i class="sw" style="background:${x.c}"></i> ${x.l} ${x.n}</span>`).join('')}</div></div>`,
+      list: n => hubList(cnt.flatMap(x => x.xs.map(t => [t.key, `${x.l} · ${QA_ST[t.qa.stage] || t.qa.stage}`])).slice(0, n)) }; } },
   { id: 'tests', name: '테스트', staff: '테스터', room: '시험실', hue: 160, wall: ['flasks', 'checklist'], prop: 'lab', val: () => {
     const all = testItems(), live = all.filter(testLive).length, fin = all.filter(t => !testLive(t)).sort((a, b) => (a.finished_at || '').localeCompare(b.finished_at || ''));
     const bad = fin.filter(t => t.phase === 'failed' || t.failed).length;
     const nm = t => cut(t.label || t.key, 30);
     return { v: live ? `실행 중 ${live}` : `실패 ${bad}`, sub: `24시간 실행 ${fin.length}${live ? ` · 실패 ${bad}` : ''}`,
       from: hubFrom(['실패', fin.filter(t => t.phase === 'failed' || t.failed).reverse().map(nm)], ['실행', all.filter(testLive).map(nm)]), tone: bad ? 'bad' : live ? 'hot' : '', live: all.length > 0,
-      chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = t.phase === 'failed' || t.failed; return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : '통과'} · ${ago(t.finished_at)}` }; }), 'cap') }; } },
+      chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = t.phase === 'failed' || t.failed; return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : '통과'} · ${ago(t.finished_at)}` }; }), 'cap'),
+      list: n => hubList(fin.slice(-n).reverse().map(t => [nm(t), `${t.phase === 'failed' || t.failed ? '실패' : '통과'} · ${ago(t.finished_at)}`])) }; } },
   { id: 'compare', name: '비교 · 비용', staff: '회계', room: '회계실', hue: 45, wall: ['coins', 'clock'], prop: 'safe', val: () => {
     const hs = hubCostHours(), sum = hs.reduce((a, x) => a + x, 0), max = Math.max(...hs, 1e-9);
     return { v: usd(sum), sub: '오늘 0시부터', live: sum > 0,
-      chart: () => hubCols(hs.map((x, i) => ({ f: x / max, c: i === hs.length - 1 ? 'cur' : '', t: `${i}시 ${usd(x)}` }))) }; } },
+      chart: () => hubCols(hs.map((x, i) => ({ f: x / max, c: i === hs.length - 1 ? 'cur' : '', t: `${i}시 ${usd(x)}` }))),
+      // today's dearest sessions (their subagents' records count apart, as on 비교)
+      list: n => { const day0 = new Date().setHours(0, 0, 0, 0);
+        return hubList(state.sessions.filter(s => !s.parent).map(s => [s, Object.entries(s.slots || {}).reduce((a, [k, v]) => +k * 300e3 >= day0 ? a + v[4] : a, 0)])
+          .filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, n).map(([s, c]) => [cut(nameOf(s), 50), usd(c)])); } }; } },
   { id: 'usage', name: '플랜 사용량', staff: '관리인', room: '계기실', hue: 190, wall: ['status', 'warning'], prop: 'rack', val: () => {
     const live = (state.plan_usage || []).filter(a => !a.stale && !a.note), lim = live.flatMap(a => (a.limits || []).filter(b => b.percent != null).map(b => ({ a, b })));
     const top = Math.max(-1, ...lim.map(x => x.b.percent));
     if (top < 0) return { v: '—', sub: '사용량 정보 없음' };
     const hi = lim.filter(x => x.b.percent === top)[0];
     return { v: `${top}%`, sub: `가장 높은 한도 · 계정 ${live.length}`, from: top >= 70 ? hubFrom(['한도', [`${(hi.a.email || '').split('@')[0]} · ${hi.b.name || ''}`]]) : '', tone: top >= 90 ? 'bad' : top >= 70 ? 'hot' : '', live: true,
-      chart: z => hubMeters(lim.sort((x, y) => y.b.percent - x.b.percent).slice(0, HUB_ROWS[z]).map(({ a, b }) => ({ l: `${(a.email || '').split('@')[0]} · ${b.name || ''}`, f: b.percent / 100, v: `${b.percent}%`, c: b.percent >= 90 ? 'ctx-bad' : b.percent >= 70 ? 'ctx-warn' : '' }))) }; } },
+      chart: z => hubMeters(lim.sort((x, y) => y.b.percent - x.b.percent).slice(0, hubRows(z)).map(({ a, b }) => ({ l: `${(a.email || '').split('@')[0]} · ${b.name || ''}`, f: b.percent / 100, v: `${b.percent}%`, c: b.percent >= 90 ? 'ctx-bad' : b.percent >= 70 ? 'ctx-warn' : '' }))) }; } },
   { id: 'talk', name: '상호작용', staff: '기록원', room: '기록실', hue: 30, wall: ['timeline', 'clock'], prop: 'boxes', val: () => {
     const on = families().fams.filter(f => f.members.some(hmRecent)), ws = f => f.members.filter(m => m !== f.coord);
     return { v: `묶음 ${on.length}`, sub: `워커 ${on.reduce((a, f) => a + ws(f).length, 0)}명 · 최근 1시간`, live: on.length > 0,
       // in words: who leads each team and how its workers stand
-      chart: z => on.slice(0, HUB_ROWS[z]).map(f => { const c = k => ws(f).filter(m => k.includes(status(m))).length;
+      chart: z => on.slice(0, hubRows(z)).map(f => { const c = k => ws(f).filter(m => k.includes(status(m))).length;
         return `<div class="hub-sum"><b>${esc(cut(f.coord ? nameOf(f.coord) : '묶음', 40))}</b><span>워커 ${ws(f).length}${[['실행', ['run', 'bg']], ['대기', ['wait']], ['응답 없음', ['stalled']], ['완료', ['done']]].map(([l, k]) => c(k) ? ` · ${l} ${c(k)}` : '').join('')}</span></div>`; }).join('') }; } },
   { id: 'projects', name: '프로젝트', staff: 'PM', room: 'PM실', hue: 260, wall: ['gantt', 'calendar'], prop: 'easel', val: () => {
     if (!pjData) { hubPjLoad ||= api.projects().then(d => { pjData = d; }, () => { pjData = { enabled: false, projects: [] }; }).finally(() => { hubPjLoad = null; if (route().v === 'home') render(); }); return { v: '…', sub: '불러오는 중' }; }
@@ -6616,7 +6633,7 @@ const HUB = [
     const ps = (pjData.projects || []).filter(p => !p.error && (p.ratio || 0) < 1);  // a finished project is not shown
     if (!ps.length) return { v: '없음', sub: '진행 중인 프로젝트 없음' };
     return { v: `${ps.length}개`, sub: `진행 중 · 평균 ${Math.round(ps.reduce((a, p) => a + (p.ratio || 0), 0) / ps.length * 100)}%`, live: true,
-      chart: z => hubMeters(ps.slice(0, HUB_ROWS[z]).map(p => ({ l: p.name, f: p.ratio || 0, v: `${Math.round((p.ratio || 0) * 100)}%`, t: p.current?.name || '' }))) }; } },
+      chart: z => hubMeters(ps.slice(0, hubRows(z)).map(p => ({ l: p.name, f: p.ratio || 0, v: `${Math.round((p.ratio || 0) * 100)}%`, t: p.current?.name || '' }))) }; } },
   { id: 'designs', name: '설계문서', staff: '설계자', room: '설계실', hue: 210, wall: ['blueprint', 'poster'], prop: 'easel', val: () => {
     const d = hmData('design', () => api.designs(), state.design?.version ?? '');
     if (d === undefined) return { v: '…', sub: '불러오는 중' };
@@ -6624,7 +6641,7 @@ const HUB = [
     const top = [...d.docs].filter(x => x.sessions).sort((a, b) => b.sessions - a.sessions);
     return { v: `${d.docs.length}개`, sub: `세션이 읽은 문서 ${top.length}`,
       // the most read documents, each a link straight to it on 설계문서
-      chart: z => top.slice(0, { S: 3, M: 4, L: 7 }[z]).map(x => `<a class="hub-doc" href="#dz=${encodeURIComponent(x.server + '|' + x.key)}"><span>${esc(cut(x.title || x.key.split('/').pop(), 44))}<small>${esc(x.key.split('/').slice(-2, -1)[0] || '')}</small></span><em>세션 ${x.sessions}</em></a>`).join('') }; } },
+      chart: z => top.slice(0, { S: 3, M: 4, L: 7 }[z] + (HUB_TALL.matches ? 3 : 0)).map(x => `<a class="hub-doc" href="#dz=${encodeURIComponent(x.server + '|' + x.key)}"><span>${esc(cut(x.title || x.key.split('/').pop(), 44))}<small>${esc(x.key.split('/').slice(-2, -1)[0] || '')}</small></span><em>세션 ${x.sessions}</em></a>`).join('') }; } },
 ];
 const hubVal = h => { try { return h.val() || { v: '—', sub: '' }; } catch (e) { return { v: '—', sub: e.message }; } };
 // stuck 3, something to look at 2, something going on 1, nothing 0; the size follows
@@ -6632,7 +6649,7 @@ const hubWeight = r => r.tone === 'bad' ? 3 : r.tone === 'hot' ? 2 : r.live ? 1 
 const HUB_SIZE = ['S', 'S', 'M', 'L'];
 const hubTile = ({ h, r, w }) => { const z = HUB_SIZE[w];
   let g = '';
-  try { g = r.chart?.(z) || ''; } catch {}
+  try { g = (r.chart?.(z) || '') + (HUB_TALL.matches && r.list ? r.list(HUB_LIST) : ''); } catch {}
   return `<section class="hw ${z} hub${w ? '' : ' quiet'}" data-go="#${h.id}"><h3><span class="hw-name">${h.name}</span><span class="hw-note">${h.staff}</span><a class="hw-more" href="#${h.id}" aria-label="${h.name} 화면으로">→</a></h3>
     <div class="hw-body"><div class="hw-big${r.tone ? ' ' + r.tone : ''}">${esc(r.v)}</div><div class="st">${esc(r.sub)}</div>${r.from ? `<div class="st hw-from" title="${esc(r.from)}">← ${esc(r.from)}</div>` : ''}${g ? `<div class="hub-chart">${g}</div>` : ''}</div></section>`; };
 // the tiles in weight order (the list's own order within a weight)
@@ -6642,8 +6659,39 @@ function renderHome() {
   needReviews();
   const mine = hmMine(), from = hmFrom(mine);  // the tab's badge, and where it came from
   $('#view').innerHTML = `<div class="sec-h hm-h"><h2>홈</h2><span>${srvOn().length > 1 ? `서버 ${srvOn().length} · ` : ''}${hhmm(new Date().toISOString())} 갱신</span>${mine.length ? `<span class="hm-todo" title="${esc(from)}">내 차례 <b>${mine.length}</b> ← ${esc(from)}</span>` : ''}</div>
-    <div class="hm-grid hub-grid">${hubOrder().map(hubTile).join('')}</div>`;
+    <div class="hm-grid hub-grid">${hubOrder().map(hubTile).join('')}</div>${HUB_TALL.matches ? hubFeed() : ''}`;
   $('#view').querySelectorAll('[data-go]').forEach(t => t.onclick = e => { if (!e.target.closest('a')) location.hash = t.dataset.go; });
+  hubFeedFit();
+}
+// 「최근 활동」: what happened on every screen in the last day, newest first — a session's last record (its state and
+// plan step), a session starting, a test run ending, a question asked, a QA ticket reaching a stage, a message between
+// agents. The card reaches the bottom of the screen and scrolls inside.
+const HUB_FEED_N = 80;
+function hubFeed() {
+  if (!talk.busy && Date.now() - talk.at > 60e3) loadTalk().then(() => { if (route().v === 'home' && HUB_TALL.matches && !charMode) render(); });
+  const now = Date.now(), ev = [], add = (at, t, k, go) => { if (at && now - at < 24 * 3600e3 && at < now + 60e3) ev.push({ at, t, k, go }); };
+  for (const s of state.sessions) if (!s.parent) {
+    const st = status(s), step = s.plan?.cur_text && s.plan.done < s.plan.total ? ` · ${s.plan.cur_text}` : '';
+    add(msOf(s.last_ts), `${nameOf(s)} — ${ST_LABEL[st] || st}${step}`, '에이전트', 'agents');
+    add(msOf(s.started), `${nameOf(s)} 시작`, '에이전트', 'agents');
+  }
+  for (const t of testItems()) { const nm = t.label || t.key;
+    if (testLive(t)) add(msOf(t.started_at), `${nm} 실행 시작`, '테스트', 'tests');
+    else add(msOf(t.finished_at), `${nm} ${t.phase === 'failed' || t.failed ? `실패${t.failed ? ' ' + t.failed : ''}` : '통과'}`, '테스트', 'tests'); }
+  for (const q of state.decisions?.pending || []) add(q.created_at * 1000, `결정 질문 — ${q.questions?.[0]?.header || q.questions?.[0]?.question || ''}`, '결정 대기', 'decide');
+  for (const set of wtData.sets || []) for (const t of set.tickets) for (const [k, at] of Object.entries(t.qa?.at || {})) add(new Date(at).getTime(), `${t.key} ${QA_ST[k] || k}`, '워크트리 리뷰', 'worktrees');
+  for (const m of talk.data?.messages || []) if (talk.types.has(m.type) && m.created_at)
+    add(msOf(m.created_at), `${talkEnd(m.from_term, m.from_kind, m.from, m).name} → ${talkEnd(m.to_term, m.to_kind, m.to, m).name} · ${TALK_TYPES[m.type]?.[0] || m.type}${m.subject ? ' · ' + m.subject : ''}`, '상호작용', 'talk');
+  const rows = ev.sort((a, b) => b.at - a.at).slice(0, HUB_FEED_N);
+  return `<section class="hw hm-feed"><h3><span class="hw-name">최근 활동</span><span class="hw-note">모든 화면 · 24시간 · 시간순</span></h3>
+    <div class="hw-body">${rows.map(e => `<a class="hm-ev" href="#${e.go}"><time>${new Date(e.at).toTimeString().slice(0, 5)}</time><span>${esc(e.t)}</span><em>${e.k}</em></a>`).join('') || '<div class="st">지난 24시간 동안 기록 없음</div>'}</div></section>`;
+}
+// the card runs from where it starts to the bottom of the screen, above the bar (main's bottom padding)
+function hubFeedFit() {
+  const f = $('#view .hm-feed');
+  if (!f) return;
+  const top = f.getBoundingClientRect().top + scrollY, pad = parseFloat(getComputedStyle($('main')).paddingBottom) || 0;
+  f.style.height = Math.max(280, innerHeight - top - pad) + 'px';
 }
 
 function connect() {
@@ -6669,4 +6717,5 @@ setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests'
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => {
   if (route().v === 'session' && detail) renderSession();
   if (route().v === 'projects' && pj.view === 'timeline') render();  // 자동 orientation follows the window's shape
+  if (route().v === 'home') hubFeedFit();
 }, 200); });
