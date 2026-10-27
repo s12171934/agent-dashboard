@@ -7,7 +7,7 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
     scripts/char-publish.py <who> --restore
     scripts/char-publish.py --list
 
-<who> is the file name (a-z, 0-9, -). --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
+<who> is the file name (a-z, 0-9, -); its strips hold 8 frames or 32 (four sets of the 8 poses), all four alike. --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
 as scripts/char-gen.sh leaves them (default: the current folder). The frame sizes and head tops (CH_ART) are measured
 from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), otherwise with the
 workers. A built-in name (aoi …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
@@ -41,10 +41,11 @@ def measure(path, pixel):
     """{w, h} (or {pw, ph} for an SD pixel strip) per frame and each frame's head top as a share of h."""
     a = np.asarray(Image.open(path).convert('RGBA'))[:, :, 3]
     H, W = a.shape
-    if W % 8:
-        sys.exit(f'{path}: 너비 {W} 가 프레임 8개로 나뉘지 않습니다')
-    fw, top = W // 8, []
-    for i in range(8):
+    n = 32 if W / 8 / H > 1.6 else 8  # 4 sets of 8 poses, or one: a person's frame is never that much wider than high
+    if W % n:
+        sys.exit(f'{path}: 너비 {W} 가 프레임 {n}개로 나뉘지 않습니다')
+    fw, top = W // n, []
+    for i in range(n):
         b = (a[:, i * fw:(i + 1) * fw] > (0 if pixel else 128))[:, int(fw * .38):int(fw * .62)]  # the head, not a raised hand
         ys = np.where(b.sum(axis=1) > b.shape[1] * .3)[0]
         top.append(round(int(ys[0]) / H, 3) if len(ys) else 0)
@@ -125,6 +126,8 @@ missing = [p for p in paths.values() if not os.path.exists(p)]
 if missing:
     sys.exit('없는 파일: ' + ', '.join(missing))
 art = {k: measure(p, k in ('sd', 'sdb')) for k, p in paths.items()}
+if len({len(a['top']) for a in art.values()}) > 1:
+    sys.exit('네 스트립의 프레임 수가 다릅니다: ' + ', '.join(f"{k} {len(a['top'])}" for k, a in art.items()))
 if o.who in hidden:
     hidden.remove(o.who)
 m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'v': int(time.time()), 'art': art}

@@ -3077,7 +3077,8 @@ try { charFrame = localStorage.getItem('adash.charframe') === 'full' ? 'full' : 
 const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
 const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
-// A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h), one pose per frame. full and
+// A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h), one pose per frame — or 32,
+// four sets (A–D) of the same 8 poses, each set its own action, and a person shows one set at a time (chAct). full and
 // bust are anime illustrations (Live2D); sd and sdb are the same character as an SD chibi in pixel art, whole and from
 // the waist up (AI 생성, pw × ph):
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
@@ -3112,7 +3113,8 @@ async function chLoad() {
   for (const k of Object.keys(chVer)) delete chVer[k];
   chR2.clear();
   for (const [who, c] of Object.entries(j?.chars || {})) {
-    if (!/^[a-z0-9-]+$/.test(who) || !['full', 'bust', 'sd', 'sdb'].every(k => c?.art?.[k]?.top?.length === 8)) continue;
+    const n = c?.art?.full?.top?.length;
+    if (!/^[a-z0-9-]+$/.test(who) || ![8, 32].includes(n) || !['bust', 'sd', 'sdb'].every(k => c.art[k]?.top?.length === n)) continue;
     CH_ART[who] = c.art;
     CH_INFO[who] = [String(c.name || who), String(c.look || '')];
     if (c.v) chVer[who] = String(c.v);
@@ -3182,20 +3184,40 @@ const chV = who => chVer[who] ? '?v=' + chVer[who] : '';
 const chSrc = (who, fr) => `chars/${who}-${fr}.webp${chV(who)}`;
 const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png${chV(who)}`;
 const CH_H = { bust: 132, full: 196 };
+// A person drawn with four sets shows one at random per pose, picked again every CH_ACT_T seconds (offset per person,
+// so a room does not change at once). The same id, pose and time give the same pick on every render and device.
+const CH_ACT_T = 10, chSets = who => CH_ART[who].full.top.length / 8;
+const chMix = n => { n = Math.imul(n ^ n >>> 16, 0x45d9f3b); n = Math.imul(n ^ n >>> 16, 0x45d9f3b); return (n ^ n >>> 16) >>> 0; };
+function chAct(id, mv, sets, t) {  // → [set now, set of the slot before, seconds into this slot]
+  if (sets < 2) return [0, 0, CH_ACT_T];
+  const h = chHash(id), u = t + h % 1000 / 1000 * CH_ACT_T, k = Math.floor(u / CH_ACT_T), pick = k => chMix(h + chHash(mv) + k * 7919) % sets;
+  return [pick(k), pick(k - 1), u - k * CH_ACT_T];
+}
+const chFrameOf = (who, id, mv) => (CH_POSE[mv] ?? 0) + 8 * chAct(id, mv, chSets(who), Date.now() / 1000)[0];
 function chFig(st, s, small) {  // small: the session detail's header (1.5× pixels on a 2× screen, a shorter canvas)
-  const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = CH_POSE[mv] ?? 0;
+  const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = chFrameOf(who, s.id || s.path, mv), n = chSets(who) * 8;
   const H = Math.round(CH_H[charFrame] * (small ? .72 : 1)), W = Math.round(a.w * H / a.h), x = small ? (devicePixelRatio >= 2 ? 1.5 : 1) : 2;
   if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
   // AI 생성: the SD pixel sprite at a whole 2× (in the detail 1.5×, a whole 3 device pixels on a 2× screen), so every
   // sprite pixel is a crisp block
   const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * x, ph = sd.ph * x;
-  return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * 8}px ${ph}px;background-position:${-f * pw}px 0" aria-hidden="true"></span>`;
+  return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${chSdSrc(who, charFrame)});background-size:${pw * n}px ${ph}px;background-position:${-f * pw}px 0" data-who="${who}" data-mv="${mv}" data-pw="${pw}" aria-hidden="true"></span>`;
 }
+// AI 생성: each second a sprite whose slot has passed shows its new set (Live2D picks in its own frame loop)
+setInterval(() => {
+  if (document.hidden) return;
+  document.querySelectorAll('.fig-ai[data-mv]').forEach(n => {
+    const p = `${-chFrameOf(n.dataset.who, n.closest('.ch')?.dataset.id || n.dataset.who, n.dataset.mv) * n.dataset.pw}px 0px`;
+    if (CH_ART[n.dataset.who] && n.style.backgroundPosition !== p) n.style.backgroundPosition = p;
+  });
+}, 1000);
 
 // Live2D: one shared WebGL canvas (a page may hold only ~16 contexts) renders each visible person's frame as a mesh the
 // vertex shader bends — the head turns about the neck, the upper body rises with each breath, hair beside the face
 // swings behind the head on a damped spring, the whole figure sways — and each person's own 2D canvas copies it. While
-// standing still the face blinks by crossfading to frame 7. Without WebGL the frame is drawn flat with the same bob.
+// standing still the face blinks by crossfading to its set's frame 7, and a new set (chAct) crossfades in from the one
+// before over CH_FADE seconds. Without WebGL the frame is drawn flat with the same bob.
+const CH_FADE = .5;
 const L2D_MOVE = {  // t in seconds → tilt (rad), breath, sway, bob (shares of the frame), blink allowed
   wait: t => [.03 * Math.sin(t * .9), .006 * Math.sin(t * 2.1), .004 * Math.sin(t * .7), 0, true],
   run: t => [.04 + .025 * Math.sin(t * 4.2), .007 * Math.sin(t * 3.4), .002 * Math.sin(t * 1.3), .004 * Math.abs(Math.sin(t * 4.2)), false],
@@ -3223,11 +3245,12 @@ const L2D = (() => {
       gl_Position = vec4(o.x * 2. - 1., 1. - o.y * 2., 0., 1.);
       q = a;
     }`;
-  const FS = `precision mediump float; uniform sampler2D t; uniform vec3 f; uniform vec4 e; varying vec2 q;
-    void main() {  // f: frame, blink amount, -; e: eye band centre x,y and radii
-      vec4 c = texture2D(t, vec2((f.x + q.x) / 8., q.y));
+  const FS = `precision mediump float; uniform sampler2D t; uniform vec4 f; uniform vec4 e; uniform vec2 g; varying vec2 q;
+    void main() {  // f: frame, blink amount, the set's blink frame, frames in the strip; g: the frame before, its share
+      vec4 c = texture2D(t, vec2((f.x + q.x) / f.w, q.y));
+      if (g.y > 0.) c = mix(c, texture2D(t, vec2((g.x + q.x) / f.w, q.y)), g.y);
       if (f.y > 0.) { vec2 r = (q - e.xy) / e.zw; float w = f.y * (1. - smoothstep(.7, 1., length(r)));
-        c = mix(c, texture2D(t, vec2((7. + q.x) / 8., q.y)), w); }
+        c = mix(c, texture2D(t, vec2((f.z + q.x) / f.w, q.y)), w); }
       gl_FragColor = c;
     }`;
   let gl = null, cv = null, u = {}, tex = new Map(), raf = 0, last = 0, io = null;
@@ -3248,7 +3271,7 @@ const L2D = (() => {
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(ix), gl.STATIC_DRAW);
     const al = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(al); gl.vertexAttribPointer(al, 2, gl.FLOAT, false, 0, 0);
-    u.n = ix.length; ['m', 'p', 'h', 'f', 'e'].forEach(k => u[k] = gl.getUniformLocation(pr, k));
+    u.n = ix.length; ['m', 'p', 'h', 'f', 'e', 'g'].forEach(k => u[k] = gl.getUniformLocation(pr, k));
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
   const img = src => { if (!imgs.has(src)) { const im = new Image(); im.src = src; im.onload = () => kick(); imgs.set(src, im); } return imgs.get(src); };
@@ -3265,8 +3288,12 @@ const L2D = (() => {
     return t;
   }
   function draw(c, t, dt) {
-    const who = c.dataset.who, mv = c.dataset.mv, fr = c.dataset.fr, a = CH_ART[who][fr], f = CH_POSE[mv] ?? 0, src = chSrc(who, fr);
-    const id = c.closest('.ch')?.dataset.id || who, ph = (chHash(id) % 1000) / 160, T = t + ph;
+    const who = c.dataset.who, mv = c.dataset.mv, fr = c.dataset.fr, a = CH_ART[who]?.[fr], src = chSrc(who, fr);
+    if (!a) return;
+    const id = c.closest('.ch')?.dataset.id || who, ph = (chHash(id) % 1000) / 160, T = t + ph, p0 = +(c.dataset.pose ?? CH_POSE[mv] ?? 0);
+    // the set: the 「캐릭터」 tab's (data-set), or the slot's pick — by the clock, so reduced motion still changes it
+    const [si, bi, into] = c.dataset.set ? [+c.dataset.set, +c.dataset.set, CH_FADE] : chAct(id, mv, chSets(who), Date.now() / 1000);
+    const f = p0 + 8 * si, fade = into < CH_FADE && bi !== si ? 1 - into / CH_FADE : 0;
     const [tilt, br, sway, bob, blinks] = (L2D_MOVE[mv] || L2D_MOVE.wait)(T);
     // hair: a damped spring pulled by the head's tilt and the body's sway, so it lags and overshoots
     const sp = spring.get(id) || { x: 0, v: 0 }; spring.set(id, sp);
@@ -3290,7 +3317,8 @@ const L2D = (() => {
     gl.uniform4f(u.m, tilt, br, full ? sway : sway * .4, bob);
     gl.uniform4f(u.p, ny, a.w / a.h, hs, T);
     gl.uniform2f(u.h, sp.x, .004);
-    gl.uniform3f(u.f, f, blink, 0);
+    gl.uniform4f(u.f, f, blink, 7 + 8 * si, a.top.length);
+    gl.uniform2f(u.g, p0 + 8 * bi, fade);
     gl.uniform4f(u.e, .5, top + (full ? .06 : .18), full ? .1 : .2, full ? .022 : .055);
     gl.drawElements(gl.TRIANGLES, u.n, gl.UNSIGNED_SHORT, 0);
     ctx.drawImage(cv, 0, 0, W, H, 0, 0, W, H);
@@ -3377,7 +3405,7 @@ function chPicker(d) {
   const cur = chWho(d), auto = !d.char?.pick;
   const one = w => { const a = CH_ART[w].sdb;
     return `<button type="button" class="d-chopt${w === cur ? ' on' : ''}" data-pick="${w}" aria-pressed="${w === cur}" title="${esc(CH_INFO[w]?.[1] || '')}">
-      <span class="d-chspr" style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(w, 'bust')});background-size:${a.pw * 8}px ${a.ph}px"></span>${esc(chName(w))}</button>`; };
+      <span class="d-chspr" style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(w, 'bust')});background-size:${a.pw * a.top.length}px ${a.ph}px"></span>${esc(chName(w))}</button>`; };
   return `<div class="box d-chpick" id="d-chpick"><div class="d-chpick-h"><b>캐릭터 고르기</b><span class="st">사무실·대화·다른 기기에서도 이 사람으로 보입니다</span>
       <button type="button" class="act" data-pick=""${auto ? ' disabled' : ''}>${auto ? '자동 배정 중' : '자동으로 되돌리기'}</button></div>
     <div class="d-chgrp" role="group" aria-label="코디네이터"><span class="st">코디네이터</span>${CH_BOSS.map(one).join('')}</div>
@@ -3939,25 +3967,32 @@ const CH_INFO = {
   hina: ['히나', '분홍빛 포니테일 · 니트 조끼'], sora: ['소라', '주황 머리 · 올리브 항공 점퍼'],
   kaede: ['카에데', '검은 긴 머리 · 헤드셋 · 차콜 재킷'], yuki: ['유키', '은발 · 헤드셋 · 하늘색 셔츠'],
 };
-const CH_POSE_L = ['서 있기 · 입력 대기', '타이핑 · 실행 중', '커피 · 백그라운드', '걱정 · 응답 없음', '졸음 · 유휴', '브이 · 완료', '손 들기 · 결정 대기', '눈 감기 · 깜빡임'];
+const CH_POSE_L = [  // per set (A–D), as char-gen.sh's CELLS draws them
+  ['서 있기 · 입력 대기', '타이핑 · 실행 중', '커피 · 백그라운드', '걱정 · 응답 없음', '졸음 · 유휴', '브이 · 완료', '손 들기 · 결정 대기', '눈 감기 · 깜빡임'],
+  ['기지개 · 입력 대기', '태블릿 · 실행 중', '차 · 백그라운드', '골똘 · 응답 없음', '하품 · 유휴', '만세 · 완료', '손짓 · 결정 대기', '눈 감기 · 깜빡임'],
+  ['팔짱 · 입력 대기', '서류 · 실행 중', '샌드위치 · 백그라운드', '글썽 · 응답 없음', '베개 · 유휴', '엄지척 · 완료', '물음표 팻말 · 결정 대기', '눈 감기 · 깜빡임'],
+  ['뒷짐 · 입력 대기', '휴대폰 입력 · 실행 중', '휴대폰 · 백그라운드', '경악 · 응답 없음', '코 풍선 · 유휴', '주먹 불끈 · 완료', '클립보드 · 결정 대기', '눈 감기 · 깜빡임'],
+];
 const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait'];
-let chx = { fr: 'bust', pose: 1 }, chxMounted = false;
+let chx = { fr: 'bust', pose: 1, set: 0 }, chxMounted = false;  // set: the action set shown (A–D); a person with one set shows A
 try { Object.assign(chx, JSON.parse(localStorage.getItem('adash.chars') || '{}')); } catch {}
+if (![0, 1, 2, 3].includes(chx.set)) chx.set = 0;
+const chxSet = who => Math.min(chx.set, chSets(who) - 1);
 function chxStages(who) {
-  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], f = chx.pose, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 2, ph = sd.ph * 2;
-  const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * 8}px ${h}px;background-position:${-f * w}px 0"></span>`;
+  const fr = chx.fr, a = CH_ART[who][fr], sd = CH_ART[who][chSd(fr)], si = chxSet(who), f = chx.pose + 8 * si, n = a.top.length, H = 180, W = Math.round(a.w * H / a.h), pw = sd.pw * 2, ph = sd.ph * 2;
+  const spr = (src, w, h, cls) => `<span class="cx-spr ${cls}" style="width:${w}px;height:${h}px;background-image:url(${src});background-size:${w * n}px ${h}px;background-position:${-f * w}px 0"></span>`;
   const st = (name, sub, pic) => `<figure class="cx-st"><div class="cx-pic">${pic}</div><figcaption><b>${name}</b><span>${sub}</span></figcaption></figure>`;
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
   return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
     + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(aoi 외는 aoi 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
     + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
     + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
-    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f]}" data-fr="${fr}" aria-hidden="true"></canvas>`);
+    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[chx.pose]}" data-pose="${chx.pose}" data-set="${si}" data-fr="${fr}" aria-hidden="true"></canvas>`);
 }
 function chxCard(who, boss, n) {
-  const [name, look] = CH_INFO[who].map(esc), on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)];
-  const thumbs = [...Array(8).keys()].map(i => `<button type="button" class="cx-pose${i === chx.pose ? ' on' : ''}" data-pose="${i}" aria-pressed="${i === chx.pose}" data-tip="${esc(CH_POSE_L[i])}" aria-label="${esc(CH_POSE_L[i])}">
-      <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${a.pw * 8}px ${a.ph}px;background-position:${-i * a.pw}px 0"></span></button>`).join('');
+  const [name, look] = CH_INFO[who].map(esc), on = chPool[who] !== false, a = CH_ART[who][chSd(chx.fr)], si = chxSet(who), L = CH_POSE_L[si];
+  const thumbs = [...Array(8).keys()].map(i => `<button type="button" class="cx-pose${i === chx.pose ? ' on' : ''}" data-pose="${i}" aria-pressed="${i === chx.pose}" data-tip="${esc(L[i])}" aria-label="${esc(L[i])}">
+      <span style="width:${a.pw}px;height:${a.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${a.pw * a.top.length}px ${a.ph}px;background-position:${-(i + 8 * si) * a.pw}px 0"></span></button>`).join('');
   return `<section class="cx surface${on ? '' : ' off'}" data-who="${who}">
     <div class="cx-h"><h3>${name}<span class="badge">${boss ? '코디네이터' : '워커'}</span></h3><span class="cx-look">${look}</span>
       <span class="cx-n">${on ? `맡은 세션 <b>${n}</b>` : '배치 안 함'}</span>
@@ -3995,7 +4030,7 @@ function cnHtml() {
   if (!on.some(x => x.id === cn.server)) cn.server = on[0]?.id || null;
   const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
   return `<section class="cn surface" id="cn" aria-labelledby="cn-h">
-    <div class="cx-h"><h3 id="cn-h">새 캐릭터</h3><span class="cx-look">원본 그림 한 장 → Orca 에이전트가 설명을 쓰고 전신·상반신(Live2D)·SD 픽셀을 그려 배포 없이 올립니다 · 20~40분</span></div>
+    <div class="cx-h"><h3 id="cn-h">새 캐릭터</h3><span class="cx-look">원본 그림 한 장 → Orca 에이전트가 설명을 쓰고 전신·상반신(Live2D)·SD 픽셀을 4세트(32포즈)씩 그려 배포 없이 올립니다 · 40~60분</span></div>
     <div class="cn-body">
       <label class="cn-drop${cn.img ? ' has' : ''}" title="PNG·JPEG·WebP, 10MB 까지 — 사람 사진이면 얼굴은 닮게 그리지 않고 머리·옷·색만 가져옵니다">
         ${cn.img ? `<img src="${cn.img}" alt="고른 원본 그림">` : '<span>원본 그림 고르기<br><small>또는 여기에 끌어 놓기</small></span>'}
@@ -4150,7 +4185,8 @@ function renderChars() {
     <div class="cx-list">${l.map(w => chxCard(w, boss, cnt[w] || 0)).join('')}</div>`;
   $('#view').innerHTML = `<div class="controls">
       <span class="seg" id="cx-fr"><button data-k="bust">상반신</button><button data-k="full">전신</button></span>
-      <span class="st">${esc(CH_POSE_L[chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
+      <span class="seg" id="cx-set" title="포즈마다 액션 세트가 4개 — 사무실에서는 ${CH_ACT_T}초마다 무작위로 바뀝니다 (세트가 하나뿐인 캐릭터는 A)">${'ABCD'.split('').map((l, i) => `<button data-k="${i}">세트 ${l}</button>`).join('')}</span>
+      <span class="st">${esc(CH_POSE_L[chx.set][chx.pose])} — 아래 포즈를 누르면 세 단계가 함께 바뀝니다. 배치는 이 기기에만 저장됩니다.</span>
     </div>
     ${cnHtml()}
     ${group('코디네이터', CH_BOSS, true)}${group('워커', CH_CREW, false)}
@@ -4161,6 +4197,11 @@ function renderChars() {
   $('#cx-fr').querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === chx.fr); b.setAttribute('aria-pressed', b.dataset.k === chx.fr);
     b.onclick = () => { chx.fr = b.dataset.k; save(); chxMounted = false; renderChars(); };
+  });
+  $('#cx-set').querySelectorAll('button').forEach(b => {
+    const on = +b.dataset.k === chx.set;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+    b.onclick = () => { chx.set = +b.dataset.k; save(); chxMounted = false; renderChars(); };
   });
   $('#view').querySelectorAll('.cx-pose').forEach(b => b.onclick = () => { chx.pose = +b.dataset.pose; save(); chxMounted = false; renderChars(); });
   $('#view').querySelectorAll('[data-pool]').forEach(c => c.onchange = () => {
@@ -5500,7 +5541,7 @@ function chatGet(s) {
 // A person's face: the top of their SD bust sprite (pose 0), scaled to fill a circle of size px.
 function chFace(s, size = 32) {
   const a = CH_ART[chWho(s)].sdb, k = size * 1.5 / a.pw, w = a.pw * k;
-  return `<span class="chat-face" style="width:${size}px;height:${size}px;background-image:url(${chSdSrc(chWho(s), 'bust')});background-size:${a.pw * 8 * k}px ${a.ph * k}px;background-position:${-(w - size) / 2}px ${-a.top[0] * a.ph * k}px" aria-hidden="true"></span>`;
+  return `<span class="chat-face" style="width:${size}px;height:${size}px;background-image:url(${chSdSrc(chWho(s), 'bust')});background-size:${a.pw * a.top.length * k}px ${a.ph * k}px;background-position:${-(w - size) / 2}px ${-a.top[0] * a.ph * k}px" aria-hidden="true"></span>`;
 }
 function chatLogHtml(s) {
   const msgs = chatGet(s), c = chat.cache[s.path], face = chFace(s);

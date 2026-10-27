@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Cut a character mode sheet (4×2 poses on white, from char-gen.sh) into one WebP strip of 8 frames.
+"""Cut a character mode sheet (4×2 poses on white, from char-gen.sh) into one WebP strip of 8 frames — or a set of four
+sheets (A–D: the same 8 poses, each with its own action) into one strip of 32, A's 8 first.
 
 Drops the white backdrop (a flood from the cell edges, plus flat white gaps between the legs and inside the hair),
-lines the frames up (a bust by its head), crops all 8 with one shared box so a pose keeps its place, and scales them
+lines the frames up (a bust by its head, the others by their feet), sizes sheets B–D to A (full and sd: by the median
+height from head to feet), crops all frames with one shared box so a pose keeps its place, and scales them
 to 320 px (full) or 240 px (bust) high (the Live2D pictures). Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
 starts as a share of h — which goes into CH_ART in frontend/app.js. An sd sheet (SD chibi pixel art, 「AI 생성」) is
 snapped to a pixel grid (standing pose 80 rows high) and written as <out> itself (a .png), with {pw, ph} instead of {w, h},
 and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}).
-  scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png>
+  scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png> [<sheet B> <sheet C> <sheet D>]
 Needs Pillow, numpy and scipy.
 """
 import sys, json
@@ -16,47 +18,50 @@ from PIL import Image, ImageFilter
 from scipy import ndimage
 
 src, kind, out = sys.argv[1:4]
+srcs = [src] + sys.argv[4:]
 SD_BODY = 80  # an SD sprite's standing height (frame 0, head to feet) in pixels, about the generator's own grid
 SD_MERGE = 30  # colours of a sheet closer than this (summed over R, G, B) become one
 SD_CUT, SD_BUST = .75, 80  # an SD bust: the top 75 % of the standing height, that part 80 rows high
 H = 320 if kind == 'full' else 240  # output frame height
-im = Image.open(src).convert('RGB')
-W0, H0 = im.size
+W0, H0 = Image.open(src).size
 cw, ch = W0 // 4, H0 // 2
 cells = []
-for r in range(2):
-    for c in range(4):
-        a = np.asarray(im.crop((c * cw, r * ch, (c + 1) * cw, (r + 1) * ch))).astype(np.int16)
-        white = (a.min(axis=2) > 232) & (np.ptp(a, axis=2) < 18)
-        lab, _ = ndimage.label(white)
-        # a bust is cut at the waist, so its shirt runs into the bottom edge: flood from the other three only
-        rims = [lab[0], lab[:, 0], lab[:, -1]] + ([lab[-1]] if kind != 'bust' else [])
-        edge = set(np.unique(np.concatenate(rims))) - {0}
-        bg = np.isin(lab, list(edge))
-        # small enclosed white holes between arm and body etc. that are big are background too
-        lab2, n2 = ndimage.label(white & ~bg)
-        if n2:
-            sizes = ndimage.sum(np.ones_like(lab2), lab2, range(1, n2 + 1))
-            for i, s in enumerate(sizes, 1):
-                if s > 300:
-                    region = lab2 == i
-                    # flat near-white enclosed region (a gap between legs or arm and body) -> background
-                    v = a[region].astype(float)
-                    cy = np.where(region)[0].mean() / region.shape[0]
-                    # gaps between the legs and pockets inside the hair; not the middle, where a flat white shirt is
-                    low = {'full': cy > .45 or cy < .14, 'sd': cy < .1}.get(kind, cy < .4)  # an SD's short legs leave no gap, but white socks
-                    if low and v.mean() > 244 and v.std() < 5: bg |= region
-        alpha = (~bg).astype(np.uint8) * 255
-        alpha = ndimage.binary_erosion(ndimage.binary_opening(alpha > 0, iterations=1), iterations=1)
-        # keep only the biggest blobs (drop specks)
-        lab3, n3 = ndimage.label(alpha)
-        if n3:
-            sizes = ndimage.sum(np.ones_like(lab3), lab3, range(1, n3 + 1))
-            keep = [i + 1 for i, s in enumerate(sizes) if s > .03 * sizes.max()]  # drops specks and a neighbour's fingertips
-            alpha = np.isin(lab3, keep)
-        al = Image.fromarray((alpha * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(.7))
-        rgba = Image.fromarray(a.astype(np.uint8)).convert('RGBA'); rgba.putalpha(al)
-        cells.append(rgba)
+for sheet in srcs:
+    im = Image.open(sheet).convert('RGB')
+    if im.size != (W0, H0): im = im.resize((W0, H0), Image.LANCZOS)
+    for r in range(2):
+        for c in range(4):
+            a = np.asarray(im.crop((c * cw, r * ch, (c + 1) * cw, (r + 1) * ch))).astype(np.int16)
+            white = (a.min(axis=2) > 232) & (np.ptp(a, axis=2) < 18)
+            lab, _ = ndimage.label(white)
+            # a bust is cut at the waist, so its shirt runs into the bottom edge: flood from the other three only
+            rims = [lab[0], lab[:, 0], lab[:, -1]] + ([lab[-1]] if kind != 'bust' else [])
+            edge = set(np.unique(np.concatenate(rims))) - {0}
+            bg = np.isin(lab, list(edge))
+            # small enclosed white holes between arm and body etc. that are big are background too
+            lab2, n2 = ndimage.label(white & ~bg)
+            if n2:
+                sizes = ndimage.sum(np.ones_like(lab2), lab2, range(1, n2 + 1))
+                for i, s in enumerate(sizes, 1):
+                    if s > 300:
+                        region = lab2 == i
+                        # flat near-white enclosed region (a gap between legs or arm and body) -> background
+                        v = a[region].astype(float)
+                        cy = np.where(region)[0].mean() / region.shape[0]
+                        # gaps between the legs and pockets inside the hair; not the middle, where a flat white shirt is
+                        low = {'full': cy > .45 or cy < .14, 'sd': cy < .1}.get(kind, cy < .4)  # an SD's short legs leave no gap, but white socks
+                        if low and v.mean() > 244 and v.std() < 5: bg |= region
+            alpha = (~bg).astype(np.uint8) * 255
+            alpha = ndimage.binary_erosion(ndimage.binary_opening(alpha > 0, iterations=1), iterations=1)
+            # keep only the biggest blobs (drop specks)
+            lab3, n3 = ndimage.label(alpha)
+            if n3:
+                sizes = ndimage.sum(np.ones_like(lab3), lab3, range(1, n3 + 1))
+                keep = [i + 1 for i, s in enumerate(sizes) if s > .03 * sizes.max()]  # drops specks and a neighbour's fingertips
+                alpha = np.isin(lab3, keep)
+            al = Image.fromarray((alpha * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(.7))
+            rgba = Image.fromarray(a.astype(np.uint8)).convert('RGBA'); rgba.putalpha(al)
+            cells.append(rgba)
 if kind == 'bust':
     # the rows of a bust sheet sit at different heights: line every frame's head up with frame 0's. The head top is
     # the first row filled across the middle band (a raised hand or a peace sign is off to the side).
@@ -70,8 +75,26 @@ if kind == 'bust':
         dy = h0 - head(c)
         if dy:
             m = Image.new('RGBA', c.size, (0, 0, 0, 0)); m.paste(c, (0, dy)); cells[i] = m
-if kind == 'sd':
-    # the rows of an SD sheet sit at different heights too: stand every frame on frame 0's feet
+N = len(cells)  # 8, or 32 for a set of four sheets
+if kind != 'bust' and N > 8:
+    # Codex draws each sheet at its own scale: size B–D to A by the median height from the head (the middle band's
+    # first filled row, not a raised hand) to the feet over each sheet's 8 cells, about the feet's middle
+    def tall(c):
+        al = np.asarray(c)[:, :, 3] > 128
+        b = al[:, int(cw * .4):int(cw * .6)]
+        rows = np.where(b.sum(axis=1) > b.shape[1] * .3)[0]
+        return c.getbbox()[3] - (rows[0] if len(rows) else 0)
+    t0 = np.median([tall(c) for c in cells[:8]])
+    for k in range(8, N, 8):
+        z = t0 / np.median([tall(c) for c in cells[k:k + 8]])
+        if abs(z - 1) < .02: continue
+        for i in range(k, k + 8):
+            c = cells[i]; bb = c.getbbox(); r = c.resize((round(cw * z), round(ch * z)), Image.LANCZOS)
+            m = Image.new('RGBA', c.size, (0, 0, 0, 0))
+            m.paste(r, (round((bb[0] + bb[2]) / 2 * (1 - z)), round(bb[3] * (1 - z))), r); cells[i] = m
+if kind == 'sd' or N > 8:
+    # the rows of a sheet (and an SD sheet's or another sheet's frames) sit at different heights: stand every frame
+    # on frame 0's feet
     f0 = cells[0].getbbox()[3]
     for i, c in enumerate(cells):
         dy = f0 - c.getbbox()[3]
@@ -89,7 +112,7 @@ if kind == 'sd':
     # that bin: no shared palette, which would give its colours to the big hair and jacket and lose a small hair clip or
     # the eyes' own colour. The mode is taken over the block's core: an edge of the block may already be the
     # neighbour's colour, the grids not lining up exactly. Near colours are merged across the sheet afterwards.
-    full = Image.new('RGBA', (cw * 8, ch)); [full.paste(c, (i * cw, 0)) for i, c in enumerate(cells)]
+    full = Image.new('RGBA', (cw * N, ch)); [full.paste(c, (i * cw, 0)) for i, c in enumerate(cells)]
     b0 = cells[0].getbbox(); bs = (b0[3] - b0[1]) / SD_BODY
     rgb = np.asarray(full)[:, :, :3]; al = np.asarray(full)[:, :, 3] > 128
     qi = (rgb[..., 0] >> 5).astype(np.int32) << 6 | (rgb[..., 1] >> 5).astype(np.int32) << 3 | rgb[..., 2] >> 5  # 8 levels a channel
@@ -99,8 +122,8 @@ if kind == 'sd':
         """the box from y0 down to yb in bs-px blocks, written to path; cut: the bottom edge is a cut (a bust), not an outline"""
         PH = int((yb - y0) / bs + .5); PW = int((x1 - x0) / bs + .5)
         core = lambda o, n: slice(o + int((n + .2) * bs), o + max(int((n + .8) * bs), int((n + .2) * bs) + 1))
-        px = np.zeros((PH, PW * 8, 4), np.uint8)
-        for i in range(8):
+        px = np.zeros((PH, PW * N, 4), np.uint8)
+        for i in range(N):
             for j in range(PH):
                 ys = slice(y0 + int(j * bs), y0 + max(int((j + 1) * bs), int(j * bs) + 1))
                 for k in range(PW):
@@ -138,7 +161,7 @@ if kind == 'sd':
         px[rim, :3] = (px[rim, :3] * .3).astype(np.uint8)
         Image.fromarray(px).save(path, optimize=True)
         meta = {'pw': PW, 'ph': PH, 'frames': []}
-        for i in range(8):
+        for i in range(N):
             a = px[:, i * PW:(i + 1) * PW, 3] > 0
             b = a[:, int(PW * .38):int(PW * .62)]
             meta['frames'].append({'top': round(int(np.where(b.sum(axis=1) > b.shape[1] * .3)[0][0]) / PH, 3)})
@@ -152,7 +175,7 @@ if kind == 'sd':
     print(json.dumps(meta))
     sys.exit()
 s = H / (y1 - y0); FW = round((x1 - x0) * s)
-sheet = Image.new('RGBA', (FW * 8, H), (0, 0, 0, 0))
+sheet = Image.new('RGBA', (FW * N, H), (0, 0, 0, 0))
 meta = {'w': FW, 'h': H, 'frames': []}
 for i, c in enumerate(cells):
     f = c.crop((x0, y0, x1, y1)).resize((FW, H), Image.LANCZOS)
