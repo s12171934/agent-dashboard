@@ -24,6 +24,11 @@ git -C "$ROOT" diff --quiet HEAD -- frontend design-system || build="$build-dirt
 ver="$build-$(date +%Y%m%d%H%M%S)"
 printf '{"build": "%s"}\n' "$ver" > "$OUT/build.json"
 
+# the character pictures by content: app.js's CH_FILEV gets {file: hash} for frontend/chars, so a redrawn strip gets a
+# new URL (the zone's 4-hour cache would hand out the old one) and an unchanged one keeps its cache
+charv="$(cd "$ROOT/frontend/chars" && for f in *.webp *.png; do [ -f "$f" ] && printf '"%s":"%s",' "$f" "$(shasum "$f" | cut -c1-10)"; done)"
+CV="{${charv%,}}" perl -pi -e 's{/\*\@chars-v\*/\{\}/\*\@\*/}{$ENV{CV}}' "$OUT/app.js"
+grep -q '@chars-v' "$OUT/app.js" && { echo "app.js 의 CH_FILEV 를 채우지 못했습니다" >&2; exit 1; }
 # the design system's own pages (preview, stories and the story canvas) too, with their inline module imports
 V="$ver" perl -pi -e 's{\b((?:src|href)=")((?![a-z]+:|/|#)[^"?]+\.(?:js|css))"}{$1$2?v=$ENV{V}"}g' "$OUT/index.html" "$OUT"/ds/*.html
 find "$OUT" -name '*.css' -exec env V="$ver" perl -pi -e 's{(\@import\s+")([^"?]+\.css)"}{$1$2?v=$ENV{V}"}g' {} +

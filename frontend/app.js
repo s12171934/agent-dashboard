@@ -3195,9 +3195,14 @@ function chSet(d, who) {
 }
 const chMove = (st, s) => s.decision ? 'dec' : st;
 const CH_POSE = { run: 1, bg: 2, wait: 0, stalled: 3, idle: 4, done: 5, dec: 6 };
-const chV = who => chVer[who] ? '?v=' + chVer[who] : '';
-const chSrc = (who, fr) => `chars/${who}-${fr}.webp${chV(who)}`;
-const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => `chars/${who}-sd${fr === 'bust' ? '-bust' : ''}.png${chV(who)}`;
+// A picture's URL carries a version, or a browser keeps an old one: the custom domain hands chars/* out with a 4-hour
+// cache whatever _headers says, so a redrawn built-in strip (8 frames → 32) was cut with the new CH_ART and broke. A
+// person in chars.json goes by its v; a built-in file by its content hash, which deploy-frontend.sh writes in below
+// (left empty locally, where the dev server sends no-store).
+const CH_FILEV = /*@chars-v*/{}/*@*/;
+const chV = (who, f) => chVer[who] ? '?v=' + chVer[who] : CH_FILEV[f] ? '?v=' + CH_FILEV[f] : '';
+const chSrc = (who, fr) => { const f = `${who}-${fr}.webp`; return `chars/${f}${chV(who, f)}`; };
+const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr) => { const f = `${who}-sd${fr === 'bust' ? '-bust' : ''}.png`; return `chars/${f}${chV(who, f)}`; };
 const CH_H = { bust: 132, full: 196 };
 // A person drawn with four sets shows one at random per pose, picked again every CH_ACT_T seconds (offset per person,
 // so a room does not change at once). The same id, pose and time give the same pick on every render and device.
