@@ -9,7 +9,8 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
 
 <who> is the file name (a-z, 0-9, -); its strips hold 8 frames or 32 (four sets of the 8 poses), all four alike. --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
 as scripts/char-gen.sh leaves them (default: the current folder), and <who>-sd-run.png with <who>-sd-bust-run.png (the
-「실행 중」 motion, char-gen.sh run) when both are there. The frame sizes and head tops (CH_ART) are measured
+「실행 중」 motion, char-gen.sh run) and <who>-sd-done.png with <who>-sd-bust-done.png (the 「완료」 motion, done) when
+both of a pair are there. The frame sizes and head tops (CH_ART) are measured
 from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), otherwise with the
 workers. A built-in name (ren …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
 --remove deletes for good: an added person's strips and entry go from R2; a built-in person (they live in the deploy until
@@ -34,7 +35,7 @@ if not shutil.which('npx'):  # started by launchd (the metric server's 「삭제
 WRANGLER = ['npx', '--yes', 'wrangler@' + os.environ.get('WRANGLER_VERSION', '4.151.3')]
 BUILTIN = {'kaede': True, 'yuki': True, 'ren': False, 'hina': False}  # who: boss
 FILES = {'full': '{}-full.webp', 'bust': '{}-bust.webp', 'sd': '{}-sd.png', 'sdb': '{}-sd-bust.png'}
-RUN = {'sdr': '{}-sd-run.png', 'sdbr': '{}-sd-bust-run.png'}  # optional, both or neither
+RUN = {'sdr': '{}-sd-run.png', 'sdbr': '{}-sd-bust-run.png', 'sdd': '{}-sd-done.png', 'sdbd': '{}-sd-bust-done.png'}  # optional, by pairs
 
 
 def r2(*args, **kw):
@@ -155,11 +156,12 @@ paths = {k: os.path.join(o.dir, f.format(o.who)) for k, f in FILES.items()}
 missing = [p for p in paths.values() if not os.path.exists(p)]
 if missing:
     sys.exit('없는 파일: ' + ', '.join(missing))
-run = {k: os.path.join(o.dir, f.format(o.who)) for k, f in RUN.items()}
-if all(os.path.exists(p) for p in run.values()):
-    paths.update(run)
+for pair in (('sdr', 'sdbr'), ('sdd', 'sdbd')):
+    run = {k: os.path.join(o.dir, RUN[k].format(o.who)) for k in pair}
+    if all(os.path.exists(p) for p in run.values()):
+        paths.update(run)
 art = {k: measure(p, k in ('sd', 'sdb')) for k, p in paths.items()}
-if len({len(a['top']) for a in art.values()}) > 1:
+if len({len(a['top']) for k, a in art.items() if k not in ('sdd', 'sdbd')}) > 1 or any(len(art[k]['top']) != 8 for k in ('sdd', 'sdbd') if k in art):
     sys.exit('스트립의 프레임 수가 다릅니다: ' + ', '.join(f"{k} {len(a['top'])}" for k, a in art.items()))
 if o.who in hidden:
     sys.exit(f'{o.who}: 영구 삭제한 기본 캐릭터입니다 — 다른 이름으로 올리세요')

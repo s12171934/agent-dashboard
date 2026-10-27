@@ -8,10 +8,11 @@ height from head to feet), crops all frames with one shared box so a pose keeps 
 to 320 px (full) or 240 px (bust) high (the Live2D pictures). Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
 starts as a share of h — which goes into CH_ART in frontend/app.js. An sd sheet (SD chibi pixel art, 「AI 생성」) is
 snapped to a pixel grid (standing pose 80 rows high) and written as <out> itself (a .png), with {pw, ph} instead of {w, h},
-and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}). Four more sd sheets (the
-「실행 중」 motion, char-gen.sh run) are cut on the same grid and box and written apart: frames 33–64 as <out>-run.png and
-<out>-bust-run.png ({run: [{top}], bust: {…, run}}).
-  scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png> [<sheet B> <sheet C> <sheet D> [<run A> … <run D>]]
+and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}). More sd sheets after the four (the
+「실행 중」 and 「완료」 motions, char-gen.sh run and done; CHAR_EXTRA names them in order, e.g. run:4,done:1 — a name and
+its count of sheets) are cut on the same grid and box and written apart: <out>-<name>.png and <out>-bust-<name>.png
+({<name>: [{top}], bust: {…, <name>}}).
+  CHAR_EXTRA=run:4 scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png> [<sheet B> <sheet C> <sheet D> [<run A> … <run D>]]
 Needs Pillow, numpy and scipy.
 """
 import sys, json, os
@@ -79,7 +80,12 @@ if kind == 'bust':
         dy = h0 - head(c)
         if dy:
             m = Image.new('RGBA', c.size, (0, 0, 0, 0)); m.paste(c, (0, dy)); cells[i] = m
-N = len(cells)  # 8, or 32 for a set of four sheets
+N = len(cells)  # 8, or 32 for a set of four sheets (and the motions' after them)
+EXTRA, at = [], 32  # (name, first frame, end) of each motion after the 32
+for x in filter(None, os.environ.get('CHAR_EXTRA', '').split(',')):
+    name, n = x.split(':'); EXTRA.append((name, at, at + 8 * int(n))); at += 8 * int(n)
+if EXTRA and at != N:
+    sys.exit(f'CHAR_EXTRA 는 시트 {(at - 32) // 8}장, 받은 것은 {(N - 32) // 8}장입니다')
 if kind != 'bust' and N > 8:
     # Codex draws each sheet at its own scale: size B–D to A by the median height from the head (the middle band's
     # first filled row, not a raised hand) to the feet over each sheet's 8 cells, about the feet's middle
@@ -164,15 +170,17 @@ if kind == 'sd':
         if cut: rim[-1] = o[-1] & ~(np.roll(o[-1], 1) & np.roll(o[-1], -1))
         px[rim, :3] = (px[rim, :3] * .3).astype(np.uint8)
         Image.fromarray(px[:, :32 * PW] if N > 32 else px).save(path, optimize=True)
-        if N > 32:  # the run motion: its own strip
-            Image.fromarray(px[:, 32 * PW:]).save(path.rsplit('.', 1)[0] + '-run.png', optimize=True)
+        for name, a, b in EXTRA:  # each motion: its own strip
+            Image.fromarray(px[:, a * PW:b * PW]).save(path.rsplit('.', 1)[0] + f'-{name}.png', optimize=True)
         meta = {'pw': PW, 'ph': PH, 'frames': []}
         for i in range(N):
             a = px[:, i * PW:(i + 1) * PW, 3] > 0
             b = a[:, int(PW * .38):int(PW * .62)]
             meta['frames'].append({'top': round(int(np.where(b.sum(axis=1) > b.shape[1] * .3)[0][0]) / PH, 3)})
+        for name, a, b in EXTRA:
+            meta[name] = meta['frames'][a:b]
         if N > 32:
-            meta['run'] = meta['frames'][32:]; meta['frames'] = meta['frames'][:32]
+            meta['frames'] = meta['frames'][:32]
         return meta
 
     meta = pixel(bs, y1, out, False)
