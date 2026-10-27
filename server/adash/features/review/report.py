@@ -144,7 +144,7 @@ def report_start(s, qs):
             spec = re.sub(r"\{\{(\w+)\}\}", lambda m: str(vals.get(m.group(1), m.group(0))), f.read())
         claude = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
         allow = ["Read", "Glob", "Grep", "Bash(gh pr view:*)", "Bash(gh api:*)", "Bash(ls:*)",
-                 f"Edit({watch}/**)"]  # Edit rules cover Write too
+                 f"Edit(/{watch}/**)"]  # "//abs/path" is an absolute rule ("/x" would be project-relative); Edit covers Write
         log_f = open(os.path.join(watch, REPORT_LOG), "w", encoding="utf-8")
         proc = subprocess.Popen([claude, "-p", spec, "--model", REPORT_MODEL, "--permission-mode", "dontAsk",
                                  "--allowedTools", *allow, "--add-dir", core_config.VAULT],
