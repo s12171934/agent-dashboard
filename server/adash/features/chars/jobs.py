@@ -19,7 +19,7 @@ from adash.features.terminals.launch import AGENTS, MODEL, places, start_launch
 REPO = os.path.dirname(HERE)
 WORK = os.path.join(HOME, ".cache/agent-dashboard/chars")
 WHO = re.compile(r"[a-z][a-z0-9-]{1,23}")
-BUILTIN = {"aoi", "ren", "hina", "sora", "kaede", "yuki"}
+BUILTIN = {"ren", "hina", "kaede", "yuki"}
 MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"RIFF", "webp"))
 IMAGE_MAX = 10 << 20
 KEEP = 14 * 86400  # finished jobs older than this are dropped from the list (and their folder)
@@ -37,7 +37,7 @@ BRIEF = """# 캐릭터 만들기: {name} ({who})
 - 영문 이름(파일 이름): `{who}` · 표시 이름: {name} · 역할: {role}
 - 사용자가 적은 생김새: {look}
 - 사용자 요청: {notes}
-- 스크립트: `{repo}/scripts/` — `char-gen.sh`(Codex 이미지 생성 + 자르기, 한 번에 약 10분), `char-publish.py`(R2 에 올리기), `char-python.sh`(Pillow·numpy·scipy 가 있는 파이썬 경로를 출력, 없으면 만든다)
+- 스크립트: `{repo}/scripts/` — `char-gen.sh`(Codex 이미지 생성 + 자르기. 한 번에 시트 4장 — 세트 A 를 먼저, 이어 B·C·D 를 동시에 — 약 20분), `char-publish.py`(R2 에 올리기), `char-python.sh`(Pillow·numpy·scipy 가 있는 파이썬 경로를 출력, 없으면 만든다)
 
 ## 순서
 
@@ -51,13 +51,13 @@ BRIEF = """# 캐릭터 만들기: {name} ({who})
    - 색 구성: 주된 색 두세 가지와 포인트 색
    원본에 안 보이는 부분(잘린 하반신 등)은 보이는 부분과 어울리게 지어 쓰고 「지어냄」이라고 표시한다. 그다음 이 목록을 영어 한 줄로 옮겨 `{work}/desc.txt` 에 저장한다. `char-gen.sh` 의 `CHARS` 줄처럼 쉼표로 나열하되 훨씬 자세히, 60~120 단어로: 인상·역할 → 머리 → 얼굴 → 위에서 아래로 옷(겹마다 색·소재·디테일) → 신발 → 소품. 원본에서 알아볼 수 있는 특징은 작은 것도 빼지 않는다. 사용자 요청과 생김새가 원본보다 우선한다.
    - 원본이 실제 인물 사진이면 그 사람의 얼굴을 닮게 쓰지 말고, 머리·옷·색·분위기만 가져온 오리지널 캐릭터로 쓴다. 기존 작품의 캐릭터라면 그대로 베끼지 말고 특징을 바꿔 오리지널로 만든다.
-   - 사무실의 여덟 동작(서 있기·노트북 타자·커피·머리 감싸 쥐기·졸기·브이·손 들기·눈 감기)을 그릴 수 있게, 손에 늘 드는 물건이나 무기처럼 동작을 가리는 요소는 빼거나 옆에 둔다.
+   - 사무실의 여덟 포즈를 네 세트(A~D, 세트마다 다른 동작 — 노트북·태블릿·서류·휴대폰, 커피·차·샌드위치, 브이·만세·엄지척 등. `char-gen.sh` 의 `CELLS`)로 그릴 수 있게, 손에 늘 드는 물건이나 무기처럼 동작을 가리는 요소는 빼거나 옆에 둔다.
    {boss_line}
 2. **전신.** 작업 폴더에서 실행한다:
    `CHAR_REF='{ref}' CHAR_DESC="$(cat '{work}/desc.txt')" '{repo}/scripts/char-gen.sh' {who} full '{work}'`
-   끝나면 `{work}/{who}_full.png` 를 열어 확인한다: 4×2 칸, 흰 배경, 여덟 칸 모두 같은 캐릭터의 머리부터 신발까지(잘림 없음), 칸 순서가 위 여덟 동작. 원본·`features.md` 와 대조해 빠지거나 바뀐 특징(머리 모양·색, 옷 디테일, 소품)이 없는지도 본다. 어긋나면 설명에서 놓친 특징을 앞쪽에 더 분명히 써서 다시 돌린다(최대 두 번 더).
-3. **상반신과 SD.** 둘 다 전신을 참조하므로 전신 뒤에, 둘은 동시에 돌린다(같은 환경 변수로 `bust` 와 `sd`, 백그라운드 두 개 후 기다리기). SD 는 aoi 의 SD 시트를 비율 템플릿으로 쓴다(없으면 스크립트가 만든다). `{who}_bust.png`·`{who}_sd.png` 를 열어 같은 캐릭터인지, SD 가 2등신 픽셀 아트인지 확인하고, 크게 어긋난 쪽만 다시 돌린다.
-4. **스트립 확인.** `{who}-full.webp`·`{who}-bust.webp`·`{who}-sd.png`·`{who}-sd-bust.png` 네 개가 작업 폴더에 있어야 한다.
+   끝나면 세트 A~D 시트 `{work}/{who}_full.png`·`{who}_full_b.png`·`_c`·`_d` 를 열어 확인한다: 4×2 칸, 흰 배경, 여덟 칸 모두 같은 캐릭터의 머리부터 신발까지(잘림 없음), 칸 순서가 `CELLS` 의 동작, 네 장의 생김새·크기가 같음. 원본·`features.md` 와 대조해 빠지거나 바뀐 특징(머리 모양·색, 옷 디테일, 소품)이 없는지도 본다. A 가 어긋나면 설명에서 놓친 특징을 앞쪽에 더 분명히 써서 다시 돌린다(최대 두 번 더). B~D 중 한 장만 어긋나면 그 세트만 다시 그린다: 넷째 인자로 세트를 준다(예: `... {who} full '{work}' c`, 자르기는 네 장으로 다시 한다).
+3. **상반신과 SD.** 둘 다 전신을 참조하므로 전신 뒤에, 둘은 동시에 돌린다(같은 환경 변수로 `bust` 와 `sd`, 백그라운드 두 개 후 기다리기). SD 는 hina 의 SD 시트(세트마다)를 비율 템플릿으로 쓴다(없으면 스크립트가 만든다). `{who}_bust*.png`·`{who}_sd*.png` 를 열어 같은 캐릭터인지, SD 가 2등신 픽셀 아트인지 확인하고, 크게 어긋난 세트만 다시 돌린다.
+4. **스트립 확인.** `{who}-full.webp`·`{who}-bust.webp`·`{who}-sd.png`·`{who}-sd-bust.png` 네 개(각 32프레임)가 작업 폴더에 있어야 한다.
 5. **올리기.**
    `"$('{repo}/scripts/char-python.sh')" '{repo}/scripts/char-publish.py' {who} --name '{name}' --look '<한국어 생김새 요약>'{boss_flag} --dir '{work}'`
    `--look` 은 사용자가 적은 생김새가 있으면 그대로, 없으면 「빨간 웨이브 단발 · 노란 우비 · 빨간 장화」처럼 「·」로 나눈 세 토막으로 쓴다. 성공하면 `.published` 가 생기고, 열려 있는 대시보드가 1분 안에 이 캐릭터를 더한다.
@@ -235,7 +235,7 @@ def remove(jid):
 
 
 def publish_script(who, flag):
-    """char-publish.py <who> --remove|--restore. -> None, or RuntimeError with its last line."""
+    """char-publish.py <who> --remove. -> None, or RuntimeError with its last line."""
     if not (isinstance(who, str) and WHO.fullmatch(who)):
         raise ValueError("잘못된 이름입니다")
     py = subprocess.run([os.path.join(REPO, "scripts/char-python.sh")], capture_output=True, text=True, timeout=300).stdout.strip()
@@ -249,17 +249,10 @@ def publish_script(who, flag):
 
 
 def unpublish(who):
-    """Take a character down: char-publish.py --remove drops it from chars.json and deletes its strips in R2 (a built-in
-    one is listed as hidden there instead), so every open page loses it on its next read. Its job folders stay (marked
-    .removed), so the sheets can be put up again."""
+    """Delete a character for good: char-publish.py --remove drops it from chars.json and deletes its strips in R2 (a
+    built-in one is listed as hidden there instead, never to come back), so every open page loses it on its next read.
+    Its job folders (the picture, the sheets) go too, so nothing is left to put up again."""
     publish_script(who, "--remove")
     for j in list_jobs():
-        if j["who"] == who and j["state"] == "published":
-            open(os.path.join(WORK, j["id"], ".removed"), "w").close()
-
-
-def restore(who):
-    """Bring back a built-in character taken down with unpublish (off chars.json's hidden list)."""
-    if who not in BUILTIN:
-        raise ValueError("기본 캐릭터만 되살릴 수 있습니다 — 올린 캐릭터는 다시 만들어 올리세요")
-    publish_script(who, "--restore")
+        if j["who"] == who and j["state"] != "running":
+            shutil.rmtree(os.path.join(WORK, j["id"]), ignore_errors=True)
