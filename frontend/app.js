@@ -3157,11 +3157,11 @@ try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch
 const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.length ? k : l; };
 // A session's person is kept in its server's metadata (prefs.json chars → s.char: { who, boss, pick }), so the office,
 // the detail, the chat and every device draw the same one whichever copy of the session they hold. chPin runs over
-// the snapshot after each refresh: a session without one is given the hash's pick (from the list for its role, boss),
-// and a kept one is picked again only when it was the hash's and the role has changed, or its person is gone or
-// switched off here (the 「캐릭터」 tab). Before chars.json is read nothing is kept (a person put up there would look
+// the snapshot after each refresh: a session without one is given the hash's pick (from the list for its role, boss,
+// among the people switched on in the 「캐릭터」 tab), and once kept it stays — a later change of role or a person
+// switched off only steers new sessions; it is picked again only when its person is gone (deleted for good). Before chars.json is read nothing is kept (a person put up there would look
 // gone), and a session nothing is kept for yet (a pending terminal, a moment before the reply) shows the hash's pick.
-// A person picked in a session's detail is kept the same way with pick, which no role change or switch undoes.
+// A person picked in a session's detail is kept the same way with pick.
 // adash.chpick: picks this device kept before; sent up once, and the server's wins.
 let chPick = {}, chReady = false;
 try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch {}
@@ -3178,7 +3178,7 @@ function chPin(list) {
     const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
     let n = null;
     if (old && CH_ART[old] && !c?.pick) n = { who: old, boss, pick: true };
-    else if (!c || !CH_ART[c.who] || !c.pick && (c.boss !== boss || !chIn(boss ? CH_BOSS : CH_CREW).includes(c.who))) n = { who: chAuto(s), boss, pick: false };
+    else if (!c || !CH_ART[c.who]) n = { who: chAuto(s), boss, pick: false };
     if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
     if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
     s.char = n;
@@ -4268,7 +4268,7 @@ function renderChars(fromPoll) {
   const who = chxSel(), all = [...CH_BOSS, ...CH_CREW], placed = all.filter(w => chPool[w] !== false).length;
   const group = (title, l) => `<div class="cx-grp"><h3>${title} <small>${l.filter(w => chPool[w] !== false).length}/${l.length}명 배치</small></h3>
     <div class="cx-tiles">${l.map(w => chxTile(w, cnt[w] || 0, who)).join('')}</div></div>`;
-  $('#view').innerHTML = `<div class="controls cx-top"><span class="st">캐릭터 ${all.length}명 · 사무실에 ${placed}명 — 한 목록에서 모두 끄면 그 목록 전원이 배치됩니다(이 기기에만 저장).</span>
+  $('#view').innerHTML = `<div class="controls cx-top"><span class="st">캐릭터 ${all.length}명 · 사무실에 ${placed}명 — 한 목록에서 모두 끄면 그 목록 전원이 배치됩니다(이 기기에만 저장). 배치는 새 세션에만 적용되고, 한번 정해진 세션의 캐릭터는 바뀌지 않습니다.</span>
       <button type="button" class="act${cn.open ? ' on' : ''}" id="cx-new" aria-expanded="${cn.open}">${cn.open ? '새 캐릭터 닫기' : '+ 새 캐릭터'}</button></div>
     ${cn.open ? cnHtml() : ''}
     <div id="cn-jobs">${cnJobsHtml()}</div>
