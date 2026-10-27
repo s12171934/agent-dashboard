@@ -1093,6 +1093,16 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .qa-run { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
 .qa-legacy { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 8px; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 12px; }
 .qa-legacy.end { border-style: solid; border-color: var(--done); }
+.wt-arch-h { margin-top: 18px; }
+.qa-arch { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.qa-arch > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 10px; cursor: pointer; font-size: 13px; }
+.qa-arch > summary .rv-sum { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa-arch[open] > summary { border-bottom: 1px solid var(--line); }
+.qa-arch-body { padding: 8px 10px; }
+.qa-arch-body > .sec-h:first-child { display: none; }
+.qa-arch.just { border-color: var(--done); animation: qa-arch-in 1.6s ease-out; }
+@keyframes qa-arch-in { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 45%, transparent); } to { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .qa-arch.just { animation: none; } }
 .qa-more { position: relative; }
 .qa-more > summary { list-style: none; }
 .qa-more > summary::-webkit-details-marker { display: none; }

@@ -22,6 +22,14 @@ from adash.features.review.store import review_state
 from adash.features.review.tickets import ticket_test, wt_repo
 
 
+def retired_at(watch):
+    """When the QA of a state directory was ended (qa-driver retire writes `retired`), as UTC ISO; None if it was not."""
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(os.path.join(watch, "retired")), timezone.utc).isoformat() if watch else None
+    except OSError:
+        return None
+
+
 def review_pass(jira, prs, stats):
     worktrees = orca("worktree", "list", timeout=20).get("worktrees") or []
     by_key = {}
@@ -129,6 +137,7 @@ def review_pass(jira, prs, stats):
                      "tickets": tickets, "stray": stray, "watch": watch or None, "driver": driver,
                      "coord_worktree": coord if coord and os.path.isdir(coord) else None,
                      "retired": bool(watch) and os.path.exists(os.path.join(watch, "retired")),
+                     "retired_at": retired_at(watch),
                      "finished": bool(children) and all(jira_stage(c) == "qa" for c in children),
                      "stages": QA_STAGES})
     autos = qa_automations([s["epic"] for s in sets])
