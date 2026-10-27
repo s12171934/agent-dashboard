@@ -1035,6 +1035,9 @@ async function pref(action, paths, undo) {
   await refresh();
   if (undo) toast(undo.msg, () => pref(undo.action, paths));
 }
+// 「응답 없음 모두 유휴로」: every 응답 없음 session at once, workers included, in one undoable step.
+const stalledPaths = () => (state.all || state.sessions).filter(s => status(s) === 'stalled').map(s => s.path);
+const stalledAllBtn = () => { const n = stalledPaths().length; return n ? `<button class="act idle-w" data-act="idle-stalled" title="응답 없음 세션을 모두 유휴로 표시 (새 기록이 생기면 자동으로 풀림)">응답 없음 ${n} 모두 유휴로</button>` : ''; };
 const toast = (msg, onUndo) => $('#toast').show(msg, onUndo ? { action: '되돌리기', onAction: onUndo } : {});
 function actBtns(s, big) {
   const st = status(s), cls = big ? 'act big' : 'act';
@@ -1073,6 +1076,7 @@ document.addEventListener('click', e => {
   const s = all.find(x => x.path === p), name = s ? nameOf(s) : '';
   if (a === 'idle') pref('idle', [p], { msg: `"${cut(name, 30)}" 유휴로 표시`, action: 'unidle' });
   else if (a === 'unidle') pref('unidle', [p]);
+  else if (a === 'idle-stalled') { const ps = stalledPaths(); if (ps.length) pref('idle', ps, { msg: `응답 없음 ${ps.length}개 유휴로 표시`, action: 'unidle' }); }
   else if (a === 'close') closeOrca(s, name, b.dataset.handle);
   else if (a === 'focus') api.focus(b.dataset.handle).then(r => toast(r.status === 200 ? 'Orca 에서 열었습니다' : r.body?.error || `Orca 전환 실패 (${r.status})`))
     .catch(() => toast('대시보드 서버에 보내지 못했습니다'));
@@ -4210,7 +4214,7 @@ function renderAgents() {
   const top = state.sessions.filter(s => !s.parent), up = agView === 'wt' ? coordOf(fams) : null;
   const one = x => agView === 'wt' ? wtHtml(top, fams, up, x)
     : agentsHtml(fv.filter(f => !x || famSrv(f) === x.id), sv.filter(s => !x || s.server === x.id), x);
-  const seg = `<div class="controls ag-controls"><span class="seg" id="ag-view"><button data-k="tree">코디네이터 트리</button><button data-k="wt">워크트리별</button><button data-k="map">관계 지도</button><button data-k="tl">타임라인</button></span></div>`;
+  const seg = `<div class="controls ag-controls"><span class="seg" id="ag-view"><button data-k="tree">코디네이터 트리</button><button data-k="wt">워크트리별</button><button data-k="map">관계 지도</button><button data-k="tl">타임라인</button></span>${stalledAllBtn()}</div>`;
   if (agView === 'map' || agView === 'tl') {  // the flow views: one picture over every server that is on
     $('#view').innerHTML = seg + (agView === 'map' ? mapHtml() : tlHtml());
     agViewBind();
