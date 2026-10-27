@@ -1563,18 +1563,21 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.dec .ch-dot { background: var(--warn); animation: pulse 1.6s infinite; }
 .ch .badge { margin-top: 2px; }
 /* motion (AI 생성): pixel art at 2×, so it moves a sprite pixel (2px) at a time, in steps; the generated pose carries
-   the state. Live2D moves in its canvas instead. */
+   the state. Lively states move: run fast (and its set changes, chAct), dec waves, stalled shakes its head in bursts;
+   done jumps once; the still ones barely do — wait stands, bg rises now and then, idle only fades. Live2D moves in its
+   canvas instead. */
 .fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
-  animation: bob 2.4s steps(1, end) infinite var(--ph, 0s); --bob: -2px; }
-.ch.st-run .fig-ai { animation-duration: .8s; }
+  animation: none; --bob: -2px; }
+.ch.st-run .fig-ai { animation: bob .5s steps(1, end) infinite var(--ph, 0s); }
 .ch.st-done .fig-ai { animation: bob .6s steps(1, end) 4 var(--ph-once, 0s); --bob: -4px; }
-.ch.dec .fig-ai { animation-duration: 1.2s; --bob: -2px; }
-.ch.st-stalled .fig-ai { animation: shake .4s steps(1, end) infinite; }
-.ch.st-idle .fig-ai { animation-duration: 4s; }
+.ch.dec .fig-ai { animation: bob 1s steps(1, end) infinite var(--ph, 0s); }
+.ch.st-stalled .fig-ai { animation: shake-rest 2s steps(1, end) infinite var(--ph, 0s); }
+.ch.st-bg .fig-ai { animation: sip 7s steps(1, end) infinite var(--ph, 0s); }
 .ch.st-idle .ch-fig { opacity: .8; }
 .ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
 .ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
-@keyframes shake { 50% { transform: translateX(2px); } }
+@keyframes shake-rest { 0%, 10%, 20% { transform: translateX(2px); } 5%, 15%, 25%, 100% { transform: none; } }
+@keyframes sip { 0%, 88%, 100% { transform: none; } 90%, 96% { transform: translateY(-2px); } }
 /* session detail: the office's person beside the title (.d-ch reuses .ch's pose motion, not its absolute placement),
    and the picker under it */
 .d-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "fig head" "fig top"; align-items: end; column-gap: 14px; margin-bottom: 12px; }
