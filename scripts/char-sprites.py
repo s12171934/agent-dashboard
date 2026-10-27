@@ -8,8 +8,10 @@ height from head to feet), crops all frames with one shared box so a pose keeps 
 to 320 px (full) or 240 px (bust) high (the Live2D pictures). Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
 starts as a share of h — which goes into CH_ART in frontend/app.js. An sd sheet (SD chibi pixel art, 「AI 생성」) is
 snapped to a pixel grid (standing pose 80 rows high) and written as <out> itself (a .png), with {pw, ph} instead of {w, h},
-and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}).
-  scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png> [<sheet B> <sheet C> <sheet D>]
+and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}). Four more sd sheets (the
+「실행 중」 motion, char-gen.sh run) are cut on the same grid and box and written apart: frames 33–64 as <out>-run.png and
+<out>-bust-run.png ({run: [{top}], bust: {…, run}}).
+  scripts/char-sprites.py <sheet.png> <full|bust|sd> <out.webp|out.png> [<sheet B> <sheet C> <sheet D> [<run A> … <run D>]]
 Needs Pillow, numpy and scipy.
 """
 import sys, json, os
@@ -161,12 +163,16 @@ if kind == 'sd':
         rim = o & ~inner & (px[:, :, :3].mean(axis=2) >= 70)  # already dark: the generator's own outline
         if cut: rim[-1] = o[-1] & ~(np.roll(o[-1], 1) & np.roll(o[-1], -1))
         px[rim, :3] = (px[rim, :3] * .3).astype(np.uint8)
-        Image.fromarray(px).save(path, optimize=True)
+        Image.fromarray(px[:, :32 * PW] if N > 32 else px).save(path, optimize=True)
+        if N > 32:  # the run motion: its own strip
+            Image.fromarray(px[:, 32 * PW:]).save(path.rsplit('.', 1)[0] + '-run.png', optimize=True)
         meta = {'pw': PW, 'ph': PH, 'frames': []}
         for i in range(N):
             a = px[:, i * PW:(i + 1) * PW, 3] > 0
             b = a[:, int(PW * .38):int(PW * .62)]
             meta['frames'].append({'top': round(int(np.where(b.sum(axis=1) > b.shape[1] * .3)[0][0]) / PH, 3)})
+        if N > 32:
+            meta['run'] = meta['frames'][32:]; meta['frames'] = meta['frames'][:32]
         return meta
 
     meta = pixel(bs, y1, out, False)

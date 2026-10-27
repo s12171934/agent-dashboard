@@ -25,8 +25,10 @@ def sheet(who, kind, s):
 
 
 def own_files(who):
-    """Every file of this person in STORE: the 12 sheets, the 4 strips, the description and the original picture."""
-    names = [sheet(who, k, s) for k in KINDS for s in SETS] + [p.format(w=who) for p in STRIPS] + [f"{who}-desc.txt"]
+    """Every file of this person in STORE: the 12 sheets and 4 run sheets, the 4 strips and 2 run strips, the
+    description and the original picture."""
+    names = ([sheet(who, k, s) for k in KINDS + ("run",) for s in SETS] + [p.format(w=who) for p in STRIPS]
+             + [f"{who}-sd-run.png", f"{who}-sd-bust-run.png", f"{who}-desc.txt"])
     return [os.path.join(STORE, n) for n in names] + glob.glob(os.path.join(STORE, glob.escape(who) + "-ref.*"))
 
 
