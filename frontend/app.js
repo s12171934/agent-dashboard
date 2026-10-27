@@ -2113,6 +2113,10 @@ const wtFilterNames = () => [wtf.f !== 'all' && (WT_FILTERS[wtf.f] || WT_JIRA[wt
   wtf.qa && (wtf.qa === 'blocked' ? 'QA 막힘' : 'QA ' + qaName(wtf.qa)), wtf.q.trim() && `「${wtf.q.trim()}」`].filter(Boolean);
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], reopened: ['fail', '재오픈 후 리뷰 대기'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'reopened', 'pending', 'done', 'none'];
+// Ended QA sets (qa-driver retire) leave the top for a folded 「종료된 QA」 card at the bottom, read-only; the ones opened
+// are remembered. The set just ended from this page is scrolled to and marked once it comes back retired.
+const wtArch = (() => { try { return new Set(JSON.parse(localStorage.getItem('adash.wtarch') || '[]')); } catch { return new Set(); } })();
+let wtJustRetired = null;
 const WT_FILTERS = { all: '전체', reopened: '재오픈', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
 // Jira status → stage. 보류(Holding), 개발 완료 and QA 준비 완료 share Jira's 'indeterminate' category with 진행 중, so they
 // go by name; an unknown name falls back to its category.
@@ -2324,7 +2328,7 @@ function wtActs(t, set) {
         ${set.local ? `<button class="act big" data-wt-web="${esc(t.key)}" data-srv="${esc(set.server)}" aria-expanded="${wtWeb.has(t.key)}" title="이 티켓 아래에 웹 VS Code(읽기 전용)를 펼칩니다. 데스크톱 창은 펼친 곳에서 엽니다">${wtWeb.has(t.key) ? 'VS Code 접기' : 'VS Code 로 보기'}</button>` : ''}
         <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : '';
 }
-function wtTicket(t, set) {
+function wtTicket(t, set, ro) {
   const [cls, lbl] = WT_REVIEW[t.review];
   const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
   const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
@@ -2339,7 +2343,7 @@ function wtTicket(t, set) {
       ${t.step ? `<a href="${obsLink(t.step)}" title="${esc(t.step.split('/').pop())}">스텝 ${esc(t.step_status || '')}</a>` : '<span class="st">스텝 노트 없음</span>'}${notes ? ' · ' + notes : ''}
       ${wtTest(t.test)}${wtShip(t)}${qaAgents(t.qa)}
       ${live.length ? `<span class="tkc run" title="${esc(live.map(nameOf).join('\n'))}"><i>●</i>에이전트 ${live.length}</span>` : ''}
-      ${wtActs(t, set)}
+      ${ro ? '' : wtActs(t, set)}
     </div>
     ${qaTrack(t.qa)}
     ${t.repos.map(r => wtRepo(t, r)).join('')}
@@ -2366,16 +2370,27 @@ async function renderWorktrees() {
   if (!(wtf.f in WT_FILTERS || wtf.f.slice(2) in WT_JIRA)) wtf.f = 'all';
   if (wtf.qa && wtf.qa !== 'blocked' && !WT_QA.includes(wtf.qa)) wtf.qa = '';
   const num = k => +k.split('-').pop();
-  const body = wtData.sets.map(s => {
+  const setHtml = (s, ro) => {
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
     const ts = s.tickets.filter(wtHit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
-      ${qaStatsHtml(s)}${qaAutoHtml(s)}${qaLegacyHtml(s)}
+      ${qaStatsHtml(s)}${ro ? '' : qaAutoHtml(s) + qaLegacyHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
-      <div class="rv-list">${ts.map(t => wtTicket(t, s)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
-  }).join('');
+      <div class="rv-list">${ts.map(t => wtTicket(t, s, ro)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
+  };
+  const live = wtData.sets.filter(s => !s.retired), ended = wtData.sets.filter(s => s.retired)
+    .sort((a, b) => (b.retired_at || '').localeCompare(a.retired_at || ''));
+  const body = live.map(s => setHtml(s, false)).join('')
+    + (ended.length && !live.length ? '<div class="empty">진행 중인 QA 가 없습니다. 끝난 QA 는 아래 「종료된 QA」에 있습니다.</div>' : '')
+    + (ended.length ? `<div class="sec-h wt-arch-h"><h2>종료된 QA</h2><span>${ended.length}개 · 자동화 꺼짐 · 읽기 전용</span></div>
+      ${ended.map(s => { const k = s.epic + '|' + s.server, fin = s.tickets.filter(t => jiraStage(t) === 'qa').length;
+        const prs = new Set(s.tickets.flatMap(t => t.qa?.prs || [])).size;
+        return `<details class="qa-arch${wtJustRetired === k ? ' just' : ''}" data-arch="${esc(k)}"${wtArch.has(k) ? ' open' : ''}><summary>
+          <span class="tkc done"><i>✓</i>QA 종료${s.retired_at ? ' · ' + esc(clockAt(s.retired_at)) : ''}</span><b>${esc(s.epic)}</b><span class="rv-sum">${esc(s.summary || '')}</span>
+          <span class="st">티켓 ${s.tickets.length} · QA 완료 ${fin}${prs ? ` · PR ${prs}` : ''}</span></summary>
+          <div class="qa-arch-body">${setHtml(s, true)}</div></details>`; }).join('')}` : '');
   // Unchanged markup is left alone: a web VS Code open under a ticket survives a redraw only where moveBefore exists.
   const html = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
   if (html === wtBodyHtml && $('#wt-body').childElementCount) return;
@@ -2383,6 +2398,10 @@ async function renderWorktrees() {
   wtWebStash();
   $('#wt-body').innerHTML = html;
   wtWebPlace($('#wt-body'));
+  $('#wt-body').querySelectorAll('.qa-arch').forEach(d => d.ontoggle = () => { d.open ? wtArch.add(d.dataset.arch) : wtArch.delete(d.dataset.arch);
+    try { localStorage.setItem('adash.wtarch', JSON.stringify([...wtArch])); } catch {} });
+  const just = wtJustRetired && $('#wt-body').querySelector(`.qa-arch[data-arch="${CSS.escape(wtJustRetired)}"]`);
+  if (just) { wtJustRetired = null; just.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   $('#wt-body').querySelectorAll('.qa-legend').forEach(d => d.ontoggle = () => { try { localStorage.setItem(d.classList.contains('qa-stats') ? 'adash.qastats' : 'adash.qalegend', d.open ? '1' : '0'); } catch {} });
   const tip = $('#tip');
   $('#wt-body').querySelectorAll('.qa-stats').forEach(d => { const days = qaStatsDays[d.dataset.set] || [];
@@ -2419,7 +2438,11 @@ async function qaSetClick(b) {
     if (r.status !== 200) { done(r); return idle(); }
     const out = r.body.output || '';
     if (r.body.code === 3) { uiAlert(`QA 종료를 멈춥니다:\n\n${out}`); return idle(); }
-    if (await uiConfirm(`${epic} QA 를 종료합니다:\n\n${out}\n\n진행할까요?`)) { busy('종료 중…'); done(await call('retire')); }
+    if (await uiConfirm(`${epic} QA 를 종료합니다:\n\n${out}\n\n끝나면 이 묶음은 아래 「종료된 QA」로 접혀 옮겨집니다. 진행할까요?`)) {
+      busy('종료 중…'); const rr = await call('retire');
+      if (rr.status === 200 && rr.body.ok !== false) { wtJustRetired = epic + '|' + srv; wtArch.add(wtJustRetired); toast(`${epic} QA 를 종료했습니다 · 「종료된 QA」로 옮깁니다`); }
+      else done(rr);
+    }
     return idle();
   }
   if (qaSet === 'adopt_check') {
@@ -2552,7 +2575,7 @@ function needReviews() {
 // workers), else the ticket key in the session's title or worktree name — a closed terminal leaves only those.
 function qaHandles() {
   const m = new Map(), keys = new Map();
-  for (const s of wtData.sets || []) if (s.driver) for (const t of s.tickets) {
+  for (const s of wtData.sets || []) if (s.driver && !s.retired) for (const t of s.tickets) {
     if (t.qa) keys.set(t.key, { set: s, t });
     for (const h of t.qa?.handles || []) if (!m.has(h)) m.set(h, { set: s, t });
   }
@@ -2652,7 +2675,7 @@ function mapModel() {
   const shown = new Set(groups.flatMap(g => g.bands.flatMap(b => b.coord.qa ? [b.coord.qa.t.key] : [])));
   for (const x of state.flow?.items || []) {
     if (!x.ticket || shown.has(x.ticket) || (x.session && state.sessions.some(s => s.path === x.session))) continue;
-    const hit = (wtData.sets || []).flatMap(s => s.tickets.map(t => ({ set: s, t }))).find(y => y.t.key === x.ticket);
+    const hit = (wtData.sets || []).filter(s => !s.retired).flatMap(s => s.tickets.map(t => ({ set: s, t }))).find(y => y.t.key === x.ticket);
     if (!hit) continue;
     shown.add(x.ticket);
     const k = hit.set.epic + '|' + hit.set.server;
@@ -6665,7 +6688,7 @@ function hmMine() {
   const out = [], dec = state.decisions;
   const sessOf = q => state.all.find(s => s.decision?.id === q.id) || (q.session_id && state.all.find(s => s.kind === 'claude' && s.id === q.session_id));
   for (const q of dec?.pending || []) out.push({ kind: 'dec', at: q.created_at * 1000, q, s: sessOf(q) });
-  for (const set of wtData.sets || []) for (const t of set.tickets) {
+  for (const set of wtData.sets || []) if (!set.retired) for (const t of set.tickets) {
     const qa = t.qa;
     if (!qa || qa.ignored || jiraStage(t) === 'hold') continue;  // a ticket Jira has at 보류 is parked, not the user's turn
     const at = qa.at?.[qa.stage] ? new Date(qa.at[qa.stage]).getTime() : null;
@@ -6748,10 +6771,11 @@ const HUB = [
       list: n => hubList(ss.filter(s => ['stalled', 'wait'].includes(status(s))).sort((a, b) => (status(a) === 'stalled' ? 0 : 1) - (status(b) === 'stalled' ? 0 : 1) || (a.last_ts || '').localeCompare(b.last_ts || ''))
         .slice(0, n).map(s => [cut(nameOf(s), 50), `${ST_LABEL[status(s)]} · ${ago(s.last_ts)}`])) }; } },
   { id: 'worktrees', name: '워크트리 리뷰', staff: 'QA 담당', room: 'QA실', hue: 280, wall: ['pipeline', 'checklist'], prop: 'easel', val: () => {
-    if (!wtData.sets?.length) return { v: '—', sub: 'QA 묶음 없음' };
+    const sets = (wtData.sets || []).filter(x => !x.retired);  // an ended QA has nothing left in the pipeline
+    if (!sets.length) return { v: '—', sub: wtData.sets?.length ? '진행 중인 QA 없음' : 'QA 묶음 없음' };
     // a ticket left at 커밋 완료 with no worktree is a driver state left behind, not one waiting for approval (as on 내 차례);
     // one Jira has at 보류 is parked, so none of the counts take it
-    const ts = wtData.sets.flatMap(x => x.tickets).filter(t => t.qa && !t.qa.ignored && t.qa.stage !== 'cleaned' && !(t.qa.stage === 'committed' && !t.repos.length) && jiraStage(t) !== 'hold'), mine = hmMine();
+    const ts = sets.flatMap(x => x.tickets).filter(t => t.qa && !t.qa.ignored && t.qa.stage !== 'cleaned' && !(t.qa.stage === 'committed' && !t.repos.length) && jiraStage(t) !== 'hold'), mine = hmMine();
     const stuck = t => t.qa.blocked && Date.now() - new Date(t.qa.at?.[t.qa.stage] || 0).getTime() < HM_STALE;  // a 막힘 over a day old counts at its stage
     const oks = mine.filter(x => x.kind === 'approve'), ok = oks.length;
     // the tickets still in the pipeline (정리 left out) by where they stand, a ring of them with its legend
