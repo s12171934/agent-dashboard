@@ -300,6 +300,25 @@ const api = (() => {
       return r;
     },
     reviewMark: (server, key, done) => post(byId(server), '/api/review/mark', { key, done }),
+    // Every git worktree on each server's Mac, for the 워크트리 tab: {servers[{server, name, local, error, repos[{name,
+    // path, error, worktrees[{path, name, comment, branch, head, main, orca, detached, locked, prunable, bare, missing,
+    // dirty, committed, subject}]}]}]}. local: the server is this device's loopback, where VS Code can be opened.
+    worktrees: async fresh => {
+      const loop = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/;
+      return { servers: await Promise.all(enabled().map(async srv => {
+        try { const d = await getJson(srv, '/api/worktrees' + (fresh ? '?fresh=1' : ''));
+          return { server: srv.id, name: srv.name, local: loop.test(srv.url), error: d?.error || (d ? null : '이 서버에는 워크트리 목록이 없습니다'), repos: d?.repos || [] };
+        } catch (e) { return { server: srv.id, name: srv.name, local: false, error: e instanceof TypeError ? '연결할 수 없습니다' : String(e.message || e), repos: [] }; }
+      })) };
+    },
+    // One listed worktree in a desktop VS Code window on that server's Mac, or {url} (absolute) of the web VS Code on
+    // it. Same loopback-only terms as reviewOpen.
+    worktreeOpen: (server, path) => post(byId(server), '/api/worktrees/open', { path }),
+    worktreeWeb: async (server, path) => {
+      const srv = byId(server), r = await post(srv, '/api/worktrees/web', { path });
+      if (r.body.url) r.body.url = srv.url + r.body.url;
+      return r;
+    },
     reviewShip: (server, key) => post(byId(server), '/api/review/ship', { key }),
     // QA driver control on the set's server. automation: action enable | disable | run on an Orca automation the set
     // lists. ticket: action approve (push/PR approval → the coordinator) | cleanup_check (dry run; body.code 3 = it would
