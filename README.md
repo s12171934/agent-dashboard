@@ -22,7 +22,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `launchd/` | 로컬 Mac |
-| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
+| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `exports/` | 공개 스키마 | |
 
 ```
@@ -50,7 +50,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 
 | 출처 | 경로 |
 | --- | --- |
-| Claude Code 세션 | `~/.claude/projects/**/*.jsonl` |
+| Claude Code 세션 | `~/.claude/projects/**/*.jsonl` (제목은 `/rename` 이 남긴 `custom-title` > `ai-title` > 첫 프롬프트) |
 | Codex 세션 | `~/.codex/sessions/**/rollout-*.jsonl`, Orca 의 Codex 계정 세션 |
 | Orca Run·터미널 | `orca` CLI 호출 |
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
