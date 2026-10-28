@@ -1146,6 +1146,8 @@ function closeOrca(s, name, handle) {
     <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div></form>`;
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
+    const sheet = $('#chat-dlg');
+    if (sheet?.open && sheet.dataset.path === s?.path) sheet.close();
     const cascade = !!d.querySelector('[name=cascade]')?.checked, hs = [handle, ...(cascade ? below : [])];
     hs.forEach(h => closing.add(h));
     render();
@@ -5964,8 +5966,15 @@ function chatPaint(p) {
     n.hidden = !msg; n.textContent = msg; n.className = `chat-note sp-msg ${cls}`;
   });
   const dlg = $('#chat-dlg');
-  if (dlg?.open && dlg.dataset.path === p && s) dlg.querySelector('.chat-dlg-s').textContent = `${chName(chWho(s))} · ${ST_LABEL[status(s)]}`;
+  if (dlg?.open && dlg.dataset.path === p && s) {
+    dlg.querySelector('.chat-dlg-s').textContent = `${chName(chWho(s))} · ${ST_LABEL[status(s)]}`;
+    const o = dlg.querySelector('.chat-dlg-orca'), html = chatCloseBtn(s);
+    if (o.dataset.html !== html) { o.innerHTML = html; o.dataset.html = html; }
+  }
 }
+// The sheet's 「Orca 에서 닫기」 (the 「닫기」 beside it only closes the sheet): the same confirm as a card's 「닫기」.
+const chatCloseBtn = s => { const h = chatHandle(s);
+  return h && !closing.has(h) ? `<button type="button" class="act danger" data-act="close" data-handle="${esc(h)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">Orca 에서 닫기</button>` : ''; };
 const chatSync = () => new Set([...document.querySelectorAll('.chat[data-chat]')].map(el => el.dataset.chat)).forEach(chatPaint);
 async function chatSend(p) {
   const s = chatSess(p), h = chatHandle(s), text = (chat.draft[p] || '').trim();
@@ -6024,7 +6033,7 @@ function chatOpen(p) {
   if (d.open && d.dataset.path === p) return;
   d.dataset.path = p;
   d.innerHTML = `<div class="chat-dlg-in"><div class="chat-dlg-h">${chFace(s, 44)}<div class="chat-dlg-t"><b>${esc(nameOf(s))}</b><span class="st chat-dlg-s"></span></div>
-      <a class="act" href="#s=${encodeURIComponent(p)}" data-chat-detail>상세</a><button type="button" class="act" data-chat-close>닫기</button></div>${chatHtml(s)}</div>`;
+      <span class="chat-dlg-orca"></span><a class="act" href="#s=${encodeURIComponent(p)}" data-chat-detail>상세</a><button type="button" class="act" data-chat-close>닫기</button></div>${chatHtml(s)}</div>`;
   chat.stick[p] = true;
   if (!d.open) d.showModal();
   chatPaint(p);
