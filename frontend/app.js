@@ -659,8 +659,8 @@ function plannedPlace(t, coordPlace) {
 }
 
 // ---------- coordinator worker plan: its Runs' Tasks, planned (Task row) → spawned (worker session) → settled ----------
-const WP_LABEL = { planned: '계획됨', blocked: '선행 대기', spawned: '워커 실행', done: '완료', fail: '실패' };
-const WP_IC = { planned: '', blocked: '…', spawned: '●', done: '✓', fail: '✕' };
+const WP_LABEL = { planned: '계획됨', blocked: '선행 대기', spawned: '워커 실행', done: '완료', fail: '실패', skip: '취소' };
+const WP_IC = { planned: '', blocked: '…', spawned: '●', done: '✓', fail: '✕', skip: '–' };
 // ---------- time estimates ----------
 // A task's expected run time comes from sibling tasks that already finished in the same Orca run
 // (same model when available): they got the same kind of brief, so their times cluster. Measured on this
@@ -775,7 +775,7 @@ function workerPlan(handle, extra = []) {
   const depth = id => { if (stage[id] !== undefined) return stage[id]; stage[id] = 0; return stage[id] = deps(byId[id]).reduce((m, d) => Math.max(m, depth(d) + 1), 0); };
   const items = rows.map(({ t, r }) => {
     const w = sess[t.id], open = deps(t).filter(d => byId[d].status !== 'completed').length;
-    const st = t.status === 'completed' ? 'done' : ['failed', 'cancelled'].includes(t.status) ? 'fail'
+    const st = t.status === 'completed' ? 'done' : t.status === 'failed' ? 'fail' : t.status === 'cancelled' ? 'skip'
       : w || t.status === 'dispatched' ? 'spawned' : open || t.status === 'blocked' ? 'blocked' : 'planned';
     return { id: t.id, name: t.display_name || t.task_title, st, label: t.plan_row && st === 'planned' ? planRowLabel(t.plan_row) : null, open, stage: depth(t.id), deps: deps(t).map(d => byId[d].display_name || byId[d].task_title), run: r, sess: w,
              place: w ? w.place : plannedPlace(t, coordPlace), live: w ? status(w) : null,
@@ -788,7 +788,8 @@ function workerPlan(handle, extra = []) {
     for (const x of items) { const t = x.created ? toDate(x.created).getTime() : 0; if (prev !== null && t - prev > 180e3) k++; x.stage = k; prev = t; }
   }
   const c = k => items.filter(x => x.st === k).length;
-  return { items, byDeps, total: items.length, done: c('done'), fail: c('fail'), live: c('spawned'), waiting: c('planned') + c('blocked'),
+  // Cancelled tasks (취소) stay in the strip, dimmed, but leave the plan total: a plan with only done and cancelled tasks is complete.
+  return { items, byDeps, total: items.length - c('skip'), done: c('done'), fail: c('fail'), skip: c('skip'), live: c('spawned'), waiting: c('planned') + c('blocked'),
            spawnedEver: items.filter(x => x.st === 'spawned' || x.st === 'done' || x.st === 'fail').length };
 }
 const wpSeg = x => x.st === 'spawned' && x.live && x.live !== 'run' && x.live !== 'bg' ? (x.live === 'stalled' ? 'fail' : 'wait') : x.st;
@@ -814,14 +815,14 @@ function planExtra(coord, onlyDriver) {
 const PEND = [['blocked', '선행 대기'], ['planned', '생성 대기'], ['starting', '기동 대기'], ['unborn', '드라이버 미기동']];
 const PEND_TIP = { blocked: '실행 중 Run 안에서 앞 단계 태스크가 끝나길 기다림', planned: '막힌 것 없이 워커 생성만 남음', starting: '선행 티켓은 끝났고 드라이버가 동시 실행 자리를 기다림', unborn: '드라이버가 아직 없음 (보류 또는 선행 티켓 대기)' };
 function pendCounts(wp, ex = { starting: 0, later: 0 }) {
-  const items = (wp?.items || []).filter(x => !x.sess && !['done', 'fail'].includes(x.st));
+  const items = (wp?.items || []).filter(x => !x.sess && !['done', 'fail', 'skip'].includes(x.st));
   return { blocked: items.filter(x => x.st === 'blocked').length, planned: items.filter(x => x.st !== 'blocked').length, starting: ex.starting, unborn: ex.later };
 }
 const swatch = k => `<i class="sw ${k}"></i>`;
 const pendLine = (c, withZero) => PEND.filter(([k]) => withZero || c[k]).map(([k, l]) => `<span class="pend" title="${PEND_TIP[k]}">${swatch(k)}${l} <b${k === 'starting' && c[k] ? ' style="color:var(--accent)"' : ''}>${c[k]}</b></span>`).join('');
 // Worker plan strip. Past ~100 entries one-cell-per-task stops being readable, so it becomes a proportional bar.
-const WP_ORDER = ['done', 'spawned', 'wait', 'fail', 'blocked', 'planned', 'starting', 'unborn'];
-const WP_NAME = { done: '완료', spawned: '실행', wait: '대기', fail: '실패', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동' };
+const WP_ORDER = ['done', 'spawned', 'wait', 'fail', 'blocked', 'planned', 'starting', 'unborn', 'skip'];
+const WP_NAME = { done: '완료', spawned: '실행', wait: '대기', fail: '실패', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동', skip: '취소' };
 const wpSteps = (wp, ex) => [...wp.items.map(wpSeg), ...Array(ex.starting).fill('starting'), ...Array(ex.later).fill('unborn')];
 const wpCount = steps => steps.reduce((a, k) => (a[k] = (a[k] || 0) + 1, a), {});
 const wpBar = (wp, ex = { starting: 0, later: 0 }) => {
@@ -834,7 +835,7 @@ const wpBar = (wp, ex = { starting: 0, later: 0 }) => {
     bar = `<div class="pbar prop">${WP_ORDER.filter(k => c[k]).map(k => `<i class="${k}" style="flex:${c[k]}" title="${WP_NAME[k]} ${c[k]}"></i>`).join('')}</div>`;
   }
   const pc = pendCounts(wp, ex), pend = pc.blocked + pc.planned + pc.starting + pc.unborn;
-  return `<div class="wp-row">${bar}<div class="pline wp-leg"><b>워커 계획 ${wp.spawnedEver}/${total} 생성</b><span class="pend">${swatch('done')}완료 <b>${wp.done}</b></span>${wp.live ? `<span class="pend">${swatch('spawned')}실행 <b>${wp.live}</b></span>` : ''}${wp.fail ? `<span class="pend">${swatch('fail')}실패 <b>${wp.fail}</b></span>` : ''}${pend ? `<span class="pend-sep">생성 예정 ${pend} =</span>${pendLine(pc)}` : ''}</div></div>`;
+  return `<div class="wp-row">${bar}<div class="pline wp-leg"><b>워커 계획 ${wp.spawnedEver}/${total} 생성</b><span class="pend">${swatch('done')}완료 <b>${wp.done}</b></span>${wp.live ? `<span class="pend">${swatch('spawned')}실행 <b>${wp.live}</b></span>` : ''}${wp.fail ? `<span class="pend">${swatch('fail')}실패 <b>${wp.fail}</b></span>` : ''}${wp.skip ? `<span class="pend" title="Orca 에 취소 상태가 없어 result 가 「취소」로 시작하는 failed 로 닫은 태스크">${swatch('skip')}취소 <b>${wp.skip}</b></span>` : ''}${pend ? `<span class="pend-sep">생성 예정 ${pend} =</span>${pendLine(pc)}` : ''}</div></div>`;
 };
 // The office's wpBar, under a coordinator's name tag: one proportional bar and 「계획 완료/전체」, the counts in its tooltip.
 const wpMini = (wp, ex = { starting: 0, later: 0 }) => {
@@ -1305,8 +1306,8 @@ function famHtml(f, wk) {
 // Tickets inside a driver run, read from its task names ("S1#3 리뷰 codex" = ticket S1, checkbox 3, role).
 // The Jira key comes from the worktree the ticket's workers ran in, else from the task specs.
 // Returns '' when the run does not follow that naming, so the caller falls back to a plain worker list.
-const TK_ST = { completed: 'done', failed: 'fail', cancelled: 'fail' };
-const TK_IC = { done: '✓', fail: '✗', run: '●', bg: '◍', wait: '◐', stalled: '!', idle: '·', pending: '○', blocked: '◌' };
+const TK_ST = { completed: 'done', failed: 'fail', cancelled: 'skip' };
+const TK_IC = { done: '✓', fail: '✗', skip: '–', run: '●', bg: '◍', wait: '◐', stalled: '!', idle: '·', pending: '○', blocked: '◌' };
 function taskState(t) {
   if (TK_ST[t.status]) return TK_ST[t.status];
   const w = estIndex().sess[t.id];
@@ -1334,9 +1335,10 @@ function ticketsOf(d) {
     k.key = Object.entries(k.keys).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     k.sts = k.tasks.map(taskState);
     k.active = k.sts.some(x => OPEN_ST.includes(x)) || k.sts.some(x => x === 'pending' || x === 'blocked');
-    const nums = [...k.cbs.keys()].filter(n => n > 0);
+    // A checkbox whose tasks were all cancelled is not counted; cancelled tasks do not hold a checkbox back.
+    const nums = [...k.cbs.keys()].filter(n => n > 0 && !k.cbs.get(n).every(t => taskState(t) === 'skip'));
     k.cbTotal = nums.length;
-    k.cbDone = nums.filter(n => k.cbs.get(n).every(t => taskState(t) === 'done')).length;
+    k.cbDone = nums.filter(n => k.cbs.get(n).every(t => ['done', 'skip'].includes(taskState(t)))).length;
     k.sessions = k.tasks.map(t => estIndex().sess[t.id]).filter(Boolean);
     k.cost = k.sessions.reduce((a, w) => a + (agg(w).cost || 0), 0);
     k.rank = Math.min(9, ...k.sts.map(x => RANK[x] ?? (x === 'pending' || x === 'blocked' ? 3 : x === 'fail' ? 4 : 5)));
@@ -1367,9 +1369,9 @@ function ticketsHtml(d, activeOnly) {
     return `<div class="tk ${open ? 'open' : ''}">
       <div class="tk-h" data-ttoggle="${esc(id)}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(k.pkg)}</b>${k.key ? `<span class="tk-key">${esc(k.key)}</span>` : ''}
         ${k.cbTotal ? `<span>체크박스 <b>${k.cbDone}/${k.cbTotal}</b></span>` : '<span>착수 단계</span>'}
-        ${n('run') ? `<span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>` : ''}${n('bg') ? `<span>백그라운드 <b>${n('bg')}</b></span>` : ''}${n('wait') ? `<span>입력 대기 <b style="color:var(--warn)">${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}${n('fail') ? `<span>실패 <b style="color:var(--bad)">${n('fail')}</b></span>` : ''}
+        ${n('run') ? `<span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>` : ''}${n('bg') ? `<span>백그라운드 <b>${n('bg')}</b></span>` : ''}${n('wait') ? `<span>입력 대기 <b style="color:var(--warn)">${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}${n('fail') ? `<span>실패 <b style="color:var(--bad)">${n('fail')}</b></span>` : ''}${n('skip') ? `<span class="st">취소 ${n('skip')}</span>` : ''}
         <span>워커 ${k.sessions.length}</span><span>${usd(k.cost)}</span>${eta ? `<span>${eta}</span>` : ''}
-        <span class="tk-bar">${pbar({ steps: k.sts.map(x => x === 'done' ? 'done' : x === 'fail' || x === 'stalled' ? 'fail' : OPEN_ST.includes(x) ? (x === 'run' || x === 'bg' ? 'run' : 'wait') : '') })}</span></div>
+        <span class="tk-bar">${pbar({ steps: k.sts.map(x => x === 'done' || x === 'skip' ? x : x === 'fail' || x === 'stalled' ? 'fail' : OPEN_ST.includes(x) ? (x === 'run' || x === 'bg' ? 'run' : 'wait') : '') })}</span></div>
       ${planTicketE2e(k.pkg)}
       ${open ? `<div class="tk-body">${cbRows}</div>` : ''}</div>`;
   };
@@ -1424,7 +1426,7 @@ const XP_TICKET = { verified: '검증 완료', closed: '1차 종결', running: '
 // verified, or closed (first round wrapped up; deferred checkboxes move to a later batch)
 const tkDone = k => k.status === 'verified' || k.status === 'closed';
 const XP_PLAN = { planned: ['planned', '생성 예정'], created: ['planned', '생성 예정(태스크 등록됨)'], spawned: ['spawned', '워커 실행'], done: ['done', '완료'] };
-const XP_CHIP = { done: 'done', fail: 'fail', spawned: 'run', planned: 'pending', blocked: 'blocked' };
+const XP_CHIP = { done: 'done', fail: 'fail', skip: 'skip', spawned: 'run', planned: 'pending', blocked: 'blocked' };
 function extPlanRow(x, ticket, byTitle, sess) {
   // The driver names its Orca task after the plan key; title matches count only inside the ticket's own run
   // (other runs reuse the same titles, e.g. test runs), so a ticket without a run matches by task_id alone.
@@ -1433,7 +1435,7 @@ function extPlanRow(x, ticket, byTitle, sess) {
   const w = t ? sess[t.id] : null;
   let st, label;
   if (t) {
-    st = t.status === 'completed' ? 'done' : ['failed', 'cancelled'].includes(t.status) ? 'fail'
+    st = t.status === 'completed' ? 'done' : t.status === 'failed' ? 'fail' : t.status === 'cancelled' ? 'skip'
       : w || t.status === 'dispatched' ? 'spawned' : ['pending', 'blocked'].includes(t.status) ? 'blocked' : 'planned';
     label = st === 'spawned' && w ? '워커 ' + ST_LABEL[status(w)] : WP_LABEL[st];
   } else [st, label] = XP_PLAN[x.status] || ['planned', x.status || '상태 미상'];
@@ -1681,8 +1683,8 @@ function extPlansHtml(plans, inSession) {
   const sess = {};
   state.sessions.forEach(x => { if (x.role === 'worker' && !x.parent) (x.task_ids || (x.task_id ? [x.task_id] : [])).forEach(id => (sess[id] = x)); });
   const tally = rows => { const r = rows.filter(y => !y.drv), c = k => r.filter(y => y.st === k).length;
-    return { total: r.length, made: c('spawned') + c('done') + c('fail'), done: c('done'), live: c('spawned'), wait: c('planned') + c('blocked'), fail: c('fail') }; };
-  const cnt = n => `생성됨 <b>${n.made}</b> / 전체 ${n.total} · 완료 ${n.done}${n.live ? ` · 실행 <b style="color:var(--run)">${n.live}</b>` : ''}${n.wait ? ` · 생성 예정 ${n.wait}` : ''}${n.fail ? ` · 실패 <b style="color:var(--bad)">${n.fail}</b>` : ''}`;
+    return { total: r.length - c('skip'), made: c('spawned') + c('done') + c('fail'), done: c('done'), live: c('spawned'), wait: c('planned') + c('blocked'), fail: c('fail'), skip: c('skip') }; };
+  const cnt = n => `생성됨 <b>${n.made}</b> / 전체 ${n.total} · 완료 ${n.done}${n.live ? ` · 실행 <b style="color:var(--run)">${n.live}</b>` : ''}${n.wait ? ` · 생성 예정 ${n.wait}` : ''}${n.fail ? ` · 실패 <b style="color:var(--bad)">${n.fail}</b>` : ''}${n.skip ? ` · 취소 ${n.skip}` : ''}`;
   const line = r => {
     const tip = esc(r.t ? 'Orca 태스크 ' + r.t.status : '계획 파일 상태 ' + r.x.status), inner = `<i>${WP_IC[r.st] || '·'}</i>${esc(r.label)}`;
     const chip = r.w ? `<a class="tkc ${XP_CHIP[r.st]}" href="#s=${encodeURIComponent(r.w.path)}" title="${tip}">${inner}</a>` : `<span class="tkc ${XP_CHIP[r.st]}" title="${tip}">${inner}</span>`;

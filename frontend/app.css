@@ -132,6 +132,7 @@ tspan.ctx-warn { fill: var(--warn); font-weight: 600; } tspan.ctx-bad { fill: va
 .tkc.bg { border-color: color-mix(in srgb, var(--run) 55%, var(--line)); border-style: dashed; } .tkc.bg i { color: var(--run); }
 .tkc.wait i, .tkc.stalled i { color: var(--warn); } .tkc.stalled { border-color: var(--bad); }
 .tkc.pending, .tkc.blocked { color: var(--muted); border-style: dashed; }
+.tkc.skip { color: var(--muted); opacity: .55; } .tkc.skip i { color: var(--idle); }
 a.tkc:hover { border-color: var(--accent); }
 /* external driver plan (pre-planned worker roster) */
 .xp-err { color: var(--bad); font-size: 12px; }
@@ -175,6 +176,7 @@ a.tkc:hover { border-color: var(--accent); }
 .pend-sep { color: var(--muted); }
 .sw { display: inline-block; width: 12px; height: 7px; border-radius: 2px; }
 .sw.done { background: var(--done); } .sw.spawned { background: var(--ok); } .sw.fail { background: var(--bad); }
+.sw.skip { background: var(--idle); }
 .sw.blocked { background: color-mix(in srgb, var(--warn) 45%, transparent); }
 .sw.planned { border: 1px dashed var(--muted); }
 .sw.starting { background: color-mix(in srgb, var(--accent) 35%, transparent); border: 1px dashed var(--accent); }
