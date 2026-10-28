@@ -821,17 +821,26 @@ const swatch = k => `<i class="sw ${k}"></i>`;
 const pendLine = (c, withZero) => PEND.filter(([k]) => withZero || c[k]).map(([k, l]) => `<span class="pend" title="${PEND_TIP[k]}">${swatch(k)}${l} <b${k === 'starting' && c[k] ? ' style="color:var(--accent)"' : ''}>${c[k]}</b></span>`).join('');
 // Worker plan strip. Past ~100 entries one-cell-per-task stops being readable, so it becomes a proportional bar.
 const WP_ORDER = ['done', 'spawned', 'wait', 'fail', 'blocked', 'planned', 'starting', 'unborn'];
+const WP_NAME = { done: '완료', spawned: '실행', wait: '대기', fail: '실패', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동' };
+const wpSteps = (wp, ex) => [...wp.items.map(wpSeg), ...Array(ex.starting).fill('starting'), ...Array(ex.later).fill('unborn')];
+const wpCount = steps => steps.reduce((a, k) => (a[k] = (a[k] || 0) + 1, a), {});
 const wpBar = (wp, ex = { starting: 0, later: 0 }) => {
-  const steps = [...wp.items.map(wpSeg), ...Array(ex.starting).fill('starting'), ...Array(ex.later).fill('unborn')];
+  const steps = wpSteps(wp, ex);
   const total = wp.total + ex.starting + ex.later;
   let bar;
   if (steps.length <= 100) bar = pbar({ steps });
   else {
-    const c = steps.reduce((a, k) => (a[k] = (a[k] || 0) + 1, a), {});
-    bar = `<div class="pbar prop">${WP_ORDER.filter(k => c[k]).map(k => `<i class="${k}" style="flex:${c[k]}" title="${({ done: '완료', spawned: '실행', wait: '대기', fail: '실패', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동' })[k]} ${c[k]}"></i>`).join('')}</div>`;
+    const c = wpCount(steps);
+    bar = `<div class="pbar prop">${WP_ORDER.filter(k => c[k]).map(k => `<i class="${k}" style="flex:${c[k]}" title="${WP_NAME[k]} ${c[k]}"></i>`).join('')}</div>`;
   }
   const pc = pendCounts(wp, ex), pend = pc.blocked + pc.planned + pc.starting + pc.unborn;
   return `<div class="wp-row">${bar}<div class="pline wp-leg"><b>워커 계획 ${wp.spawnedEver}/${total} 생성</b><span class="pend">${swatch('done')}완료 <b>${wp.done}</b></span>${wp.live ? `<span class="pend">${swatch('spawned')}실행 <b>${wp.live}</b></span>` : ''}${wp.fail ? `<span class="pend">${swatch('fail')}실패 <b>${wp.fail}</b></span>` : ''}${pend ? `<span class="pend-sep">생성 예정 ${pend} =</span>${pendLine(pc)}` : ''}</div></div>`;
+};
+// The office's wpBar, under a coordinator's name tag: one proportional bar and 「계획 완료/전체」, the counts in its tooltip.
+const wpMini = (wp, ex = { starting: 0, later: 0 }) => {
+  const c = wpCount(wpSteps(wp, ex)), total = wp.total + ex.starting + ex.later;
+  const tip = `워커 계획 ${wp.spawnedEver}/${total} 생성\n${WP_ORDER.filter(k => c[k]).map(k => `${WP_NAME[k]} ${c[k]}`).join(' · ')}`;
+  return `<span class="ch-wp" title="${esc(tip)}"><span class="pbar prop">${WP_ORDER.filter(k => c[k]).map(k => `<i class="${k}" style="flex:${c[k]}"></i>`).join('')}</span><span class="ch-wp-n">계획 ${wp.done}/${total}${wp.live ? ` · 실행 ${wp.live}` : ''}</span></span>`;
 };
 
 // ---------- coordinator detail: checkbox flow graph, its side panel and the worker table ----------
@@ -2636,7 +2645,7 @@ function needReviews() {
   const want = state.reviews_at;
   rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '' }; })
     .catch(() => { rvFailed = want; })
-    .finally(() => { rvLoad = null; if (route().v === 'home' || route().v === 'agents' && ['map', 'tl'].includes(agView)) render(); });
+    .finally(() => { rvLoad = null; if (route().v === 'home' || route().v === 'agents' && (charMode || ['map', 'tl'].includes(agView))) render(); });
 }
 // The QA ticket (and its set) a session works on: a terminal handle the driver recorded for the ticket (coordinator,
 // workers), else the ticket key in the session's title or worktree name — a closed terminal leaves only those.
@@ -3514,14 +3523,14 @@ function charHtml(s) {
   const sayHtml = !say ? '' : st !== 'run' || s.decision || !la ? say.split(' · ').map(x => `<span class="nw">${esc(x)}</span>`).join(' · ') : sayWrap(say);
   const sign = s.decision ? '?' : CH_SIGN[st];
   const role = s.role === 'coordinator' ? '코디네이터' : isSubCoord(s) ? '하위 코디네이터' : ROLE[s.role] || '단독';
-  const fam = chFam.get(s.path);
+  const fam = chFam.get(s.path), wp = s.own_handle ? workerPlan(s.own_handle, delegatedOf(s)) : null;
   return `<button type="button" class="ch st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}" data-id="${esc(s.id || s.path)}"${fam ? ` data-fam="${esc(fam.keys.join(' '))}"` : ''}
       style="--c:${st === 'stalled' ? `color-mix(in srgb, ${m} 35%, var(--muted))` : m}"
       title="${esc(`${nameOf(s)} · ${ST_LABEL[st]}${la ? '\n' + la.text : ''}\n끌어서 옮기기`)}" aria-label="${esc(`${nameOf(s)}: ${ST_LABEL[st]}${s.decision ? ', 결정 대기' : ''}. 방향키로 옮김`)}">
     <span class="ch-say"${say ? '' : ' hidden'}><span>${sign ? `<b>${sign}</b>` : ''}${sayHtml}</span></span>
     ${chFig(st, s)}
     <span class="ch-tag"><span class="ch-name"><i class="ch-dot" title="${ST_LABEL[st]}"></i><span class="ch-nm">${esc(nameOf(s))}</span></span>
-      <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}</span>${srvBadge(s)}
+      <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}${wp ? wpMini(wp, planExtra(s)) : ''}</span>${srvBadge(s)}
   </button>`;
 }
 // Session detail: the same person as in the office, in the same pose, beside the title — continuity from the office.
@@ -3551,12 +3560,22 @@ const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-
     <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
 // One room per worktree (wtKey): everyone on show sits where they run, so a coordinator and the workers it sent to other
 // worktrees sit in different rooms. Each coordinator with workers on show leads a team with its own colour and name
-// (chFam, FAM_TEAM): its people wear a chip in that colour — the coordinator 「★ 파도팀 팀장 · N명」, a worker 「◆ 파도팀」,
+// (chFam, FAM_TEAM, teamName): its people wear a chip in that colour — the coordinator 「★ QA-123 로그인 오류 팀 팀장 · N명」, a worker 「◆ QA-123 로그인 오류 팀」,
 // the coordinator's title and room in the tooltip — and chLinks draws a line in that colour from the coordinator to
 // each worker in another room. Rooms a family spans are laid out together, the room with a top
 // coordinator first.
-// A family is a team: its colour and a name that goes with it, so a chip reads 「파도팀」 rather than a long session title.
+// A family is a team: its colour and a short name from its ticket and work (teamName), rather than a long session title.
 const FAM_TEAM = [[212, '파도'], [24, '노을'], [148, '숲'], [282, '라벤더'], [350, '장미'], [48, '햇살'], [186, '호수'], [318, '벚꽃'], [96, '새싹'], [252, '밤하늘']];
+// The team's name says what it works on: the ticket key (the QA driver's ticket, else a key in the coordinator's title,
+// worktree or branch) and the work — the ticket's summary, else the coordinator's title with the key taken out. A
+// coordinator with neither keeps the colour's name (파도팀).
+const TICKET_RE = /[A-Z][A-Z0-9]+-\d+/;
+function teamName(c, qh, fallback) {
+  const qa = qaOf(c, qh), p = c.place || {};
+  const key = qa?.t.key || [c.title, p.worktree, p.branch].map(x => String(x || '').match(TICKET_RE)?.[0]).find(Boolean) || '';
+  const work = (qa?.t.summary || nameOf(c) || '').replace(new RegExp(`\\[?${key || '\\b\\B'}\\]?[\\s:·-]*`, 'g'), '').replace(/\s+/g, ' ').trim();
+  return key || work ? `${key}${key && work ? ' ' : ''}${cut(work, 18)} 팀` : fallback;
+}
 let chFam = new Map(), chLinkList = [];
 const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
 function officeRooms(people) {
@@ -3570,8 +3589,14 @@ function officeRooms(people) {
   }
   // colours in order of start, so a family keeps its colour while newer ones come and go
   chFam = new Map(); chLinkList = [];
+  needReviews();  // the QA driver's tickets name the teams
+  const qh = qaHandles(), taken = new Map();
   [...fams.values()].sort((x, y) => byStart(x.c, y.c)).forEach((f, i) => {
-    const [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], team = tn + '팀' + (i >= FAM_TEAM.length ? ' ' + (Math.floor(i / FAM_TEAM.length) + 1) : ''), k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+    const [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+    let team = teamName(f.c, qh, tn + '팀' + (i >= FAM_TEAM.length ? ' ' + (Math.floor(i / FAM_TEAM.length) + 1) : ''));
+    const n = (taken.get(team) || 0) + 1;
+    taken.set(team, n);
+    if (n > 1) team += ' ' + n;
     const cm = chFam.get(f.c.path) || {};
     chFam.set(f.c.path, { ...cm, hue: cm.hue ?? hue, keys: [...(cm.keys || []), f.c.path], boss: { hue, team, n: f.ws.length, away: away.length } });
     for (const w of f.ws) {
@@ -3983,7 +4008,7 @@ let chLast = {};  // the office last built (renderOffice): its element, its HTML
 // people in a room (CH_KEYED) are matched by key (chKey) — one that changed in shape (a person in another state) is
 // put in anew (ctx.fresh), the rest are patched and stay, moved only when the order changed. Anything else rebuilds.
 // The office's own additions (chLinks' lines and team tags, after everything) are not in the trees and are left alone.
-const CH_SOFT = '.ch-say, .ch-meta, .room-n, .lobby-sign, .wall-item, .co-n, .vl-board-list', CH_KEYED = '.ch-world, .room-floor';
+const CH_SOFT = '.ch-say, .ch-meta, .ch-wp, .room-n, .lobby-sign, .wall-item, .co-n, .vl-board-list', CH_KEYED = '.ch-world, .room-floor';
 const chKey = n => n.dataset.room || n.dataset.id || n.className + '|' + (n.title || '');
 function chPatch(l, a, b, ctx) {
   if (!l || a.nodeType !== b.nodeType || l.nodeType !== a.nodeType) return false;
