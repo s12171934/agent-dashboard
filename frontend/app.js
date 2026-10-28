@@ -3221,7 +3221,9 @@ function chRole(who, role) {
 const chVer = {}, chR2 = new Set(), chHidden = new Set();  // chR2: everyone chars.json lists; chHidden: built-ins taken down
 async function chLoad() {
   let t, j;
-  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); t = r.ok ? await r.text() : '{}'; j = JSON.parse(t); } catch { return; }
+  // No chars.json (a server without the R2 Function, like dev-frontend.py offline) is no roster: nothing is kept from
+  // the built-in people alone, or every new session would be pinned to them for good.
+  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); if (!r.ok) return; t = await r.text(); j = JSON.parse(t); } catch { return; }
   if (t === chSeen) return;
   chSeen = t;
   chBase ||= { art: { ...CH_ART }, info: { ...CH_INFO }, boss: [...CH_BOSS], crew: [...CH_CREW], drv: [...CH_DRV] };
@@ -3267,9 +3269,9 @@ try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch
 const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.length ? k : l; };
 // A session's person is kept in its server's metadata (prefs.json chars → s.char: { who, boss, pick }), so the office,
 // the detail, the chat and every device draw the same one whichever copy of the session they hold. chPin runs over
-// the snapshot after each refresh: a session without one is given the hash's pick (from the list for its role, boss,
-// among the people switched on in the 「캐릭터」 tab), and once kept it stays — a person switched off only steers new
-// sessions; it is picked again when its person is gone (deleted for good), or, unless picked by hand, when its person
+// the snapshot after each refresh: a session without one is given the person its role's list (among the people
+// switched on in the 「캐릭터」 tab) holds the fewest of (chLeast), and once kept it stays — a person switched off only
+// steers new sessions; it is picked again when its person is gone (deleted for good), or, unless picked by hand, when its person
 // is not in the list for its role (a session that became a coordinator takes a coordinator). Before chars.json is read nothing is kept (a person put up there would look
 // gone), and a session nothing is kept for yet (a pending terminal, a moment before the reply) shows the hash's pick.
 // A person picked in a session's detail is kept the same way with pick.
@@ -3278,6 +3280,15 @@ let chPick = {}, chReady = false;
 try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch {}
 const chListOf = s => s.role === 'driver' && CH_DRV.length ? CH_DRV : isBoss(s) ? CH_BOSS : CH_CREW;
 const chAuto = s => { const l = chIn(chListOf(s)); return l[chHash(s.id || s.path) % l.length]; };
+// The fewest is counted over the sessions not idle that keep a person (chCount); a tie goes to the first from the
+// hash's pick on, so devices pinning at once mostly agree.
+const chCount = list => { const n = {}; for (const s of list) if (s.state !== 'idle' && s.char?.who) n[s.char.who] = (n[s.char.who] || 0) + 1; return n; };
+function chLeast(s, cnt) {
+  const l = chIn(chListOf(s)), h = chHash(s.id || s.path);
+  let best = l[h % l.length];
+  for (let i = 1; i < l.length; i++) { const w = l[(h + i) % l.length]; if ((cnt[w] || 0) < (cnt[best] || 0)) best = w; }
+  return best;
+}
 // A copy without char (the detail read before the snapshot kept one) goes by the snapshot's copy of the session.
 const chSnap = s => s.char ? s : state?.all?.find(x => x.path === s.path) || s;
 const chFits = (who, boss) => (boss ? CH_BOSS : CH_CREW).includes(who);
@@ -3285,16 +3296,17 @@ const chWho = s => { const t = chSnap(s), c = t.char; return CH_ART[c?.who] && (
 const chSent = new Set();
 function chPin(list) {
   if (!chReady) return;
-  const want = {};
+  const want = {}, cnt = chCount(list.filter(s => CH_ART[s.char?.who] && (s.char.pick || chFits(s.char.who, isBoss(s)))));
   for (const s of list) {
     if (!s.path || s.path.startsWith('orca-terminal:')) continue;
     const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
     let n = null;
     if (old && CH_ART[old] && !c?.pick) n = { who: old, boss, pick: true };
-    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) n = { who: chAuto(s), boss, pick: false };
+    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) n = { who: chLeast(s, cnt), boss, pick: false };
     if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
     if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
     s.char = n;
+    if (!n.pick && s.state !== 'idle') cnt[n.who] = (cnt[n.who] || 0) + 1;
     const key = JSON.stringify(n);
     if (chSent.has(s.path + key)) continue;
     chSent.add(s.path + key);
@@ -3302,10 +3314,10 @@ function chPin(list) {
   }
   for (const [key, ps] of Object.entries(want)) api.pref('char', ps, JSON.parse(key)).catch(() => {});
 }
-// Keep a person for one session by hand (who) or hand it back to the hash (null), on this page at once.
+// Keep a person for one session by hand (who) or hand it back to the automatic pick (null), on this page at once.
 function chSet(d, who) {
   const t = state?.all?.find(x => x.path === d.path) || d, boss = isBoss(t);
-  const n = { who: who || chAuto(t), boss, pick: !!who };
+  const n = { who: who || chLeast(t, chCount((state?.all || []).filter(x => x.path !== t.path))), boss, pick: !!who };
   for (const s of new Set([d, t])) s.char = n;
   chSent.add(d.path + JSON.stringify(n));
   api.pref('char', [d.path], n).catch(() => {});

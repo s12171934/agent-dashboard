@@ -10,6 +10,8 @@
 - /ds/ serves design-system/ (the deploy copies it there).
 - /sw.js is replaced by a worker that unregisters itself and drops its caches, so the PWA's offline cache never
   serves a stale file here.
+- /chars/* not on disk (chars.json and the people put up in R2) is fetched from the live site, as its Pages Function
+  serves them, so the dev page has the same people (and keeps them: with no chars.json the page pins no one).
 - The page reads the metric server as usual (default http://127.0.0.1:8787); localhost origins need no --origin.
 """
 import argparse
@@ -18,10 +20,13 @@ import json
 import http.server
 import os
 import socketserver
+import urllib.request
 import threading
 import time
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend'))
+# /chars/* missing here is read from the live site (functions/chars serves them from R2 there).
+LIVE = 'https://dashboard.s-dante.com'
 # The design system lives beside the page and is served under /ds/, as deploy-frontend.sh lays it out.
 DS = os.path.normpath(os.path.join(ROOT, '..', 'design-system'))
 
@@ -125,7 +130,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send_body(DEV_SW, 'text/javascript')
         if path in ('/', '/index.html'):
             return self.index()
+        if path.startswith('/chars/') and not os.path.isfile(self.translate_path(path)):
+            return self.live(path)
         return super().do_GET()
+
+    def live(self, path):
+        try:
+            # Cloudflare turns Python's own User-Agent away (403)
+            req = urllib.request.Request(LIVE + path, headers={'User-Agent': 'dev-frontend.py'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return self.send_body(r.read(), r.headers.get('Content-Type') or 'application/octet-stream')
+        except Exception:
+            self.send_error(404)
 
     def index(self):
         with open(os.path.join(ROOT, 'index.html'), 'rb') as f:
