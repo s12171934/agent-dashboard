@@ -4511,7 +4511,7 @@ function chxDetail(who, n) {
       <span style="width:${sd.pw}px;height:${sd.ph}px;background-image:url(${chSdSrc(who, chx.fr)});background-size:${sd.pw * sd.top.length}px ${sd.ph}px;background-position:${-k * sd.pw}px 0"></span></button>`;
   }).join('')}</div>`).join('');
   const pv = CX_PV.map(([st, dec]) => {
-    const s = { id: `cxpv-${who}-${st}-${dec}`, path: '', char: { who }, decision: dec ? {} : null };
+    const s = { id: `cxpv-${who}-${st}-${dec}`, path: '', char: { who, pick: true }, decision: dec ? {} : null };  // pick: shown as this person whatever its role
     return `<div class="ch d-ch cx-pv st-${st}${dec ? ' dec' : ''}" data-id="${s.id}">${chFig(st, s, true)}<span class="ch-name">${dec ? '결정 대기' : ST_LABEL[st]}</span></div>`;
   }).join('');
   const rd = cxRedraws.find(r => r.who === who);
