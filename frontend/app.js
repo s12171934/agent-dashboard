@@ -350,7 +350,7 @@ async function renderView(navigated) {
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
   if (r.v !== 'worktrees') wtMounted = false;
-  if (r.v !== 'trees') trMounted = false;
+  if (r.v !== 'trees') { trMounted = false; trEdit = null; }
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
@@ -2628,9 +2628,10 @@ async function wtClick(e) {
 // The repos Orca knows and all of their worktrees as git lists them, Orca-made or not (/api/worktrees). Each row opens
 // its worktree in the desktop VS Code, or unfolds the web one (read-only) under it, the 워크트리 리뷰 tab's panel. The
 // list is read again after TR_EVERY on a live update, or at once with 「새로 고침」; the body is rebuilt only when its
-// markup changes, and open web panels go back under their rows (trWeb, moved like wtWeb's).
+// markup changes, and open web panels go back under their rows (trWeb, moved like wtWeb's). A row's note (the server's
+// worktree-notes.json) is edited in place; while its editor is open the body is not rebuilt (trEdit).
 const TR_EVERY = 30000;
-let trData = null, trAt = 0, trBusy = false, trMounted = false, trBodyHtml = '';
+let trData = null, trAt = 0, trBusy = false, trMounted = false, trBodyHtml = '', trEdit = null;  // trEdit: server|path of the note being edited
 let trf = (() => { try { return { q: '', dirty: false, ...JSON.parse(localStorage.getItem('adash.tr') || '{}') }; } catch { return { q: '', dirty: false }; } })();
 const trWeb = new Map();  // server|path → panel
 const trKey = (srv, path) => srv + '|' + path;
@@ -2652,10 +2653,16 @@ function trRow(w, sv) {
     <div class="rv-head"><b title="${esc(w.comment || '')}">${esc(w.name)}</b>
       <span class="st">${w.branch ? esc(cut(w.branch, 60)) : esc(w.head || '')}</span>${flags}
       <span class="rv-acts">
+        <button class="act big" data-tr-note="${esc(w.path)}" data-srv="${esc(sv.server)}" title="이 워크트리에 메모를 남깁니다 (메트릭 서버에 저장)">${w.note ? '메모 수정' : '메모'}</button>
         <button class="act big" data-tr-web="${esc(w.path)}" data-srv="${esc(sv.server)}" aria-expanded="${trWeb.has(k)}"${off || ' title="이 행 아래에 웹 VS Code(읽기 전용)를 펼칩니다"'}>${trWeb.has(k) ? '웹 접기' : '웹으로 보기'}</button>
+        ${w.main || w.bare ? '' : `<button class="act big danger" data-tr-rm="${esc(w.path)}" data-srv="${esc(sv.server)}"${!sv.local ? ' disabled title="이 맥에서 연 화면(127.0.0.1)에서만 지울 수 있습니다"' : ` title="${w.missing || w.prunable ? 'git 의 워크트리 기록을 정리합니다 (git worktree prune)' : w.orca ? 'Orca 로 워크트리를 지웁니다. 머지된 것이 확인되는 브랜치는 Orca 가 함께 지웁니다' : '워크트리 폴더를 지웁니다 (git worktree remove). 브랜치는 남습니다'}"`}>삭제</button>`}
         <button class="act big accent" data-tr-open="${esc(w.path)}" data-srv="${esc(sv.server)}"${off || ' title="데스크톱 VS Code 창으로 엽니다. 이미 열린 창이면 앞으로 가져옵니다"'}>VS Code 로 열기</button></span></div>
     <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
-      ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}</div>
+      ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}
+      ${w.comment ? `<span class="st" title="Orca 코멘트">Orca: ${esc(cut(w.comment, 80))}</span>` : ''}</div>
+    ${trEdit === k ? `<div class="tr-edit"><textarea class="field" rows="3" maxlength="4000" placeholder="메모 (비우고 저장하면 지웁니다) · ⌘/Ctrl+Enter 저장, Esc 취소">${esc(w.note?.text || '')}</textarea>
+      <span class="rv-acts"><button class="act big" data-tr-note-cancel>취소</button><button class="act big accent" data-tr-note-save="${esc(w.path)}" data-srv="${esc(sv.server)}">저장</button></span></div>`
+      : w.note ? `<div class="tr-note" title="${esc(new Date(w.note.at * 1000).toLocaleString('ko-KR'))}">${esc(w.note.text)}<span class="st"> · ${ago(new Date(w.note.at * 1000).toISOString())}</span></div>` : ''}
   </div>`;
 }
 async function renderTrees() {
@@ -2680,7 +2687,7 @@ async function renderTrees() {
   }
   if (!trData) return;
   const q = trf.q.trim().toLowerCase(), multi = trData.servers.length > 1;
-  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment].some(x => (x || '').toLowerCase().includes(q)));
+  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment, w.note?.text].some(x => (x || '').toLowerCase().includes(q)));
   let shown = 0, all = 0;
   const body = trData.servers.map(sv => {
     const repos = sv.repos.map(rp => { const ws = rp.worktrees.filter(hit); all += rp.worktrees.length; shown += ws.length;
@@ -2691,7 +2698,7 @@ async function renderTrees() {
   }).join('') || '';
   $('#tr-sum').textContent = `${shown}${shown !== all ? ' / ' + all : ''}개 · ${ago(new Date(trAt).toISOString())} 읽음`;
   const html = body + (shown ? '' : '<div class="empty">조건에 맞는 워크트리가 없습니다.</div>');
-  if (html === trBodyHtml) return;
+  if (html === trBodyHtml || (trEdit && $('#tr-body .tr-edit textarea'))) return;  // an open note editor keeps its text
   for (const el of trWeb.values()) if (el.isConnected) wtWebMove(wtWebPark || (wtWebPark = Object.assign(document.body.appendChild(document.createElement('div')), { hidden: true })), el);
   $('#tr-body').innerHTML = trBodyHtml = html;
   for (const [k, el] of trWeb) {
@@ -2699,7 +2706,64 @@ async function renderTrees() {
     if (row) wtWebMove(row, el);
   }
 }
+function trNoteEdit(k) {
+  trEdit = k; trBodyHtml = ''; renderTrees();
+  const ta = $('#tr-body .tr-edit textarea');
+  if (!ta) return;
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.onkeydown = e => {
+    if (e.key === 'Escape') { trEdit = null; trBodyHtml = ''; renderTrees(); }
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ta.closest('.tr-edit').querySelector('[data-tr-note-save]').click();
+  };
+}
+async function trNoteSave(b) {
+  const srv = b.dataset.srv, path = b.dataset.trNoteSave, ta = b.closest('.tr-edit').querySelector('textarea');
+  b.disabled = true;
+  const { status: st, body } = await api.worktreeNote(srv, path, ta.value);
+  b.disabled = false;
+  if (st !== 200) return uiAlert(body.error || `실패 (${st})`);
+  for (const w of trData.servers.find(x => x.server === srv)?.repos.flatMap(rp => rp.worktrees) || []) if (w.path === path) w.note = body.note;
+  trEdit = null; trBodyHtml = ''; renderTrees();
+}
+// 삭제: confirmed once; a worktree git will not remove as it is (uncommitted changes, submodules) is asked about again
+// and then forced, which discards those changes.
+async function trRemove(b) {
+  const srv = b.dataset.srv, path = b.dataset.trRm;
+  const w = trData.servers.find(x => x.server === srv)?.repos.flatMap(rp => rp.worktrees).find(x => x.path === path);
+  if (!w) return;
+  const live = state.sessions.filter(s => OPEN(status(s)) && s.place?.path === path).length;
+  const gone = w.missing || w.prunable;
+  const msg = gone ? `${w.name}\n${path}\n\n디스크에 없는 워크트리입니다. git 의 기록만 정리합니다 (git worktree prune).`
+    : [`${w.name} 워크트리를 지웁니다.`, path, '',
+       w.branch ? (w.orca ? `브랜치 ${w.branch}: 머지된 것이 확인되면 Orca 가 함께 지우고, 아니면 남깁니다.` : `브랜치 ${w.branch} 는 남습니다.`) : '분리 HEAD 입니다. 브랜치에 없는 커밋은 잃을 수 있습니다.',
+       w.dirty ? `⚠ 커밋하지 않은 변경 ${w.dirty}개가 있습니다.` : '',
+       live ? `⚠ 이 워크트리에서 에이전트 세션 ${live}개가 돌고 있습니다.` : '',
+       w.note ? '이 워크트리의 메모도 지웁니다.' : ''].filter((x, i) => x || i === 2).join('\n');
+  if (!await uiConfirm(msg, { ok: '삭제', danger: true })) return;
+  const txt = b.textContent;
+  b.disabled = true; b.textContent = '지우는 중…';
+  let r = await api.worktreeRemove(srv, path, false);
+  if (r.status === 409 && !gone && await uiConfirm(`${r.body.error || 'git 이 지우기를 거부했습니다'}\n\n강제로 지울까요? 커밋하지 않은 변경은 되살릴 수 없습니다.`, { ok: '강제 삭제', danger: true }))
+    r = await api.worktreeRemove(srv, path, true);
+  else if (r.status === 409 && !gone) { b.disabled = false; b.textContent = txt; return; }
+  b.disabled = false; b.textContent = txt;
+  if (r.status !== 200) return uiAlert(r.body.error || `실패 (${r.status})`);
+  const k = trKey(srv, path);
+  if (trWeb.has(k)) { trWeb.get(k).remove(); trWeb.delete(k); }
+  if (trEdit === k) trEdit = null;
+  toast(`${w.name} 워크트리를 지웠습니다`);
+  await trLoad(true).catch(() => {});
+  trBodyHtml = ''; renderTrees();
+}
 async function trClick(e) {
+  const n = e.target.closest('button[data-tr-note], button[data-tr-note-save], button[data-tr-note-cancel]');
+  if (n && !n.disabled) {
+    if (n.dataset.trNote) return trNoteEdit(trKey(n.dataset.srv, n.dataset.trNote));
+    if (n.dataset.trNoteSave) return trNoteSave(n);
+    trEdit = null; trBodyHtml = ''; return renderTrees();
+  }
+  const rm = e.target.closest('button[data-tr-rm]');
+  if (rm && !rm.disabled) return trRemove(rm);
   const b = e.target.closest('button[data-tr-open], button[data-tr-web]');
   if (!b || b.disabled) return;
   const srv = b.dataset.srv;
@@ -3739,6 +3803,8 @@ function teamName(c, qh, fallback) {
   return key || work ? `${key}${key && work ? ' ' : ''}${cut(work, 18)} 팀` : fallback;
 }
 let chFam = new Map(), chLinkList = [];
+let famShown = new Set(), famSlot = new Map();  // coordinator path → its colour slot in FAM_TEAM, kept across renders and reloads
+try { famSlot = new Map(JSON.parse(localStorage.getItem('adash.famslot')) || []); } catch {}
 const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
 function officeRooms(people) {
   const up = coordOf(families().fams), by = new Map(), on = new Set(people.map(s => s.path)), fams = new Map(), pairs = [];
@@ -3749,12 +3815,24 @@ function officeRooms(people) {
     (fams.get(c.path) || fams.set(c.path, { c, ws: [] }).get(c.path)).ws.push(s);
     if (wtKey(c) !== wtKey(s)) pairs.push([wtKey(c), wtKey(s)]);
   }
-  // colours in order of start, so a family keeps its colour while newer ones come and go
+  // a family keeps the colour it first got (famSlot): a newcomer takes the lowest colour no team on show wears, so
+  // teams ending or coming back never shift the others' colours
   chFam = new Map(); chLinkList = [];
   needReviews();  // the QA driver's tickets name the teams
-  const qh = qaHandles(), taken = new Map();
-  [...fams.values()].sort((x, y) => byStart(x.c, y.c)).forEach((f, i) => {
-    const [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+  const qh = qaHandles(), taken = new Map(), byAge = [...fams.values()].sort((x, y) => byStart(x.c, y.c));
+  // teams already on show keep theirs first; one coming back whose colour went to another meanwhile gets a free one
+  const used = new Set();
+  const keep = f => famShown.has(f.c.path) * 2 + famSlot.has(f.c.path);
+  for (const f of [...byAge].sort((x, y) => keep(y) - keep(x))) {
+    let n = famSlot.get(f.c.path);
+    if (n == null || used.has(n)) { n = 0; while (used.has(n)) n++; famSlot.set(f.c.path, n); }
+    used.add(n);
+  }
+  famShown = new Set(fams.keys());
+  if (famSlot.size > 200) for (const p of [...famSlot.keys()].slice(0, famSlot.size - 200)) if (!fams.has(p)) famSlot.delete(p);
+  try { localStorage.setItem('adash.famslot', JSON.stringify([...famSlot])); } catch {}
+  byAge.forEach(f => {
+    const i = famSlot.get(f.c.path), [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
     let team = teamName(f.c, qh, tn + '팀' + (i >= FAM_TEAM.length ? ' ' + (Math.floor(i / FAM_TEAM.length) + 1) : ''));
     const n = (taken.get(team) || 0) + 1;
     taken.set(team, n);
