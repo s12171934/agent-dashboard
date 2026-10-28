@@ -260,6 +260,7 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
+  if (h.startsWith('dr=')) return { v: 'driver', id: h.slice(3) };
   return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
 }
 // 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
@@ -280,6 +281,7 @@ addEventListener('hashchange', e => {
 });
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
 const openRun = id => location.hash = 'r=' + id;
+const drvHref = h => '#dr=' + encodeURIComponent(h);
 
 // A driver creates Orca tasks lazily (or, on older driver code, never ahead of time), so its run holds only part of
 // the plan. Every plan row of a started ticket without an Orca task in that run becomes a synthetic task there, so
@@ -343,7 +345,7 @@ async function render(navigated) {
 }
 async function renderView(navigated) {
   const r = route();
-  const tab = r.v === 'session' || r.v === 'run' ? 'agents' : r.v;
+  const tab = ['session', 'run', 'driver'].includes(r.v) ? 'agents' : r.v;
   document.querySelectorAll('#dock a, .dock-more a').forEach(a =>  // a data-more tab sits in the ⋯ menu
     a.classList.toggle('on', a.dataset.v === tab));
   if (r.v !== 'talk') talkMounted = false;
@@ -371,6 +373,7 @@ async function renderView(navigated) {
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'designs') await renderDesigns();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
+  else if (r.v === 'driver') renderDriver(r.id);
   else if (r.v === 'session') {
     detail = await api.session(r.id);
     if (!detail) { $('#view').innerHTML = '<a class="back" href="#agents">← 에이전트</a><div class="empty">세션을 찾을 수 없습니다.</div>'; return; }
@@ -757,6 +760,7 @@ function termOwner(handle) {
   return { t, by, title: t?.title || null };
 }
 const ownerName = h => { const o = termOwner(h); return o.by ? `${nameOf(o.by)} (스크립트 ${o.title || ''} 경유)` : o.title ? `${o.title} 스크립트` : '코디네이터 세션이 추적 범위 밖'; };
+const ownerLink = h => h && (IX.runsByCoord[h] || termOwner(h).t) ? `<a href="${drvHref(h)}" title="스크립트 드라이버 상세">${esc(ownerName(h))}</a>` : `<span>${esc(ownerName(h))}</span>`;
 const ownerNote = h => {
   const o = termOwner(h);
   const what = o.title ? `에이전트 세션이 없는 Orca 터미널 (스크립트·수동 실행)${o.t.connected ? '' : ' · 연결 끊김'}` : 'Orca 터미널 목록에도 없음 (종료됨 또는 다른 기기)';
@@ -938,6 +942,8 @@ function flowBox(d, wp) {
     <div class="fl-panel">${panel}</div></div>
     <div class="legend fl-leg">${['done', 'run', 'wait', 'stalled', 'fail', 'blocked', 'planned', 'skip'].map(k => `<span><i class="fl-sw ${k}"></i>${FLOW_ST[k]}</span>`).join('')}<span class="st">점 하나 = 태스크 하나, 만든 순서 (${f.named ? '구현 · 리뷰 codex · 리뷰 claude · 판정' : '태스크'}), 화살표 = deps</span></div>`;
 }
+// The flow graph and worker table sit on a session page and on a script driver's page: redraw whichever is open.
+const reDetail = () => { const sv = saveScroll(); const r = route(); if (r.v === 'driver') renderDriver(r.id); else renderSession(); restoreScroll(sv); };
 let flRO = null;
 function flowBind(d) {
   flRO?.disconnect();
@@ -962,7 +968,7 @@ function flowBind(d) {
   };
   draw();
   flRO = new ResizeObserver(draw); flRO.observe(wrap);
-  const rerender = () => { const sv = saveScroll(); renderSession(); restoreScroll(sv); };
+  const rerender = reDetail;
   $('#view').querySelectorAll('.fl [data-k]:not([data-fold])').forEach(b => b.onclick = () => {
     const k = b.dataset.k; if (k.startsWith('lane:')) return;
     flowSel[d.path] = flowSel[d.path] === k ? null : k; rerender(); });
@@ -997,7 +1003,7 @@ function workerTable(d, kids, wp) {
     ${rows.length ? `<div class="tscroll"><table class="wt-t"><tr><th>워커</th><th>상태</th><th>모델</th><th class="n">소요</th><th class="n">턴</th><th class="n">비용</th></tr>${byRank(rows, sessRank).map(tr).join('')}</table></div>` : `<div class="st" style="margin:8px 0">${fk === 'open' && !only && !q ? '진행 중인 워커가 없습니다. 끝난 워커는 「완료」에서 봅니다.' : '해당하는 워커가 없습니다.'}</div>`}`;
 }
 function workerTableBind(d) {
-  const rerender = () => { const sv = saveScroll(); renderSession(); restoreScroll(sv); };
+  const rerender = reDetail;
   $('#view').querySelectorAll('#wt-f button').forEach(b => b.onclick = () => { wtab.f = b.dataset.k; rerender(); });
   $('#view').querySelectorAll('.wt-h [data-fsel]').forEach(b => b.onclick = () => { flowSel[d.path] = null; rerender(); });
   const q = $('#wt-q');
@@ -1272,7 +1278,7 @@ function miniFam(f) {
 // at the end of the tree (their cards are in their own worktree).
 function famHtml(f, wk) {
   const run = f.runs[0], here = x => !wk || wtKey(x) === wk;
-  const head = f.coord ? card(f.coord, 'coord') : `<div class="card coord" style="cursor:default"><div class="c-top"><span class="c-title">${esc(ownerName(f.handle))}</span><span class="badge coord">코디네이터</span></div><div class="st">${ownerNote(f.handle)} · ${esc(f.handle || '')}</div></div>`;
+  const head = f.coord ? card(f.coord, 'coord') : `<div class="card coord" style="cursor:default"><div class="c-top"><span class="c-title">${f.handle ? ownerLink(f.handle) : esc(ownerName(f.handle))}</span><span class="badge coord">코디네이터</span></div><div class="st">${ownerNote(f.handle)} · ${esc(f.handle || '')}</div></div>`;
   const direct = [...f.workers, ...f.subs.map(x => x.coord).filter(Boolean)];
   const done = direct.filter(w => IX.tasks[w.task_id]?.status === 'completed').length;
   const all = f.members.filter(m => m !== f.coord);
@@ -1856,7 +1862,7 @@ function driverMini(d, owner) {
   const live = OPEN(st), life = first ? durHM(((live ? Date.now() : msOf(last)) - msOf(first)) / 1000) : '–';
   const eta = !c ? '–' : c.done ? '완료' : c.unknown === c.open ? '–' : !c.unknown && c.left < 60e3 ? '곧' : (c.unknown ? '≥' : '') + durHM(c.left / 1000);
   return CELL + `<div class="card mini-fam drv-mini st-${st}" style="cursor:default">
-    <div class="c-top"><span class="c-title" title="${esc(d.handle)}">⚙ ${esc(d.title)}</span><span class="badge subcoord">스크립트 드라이버</span></div>
+    <div class="c-top"><a class="c-title" href="${drvHref(d.handle)}" title="${esc(d.handle)} · 드라이버 상세">⚙ ${esc(d.title)}</a><span class="badge subcoord">스크립트 드라이버</span></div>
     <div class="c-top">${pill(st, { last_ts: last, state_reason: '' })}${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}</div>
     ${d.drove ? `<div class="c-top"><span class="st">맡은 티켓 <b>${d.drove.map(esc).join('·')}</b></span></div>` : ''}
     <div class="mini-body">${donut(counts, total || 1)}
@@ -1867,7 +1873,7 @@ function driverMini(d, owner) {
       <div class="m"><span>합계 비용</span><b>${usd(sum.cost)}</b></div><div class="m"><span>합계 턴</span><b>${fmt(sum.turns)}</b></div>
       <div class="m life${live ? ' on' : ''}"${first ? ` title="첫 워커 시작 ${esc(new Date(toDate(first)).toLocaleString('ko-KR', { hour12: false }))}"` : ''}><span>${live ? '가동 중' : '가동(종료)'}</span><b>${life}</b></div>
       <div class="m"><span>남은 예상</span><b>${eta}</b></div></div>
-    <div class="c-foot"><span>${d.runs[0] ? `Run · <a href="#r=${d.runs[0].id}" style="color:var(--accent)">${esc(d.runs[0].objective)}</a>` : esc(d.handle.slice(0, 13))}</span><button class="tgl" data-dtoggle="${esc(d.handle)}">▸ 펼치기</button></div>
+    <div class="c-foot"><span>${d.runs[0] ? `Run · <a href="#r=${d.runs[0].id}" style="color:var(--accent)">${esc(d.runs[0].objective)}</a>` : esc(d.handle.slice(0, 13))}</span><span><a class="tgl" href="${drvHref(d.handle)}">상세 ↗</a> <button class="tgl" data-dtoggle="${esc(d.handle)}">▸ 펼치기</button></span></div>
   </div>`;
 }
 const cellsJoin = parts => {
@@ -1894,11 +1900,11 @@ function driverHtml(d, wk) {
   const shown = filtering() ? ws.filter(liveSess).length
     : Math.max(ws.filter(w => !['done', 'idle'].includes(status(w))).length, famMin['drvfin:' + d.handle] && !ticketsOf(d) ? ws.filter(w => ['done', 'idle'].includes(status(w))).length : 0);
   return `${TILE}${Math.min(3, Math.max(1, shown))}--><div class="drv ${open ? '' : 'closed'}">
-    <div class="drv-h"><b>⚙ ${esc(d.title)}</b><span class="badge">스크립트 드라이버</span>${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}${t?.connected ? focusBtn(d.handle) : ''}
+    <div class="drv-h"><b><a href="${drvHref(d.handle)}" title="드라이버 상세">⚙ ${esc(d.title)}</a></b><span class="badge">스크립트 드라이버</span>${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}${t?.connected ? focusBtn(d.handle) : ''}
       ${d.runs[0] ? `<span>Run <a href="#r=${d.runs[0].id}" style="color:var(--accent)">${esc(cut(d.runs[0].objective, 40))}</a></span>` : ''}
       ${d.drove ? `<span>맡은 티켓 <b>${d.drove.map(esc).join('·')}</b></span>` : ''}<span>워커 <b>${ws.length}</b></span><span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>${n('bg') ? `<span>백그라운드 <b>${n('bg')}</b></span>` : ''}${n('wait') ? `<span>입력 대기 <b>${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}
       ${wp ? `<span>태스크 완료 <b>${wp.done}/${wp.total}</b></span>` : ''}${eta ? `<span>${eta}</span>` : ''}
-      <button class="tgl" data-dtoggle="${esc(d.handle)}" style="margin-left:auto">▾ 최소화</button></div>
+      <a class="tgl" href="${drvHref(d.handle)}" style="margin-left:auto">상세 ↗</a><button class="tgl" data-dtoggle="${esc(d.handle)}">▾ 최소화</button></div>
     ${wp ? wpBar(wp, planExtra(owner, d.handle)) : ''}
     ${e2eDriverHtml(d)}
     ${open ? (() => {
@@ -3743,8 +3749,7 @@ function charHtml(s) {
 }
 // Script drivers on show sit in the office too, as the drivers' person (CH_DRV): one a driver terminal, in the room of
 // the worktree it drives (drvPlace, else its family's) and in the team of the coordinator that opened it. Its state is
-// its workers' (drvSt), its bubble the tasks it has done and the workers it runs; a click opens its Run, else that
-// coordinator.
+// its workers' (drvSt), its bubble the tasks it has done and the workers it runs; a click opens its driver page.
 function officeDrivers(fams) {
   const all = fs => fs.flatMap(f => [...famDrivers(f).map(d => ({ d, f })), ...all(f.subs)]);
   return all(fams).filter(({ d }) => liveDrv(d)).map(({ d, f }) => {
@@ -3757,10 +3762,10 @@ function drvCharHtml(s) {
   const d = s.drv, st = s.state, run = d.runs[0], wp = workerPlan(null, [d.handle]), t = termOwner(d.handle).t, fam = chFam.get(s.path);
   const nr = d.workers.filter(w => status(w) === 'run').length;
   const say = ['run', 'bg'].includes(st) ? [wp && `태스크 ${wp.done}/${wp.total}`, nr && `워커 ${nr}명 실행 중`].filter(Boolean) : [ST_LABEL[st]];
-  const go = run ? '#r=' + run.id : s.owner ? '#s=' + encodeURIComponent(s.owner.path) : '';
+  const go = drvHref(d.handle);
   const meta = ['스크립트 드라이버', d.drove?.join('·'), t && !t.connected && '연결 끊김'].filter(Boolean).join(' · ');
   return `<button type="button" class="ch drv st-${st}" data-path="${esc(s.path)}" data-id="${esc(s.id)}" data-go="${esc(go)}"${fam ? ` data-fam="${esc(fam.keys.join(' '))}"` : ''} style="--c:var(--accent)"
-      title="${esc(`⚙ ${d.title} · 스크립트 드라이버 · ${ST_LABEL[st]}${run ? '\nRun ' + run.objective : ''}${go ? '\n누르면 ' + (run ? 'Run' : '연 세션') + ' 화면으로' : ''}`)}" aria-label="${esc(`스크립트 드라이버 ${d.title}: ${ST_LABEL[st]}`)}">
+      title="${esc(`⚙ ${d.title} · 스크립트 드라이버 · ${ST_LABEL[st]}${run ? '\nRun ' + run.objective : ''}\n누르면 드라이버 상세 화면으로`)}" aria-label="${esc(`스크립트 드라이버 ${d.title}: ${ST_LABEL[st]}`)}">
     <span class="ch-say"${say.length ? '' : ' hidden'}><span>${CH_SIGN[st] ? `<b>${CH_SIGN[st]}</b>` : ''}${say.map(x => `<span class="nw">${esc(x)}</span>`).join(' · ')}</span></span>
     ${chFig(st, s)}
     <span class="ch-tag"><span class="ch-name"><i class="ch-dot" title="${ST_LABEL[st]}"></i><span class="ch-nm">⚙ ${esc(d.title)}</span></span>
@@ -5239,7 +5244,7 @@ function renderRun(id) {
   $('#view').innerHTML = `<a class="back" href="#agents" onclick="history.length > 1 && (history.back(), event.preventDefault())">← 뒤로</a>
     <h2 class="d">${esc(run.objective)}</h2>
     <div class="sub-h">${run.id} · 생성 ${ago(run.created_at)}</div>
-    <div class="rel box"><b>상위 코디네이터</b>${coord ? `<a href="#s=${encodeURIComponent(coord.path)}">${esc(nameOf(coord))}</a> ${modelChip(coord.model)} <span class="st">${usd(coord.cost)} · ${coord.turns}턴</span>` : `<span>${esc(ownerName(run.coordinator_handle))}</span> <span class="st">${ownerNote(run.coordinator_handle)}</span>`}</div>
+    <div class="rel box"><b>상위 코디네이터</b>${coord ? `<a href="#s=${encodeURIComponent(coord.path)}">${esc(nameOf(coord))}</a> ${modelChip(coord.model)} <span class="st">${usd(coord.cost)} · ${coord.turns}턴</span>` : `${ownerLink(run.coordinator_handle)} <span class="st">${ownerNote(run.coordinator_handle)}</span>`}</div>
     <div class="kpis">
       <div class="kpi"><span>태스크</span><b>${tasks.length}</b></div>
       ${Object.entries(counts).map(([k, v]) => `<div class="kpi"><span>${esc(k)}</span><b style="color:${STATUS_COLOR(k)}">${v}</b></div>`).join('')}
@@ -5293,6 +5298,56 @@ function runGraph(run, tasks, stages, depsOf, workers, result, sessByTask, coord
 }
 
 // ---------- session detail ----------
+// ---------- script driver detail (#dr=<handle>): a driver terminal is a coordinator without a session ----------
+// Found as a family's script driver (with the tickets it drove), as the head of a family whose run a script owns, or
+// from its runs and Orca terminal alone. The page reuses the coordinator's orchestration parts: plan bar, checkbox flow,
+// tickets, E2E runs and the worker table. It has no transcript, so no chat, metrics or log.
+function driverOf(h) {
+  const fams = (function all(fs) { return fs.flatMap(f => [f, ...all(f.subs)]); })(families().fams);
+  for (const f of fams) { const d = famDrivers(f).find(x => x.handle === h); if (d) return { ...d, owner: f.coord }; }
+  const head = fams.find(f => !f.coord && f.handle === h);
+  const runs = IX.runsByCoord[h] || [], t = termOwner(h);
+  if (!head && !runs.length && !t.t) return null;
+  const workers = head ? head.workers : state.sessions.filter(s => s.role === 'worker' && s.coord_handle === h && !s.parent);
+  return { handle: h, title: t.title || 'script', workers, runs: head?.runs || runs, owner: null };
+}
+function renderDriver(h) {
+  const d = driverOf(h), back = '<a class="back" href="#agents" onclick="history.length > 1 && (history.back(), event.preventDefault())">← 뒤로</a>';
+  if (!d) { $('#view').innerHTML = back + '<div class="empty">드라이버를 찾을 수 없습니다 (Orca 터미널·Run 목록에 없음).</div>'; return; }
+  const dd = { path: 'drv:' + h, own_handle: h };  // key for the flow selection; own_handle feeds wpChart and coordEta
+  const o = termOwner(h), t = o.t, st = drvSt(d), p = drvPlace(h), by = o.by;
+  const ws = byRank(d.workers, sessRank), wp = workerPlan(h), eta = coordEta(dd);
+  const n = k => ws.filter(w => status(w) === k).length, cost = ws.reduce((a, w) => a + (agg(w).cost || 0), 0);
+  const last = ws.map(w => w.last_ts).filter(Boolean).sort().pop(), first = ws.map(w => w.started).filter(Boolean).sort()[0];
+  const rel = [
+    d.owner && `<div class="rel"><b>코디네이터</b><a href="#s=${encodeURIComponent(d.owner.path)}">${esc(nameOf(d.owner))}</a> ${modelChip(d.owner.model)}</div>`,
+    by && by !== d.owner && `<div class="rel"><b>연 세션</b><a href="#s=${encodeURIComponent(by.path)}">${esc(nameOf(by))}</a></div>`,
+    d.drove?.length && `<div class="rel"><b>맡은 티켓</b>${d.drove.map(esc).join(' · ')}</div>`,
+    d.runs.length && `<div class="rel"><b>Run</b>${d.runs.map(r => { const ts = state.orca.tasks[r.id] || [];
+      return `<a href="#r=${r.id}">${esc(cut(r.objective, 60))}</a> <span class="st">태스크 ${ts.filter(x => SETTLED_T.includes(x.status)).length}/${ts.length}</span>`; }).join(' · ')}</div>`,
+  ].filter(Boolean).join('');
+  const tk = ticketsHtml(d), e2e = e2eDriverHtml(d);
+  $('#view').innerHTML = `${back}
+    <h2 class="d">⚙ ${esc(d.title)}</h2>
+    <div class="sub-h"><span class="badge subcoord">스크립트 드라이버</span> · <b title="${esc(p?.path || '')}">▣ ${esc(placeLabel(p))}</b>${srvBadge(d.owner) ? ' · ' + srvBadge(d.owner) : ''}<br>${esc(h)}${first ? ` · 첫 워커 ${esc(new Date(toDate(first)).toLocaleString('ko-KR', { hour12: false }))}` : ''}${t ? '' : ' · Orca 터미널 목록에 없음 (종료됨 또는 다른 기기)'}</div>
+    <div class="c-top" style="margin:-4px 0 12px">${pill(st, { last_ts: last, state_reason: '' })}${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}<span class="acts">${t?.connected ? focusBtn(h, true) : ''}</span></div>
+    ${rel ? `<div class="box">${rel}</div>` : ''}
+    <div class="box o-sum">${wp ? wpBar(wp, planExtra(d.owner, h)) : ''}<div class="pline"><span>워커 <b>${ws.length}</b></span><span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>${n('wait') ? `<span>입력 대기 <b>${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}<span>워커 합계 비용 <b>${usd(cost)}</b></span>${eta ? `<span>${eta}</span>` : ''}</div></div>
+    ${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(dd, wp)}
+      <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
+    ${tk || e2e ? `<div class="box"><h3>티켓</h3>${tk}${e2e}</div>` : ''}
+    ${ws.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${n('run')} · 합계 비용 ${usd(cost)} · 합계 턴 ${fmt(ws.reduce((x, w) => x + agg(w).turns, 0))}</span></h3>${workerTable(dd, ws, wp)}</div>` : '<div class="box st">이 드라이버가 띄운 워커 세션이 아직 없습니다.</div>'}`;
+  if (wp) flowBind(dd);
+  workerTableBind(dd);
+  const wc = $('#d-wpchart');
+  if (wc) { wc.ontoggle = () => { openState.wpchart = wc.open; if (wc.open) wpChart(dd); }; if (wc.open) wpChart(dd); }
+  $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
+    if (e.target.closest('a')) return;
+    famMin[b.dataset.ttoggle] = !b.closest('.tk').classList.contains('open');
+    try { localStorage.setItem('adash.min', JSON.stringify(famMin)); } catch {}
+    reDetail();
+  });
+}
 function renderSession(navigated) {
   if (navigated) chPickOpen = false;
   const d = detail, a = agg(d), tk = d.tokens, totalIn = tk.input + tk.cache_read + tk.cache_write;
@@ -5304,7 +5359,7 @@ function renderSession(navigated) {
   const parent = d.parent ? IX.byId[d.parent] : null;
   const cp = d.cost_parts;
   let rel = '';
-  if (coord || (d.role === 'worker')) rel += `<div class="rel"><b>코디네이터</b>${coord ? `<a href="#s=${encodeURIComponent(coord.path)}">${esc(nameOf(coord))}</a> ${modelChip(coord.model)}` : (d.coord_handle ? `<span>${esc(ownerName(d.coord_handle))}</span> <span class="st">${ownerNote(d.coord_handle)}</span>` : '<span class="st">추적 범위 밖</span>')}${run ? ` · Run <a href="#r=${run.id}">${esc(cut(run.objective, 50))}</a>` : ''}${task ? ` · 태스크 <span style="color:${STATUS_COLOR(task.status)}">${esc(task.status)}</span>` : ''}</div>`;
+  if (coord || (d.role === 'worker')) rel += `<div class="rel"><b>코디네이터</b>${coord ? `<a href="#s=${encodeURIComponent(coord.path)}">${esc(nameOf(coord))}</a> ${modelChip(coord.model)}` : (d.coord_handle ? `${ownerLink(d.coord_handle)} <span class="st">${ownerNote(d.coord_handle)}</span>` : '<span class="st">추적 범위 밖</span>')}${run ? ` · Run <a href="#r=${run.id}">${esc(cut(run.objective, 50))}</a>` : ''}${task ? ` · 태스크 <span style="color:${STATUS_COLOR(task.status)}">${esc(task.status)}</span>` : ''}</div>`;
   // A worker's checkbox mates (구현 · 리뷰 × 2 · 판정 of the same 「<ticket>#<n>」), so siblings are one click away.
   const tm = task && TASK_NAME.exec(taskName(task));
   if (tm?.[2] && run) {
