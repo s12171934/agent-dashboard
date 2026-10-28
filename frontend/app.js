@@ -4063,6 +4063,8 @@ const chPts = new Map();
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest?.('#ch-canvas') || e.target.closest('.ch-panel')) return;
   if (e.pointerType === 'mouse' && e.button) return;
+  // a primary pointer comes down only when no other is down: any still held are ones whose release was lost
+  if (e.isPrimary) chPts.clear();
   chPts.set(e.pointerId, [e.clientX, e.clientY]);
 });
 addEventListener('pointermove', e => {
@@ -4089,6 +4091,12 @@ const chUp = e => {
   if (chStale) { chStale = false; renderOffice(); }
 };
 addEventListener('pointerup', chUp); addEventListener('pointercancel', chUp);
+// A release can be lost — a long press or a system gesture on touch, Ctrl+click's context menu, switching windows
+// mid-drag — and a pointer left held kept every live update waiting (renderOffice) until the next release: the office
+// stood still, its worker counts old. Leaving the window or opening a menu lets go of every pointer.
+const chLetGo = () => { if (!chPts.size) return; chPts.clear(); chViewSave(); if (chStale) { chStale = false; renderOffice(); } };
+addEventListener('blur', chLetGo); addEventListener('contextmenu', chLetGo);
+document.addEventListener('visibilitychange', () => { if (document.hidden) chLetGo(); });
 document.addEventListener('wheel', e => {
   const cv = e.target.closest?.('#ch-canvas');
   if (!cv || e.target.closest('.ch-panel')) return;  // the staff panel scrolls itself
