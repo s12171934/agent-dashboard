@@ -4242,7 +4242,7 @@ function projSign(proj, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length, lk = projLook(proj);
   return `<div class="ch-proj"${lk ? ` style="--rh:${lk.hue}"` : ''}><b class="pj-name">${proj ? `▤ ${esc(proj)}` : '위치 미상'}</b>
     <span class="pj-n">방 <b>${rs.length}</b> · <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span>
-    ${proj ? `<button class="pj-pin${proj === chTop ? ' on' : ''}" data-pjpin="${esc(proj)}" aria-pressed="${proj === chTop}" title="${proj === chTop ? '맨 위 고정 풀기' : '맨 위에 고정 (한 줄 단독)'}">📌</button>` : ''}</div>`;
+    ${proj ? `<button class="pj-pin${proj === chTop ? ' on' : ''}" data-pjpin="${esc(proj)}" aria-pressed="${proj === chTop}" title="${proj === chTop ? '맨 위 고정 풀기' : '맨 위에 고정 (한 줄 단독)'}">${proj === chTop ? '★' : '☆'}</button>` : ''}</div>`;
 }
 function coSign(x, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length;
