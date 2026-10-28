@@ -3661,11 +3661,11 @@ function chPicker(d) {
 const chSt = m => m.drv ? m.state : subBg(m, agg(m), status(m));  // a person's state in the office (a driver: drvSt)
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(chSt(m))).length;
   return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
-// A project's rooms share a look (projLook): the wall's tint, the floor (planks, tiles, carpet or parquet) and the set of
+// A project's rooms share a look (projLook): the wall's tint, the floor (planks, stone, carpet or parquet — all quiet, no checks) and the set of
 // decorations on the wall, each room turning the set by its own key — so rooms of one project read as one floor of the
 // building, and the next project's as another.
 const PROJ_HUE = [212, 24, 148, 282, 350, 48, 186, 318, 96, 252];
-const PROJ_FLOOR = ['wood', 'tile', 'carpet', 'parquet'];
+const PROJ_FLOOR = ['wood', 'stone', 'carpet', 'parquet'];
 const PROJ_WALL = [
   ['window', 'shelf', 'window', 'clock', 'poster', 'window', 'board', 'shelf', 'window', 'poster', 'clock', 'window'],
   ['board', 'window', 'clock', 'board', 'window', 'shelf', 'board', 'window', 'clock', 'window'],
@@ -4197,7 +4197,9 @@ function lobbySign(people) {
 // A company's sign (one per metrics server, once two or more are on): across the plane above its rooms, with the
 // server's name, its rooms and people, and the server's address in the tooltip.
 // 「프로젝트별」 (chSort, the bar's 정렬 button, this device only): a company's rooms by project, in name order, each
-// project behind its own sign (a strip in the project's colour, projLook); the rooms of a project keep their order.
+// project a block of its own (.ch-pgrp) — its sign (a strip in the project's colour, projLook) over its rooms, as many
+// columns wide as it has rooms (at most the grid's), so small projects stand side by side in a row instead of each
+// taking one; the rooms of a project keep their order.
 // 「팀순」 leaves the order officeRooms gives (linked rooms together, the most urgent first).
 let chSort = 'team';
 try { if (localStorage.getItem('adash.chsort') === 'proj') chSort = 'proj'; } catch {}
@@ -4210,15 +4212,16 @@ $('#chsort-btn').onclick = () => {
   chView.fit = true;  // the rooms move: fit them all again
   if ($('#view .office')) renderOffice();
 };
-function byProj(rs) {
+function byProj(rs, cols) {
   if (chSort !== 'proj') return rs.map(r => r.html);
   const by = new Map();
   for (const r of rs) (by.get(r.proj) || by.set(r.proj, []).get(r.proj)).push(r);
-  return [...by].sort(([x], [y]) => !x - !y || x.localeCompare(y, 'ko')).flatMap(([proj, prs]) => [projSign(proj, prs), ...prs.map(r => r.html)]);
+  return [...by].sort(([x], [y]) => !x - !y || x.localeCompare(y, 'ko')).map(([proj, prs]) => { const lk = projLook(proj);
+    return `<div class="ch-pgrp" data-proj="${esc((prs[0].srv || '') + '|' + proj)}" style="--span:${Math.min(cols, prs.length)}${lk ? `;--rh:${lk.hue}` : ''}">${projSign(proj, prs)}${prs.map(r => r.html).join('')}</div>`; });
 }
 function projSign(proj, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length, lk = projLook(proj);
-  return `<div class="ch-proj" data-proj="${esc((rs[0]?.srv || '') + '|' + proj)}"${lk ? ` style="--rh:${lk.hue}"` : ''}><b class="pj-name">${proj ? `▤ ${esc(proj)}` : '위치 미상'}</b>
+  return `<div class="ch-proj"${lk ? ` style="--rh:${lk.hue}"` : ''}><b class="pj-name">${proj ? `▤ ${esc(proj)}` : '위치 미상'}</b>
     <span class="pj-n">방 <b>${rs.length}</b> · <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
 }
 function coSign(x, rs) {
@@ -4236,7 +4239,7 @@ let chLast = {};  // the office last built (renderOffice): its element, its HTML
 // people in a room (CH_KEYED) are matched by key (chKey) — one that changed in shape (a person in another state) is
 // put in anew (ctx.fresh), the rest are patched and stay, moved only when the order changed. Anything else rebuilds.
 // The office's own additions (chLinks' lines and team tags, after everything) are not in the trees and are left alone.
-const CH_SOFT = '.ch-say, .ch-meta, .ch-wp, .room-n, .lobby-sign, .wall-item, .co-n, .pj-n, .vl-board-list', CH_KEYED = '.ch-world, .room-floor';
+const CH_SOFT = '.ch-say, .ch-meta, .ch-wp, .room-n, .lobby-sign, .wall-item, .co-n, .pj-n, .vl-board-list', CH_KEYED = '.ch-world, .ch-pgrp, .room-floor';
 const chKey = n => n.dataset.room || n.dataset.proj || n.dataset.id || n.className + '|' + (n.title || '');
 function chPatch(l, a, b, ctx) {
   if (!l || a.nodeType !== b.nodeType || l.nodeType !== a.nodeType) return false;
@@ -4305,10 +4308,10 @@ function renderOffice() {
   // Two or more servers on: each server is a company of its own — a sign across the plane, then that server's rooms —
   // in the order of the server list. Team lines still cross companies.
   const cos = multiSrv() ? srvOn().map(x => ({ x, rs: placed.filter(r => r.srv === x.id) })).filter(c => c.rs.length) : [];
-  const rooms = [home ? staffRoom(people) : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...byProj(c.rs)]) : byProj(placed)).filter(Boolean);
   // rooms in a grid as square as it goes (the biggest company's rooms), one column on a narrow screen; together as wide as the canvas at 100%
-  const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : rooms.length;
+  const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : placed.length || 1;
   const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(most));
+  const rooms = [home ? staffRoom(people) : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...byProj(c.rs, cols)]) : byProj(placed, cols)).filter(Boolean);
   const roomW = Math.max(narrow ? 300 : 680, Math.floor(($('#view').clientWidth - 2 - (narrow ? 24 : 56) - 28 * (cols - 1)) / cols));
   // 홈's village on a landscape view lies in two rows of wide houses (staffWide): it needs the width of five of them
   const wide = home && staffWide() ? 1560 : 0;

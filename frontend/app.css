@@ -1873,15 +1873,15 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-co .co-n b { color: #ffe2a3; }
 .ch-world .room + .ch-co { margin-top: 28px; }
 /* a project's look (projLook, --rh a hue): its rooms' wall tinted, the frame a touch of the colour, and the floor one of
-   four — planks (the default), tiles, carpet or parquet — drawn by .room-floor::before under the people */
+   four — planks (the default), stone, carpet or parquet — drawn by .room-floor::before under the people. Every floor
+   stays quiet (one tone, faint lines, no checks): the name plates and bubbles stand on it and must read. */
 .ch-world .room[style*="--rh"] { --wall: color-mix(in srgb, hsl(var(--rh) 55% 62%) 16%, var(--panel2));
   border-color: color-mix(in srgb, hsl(var(--rh) 40% 55%) 22%, color-mix(in srgb, var(--wood) 45%, var(--panel))); }
-.ch-world .room:is(.fl-tile, .fl-carpet, .fl-parquet) .room-floor::before { content: ""; position: absolute; inset: var(--wall-h) 0 0; pointer-events: none; }
-.ch-world .room.fl-tile .room-floor::before { background: repeating-conic-gradient(color-mix(in srgb, var(--mug) 70%, var(--panel2)) 0 25%, color-mix(in srgb, hsl(var(--rh) 30% 60%) 22%, var(--panel2)) 0 50%) 0 0 / 56px 56px; }
-.ch-world .room.fl-carpet .room-floor::before { background: radial-gradient(circle, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1.6px) 0 0 / 10px 10px,
-    color-mix(in srgb, hsl(var(--rh) 35% 50%) 30%, var(--panel2)); }
-.ch-world .room.fl-parquet .room-floor::before { background: repeating-linear-gradient(45deg, transparent 0 14px, color-mix(in srgb, var(--ink) 10%, transparent) 14px 15px),
-    repeating-linear-gradient(-45deg, transparent 0 14px, color-mix(in srgb, var(--ink) 7%, transparent) 14px 15px), color-mix(in srgb, var(--wood) 48%, var(--panel2)); }
+.ch-world .room:is(.fl-stone, .fl-carpet, .fl-parquet) .room-floor::before { content: ""; position: absolute; inset: var(--wall-h) 0 0; pointer-events: none; }
+.ch-world .room.fl-stone .room-floor::before { background: linear-gradient(to right, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px) 0 0 / 96px 100%,
+    linear-gradient(to bottom, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px) 0 0 / 100% 64px, color-mix(in srgb, hsl(var(--rh) 15% 70%) 18%, var(--panel2)); }
+.ch-world .room.fl-carpet .room-floor::before { background: color-mix(in srgb, hsl(var(--rh) 35% 50%) 26%, var(--panel2)); }
+.ch-world .room.fl-parquet .room-floor::before { background: repeating-linear-gradient(to right, transparent 0 47px, color-mix(in srgb, var(--ink) 7%, transparent) 47px 48px), color-mix(in srgb, var(--wood) 48%, var(--panel2)); }
 /* 「프로젝트별」 (byProj): a project's sign across the plane over its rooms, a strip in the project's colour, lighter than
    a company's; its type grows with --lz like the rooms' titles */
 .ch-proj { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; padding: calc(8px * var(--lz, 1)) 18px; border-radius: 12px;
@@ -1890,7 +1890,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-proj .pj-name { font-size: calc(18px * var(--lz, 1)); }
 .ch-proj .pj-n { font-size: calc(13px * var(--lz, 1)); color: var(--muted); }
 .ch-proj .pj-n b { color: var(--text); font-variant-numeric: tabular-nums; }
-.ch-world .room + .ch-proj { margin-top: 20px; }
+/* a project's block: its sign over its rooms, --span columns of the plane's grid wide */
+.ch-pgrp { grid-column: span var(--span, 1); display: grid; grid-template-columns: repeat(var(--span, 1), var(--room-w, 680px)); gap: 28px; align-items: start; align-content: start; }
 
 /* 홈's 운영실 (staffRoom): a village across the plane (시안 D) — grass, a road across and one down meeting at the plaza
    (the office sign among four trees), and on its lot (grid-area) each screen's house: its room — the wall in the room's
