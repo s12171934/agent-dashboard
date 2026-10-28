@@ -3257,8 +3257,9 @@ const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.lengt
 // A session's person is kept in its server's metadata (prefs.json chars → s.char: { who, boss, pick }), so the office,
 // the detail, the chat and every device draw the same one whichever copy of the session they hold. chPin runs over
 // the snapshot after each refresh: a session without one is given the hash's pick (from the list for its role, boss,
-// among the people switched on in the 「캐릭터」 tab), and once kept it stays — a later change of role or a person
-// switched off only steers new sessions; it is picked again only when its person is gone (deleted for good). Before chars.json is read nothing is kept (a person put up there would look
+// among the people switched on in the 「캐릭터」 tab), and once kept it stays — a person switched off only steers new
+// sessions; it is picked again when its person is gone (deleted for good), or, unless picked by hand, when its person
+// is not in the list for its role (a session that became a coordinator takes a coordinator). Before chars.json is read nothing is kept (a person put up there would look
 // gone), and a session nothing is kept for yet (a pending terminal, a moment before the reply) shows the hash's pick.
 // A person picked in a session's detail is kept the same way with pick.
 // adash.chpick: picks this device kept before; sent up once, and the server's wins.
@@ -3267,7 +3268,8 @@ try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch
 const chAuto = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
 // A copy without char (the detail read before the snapshot kept one) goes by the snapshot's copy of the session.
 const chSnap = s => s.char ? s : state?.all?.find(x => x.path === s.path) || s;
-const chWho = s => { const t = chSnap(s); return CH_ART[t.char?.who] ? t.char.who : chAuto(t); };
+const chFits = (who, boss) => (boss ? CH_BOSS : CH_CREW).includes(who);
+const chWho = s => { const t = chSnap(s), c = t.char; return CH_ART[c?.who] && (c.pick || chFits(c.who, isBoss(t))) ? c.who : chAuto(t); };
 const chSent = new Set();
 function chPin(list) {
   if (!chReady) return;
@@ -3277,7 +3279,7 @@ function chPin(list) {
     const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
     let n = null;
     if (old && CH_ART[old] && !c?.pick) n = { who: old, boss, pick: true };
-    else if (!c || !CH_ART[c.who]) n = { who: chAuto(s), boss, pick: false };
+    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) n = { who: chAuto(s), boss, pick: false };
     if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
     if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
     s.char = n;
