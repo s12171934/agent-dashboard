@@ -3739,6 +3739,8 @@ function teamName(c, qh, fallback) {
   return key || work ? `${key}${key && work ? ' ' : ''}${cut(work, 18)} 팀` : fallback;
 }
 let chFam = new Map(), chLinkList = [];
+let famShown = new Set(), famSlot = new Map();  // coordinator path → its colour slot in FAM_TEAM, kept across renders and reloads
+try { famSlot = new Map(JSON.parse(localStorage.getItem('adash.famslot')) || []); } catch {}
 const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
 function officeRooms(people) {
   const up = coordOf(families().fams), by = new Map(), on = new Set(people.map(s => s.path)), fams = new Map(), pairs = [];
@@ -3749,12 +3751,24 @@ function officeRooms(people) {
     (fams.get(c.path) || fams.set(c.path, { c, ws: [] }).get(c.path)).ws.push(s);
     if (wtKey(c) !== wtKey(s)) pairs.push([wtKey(c), wtKey(s)]);
   }
-  // colours in order of start, so a family keeps its colour while newer ones come and go
+  // a family keeps the colour it first got (famSlot): a newcomer takes the lowest colour no team on show wears, so
+  // teams ending or coming back never shift the others' colours
   chFam = new Map(); chLinkList = [];
   needReviews();  // the QA driver's tickets name the teams
-  const qh = qaHandles(), taken = new Map();
-  [...fams.values()].sort((x, y) => byStart(x.c, y.c)).forEach((f, i) => {
-    const [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+  const qh = qaHandles(), taken = new Map(), byAge = [...fams.values()].sort((x, y) => byStart(x.c, y.c));
+  // teams already on show keep theirs first; one coming back whose colour went to another meanwhile gets a free one
+  const used = new Set();
+  const keep = f => famShown.has(f.c.path) * 2 + famSlot.has(f.c.path);
+  for (const f of [...byAge].sort((x, y) => keep(y) - keep(x))) {
+    let n = famSlot.get(f.c.path);
+    if (n == null || used.has(n)) { n = 0; while (used.has(n)) n++; famSlot.set(f.c.path, n); }
+    used.add(n);
+  }
+  famShown = new Set(fams.keys());
+  if (famSlot.size > 200) for (const p of [...famSlot.keys()].slice(0, famSlot.size - 200)) if (!fams.has(p)) famSlot.delete(p);
+  try { localStorage.setItem('adash.famslot', JSON.stringify([...famSlot])); } catch {}
+  byAge.forEach(f => {
+    const i = famSlot.get(f.c.path), [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
     let team = teamName(f.c, qh, tn + '팀' + (i >= FAM_TEAM.length ? ' ' + (Math.floor(i / FAM_TEAM.length) + 1) : ''));
     const n = (taken.get(team) || 0) + 1;
     taken.set(team, n);
