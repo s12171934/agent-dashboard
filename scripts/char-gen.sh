@@ -52,7 +52,8 @@ PY=${PYTHON:-$("$ROOT/scripts/char-python.sh")}
 out="$ROOT/frontend/chars"; (( ${+CHARS[$name]} )) || out=$PWD
 out=${CHAR_OUT:-$out}  # the 「캐릭터」 tab's redraw keeps a built-in person's strips out of the repo (they go up to R2)
 # the 8 cells of each sheet, left to right, top row then bottom: 1 입력 대기, 2 실행 중, 3 백그라운드, 4 응답 없음,
-# 5 유휴, 6 완료, 7 결정 대기, 8 cell 1 with the eyes shut (the blink Live2D crossfades to)
+# 5 유휴, 6 완료, 7 결정 대기, 8 cell 1 with the eyes shut (no state shows it;
+# kept so every set stays 8 cells)
 typeset -A CELLS
 CELLS[a]='1. calm neutral standing, arms relaxed, slight smile, eyes open
 2. holding an open laptop on one forearm and typing on it with the other hand, focused eyes looking down at it

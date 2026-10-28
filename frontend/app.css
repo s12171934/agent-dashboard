@@ -428,6 +428,9 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 .ip-icon { width: 56px; height: 56px; padding: 0; border: 2px solid transparent; border-radius: 16px; background: none; cursor: pointer; }
 .ip-icon img { display: block; width: 100%; height: 100%; border-radius: 13px; }
 .ip-icon:hover { border-color: var(--line); } .ip-icon.on { border-color: var(--accent); }
+.ip-sub { margin: 12px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); } .ip-sub small { font-weight: 400; }
+.ip-faces { max-height: 192px; overflow-y: auto; padding: 2px; margin: -2px; }
+.ip-icon[hidden] { display: none; }
 .ip-name { margin-top: 10px; font-size: 12.5px; font-weight: 600; }
 .ip-help { margin: 6px 0 0; max-width: 256px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 /* 「캐릭터 설정」 panel (charPanel): how the characters are drawn */
@@ -1533,7 +1536,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 /* 캐릭터 모드 (renderOffice): each room is one scene — .room-wall (decorations) over the wall band, the floor below —
    and the people (.ch) sit on it at places chLayout sets (left, top; z-index grows downward so nearer people overlap).
    --c is the model colour, --ph the motion phase the page sets so live re-renders do not restart it. The face and the
-   bubble's sign carry the state; .fig-ai (a pixel sprite frame) and .fig-l2d (a canvas L2D draws) are the two drawing styles. */
+   bubble's sign carry the state; .fig-ai is the figure, a pixel sprite frame. */
 .office { display: flex; flex-direction: column; gap: 12px; }
 .office, .ch-canvas {
   /* page-only palette for props: a leaf or a wooden desk is the same in light and dark */
@@ -1576,8 +1579,6 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.dec .ch-say b { color: var(--warn); animation: pulse 1.6s infinite; }
 .ch-fig { display: block; flex: none; background-repeat: no-repeat; transition: transform .15s;
   filter: drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
-/* a bust is cut at the waist: fade the cut into the floor */
-.fig-l2d.bust { -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
 .ch-tag { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: calc(100% / var(--lz, 1)); transform: scale(var(--lz, 1)); transform-origin: top center; position: relative; z-index: 1; }
 .ch-name, .ch-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* a name plate: solid, the model's colour along its bottom, a dot in the state's colour */
@@ -1599,10 +1600,9 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.st-done .ch-dot { background: var(--done); }
 .ch.dec .ch-dot { background: var(--warn); animation: pulse 1.6s infinite; }
 .ch .badge { margin-top: 2px; }
-/* motion (AI 생성): pixel art at 2×, so it moves a sprite pixel (2px) at a time, in steps; the generated pose carries
+/* motion: pixel art at 2×, so it moves a sprite pixel (2px) at a time, in steps; the generated pose carries
    the state. Lively states move: run fast (and its set changes, chAct), dec waves, stalled shakes its head in bursts;
-   done jumps once; the still ones barely do — wait stands, bg rises now and then, idle only fades. Live2D moves in its
-   canvas instead. */
+   done jumps once; the still ones barely do — wait stands, bg rises now and then, idle only fades. */
 .fig-ai { image-rendering: pixelated; filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent));
   animation: none; --bob: -2px; }
 .ch.st-run .fig-ai { animation: bob .5s steps(1, end) infinite var(--ph, 0s); }
@@ -1612,7 +1612,6 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch.st-stalled .fig-ai { animation: shake-rest 2s steps(1, end) infinite var(--ph, 0s); }
 .ch.st-bg .fig-ai { animation: sip 7s steps(1, end) infinite var(--ph, 0s); }
 .ch.st-idle .ch-fig { opacity: .8; }
-.ch.st-stalled .fig-l2d { filter: grayscale(.45) drop-shadow(0 3px 3px color-mix(in srgb, var(--ink) 30%, transparent)); }
 .ch.st-stalled .fig-ai { filter: grayscale(.45) drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
 @keyframes shake-rest { 0%, 10%, 20% { transform: translateX(2px); } 5%, 15%, 25%, 100% { transform: none; } }
 @keyframes sip { 0%, 88%, 100% { transform: none; } 90%, 96% { transform: translateY(-2px); } }
@@ -1637,8 +1636,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .d-chspr { display: block; background-repeat: no-repeat; image-rendering: pixelated; }
 @media (max-width: 500px) { .d-hero { grid-template-areas: "fig head" "top top"; column-gap: 10px; row-gap: 8px; } .d-chgrp > .st { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
-/* 「캐릭터」 tab: the people as small tiles on the left, the one picked on the right (below on a narrow screen): its three
-   stages (베이스 → 픽셀 → Live2D) in a row joined by labelled arrows, all 32 poses a row a set, the office's looks, and
+/* 「캐릭터」 tab: the people as small tiles on the left, the one picked on the right (below on a narrow screen): its two
+   stages (베이스 → 픽셀) in a row joined by labelled arrows, all 32 poses a row a set, the office's looks, and
    managing them */
 .cx-top { justify-content: space-between; }
 .cx-wrap { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 14px; align-items: start; }
@@ -1970,11 +1969,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 @keyframes staff-doze { 0%, 100% { transform: none; } 50% { transform: translateY(2px); } }
 .staff-body[data-face="-1"] > .ch-fig { translate: -2px 0; }
 .staff-body[data-face="1"] > .ch-fig { translate: 2px 0; }
-.staff-body[data-face="-1"] > .fig-l2d { rotate: -2deg; transform-origin: bottom center; }
-.staff-body[data-face="1"] > .fig-l2d { rotate: 2deg; transform-origin: bottom center; }
 .ch.staff:is(:hover, :focus-visible) .fig-ai { filter: drop-shadow(2px 0 0 var(--ol)) drop-shadow(-2px 0 0 var(--ol)) drop-shadow(0 2px 0 var(--ol)) drop-shadow(0 -2px 0 var(--ol))
   drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
-.ch.staff:is(:hover, :focus-visible) .fig-l2d { filter: drop-shadow(0 0 2px var(--ol)) drop-shadow(0 0 6px var(--ol)); }
 .ch.staff:focus-visible { outline: none; }  /* the outline round the figure shows the focus */
 /* the emote: a pixel badge over the head, popping in; z floats up as it sleeps */
 .staff-body[data-emo]::after { content: attr(data-emo); position: absolute; z-index: 2; top: -2px; right: 8%; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 4px;
@@ -2027,7 +2023,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .w3-led { animation: blink 1.8s infinite; }
 @media (prefers-reduced-motion: reduce) { .w3-led { animation: none; } }
 @media (max-width: 700px) { .ch-world { padding: 12px; } }
-@media (max-width: 500px) { .ch { width: 124px; } .fig-l2d { zoom: .85; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
+@media (max-width: 500px) { .ch { width: 124px; } .office { --wall-h: 104px; } .wall-item svg { transform: scale(.85); transform-origin: bottom; } }
 /* a tab moved into the bar's ⋯ menu (data-more) shows it is the open one */
 .dock-more a.on, .dock-more a.on svg { color: var(--accent); }
 
