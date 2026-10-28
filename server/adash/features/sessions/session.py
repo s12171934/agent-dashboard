@@ -30,6 +30,7 @@ class Session:
         self.buf = b""
         self.id = os.path.splitext(os.path.basename(path))[0]
         self.title = None
+        self.custom_title = None  # /rename
         self.cwd = None
         self.launch_cwd = None  # where the agent was started; later cwds follow its own `cd`s
         self.model = None
@@ -301,8 +302,12 @@ class Session:
         typ = rec.get("type")
         self.cwd = rec.get("cwd") or self.cwd
         self.launch_cwd = self.launch_cwd or self.cwd
+        if typ == "custom-title":  # /rename: the user's name outranks Claude's ai-title and the first prompt
+            self.custom_title = rec.get("customTitle") or self.custom_title
+            self.title = self.custom_title or self.title
+            return
         if typ == "ai-title":
-            self.title = rec.get("aiTitle") or self.title
+            self.title = self.custom_title or rec.get("aiTitle") or self.title
             return
         msg = rec.get("message") or {}
         if typ == "system" and rec.get("subtype") == "turn_duration":

@@ -28,7 +28,7 @@ class DesignReads:
         if kind == "codex":
             self.id = self.id.split("-", 6)[-1] if self.id.startswith("rollout-") else self.id
         self.parent = os.path.basename(os.path.dirname(os.path.dirname(path))) if "/subagents/" in path else None
-        self.cwd = self.task = self.title = None
+        self.cwd = self.task = self.title = self.custom_title = None
         self.calls = {}  # call id -> (tool, input, cwd, ts)
         self.marks = set()  # call ids as bytes, so a result line can be picked out before it is parsed
         self.stats = collections.Counter()
@@ -43,7 +43,7 @@ class DesignReads:
         if self.kind == "codex" and (b'"session_meta"' in raw or b'"turn_context"' in raw
                                      or not self.title and b'"role":"user"' in raw.replace(b" ", b"")):
             return True
-        return b"Your task ID is" in raw or b'"ai-title"' in raw or any(b.encode() in raw for b in design_bases)
+        return b"Your task ID is" in raw or b'"ai-title"' in raw or b'"custom-title"' in raw or any(b.encode() in raw for b in design_bases)
 
     def note_call(self, cid, name, inp, ts):
         text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
@@ -77,8 +77,12 @@ class DesignReads:
         if self.kind == "claude":
             self.cwd = rec.get("cwd") or self.cwd
             typ = rec.get("type")
+            if typ == "custom-title":  # /rename, as Session.parse_claude
+                self.custom_title = rec.get("customTitle") or self.custom_title
+                self.title = self.custom_title or self.title
+                return
             if typ == "ai-title":
-                self.title = rec.get("aiTitle") or self.title
+                self.title = self.custom_title or rec.get("aiTitle") or self.title
                 return
             content = (rec.get("message") or {}).get("content")
             if typ == "assistant":
