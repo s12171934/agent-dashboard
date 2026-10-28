@@ -455,8 +455,9 @@ const api = (() => {
     // The address of a picture or PDF in a design folder (for <img>, <iframe>).
     designFile: (server, key) => (byId(server)?.url || '') + '/api/design/file?path=' + encodeURIComponent(key),
     // Characters made from an uploaded picture (an Orca agent draws and publishes them): every server's jobs, newest
-    // first, each with server — {id, who, name, look, boss, notes, agent, created, updated, handle, done[desc|full|bust|
-    // sd|published], sheets[ref|full|bust|sd], state running|published|failed, error}. A server without the API is left out.
+    // first, each with server — {id, who, name, look, boss, driver, notes, agent, created, updated, handle,
+    // done[desc|full|bust|sd|published], sheets[ref|full|bust|sd], state running|published|failed, error}. A server
+    // without the API is left out.
     // With them each server's redraws (charRedraw): {who, kind, set, state running|done|failed, step draw|publish, error,
     // started, ended, server}.
     charState: async () => {
@@ -464,16 +465,16 @@ const api = (() => {
       return { jobs: r.flatMap(([srv, d]) => tag(d.jobs, srv.id)).sort((a, b) => b.created - a.created),
         redraws: r.flatMap(([srv, d]) => tag(d.redraws, srv.id)) };
     },
-    // Start one: body {who, name, look, boss, notes, agent, model, image (base64)}. {status, body}: 202 {job}, 400 what
-    // is wrong with the form.
+    // Start one: body {who, name, look, boss, driver, notes, agent, model, image (base64)}. {status, body}: 202 {job},
+    // 400 what is wrong with the form.
     charCreate: (server, body) => post(byId(server), '/api/chars/create', body),
     charRemove: (server, id) => post(byId(server), '/api/chars/remove', { id }),
     // Delete a character for good (every page drops it on its next read). {status, body}: 200, 502 why not.
     charUnpublish: (server, who) => post(byId(server), '/api/chars/unpublish', { who }),
-    // A person's name, look and role (boss) everywhere. {status, body}: 200, 400/502 why not.
+    // A person's name, look and role (boss, driver) everywhere. {status, body}: 200, 400/502 why not.
     charMeta: (server, body) => post(byId(server), '/api/chars/meta', body),
-    // Redraw one sheet {who, kind full|bust|sd, set a-d, name, look, boss} and put the person up again, in the background
-    // (charState follows it). {status, body}: 202 {redraw}, 400 why not.
+    // Redraw one sheet {who, kind full|bust|sd, set a-d, name, look, boss, driver} and put the person up again, in the
+    // background (charState follows it). {status, body}: 202 {redraw}, 400 why not.
     charRedraw: (server, body) => post(byId(server), '/api/chars/redraw', body),
     // A job's uploaded picture (f=ref) or a sheet the agent drew (full, bust, sd); t busts the browser cache.
     charFile: (server, id, f, t) => `${byId(server)?.url || ''}/api/chars/file?job=${encodeURIComponent(id)}&f=${f}&t=${t || 0}`,

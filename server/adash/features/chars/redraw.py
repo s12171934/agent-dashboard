@@ -69,12 +69,12 @@ def env_for(who):
     return e
 
 
-def run(who, kind, s, name, look, boss):
+def run(who, kind, s, name, look, boss, driver):
     log = os.path.join(STORE, f".redraw-{who}.log")
     py = subprocess.run([os.path.join(REPO, "scripts/char-python.sh")], capture_output=True, text=True, timeout=300).stdout.strip()
     steps = [[os.path.join(REPO, "scripts/char-gen.sh"), who, kind, STORE, s],
              [py or "python3", os.path.join(REPO, "scripts/char-publish.py"), who, "--name", name, "--look", look, "--dir", STORE]
-             + (["--boss"] if boss else [])]
+             + (["--boss"] if boss else ["--driver"] if driver else [])]
     err = None
     try:
         with open(log, "w") as fh:
@@ -98,7 +98,7 @@ def run(who, kind, s, name, look, boss):
         REDRAWS[who].update(state="failed" if err else "done", error=err, ended=time.time())
 
 
-def start(who, kind, s, name, look, boss):
+def start(who, kind, s, name, look, boss, driver=False):
     """Redraw <who>'s <kind> sheet of set <s> and put them up again, in the background. -> the redraw's entry, or
     ValueError why not."""
     if not (isinstance(who, str) and WHO.fullmatch(who)) or kind not in KINDS or s not in tuple(SETS):
@@ -114,7 +114,7 @@ def start(who, kind, s, name, look, boss):
     entry = {"who": who, "kind": kind, "set": s, "state": "running", "step": "draw", "error": None, "started": time.time(), "ended": None}
     with lock:
         REDRAWS[who] = entry
-    threading.Thread(target=run, args=(who, kind, s, name.strip(), look.strip(), bool(boss)), daemon=True).start()
+    threading.Thread(target=run, args=(who, kind, s, name.strip(), look.strip(), bool(boss), bool(driver) and not boss), daemon=True).start()
     return dict(entry)
 
 
@@ -123,11 +123,12 @@ def list_redraws():
         return [dict(x) for x in REDRAWS.values()]
 
 
-def set_meta(who, name, look, boss):
-    """Name, look and role, everywhere (char-publish.py --meta)."""
+def set_meta(who, name, look, boss, driver=False):
+    """Name, look and role (boss, driver or neither), everywhere (char-publish.py --meta)."""
     if not isinstance(name, str) or not isinstance(look, str) or "'" in name + look:
         raise ValueError("작은따옴표(') 는 쓸 수 없습니다")
-    publish_script(who, "--meta", "--name", name.strip(), "--look", look.strip(), *(["--boss"] if boss else []))
+    publish_script(who, "--meta", "--name", name.strip(), "--look", look.strip(),
+                   *(["--boss"] if boss else ["--driver"] if driver else []))
 
 
 def forget(who):
