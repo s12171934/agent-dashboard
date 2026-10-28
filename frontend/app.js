@@ -1682,11 +1682,11 @@ function e2eHtml(k) {
 // A driver's ticket row (agents page) shows the same block when an external plan ticket of that package carries TC data.
 const planTicketE2e = pkg => { const k = (state.ext_plans || []).flatMap(p => p.tickets || []).find(t => t.package === pkg && (t.tc_plan?.length || t.e2e_progress)); return k ? e2eHtml(k) : ''; };
 
-// A plan is shown inside its coordinator session's view; only a plan whose coordinator is not tracked stays on the agents page.
+// A plan is shown only inside its coordinator session's view; a plan not tied to a tracked coordinator is not shown.
 const planOwner = p => p.coordinator_session && state.sessions.find(x => x.id === p.coordinator_session || x.path.endsWith('/' + p.coordinator_session + '.jsonl'));
 const plansOf = d => (state.ext_plans || []).filter(p => planOwner(p) === d || (planOwner(p)?.path === d.path));
 const termNote = h => { const t = h && termOwner(h).t; return !h ? '터미널 미생성' : `터미널 ${t ? esc(t.title || '') + (t.connected ? '' : ' · 연결 끊김') : 'Orca 목록에 없음'} · ${esc(h.slice(0, 13))}`; };
-function extPlansHtml(plans, inSession) {
+function extPlansHtml(plans) {
   if (!plans.length) return '';
   const byTitle = {};
   Object.values(state.orca.tasks || {}).flat().forEach(t => { if (!t.plan_row) (byTitle[t.task_title] ||= []).push(t); });
@@ -1731,8 +1731,7 @@ function extPlansHtml(plans, inSession) {
     const sub = `티켓 ${tickets.length} · ${cnt(all)}${p.generated_at ? ` · 계획 갱신 ${esc(ago(p.generated_at))}` : ''}${p.design_commit ? ` · <span title="${esc(p.design_root || '')}">설계 ${esc(p.design_commit.slice(0, 7))}</span>` : ''}`;
     const sched = p.scheduler_terminal ? `<div class="drv-h" title="${esc(p.scheduler_terminal)}"><b>⚙ ${esc(termOwner(p.scheduler_terminal).title || 'scheduler')}</b><span class="badge">스케줄러(스크립트)</span><span>${termNote(p.scheduler_terminal)}</span><span>아래 티켓 드라이버를 순서대로 띄움</span></div>` : '';
     const title = `${esc(p.project || '')} 워커 계획 (${p.driver ? esc(p.driver) + ' ' : ''}드라이버 사전 계획)`;
-    return inSession ? `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${ticketGraph(p)}${sched}<div class="tks">${body}${xwtHtml(p)}</div></div>`
-      : `<div class="sec-h"><h2>${title}</h2><span>${sub}</span></div>${p.owner_problem ? `<div class="pline"><span class="tstale" title="${esc(p.path || '')}">⚠ 코디네이터 밑에 묶지 못함 — ${esc(p.owner_problem)}</span></div>` : ''}${sched}<div class="tks">${body}${xwtHtml(p)}</div>`;
+    return `<div class="box"><h3>${title} <span class="st">${sub}</span></h3><div class="pline" style="margin:-4px 0 8px">${drvPlanLine(dp)}</div>${ticketGraph(p)}${sched}<div class="tks">${body}${xwtHtml(p)}</div></div>`;
   }).join('');
 }
 
@@ -4778,7 +4777,7 @@ function renderAgents() {
     return;
   }
   const h = srvView === 'split' && multiSrv() ? srvOn().map(one).join('').replace('sec-h srv-h', 'sec-h srv-h first') : one(null);
-  $('#view').innerHTML = seg + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>') + extPlansHtml((state.ext_plans || []).filter(p => !planOwner(p)));
+  $('#view').innerHTML = seg + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>');
   agViewBind();
   { const el = $('#view .tests-sec'); if (el) el.ontoggle = () => testsOpen = el.open; }  // survives live re-renders
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
@@ -5479,7 +5478,7 @@ function renderSession(navigated) {
     ${sec('orch', openOrch, '오케스트레이션', [wp && `Orca 태스크 ${wp.total}`, kids.length && `워커 ${kids.length}`, plans.length && `드라이버 계획 ${plans.length}`].filter(Boolean).join(' · '),
       `${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
         <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
-      ${extPlansHtml(plans, true)}
+      ${extPlansHtml(plans)}
       ${kids.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${kids.filter(k => agg(k).live).length} · 합계 비용 ${usd(kc)} · 합계 턴 ${fmt(kids.reduce((x, k) => x + agg(k).turns, 0))}</span></h3>${workerTable(d, kids, wp)}</div>` : ''}`)}
     ${planBox(d)}
     ${designRefsBox(d)}
