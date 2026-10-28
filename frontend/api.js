@@ -300,6 +300,25 @@ const api = (() => {
       return r;
     },
     reviewMark: (server, key, done) => post(byId(server), '/api/review/mark', { key, done }),
+    // Every git worktree on each server's Mac, for the 워크트리 tab: {servers[{server, name, local, error, repos[{name,
+    // path, error, worktrees[{path, name, comment, branch, head, main, orca, detached, locked, prunable, bare, missing,
+    // dirty, committed, subject}]}]}]}. local: the server is this device's loopback, where VS Code can be opened.
+    worktrees: async fresh => {
+      const loop = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/;
+      return { servers: await Promise.all(enabled().map(async srv => {
+        try { const d = await getJson(srv, '/api/worktrees' + (fresh ? '?fresh=1' : ''));
+          return { server: srv.id, name: srv.name, local: loop.test(srv.url), error: d?.error || (d ? null : '이 서버에는 워크트리 목록이 없습니다'), repos: d?.repos || [] };
+        } catch (e) { return { server: srv.id, name: srv.name, local: false, error: e instanceof TypeError ? '연결할 수 없습니다' : String(e.message || e), repos: [] }; }
+      })) };
+    },
+    // One listed worktree in a desktop VS Code window on that server's Mac, or {url} (absolute) of the web VS Code on
+    // it. Same loopback-only terms as reviewOpen.
+    worktreeOpen: (server, path) => post(byId(server), '/api/worktrees/open', { path }),
+    worktreeWeb: async (server, path) => {
+      const srv = byId(server), r = await post(srv, '/api/worktrees/web', { path });
+      if (r.body.url) r.body.url = srv.url + r.body.url;
+      return r;
+    },
     reviewShip: (server, key) => post(byId(server), '/api/review/ship', { key }),
     // QA driver control on the set's server. automation: action enable | disable | run on an Orca automation the set
     // lists. ticket: action approve (push/PR approval → the coordinator) | cleanup_check (dry run; body.code 3 = it would
@@ -455,8 +474,9 @@ const api = (() => {
     // The address of a picture or PDF in a design folder (for <img>, <iframe>).
     designFile: (server, key) => (byId(server)?.url || '') + '/api/design/file?path=' + encodeURIComponent(key),
     // Characters made from an uploaded picture (an Orca agent draws and publishes them): every server's jobs, newest
-    // first, each with server — {id, who, name, look, boss, notes, agent, created, updated, handle, done[desc|full|bust|
-    // sd|published], sheets[ref|full|bust|sd], state running|published|failed, error}. A server without the API is left out.
+    // first, each with server — {id, who, name, look, boss, driver, notes, agent, created, updated, handle,
+    // done[desc|full|bust|sd|published], sheets[ref|full|bust|sd], state running|published|failed, error}. A server
+    // without the API is left out.
     // With them each server's redraws (charRedraw): {who, kind, set, state running|done|failed, step draw|publish, error,
     // started, ended, server}.
     charState: async () => {
@@ -464,16 +484,16 @@ const api = (() => {
       return { jobs: r.flatMap(([srv, d]) => tag(d.jobs, srv.id)).sort((a, b) => b.created - a.created),
         redraws: r.flatMap(([srv, d]) => tag(d.redraws, srv.id)) };
     },
-    // Start one: body {who, name, look, boss, notes, agent, model, image (base64)}. {status, body}: 202 {job}, 400 what
-    // is wrong with the form.
+    // Start one: body {who, name, look, boss, driver, notes, agent, model, image (base64)}. {status, body}: 202 {job},
+    // 400 what is wrong with the form.
     charCreate: (server, body) => post(byId(server), '/api/chars/create', body),
     charRemove: (server, id) => post(byId(server), '/api/chars/remove', { id }),
     // Delete a character for good (every page drops it on its next read). {status, body}: 200, 502 why not.
     charUnpublish: (server, who) => post(byId(server), '/api/chars/unpublish', { who }),
-    // A person's name, look and role (boss) everywhere. {status, body}: 200, 400/502 why not.
+    // A person's name, look and role (boss, driver) everywhere. {status, body}: 200, 400/502 why not.
     charMeta: (server, body) => post(byId(server), '/api/chars/meta', body),
-    // Redraw one sheet {who, kind full|bust|sd, set a-d, name, look, boss} and put the person up again, in the background
-    // (charState follows it). {status, body}: 202 {redraw}, 400 why not.
+    // Redraw one sheet {who, kind full|bust|sd, set a-d, name, look, boss, driver} and put the person up again, in the
+    // background (charState follows it). {status, body}: 202 {redraw}, 400 why not.
     charRedraw: (server, body) => post(byId(server), '/api/chars/redraw', body),
     // A job's uploaded picture (f=ref) or a sheet the agent drew (full, bust, sd); t busts the browser cache.
     charFile: (server, id, f, t) => `${byId(server)?.url || ''}/api/chars/file?job=${encodeURIComponent(id)}&f=${f}&t=${t || 0}`,

@@ -260,7 +260,7 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
 }
 // 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
 // and the screen stays as it was. Opened, it remembers the screen it came from (decFrom), and goes back there once
@@ -350,6 +350,7 @@ async function renderView(navigated) {
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
   if (r.v !== 'worktrees') wtMounted = false;
+  if (r.v !== 'trees') trMounted = false;
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
@@ -363,6 +364,7 @@ async function renderView(navigated) {
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'worktrees') await renderWorktrees();
+  else if (r.v === 'trees') await renderTrees();
   else if (r.v === 'decide') renderDecide();
   else if (r.v === 'usage') renderUsage();
   else if (r.v === 'chars') renderChars();
@@ -1144,6 +1146,8 @@ function closeOrca(s, name, handle) {
     <div class="dialog-btns"><button class="act big" value="">취소</button><button class="act big danger" value="ok">닫기</button></div></form>`;
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
+    const sheet = $('#chat-dlg');
+    if (sheet?.open && sheet.dataset.path === s?.path) sheet.close();
     const cascade = !!d.querySelector('[name=cascade]')?.checked, hs = [handle, ...(cascade ? below : [])];
     hs.forEach(h => closing.add(h));
     render();
@@ -2563,7 +2567,7 @@ function wtWebPlace(root) {
 // theme change reopens the shown pages with the new one (VS Code restores their open editors) and retargets the rest.
 const wtWebUrl = u => { const x = new URL(u, location.href); x.searchParams.set('theme', document.documentElement.dataset.theme || 'light'); return x.href; };
 document.addEventListener('ds:theme', () => {
-  for (const el of wtWeb.values()) el.querySelectorAll('.rv-web-f').forEach(f => {
+  for (const el of [...wtWeb.values(), ...trWeb.values()]) el.querySelectorAll('.rv-web-f').forEach(f => {
     if (f.dataset.src) f.dataset.src = wtWebUrl(f.dataset.src);
     else if (new URL(f.src).searchParams.get('theme') !== document.documentElement.dataset.theme) f.src = wtWebUrl(f.src);
   });
@@ -2618,6 +2622,109 @@ async function wtClick(e) {
     if (body.approved) toast(body.output || '승인을 전달했습니다');
   }
   b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
+}
+
+// ---------- 워크트리 (#trees): every git worktree on each server's Mac ----------
+// The repos Orca knows and all of their worktrees as git lists them, Orca-made or not (/api/worktrees). Each row opens
+// its worktree in the desktop VS Code, or unfolds the web one (read-only) under it, the 워크트리 리뷰 tab's panel. The
+// list is read again after TR_EVERY on a live update, or at once with 「새로 고침」; the body is rebuilt only when its
+// markup changes, and open web panels go back under their rows (trWeb, moved like wtWeb's).
+const TR_EVERY = 30000;
+let trData = null, trAt = 0, trBusy = false, trMounted = false, trBodyHtml = '';
+let trf = (() => { try { return { q: '', dirty: false, ...JSON.parse(localStorage.getItem('adash.tr') || '{}') }; } catch { return { q: '', dirty: false }; } })();
+const trWeb = new Map();  // server|path → panel
+const trKey = (srv, path) => srv + '|' + path;
+async function trLoad(fresh) {
+  if (trBusy) return;
+  trBusy = true;
+  try { trData = await api.worktrees(fresh); trAt = Date.now(); } finally { trBusy = false; }
+}
+function trRow(w, sv) {
+  const k = trKey(sv.server, w.path), live = state.sessions.filter(s => OPEN(status(s)) && s.place?.path === w.path).length;
+  const flags = [w.main && '<span class="badge">메인</span>', w.orca && '<span class="badge">Orca</span>',
+    w.detached && '<span class="rv-flag warn" title="브랜치가 아닌 커밋에 있음">분리 HEAD</span>',
+    w.locked && '<span class="rv-flag warn">잠김</span>', w.prunable && '<span class="rv-flag bad" title="git worktree prune 대상">정리 대상</span>',
+    w.missing && '<span class="rv-flag bad">디스크에 없음</span>',
+    w.dirty ? `<span class="rv-flag warn" title="커밋하지 않은 변경 (git status)">미커밋 ${w.dirty}</span>` : '',
+    live ? `<span class="badge srv" title="이 워크트리에서 도는 에이전트 세션">에이전트 ${live}</span>` : ''].filter(Boolean).join('');
+  const off = !sv.local ? ' disabled title="이 맥에서 연 화면(127.0.0.1)에서만 열 수 있습니다"' : w.missing || w.bare ? ' disabled title="디스크에 없습니다"' : '';
+  return `<div class="rv-tk tr-row${w.missing || w.prunable ? ' none' : ''}" data-tr="${esc(k)}">
+    <div class="rv-head"><b title="${esc(w.comment || '')}">${esc(w.name)}</b>
+      <span class="st">${w.branch ? esc(cut(w.branch, 60)) : esc(w.head || '')}</span>${flags}
+      <span class="rv-acts">
+        <button class="act big" data-tr-web="${esc(w.path)}" data-srv="${esc(sv.server)}" aria-expanded="${trWeb.has(k)}"${off || ' title="이 행 아래에 웹 VS Code(읽기 전용)를 펼칩니다"'}>${trWeb.has(k) ? '웹 접기' : '웹으로 보기'}</button>
+        <button class="act big accent" data-tr-open="${esc(w.path)}" data-srv="${esc(sv.server)}"${off || ' title="데스크톱 VS Code 창으로 엽니다. 이미 열린 창이면 앞으로 가져옵니다"'}>VS Code 로 열기</button></span></div>
+    <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
+      ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}</div>
+  </div>`;
+}
+async function renderTrees() {
+  const save = () => { try { localStorage.setItem('adash.tr', JSON.stringify(trf)); } catch {} };
+  if (!trMounted) {
+    $('#view').innerHTML = `<div class="sec-h"><h2>워크트리</h2><span>Orca 에 등록된 저장소마다 git 이 아는 모든 워크트리입니다 (Orca 가 만들지 않은 것도). VS Code 는 이 맥에서 연 화면에서만 열립니다.</span></div>
+      <div class="controls">
+        <input type="search" id="tr-q" class="field" placeholder="이름·브랜치·경로 검색" value="${esc(trf.q)}">
+        <label class="st"><input type="checkbox" id="tr-dirty"${trf.dirty ? ' checked' : ''}> 미커밋 있는 것만</label>
+        <button class="act big" id="tr-reload">새로 고침</button><span class="st" id="tr-sum"></span>
+      </div><div id="tr-body"><div class="empty">불러오는 중…</div></div>`;
+    $('#tr-q').oninput = e => { trf.q = e.target.value; save(); renderTrees(); };
+    $('#tr-dirty').onchange = e => { trf.dirty = e.target.checked; save(); renderTrees(); };
+    $('#tr-reload').onclick = async e => { e.target.disabled = true; await trLoad(true).catch(() => {}); e.target.disabled = false; renderTrees(); };
+    $('#tr-body').onclick = trClick;
+    trMounted = true;
+    trBodyHtml = '';
+  }
+  if (!trData || Date.now() - trAt > TR_EVERY) {
+    if (!trData) await trLoad(false).catch(() => {});
+    else trLoad(false).then(() => route().v === 'trees' && renderTrees(), () => {});  // the old list stays up meanwhile
+  }
+  if (!trData) return;
+  const q = trf.q.trim().toLowerCase(), multi = trData.servers.length > 1;
+  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment].some(x => (x || '').toLowerCase().includes(q)));
+  let shown = 0, all = 0;
+  const body = trData.servers.map(sv => {
+    const repos = sv.repos.map(rp => { const ws = rp.worktrees.filter(hit); all += rp.worktrees.length; shown += ws.length;
+      return ws.length || rp.error ? `<div class="sec-h"><h2>${esc(rp.name)}</h2><span title="${esc(rp.path)}">${ws.length}${ws.length !== rp.worktrees.length ? ' / ' + rp.worktrees.length : ''}개 · ${esc(rp.path)}</span></div>
+        ${rp.error ? `<div class="rv-err">${esc(rp.error)}</div>` : ''}<div class="rv-list">${ws.map(w => trRow(w, sv)).join('')}</div>` : ''; }).join('');
+    return (multi ? `<div class="sec-h"><h2>${esc(sv.name)}</h2><span class="badge srv">서버</span></div>` : '')
+      + (sv.error ? `<div class="rv-err">${esc(sv.name)}: ${esc(sv.error)}</div>` : '') + repos;
+  }).join('') || '';
+  $('#tr-sum').textContent = `${shown}${shown !== all ? ' / ' + all : ''}개 · ${ago(new Date(trAt).toISOString())} 읽음`;
+  const html = body + (shown ? '' : '<div class="empty">조건에 맞는 워크트리가 없습니다.</div>');
+  if (html === trBodyHtml) return;
+  for (const el of trWeb.values()) if (el.isConnected) wtWebMove(wtWebPark || (wtWebPark = Object.assign(document.body.appendChild(document.createElement('div')), { hidden: true })), el);
+  $('#tr-body').innerHTML = trBodyHtml = html;
+  for (const [k, el] of trWeb) {
+    const row = $('#tr-body').querySelector(`[data-tr="${CSS.escape(k)}"]`);
+    if (row) wtWebMove(row, el);
+  }
+}
+async function trClick(e) {
+  const b = e.target.closest('button[data-tr-open], button[data-tr-web]');
+  if (!b || b.disabled) return;
+  const srv = b.dataset.srv;
+  if (b.dataset.trOpen) {
+    const txt = b.textContent;
+    b.disabled = true; b.textContent = '여는 중…';
+    const { status: st, body } = await api.worktreeOpen(srv, b.dataset.trOpen);
+    b.disabled = false; b.textContent = txt;
+    return st === 200 ? toast('VS Code 로 열었습니다') : uiAlert(body.error || `실패 (${st})`);
+  }
+  const path = b.dataset.trWeb, k = trKey(srv, path);
+  const label = on => { b.textContent = on ? '웹 접기' : '웹으로 보기'; b.setAttribute('aria-expanded', on); };
+  if (trWeb.has(k)) { trWeb.get(k).remove(); trWeb.delete(k); trBodyHtml = ''; return label(false); }
+  b.disabled = true; b.textContent = '띄우는 중…';
+  const { status: st, body } = await api.worktreeWeb(srv, path);
+  b.disabled = false;
+  if (st !== 200) { label(false); return uiAlert(body.error || `실패 (${st})`); }
+  const el = document.createElement('div');
+  el.className = 'rv-web';
+  el.innerHTML = `<div class="rv-web-h"><b>${esc(path.split('/').pop())}</b><span class="st">웹 VS Code · 읽기 전용</span></div>
+    <iframe class="rv-web-f" src="${esc(wtWebUrl(body.url))}" title="${esc(path)} — 웹 VS Code"></iframe>`;
+  trWeb.set(k, el);
+  b.closest('.tr-row').append(el);
+  trBodyHtml = '';  // the button's label is part of the markup now
+  label(true);
 }
 
 // ---------- 관계 지도 · 진행 타임라인: the agents tab's flow views ----------
@@ -3187,12 +3294,14 @@ const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.char
 // bust are anime illustrations (Live2D); sd and sdb are the same character as an SD chibi in pixel art, whole and from
 // the waist up (AI 생성, pw × ph):
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
-// The coordinators (kaede, yuki) wear a headset; a session's hash picks the person, so they keep theirs across refreshes.
+// The coordinators (kaede, yuki) wear a headset; the script drivers' person (nova) is a humanoid android; a session's
+// hash picks the person, so they keep theirs across refreshes.
 const CH_ART = {
   ren: {full:{w:168,h:320,top:[0.031,0.037,0.031,0.034,0.047,0.028,0.05,0.031,0.05,0.041,0.037,0.034,0.034,0.044,0.037,0,0.031,0.037,0.031,0.034,0.047,0.028,0.031,0.028,0.031,0.037,0.037,0.034,0.041,0.028,0.025,0.028]},bust:{w:181,h:240,top:[0.054,0.067,0.071,0.062,0.071,0.075,0.133,0.058,0.037,0.071,0.067,0.062,0.1,0.117,0.096,0.037,0.05,0.058,0.062,0.062,0.067,0.079,0.062,0.058,0.071,0.058,0.067,0.062,0.067,0.037,0.075,0.071]},sd:{pw:62,ph:83,top:[0.048,0.048,0.048,0.048,0.072,0.048,0.048,0.048,0.0,0.036,0.036,0.036,0.024,0.012,0.024,0.0,0.036,0.036,0.036,0.036,0.024,0.024,0.024,0.036,0.048,0.048,0.06,0.048,0.036,0.024,0.024,0.024]},sdb:{pw:82,ph:83,top:[0.072,0.072,0.06,0.06,0.096,0.072,0.06,0.072,0.0,0.048,0.048,0.048,0.036,0.024,0.036,0.012,0.036,0.024,0.024,0.024,0.036,0.036,0.024,0.024,0.048,0.048,0.048,0.048,0.036,0.06,0.024,0.048]},sdr:{pw:62,ph:83,top:[0.048,0.048,0.048,0.048,0.036,0.036,0.048,0.048,0.024,0.024,0.024,0.024,0.024,0.012,0.024,0.024,0.036,0.036,0.036,0.036,0.024,0.024,0.024,0.024,0.048,0.048,0.048,0.048,0.024,0.024,0.024,0.024]},sdbr:{pw:82,ph:83,top:[0.048,0.036,0.06,0.06,0.06,0.036,0.06,0.06,0.024,0.036,0.036,0.036,0.024,0.024,0.024,0.024,0.036,0.024,0.024,0.036,0.024,0.024,0.024,0.024,0.048,0.048,0.048,0.048,0.024,0.024,0.036,0.036]},sdd:{pw:62,ph:83,top:[0.048,0.048,0.06,0.06,0.048,0.048,0.048,0.048]},sdbd:{pw:82,ph:83,top:[0.072,0.072,0.072,0.072,0.048,0.072,0.048,0.048]}},
   hina: {full:{w:172,h:320,top:[0.022,0.022,0.025,0.025,0.025,0.022,0.025,0.022,0.006,0.019,0.019,0.019,0.009,0.022,0.016,0,0.022,0.019,0.019,0.019,0.013,0.016,0.016,0.016,0.028,0.013,0.016,0.022,0.013,0.019,0.013,0.013]},bust:{w:185,h:240,top:[0.042,0.037,0.037,0.037,0.042,0.037,0.042,0.037,0.008,0.008,0.008,0.008,0.029,0.029,0.029,0.008,0.042,0.033,0.037,0.033,0.025,0.025,0.025,0.029,0.042,0.033,0.033,0.037,0.008,0.008,0.008,0.008]},sd:{pw:61,ph:82,top:[0.024,0.024,0.012,0.012,0.024,0.012,0.024,0.012,0.012,0.024,0.024,0.012,0.037,0.024,0.037,0.012,0.0,0.0,0.0,0.0,0.024,0.024,0.024,0.024,0.012,0.0,0.0,0.0,0.012,0.0,0.012,0.012]},sdb:{pw:81,ph:82,top:[0.037,0.024,0.024,0.024,0.037,0.024,0.037,0.024,0.012,0.037,0.037,0.024,0.049,0.037,0.049,0.012,0.012,0.012,0.012,0.0,0.024,0.024,0.024,0.024,0.012,0.0,0.0,0.012,0.024,0.012,0.012,0.024]},sdr:{pw:61,ph:82,top:[0.024,0.024,0.012,0.024,0.012,0.012,0.012,0.012,0.037,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.0,0.0,0.0,0.0,0.012,0.012,0.012,0.012,0.0,0.0,0.0,0.0,0.012,0.012,0.012,0.012]},sdbr:{pw:81,ph:82,top:[0.024,0.024,0.024,0.024,0.012,0.012,0.024,0.024,0.049,0.037,0.037,0.037,0.024,0.024,0.037,0.037,0.012,0.012,0.012,0.012,0.024,0.024,0.024,0.024,0.012,0.012,0.012,0.012,0.012,0.012,0.012,0.012]},sdd:{pw:61,ph:82,top:[0.024,0.024,0.024,0.024,0.012,0.012,0.012,0.012]},sdbd:{pw:81,ph:82,top:[0.024,0.024,0.037,0.037,0.024,0.012,0.024,0.012]}},
   kaede: {full:{w:161,h:320,top:[0.019,0.022,0.019,0.019,0.025,0.022,0.05,0.019,0,0.028,0.022,0.022,0.013,0.025,0.019,0.025,0.016,0.019,0.016,0.016,0.009,0.013,0.013,0.006,0.016,0.019,0.031,0.019,0.016,0.022,0.016,0.016]},bust:{w:183,h:240,top:[0.033,0.037,0.033,0.037,0.05,0.046,0.121,0.05,0.008,0.054,0.05,0.054,0.058,0.075,0.054,0.008,0.033,0.033,0.033,0.033,0.046,0.037,0.05,0.042,0.025,0.029,0.033,0.025,0.029,0.033,0.029,0.029]},sd:{pw:60,ph:83,top:[0.036,0.036,0.036,0.036,0.048,0.048,0.048,0.048,0.012,0.036,0.036,0.036,0.048,0.048,0.048,0.012,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.048,0.036,0.036,0.048]},sdb:{pw:81,ph:84,top:[0.048,0.048,0.048,0.048,0.071,0.06,0.06,0.06,0.012,0.06,0.06,0.06,0.06,0.06,0.06,0.024,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.06,0.048,0.048,0.06]},sdr:{pw:60,ph:83,top:[0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.048,0.048,0.048,0.048,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036]},sdbr:{pw:81,ph:84,top:[0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.048,0.036,0.048,0.048,0.048]},sdd:{pw:60,ph:83,top:[0.036,0.036,0.048,0.048,0.036,0.036,0.036,0.036]},sdbd:{pw:81,ph:84,top:[0.048,0.048,0.06,0.06,0.048,0.048,0.048,0.048]}},
   yuki: {full:{w:193,h:320,top:[0.025,0.028,0.025,0.031,0.028,0.025,0.053,0.025,0.019,0.047,0.05,0.047,0.041,0.047,0.037,0,0.022,0.028,0.022,0.025,0.025,0.019,0.037,0.022,0.025,0.028,0.022,0.028,0.009,0.009,0.013,0.013]},bust:{w:182,h:240,top:[0.054,0.05,0.054,0.058,0.054,0.05,0.071,0.054,0.021,0.05,0.054,0.025,0.025,0.087,0.062,0.025,0.054,0.046,0.054,0.021,0.054,0.05,0.054,0.054,0.054,0.058,0.083,0.092,0.067,0.037,0.058,0.075]},sd:{pw:61,ph:82,top:[0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.0,0.024,0.024,0.024,0.024,0.024,0.012,0.0,0.024,0.037,0.037,0.024,0.037,0.037,0.037,0.037,0.0,0.0,0.0,0.0,0.024,0.024,0.024,0.024]},sdb:{pw:81,ph:82,top:[0.037,0.037,0.037,0.037,0.037,0.024,0.037,0.024,0.0,0.037,0.037,0.037,0.024,0.024,0.024,0.0,0.037,0.049,0.049,0.037,0.049,0.049,0.049,0.049,0.0,0.0,0.0,0.0,0.037,0.037,0.037,0.024]},sdr:{pw:61,ph:82,top:[0.024,0.024,0.024,0.024,0.012,0.012,0.012,0.012,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.037,0.037,0.037,0.037,0.037,0.037,0.037,0.024,0.024,0.024,0.024,0.037,0.024,0.037,0.024]},sdbr:{pw:81,ph:82,top:[0.024,0.024,0.024,0.024,0.012,0.012,0.012,0.012,0.037,0.037,0.037,0.037,0.037,0.037,0.037,0.024,0.037,0.049,0.049,0.049,0.049,0.049,0.049,0.049,0.037,0.037,0.037,0.037,0.049,0.037,0.049,0.037]},sdd:{pw:61,ph:82,top:[0.024,0.037,0.049,0.037,0.024,0.024,0.024,0.024]},sdbd:{pw:81,ph:82,top:[0.037,0.037,0.061,0.049,0.037,0.024,0.024,0.024]}},
+  nova: {full:{w:181,h:320,top:[0.056,0.037,0.056,0.022,0.031,0.022,0.031,0.022,0.016,0.087,0.059,0.081,0.019,0.047,0.022,0.0,0.025,0.025,0.025,0.056,0.075,0.019,0.022,0.044,0.044,0.037,0.044,0.072,0.025,0.022,0.022,0.022]},bust:{w:188,h:240,top:[0.062,0.067,0.067,0.062,0.092,0.087,0.108,0.092,0.046,0.083,0.083,0.075,0.079,0.079,0.079,0.046,0.058,0.058,0.058,0.058,0.046,0.05,0.046,0.05,0.071,0.071,0.067,0.062,0.067,0.054,0.054,0.058]},sd:{pw:62,ph:84,top:[0.048,0.036,0.048,0.036,0.048,0.048,0.048,0.048,0.012,0.06,0.06,0.06,0.06,0.048,0.06,0.012,0.048,0.048,0.048,0.048,0.083,0.071,0.071,0.071,0.024,0.024,0.024,0.024,0.036,0.024,0.012,0.024]},sdb:{pw:83,ph:84,top:[0.06,0.06,0.06,0.048,0.06,0.06,0.06,0.06,0.012,0.083,0.083,0.083,0.119,0.071,0.119,0.012,0.06,0.06,0.06,0.06,0.107,0.095,0.095,0.095,0.036,0.036,0.036,0.036,0.048,0.036,0.024,0.036]},sdr:{pw:62,ph:84,top:[0.048,0.048,0.048,0.036,0.048,0.048,0.048,0.048,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.048,0.048,0.048,0.048,0.06,0.06,0.071,0.071,0.024,0.024,0.024,0.024,0.024,0.024,0.024,0.024]},sdbr:{pw:83,ph:84,top:[0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.083,0.071,0.083,0.083,0.083,0.083,0.131,0.131,0.06,0.06,0.06,0.06,0.083,0.083,0.095,0.095,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036]},sdd:{pw:62,ph:84,top:[0.06,0.06,0.06,0.06,0.048,0.048,0.048,0.048]},sdbd:{pw:83,ph:84,top:[0.071,0.071,0.071,0.071,0.071,0.071,0.071,0.071]}},
   // 운영실 (HUB's who), drawn by char-gen.sh like the rest
   sera: {full:{w:166,h:320,top:[0.013,0.019,0.013,0.013,0.019,0.013,0.047,0.013,0.053,0.025,0.019,0.013,0.013,0.019,0.028,0.013,0.013,0.019,0.013,0.013,0.019,0.013,0.022,0.013,0.013,0.016,0.013,0.013,0.016,0.009,0.009,0.009]},bust:{w:180,h:240,top:[0.037,0.037,0.042,0.033,0.025,0.029,0.029,0.025,0.025,0.096,0.096,0.096,0.037,0.054,0.046,0.025,0.029,0.033,0.029,0.029,0.025,0.025,0.025,0.025,0.046,0.046,0.042,0.046,0.037,0.029,0.033,0.033]},sd:{pw:62,ph:85,top:[0.059,0.059,0.059,0.059,0.035,0.035,0.035,0.035,0.024,0.047,0.047,0.047,0.071,0.071,0.059,0.012,0.047,0.047,0.035,0.035,0.059,0.047,0.047,0.059,0.047,0.047,0.047,0.047,0.059,0.047,0.071,0.059]},sdb:{pw:83,ph:86,top:[0.07,0.07,0.07,0.07,0.047,0.047,0.047,0.047,0.035,0.058,0.058,0.058,0.093,0.093,0.081,0.023,0.058,0.058,0.058,0.047,0.07,0.07,0.07,0.07,0.058,0.058,0.058,0.058,0.07,0.058,0.081,0.07]},sdr:{pw:62,ph:85,top:[0.059,0.059,0.059,0.059,0.047,0.047,0.047,0.047,0.047,0.059,0.047,0.047,0.047,0.035,0.047,0.047,0.047,0.047,0.047,0.047,0.059,0.059,0.047,0.047,0.047,0.047,0.047,0.047,0.035,0.035,0.035,0.035]},sdbr:{pw:83,ph:86,top:[0.07,0.07,0.07,0.07,0.058,0.058,0.058,0.058,0.07,0.07,0.07,0.07,0.058,0.047,0.058,0.058,0.058,0.058,0.058,0.058,0.07,0.07,0.07,0.07,0.058,0.058,0.058,0.058,0.047,0.047,0.047,0.047]},sdd:{pw:62,ph:85,top:[0.059,0.047,0.059,0.059,0.047,0.047,0.047,0.047]},sdbd:{pw:83,ph:86,top:[0.07,0.07,0.07,0.081,0.058,0.058,0.058,0.058]}},
   daichi: {full:{w:184,h:320,top:[0.025,0.025,0.028,0.025,0.031,0.022,0.028,0.025,0.019,0.028,0.031,0.041,0.016,0.041,0.028,0.0,0.025,0.025,0.028,0.025,0.022,0.016,0.022,0.013,0.025,0.022,0.022,0.025,0.025,0.019,0.016,0.009]},bust:{w:190,h:240,top:[0.054,0.062,0.054,0.046,0.046,0.042,0.079,0.046,0.0,0.067,0.067,0.054,0.042,0.096,0.092,0.0,0.017,0.025,0.017,0.013,0.021,0.021,0.033,0.021,0.054,0.054,0.054,0.046,0.029,0.017,0.017,0.017]},sd:{pw:63,ph:83,top:[0.036,0.036,0.036,0.048,0.06,0.036,0.036,0.048,0.024,0.048,0.048,0.06,0.048,0.048,0.048,0.012,0.06,0.06,0.06,0.048,0.06,0.048,0.048,0.048,0.048,0.036,0.036,0.036,0.048,0.048,0.036,0.048]},sdb:{pw:84,ph:83,top:[0.048,0.048,0.048,0.072,0.072,0.06,0.06,0.072,0.036,0.06,0.06,0.072,0.072,0.072,0.06,0.024,0.072,0.072,0.072,0.072,0.072,0.06,0.06,0.072,0.06,0.048,0.06,0.048,0.06,0.072,0.06,0.06]},sdr:{pw:63,ph:83,top:[0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.036,0.048,0.048,0.048,0.036,0.036,0.048,0.036,0.036,0.06,0.048,0.048,0.048,0.036,0.036,0.036,0.036,0.072,0.06,0.072,0.072,0.048,0.048,0.048,0.048]},sdbr:{pw:84,ph:83,top:[0.036,0.036,0.036,0.048,0.048,0.048,0.048,0.048,0.072,0.06,0.048,0.06,0.06,0.06,0.06,0.06,0.072,0.072,0.072,0.072,0.06,0.06,0.06,0.06,0.096,0.084,0.096,0.096,0.06,0.06,0.06,0.06]},sdd:{pw:63,ph:83,top:[0.036,0.036,0.036,0.036,0.024,0.024,0.024,0.024]},sdbd:{pw:84,ph:83,top:[0.048,0.036,0.048,0.048,0.036,0.036,0.036,0.036]}},
@@ -3204,31 +3313,40 @@ const CH_ART = {
   sho: {full:{w:179,h:320,top:[0.019,0.019,0.019,0.019,0.044,0.019,0.091,0.019,0.028,0.022,0.019,0.013,0.031,0.019,0.022,0.006,0.019,0.022,0.019,0.019,0.041,0.016,0.019,0.016,0.019,0.019,0.019,0.022,0.028,0.006,0.009,0.013]},bust:{w:190,h:240,top:[0.092,0.096,0.092,0.096,0.096,0.075,0.167,0.092,0.029,0.083,0.087,0.087,0.104,0.104,0.108,0.029,0.054,0.054,0.054,0.054,0.092,0.071,0.079,0.079,0.071,0.071,0.062,0.067,0.046,0.033,0.033,0.042]},sd:{pw:62,ph:85,top:[0.059,0.082,0.094,0.082,0.082,0.082,0.094,0.059,0.024,0.059,0.059,0.059,0.082,0.082,0.071,0.012,0.071,0.059,0.059,0.059,0.059,0.047,0.059,0.047,0.047,0.047,0.047,0.047,0.071,0.047,0.047,0.047]},sdb:{pw:82,ph:86,top:[0.081,0.081,0.081,0.081,0.093,0.081,0.128,0.081,0.035,0.058,0.07,0.058,0.105,0.105,0.093,0.023,0.07,0.07,0.081,0.07,0.07,0.058,0.058,0.058,0.058,0.058,0.058,0.058,0.093,0.058,0.058,0.07]},sdr:{pw:62,ph:85,top:[0.059,0.082,0.059,0.059,0.024,0.024,0.047,0.047,0.082,0.082,0.082,0.082,0.059,0.059,0.059,0.059,0.059,0.059,0.059,0.059,0.047,0.047,0.047,0.047,0.047,0.047,0.047,0.047,0.047,0.047,0.047,0.047]},sdbr:{pw:82,ph:86,top:[0.07,0.081,0.07,0.07,0.023,0.023,0.058,0.058,0.105,0.105,0.105,0.105,0.081,0.07,0.081,0.081,0.07,0.07,0.07,0.07,0.047,0.047,0.047,0.047,0.058,0.058,0.058,0.058,0.058,0.058,0.058,0.058]},sdd:{pw:62,ph:85,top:[0.094,0.094,0.082,0.071,0.094,0.094,0.059,0.059]},sdbd:{pw:82,ph:86,top:[0.128,0.128,0.093,0.093,0.116,0.07,0.07,0.07]}},
   aki: {full:{w:168,h:320,top:[0.016,0.016,0.019,0.016,0.028,0.019,0.022,0.022,0.0,0.031,0.025,0.041,0.019,0.028,0.013,0.044,0.016,0.013,0.016,0.016,0.016,0.013,0.013,0.013,0.013,0.016,0.013,0.016,0.013,0.006,0.006,0.006]},bust:{w:190,h:240,top:[0.062,0.071,0.062,0.058,0.025,0.025,0.129,0.046,0.004,0.046,0.042,0.046,0.033,0.104,0.067,0.004,0.025,0.029,0.021,0.021,0.021,0.013,0.017,0.017,0.004,0.008,0.004,0.008,0.008,0.004,0.004,0.0]},sd:{pw:61,ph:88,top:[0.08,0.08,0.08,0.08,0.091,0.091,0.091,0.091,0.034,0.08,0.08,0.091,0.068,0.08,0.068,0.023,0.08,0.08,0.08,0.08,0.068,0.068,0.068,0.068,0.08,0.091,0.08,0.091,0.091,0.091,0.091,0.091]},sdb:{pw:81,ph:89,top:[0.112,0.112,0.112,0.112,0.112,0.124,0.112,0.124,0.045,0.112,0.101,0.101,0.09,0.112,0.101,0.034,0.101,0.112,0.112,0.112,0.09,0.079,0.09,0.09,0.112,0.112,0.112,0.124,0.124,0.124,0.124,0.124]},sdr:{pw:61,ph:88,top:[0.08,0.08,0.08,0.08,0.091,0.091,0.091,0.091,0.114,0.102,0.091,0.102,0.102,0.091,0.091,0.091,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08]},sdbr:{pw:81,ph:89,top:[0.112,0.112,0.112,0.112,0.112,0.112,0.112,0.112,0.146,0.146,0.135,0.146,0.124,0.124,0.135,0.135,0.101,0.101,0.101,0.101,0.101,0.101,0.101,0.101,0.112,0.112,0.112,0.112,0.112,0.112,0.112,0.112]},sdd:{pw:61,ph:88,top:[0.08,0.08,0.08,0.08,0.091,0.091,0.091,0.091]},sdbd:{pw:81,ph:89,top:[0.101,0.101,0.112,0.101,0.112,0.112,0.112,0.112]}},
 };
-const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['ren', 'hina'];
+// Three lists, one a role: coordinators (boss), workers (crew) and the script drivers' people (drv) — a driver is no
+// session, so it is drawn from its own list, else from the workers' when that list is empty.
+const CH_BOSS = ['kaede', 'yuki'], CH_CREW = ['ren', 'hina'], CH_DRV = ['nova'];
+const chList = r => r === 'boss' ? CH_BOSS : r === 'driver' ? CH_DRV : CH_CREW;
+const chRoleOf = c => c?.driver ? 'driver' : c?.boss ? 'boss' : 'crew';  // a chars.json entry's or meta's role
+const chListed = who => [CH_BOSS, CH_CREW, CH_DRV].find(l => l.includes(who));
 // More people without a deploy: chars/chars.json (the R2 bucket behind functions/chars, written by
 // scripts/char-publish.py) is { chars: { <who>: { name, look, boss, v, art: { full, bust, sd, sdb } } } }, the strips
 // beside it. Read on load and again with every build check (each minute, and when the page comes back), so a person
 // put up — from the 「캐릭터」 tab's 「새 캐릭터」 or by hand — shows without a reload; v goes on their picture URLs, so a
-// redrawn one shows too. meta: { <who>: { name, look, boss } } lays the tab's changes over a built-in person. Each read
+// redrawn one shows too (driver: true puts them with the script drivers). meta: { <who>: { name, look, boss, driver } }
+// lays the tab's changes over a built-in person. Each read
 // starts again from the built-in people, so a person taken down leaves. Added people join the lists after the built-in
 // ones, so a session already drawn may change hands once. hidden: [<who>] lists built-in people
-// deleted for good from the tab (char-publish.py --remove); they leave the lists, but never the last one of a list.
+// deleted for good from the tab (char-publish.py --remove); they leave the lists, but never the last coordinator or
+// worker (the drivers' list may empty).
 let chSeen = '', chBase = null;
-// Move a person to the coordinators (boss) or the workers, never emptying the list they leave.
-function chRole(who, boss) {
-  const from = boss ? CH_CREW : CH_BOSS, to = boss ? CH_BOSS : CH_CREW;
-  if (from.includes(who) && from.length > 1) { from.splice(from.indexOf(who), 1); to.push(who); }
+// Move a person to the list of a role (boss, crew, driver), never emptying the coordinators or the workers.
+function chRole(who, role) {
+  const from = chListed(who), to = chList(role);
+  if (from && from !== to && (from === CH_DRV || from.length > 1)) { from.splice(from.indexOf(who), 1); to.push(who); }
 }
 const chVer = {}, chR2 = new Set(), chHidden = new Set();  // chR2: everyone chars.json lists; chHidden: built-ins taken down
 async function chLoad() {
   let t, j;
-  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); t = r.ok ? await r.text() : '{}'; j = JSON.parse(t); } catch { return; }
+  // No chars.json (a server without the R2 Function, like dev-frontend.py offline) is no roster: nothing is kept from
+  // the built-in people alone, or every new session would be pinned to them for good.
+  try { const r = await fetch('chars/chars.json', { cache: 'no-cache' }); if (!r.ok) return; t = await r.text(); j = JSON.parse(t); } catch { return; }
   if (t === chSeen) return;
   chSeen = t;
-  chBase ||= { art: { ...CH_ART }, info: { ...CH_INFO }, boss: [...CH_BOSS], crew: [...CH_CREW] };
+  chBase ||= { art: { ...CH_ART }, info: { ...CH_INFO }, boss: [...CH_BOSS], crew: [...CH_CREW], drv: [...CH_DRV] };
   for (const k of Object.keys(CH_ART)) if (!(k in chBase.art)) { delete CH_ART[k]; delete CH_INFO[k]; }
   Object.assign(CH_ART, chBase.art); Object.assign(CH_INFO, chBase.info);
-  CH_BOSS.splice(0, Infinity, ...chBase.boss); CH_CREW.splice(0, Infinity, ...chBase.crew);
+  CH_BOSS.splice(0, Infinity, ...chBase.boss); CH_CREW.splice(0, Infinity, ...chBase.crew); CH_DRV.splice(0, Infinity, ...chBase.drv);
   for (const k of Object.keys(chVer)) delete chVer[k];
   chR2.clear();
   for (const [who, c] of Object.entries(j?.chars || {})) {
@@ -3242,19 +3360,19 @@ async function chLoad() {
     CH_INFO[who] = [String(c.name || who), String(c.look || '')];
     if (c.v) chVer[who] = String(c.v);
     chR2.add(who);
-    if (!CH_BOSS.includes(who) && !CH_CREW.includes(who)) (c.boss ? CH_BOSS : CH_CREW).push(who);
-    else chRole(who, !!c.boss);  // a built-in person redrawn from the tab (their entry carries the role)
+    if (!chListed(who)) chList(chRoleOf(c)).push(who);
+    else chRole(who, chRoleOf(c));  // a built-in person redrawn from the tab (their entry carries the role)
   }
   // meta: a built-in person's name, look and role as changed in the tab (char-publish.py --meta)
   for (const [who, x] of Object.entries(j?.meta || {})) {
     if (!(who in chBase.art) || chR2.has(who)) continue;
     CH_INFO[who] = [String(x.name || CH_INFO[who][0]), String(x.look ?? CH_INFO[who][1])];
-    chRole(who, !!x.boss);
+    chRole(who, chRoleOf(x));
   }
   chHidden.clear();
   for (const who of Array.isArray(j?.hidden) ? j.hidden : []) {
-    const l = who in chBase.art && !chR2.has(who) && [CH_BOSS, CH_CREW].find(x => x.includes(who));
-    if (!l || l.length < 2) continue;
+    const l = who in chBase.art && !chR2.has(who) && chListed(who);
+    if (!l || l !== CH_DRV && l.length < 2) continue;
     l.splice(l.indexOf(who), 1);
     delete CH_ART[who]; delete CH_INFO[who];
     chHidden.add(who);
@@ -3268,16 +3386,26 @@ try { chPool = JSON.parse(localStorage.getItem('adash.chpool') || '{}'); } catch
 const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.length ? k : l; };
 // A session's person is kept in its server's metadata (prefs.json chars → s.char: { who, boss, pick }), so the office,
 // the detail, the chat and every device draw the same one whichever copy of the session they hold. chPin runs over
-// the snapshot after each refresh: a session without one is given the hash's pick (from the list for its role, boss,
-// among the people switched on in the 「캐릭터」 tab), and once kept it stays — a person switched off only steers new
-// sessions; it is picked again when its person is gone (deleted for good), or, unless picked by hand, when its person
+// the snapshot after each refresh: a session without one is given the person its role's list (among the people
+// switched on in the 「캐릭터」 tab) holds the fewest of (chLeast), and once kept it stays — a person switched off only
+// steers new sessions; it is picked again when its person is gone (deleted for good), or, unless picked by hand, when its person
 // is not in the list for its role (a session that became a coordinator takes a coordinator). Before chars.json is read nothing is kept (a person put up there would look
 // gone), and a session nothing is kept for yet (a pending terminal, a moment before the reply) shows the hash's pick.
 // A person picked in a session's detail is kept the same way with pick.
 // adash.chpick: picks this device kept before; sent up once, and the server's wins.
 let chPick = {}, chReady = false;
 try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch {}
-const chAuto = s => { const l = chIn(isBoss(s) ? CH_BOSS : CH_CREW); return l[chHash(s.id || s.path) % l.length]; };
+const chListOf = s => s.role === 'driver' && CH_DRV.length ? CH_DRV : isBoss(s) ? CH_BOSS : CH_CREW;
+const chAuto = s => { const l = chIn(chListOf(s)); return l[chHash(s.id || s.path) % l.length]; };
+// The fewest is counted over the sessions not idle that keep a person (chCount); a tie goes to the first from the
+// hash's pick on, so devices pinning at once mostly agree.
+const chCount = list => { const n = {}; for (const s of list) if (s.state !== 'idle' && s.char?.who) n[s.char.who] = (n[s.char.who] || 0) + 1; return n; };
+function chLeast(s, cnt) {
+  const l = chIn(chListOf(s)), h = chHash(s.id || s.path);
+  let best = l[h % l.length];
+  for (let i = 1; i < l.length; i++) { const w = l[(h + i) % l.length]; if ((cnt[w] || 0) < (cnt[best] || 0)) best = w; }
+  return best;
+}
 // A copy without char (the detail read before the snapshot kept one) goes by the snapshot's copy of the session.
 const chSnap = s => s.char ? s : state?.all?.find(x => x.path === s.path) || s;
 const chFits = (who, boss) => (boss ? CH_BOSS : CH_CREW).includes(who);
@@ -3285,16 +3413,17 @@ const chWho = s => { const t = chSnap(s), c = t.char; return CH_ART[c?.who] && (
 const chSent = new Set();
 function chPin(list) {
   if (!chReady) return;
-  const want = {};
+  const want = {}, cnt = chCount(list.filter(s => CH_ART[s.char?.who] && (s.char.pick || chFits(s.char.who, isBoss(s)))));
   for (const s of list) {
     if (!s.path || s.path.startsWith('orca-terminal:')) continue;
     const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
     let n = null;
     if (old && CH_ART[old] && !c?.pick) n = { who: old, boss, pick: true };
-    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) n = { who: chAuto(s), boss, pick: false };
+    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) n = { who: chLeast(s, cnt), boss, pick: false };
     if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
     if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
     s.char = n;
+    if (!n.pick && s.state !== 'idle') cnt[n.who] = (cnt[n.who] || 0) + 1;
     const key = JSON.stringify(n);
     if (chSent.has(s.path + key)) continue;
     chSent.add(s.path + key);
@@ -3302,10 +3431,10 @@ function chPin(list) {
   }
   for (const [key, ps] of Object.entries(want)) api.pref('char', ps, JSON.parse(key)).catch(() => {});
 }
-// Keep a person for one session by hand (who) or hand it back to the hash (null), on this page at once.
+// Keep a person for one session by hand (who) or hand it back to the automatic pick (null), on this page at once.
 function chSet(d, who) {
   const t = state?.all?.find(x => x.path === d.path) || d, boss = isBoss(t);
-  const n = { who: who || chAuto(t), boss, pick: !!who };
+  const n = { who: who || chLeast(t, chCount((state?.all || []).filter(x => x.path !== t.path))), boss, pick: !!who };
   for (const s of new Set([d, t])) s.char = n;
   chSent.add(d.path + JSON.stringify(n));
   api.pref('char', [d.path], n).catch(() => {});
@@ -3530,6 +3659,7 @@ const wallHtml = key => { const k = chHash(key) % WALL_ORDER.length;
 // 60 characters.
 const sayWrap = t => esc(cut(t.replace(/(^|[\s'"=])(\/Users\/[^/\s]+|~)?((?:\/[^/\s]+){3,})/g, (m, pre, home, rest) => `${pre}${home ? '~' : ''}/…${rest.split('/').slice(-2).map(x => '/' + x).join('')}`), 60)).replace(/\//g, '/<wbr>');
 function charHtml(s) {
+  if (s.drv) return drvCharHtml(s);
   const a = agg(s), st = subBg(s, a, status(s)), la = s.last_action, subs = a.subs.filter(x => x.live).length, m = `var(--m-${modelKey(s.model)})`;
   // 입력 대기 is not the user's to do: no bubble (it would read as a call for attention)
   const say = s.decision ? '결정을 기다려요' : st === 'wait' ? '' : st === 'run' && la ? la.text : ST_LABEL[st] + (st === 'run' ? '' : ' · ' + ago(s.last_ts));
@@ -3545,6 +3675,32 @@ function charHtml(s) {
     ${chFig(st, s)}
     <span class="ch-tag"><span class="ch-name"><i class="ch-dot" title="${ST_LABEL[st]}"></i><span class="ch-nm">${esc(nameOf(s))}</span></span>
       <span class="ch-meta">${role} · ${esc(modelName(s.model))}${subs ? ` · 서브 ${subs}` : ''}</span>${famChips(s)}${wp ? wpMini(wp, planExtra(s)) : ''}</span>${srvBadge(s)}
+  </button>`;
+}
+// Script drivers on show sit in the office too, as the drivers' person (CH_DRV): one a driver terminal, in the room of
+// the worktree it drives (drvPlace, else its family's) and in the team of the coordinator that opened it. Its state is
+// its workers' (drvSt), its bubble the tasks it has done and the workers it runs; a click opens its Run, else that
+// coordinator.
+function officeDrivers(fams) {
+  const all = fs => fs.flatMap(f => [...famDrivers(f).map(d => ({ d, f })), ...all(f.subs)]);
+  return all(fams).filter(({ d }) => liveDrv(d)).map(({ d, f }) => {
+    const c = f.coord || f.members[0];
+    return { id: 'drv-' + d.handle, path: 'drv:' + d.handle, role: 'driver', drv: d, owner: f.coord, title: d.title, state: drvSt(d),
+      server: c?.server, place: drvPlace(d.handle) || c?.place, started: c?.started };
+  });
+}
+function drvCharHtml(s) {
+  const d = s.drv, st = s.state, run = d.runs[0], wp = workerPlan(null, [d.handle]), t = termOwner(d.handle).t, fam = chFam.get(s.path);
+  const nr = d.workers.filter(w => status(w) === 'run').length;
+  const say = ['run', 'bg'].includes(st) ? [wp && `태스크 ${wp.done}/${wp.total}`, nr && `워커 ${nr}명 실행 중`].filter(Boolean) : [ST_LABEL[st]];
+  const go = run ? '#r=' + run.id : s.owner ? '#s=' + encodeURIComponent(s.owner.path) : '';
+  const meta = ['스크립트 드라이버', d.drove?.join('·'), t && !t.connected && '연결 끊김'].filter(Boolean).join(' · ');
+  return `<button type="button" class="ch drv st-${st}" data-path="${esc(s.path)}" data-id="${esc(s.id)}" data-go="${esc(go)}"${fam ? ` data-fam="${esc(fam.keys.join(' '))}"` : ''} style="--c:var(--accent)"
+      title="${esc(`⚙ ${d.title} · 스크립트 드라이버 · ${ST_LABEL[st]}${run ? '\nRun ' + run.objective : ''}${go ? '\n누르면 ' + (run ? 'Run' : '연 세션') + ' 화면으로' : ''}`)}" aria-label="${esc(`스크립트 드라이버 ${d.title}: ${ST_LABEL[st]}`)}">
+    <span class="ch-say"${say.length ? '' : ' hidden'}><span>${CH_SIGN[st] ? `<b>${CH_SIGN[st]}</b>` : ''}${say.map(x => `<span class="nw">${esc(x)}</span>`).join(' · ')}</span></span>
+    ${chFig(st, s)}
+    <span class="ch-tag"><span class="ch-name"><i class="ch-dot" title="${ST_LABEL[st]}"></i><span class="ch-nm">⚙ ${esc(d.title)}</span></span>
+      <span class="ch-meta">${esc(meta)}</span>${famChips(s)}${wp ? wpMini(wp, planExtra(s.owner, d.handle)) : ''}</span>${srvBadge(s)}
   </button>`;
 }
 // Session detail: the same person as in the office, in the same pose, beside the title — continuity from the office.
@@ -3566,9 +3722,11 @@ function chPicker(d) {
   return `<div class="box d-chpick" id="d-chpick"><div class="d-chpick-h"><b>캐릭터 고르기</b><span class="st">사무실·대화·다른 기기에서도 이 사람으로 보입니다</span>
       <button type="button" class="act" data-pick=""${auto ? ' disabled' : ''}>${auto ? '자동 배정 중' : '자동으로 되돌리기'}</button></div>
     <div class="d-chgrp" role="group" aria-label="코디네이터"><span class="st">코디네이터</span>${CH_BOSS.map(one).join('')}</div>
-    <div class="d-chgrp" role="group" aria-label="워커"><span class="st">워커</span>${CH_CREW.map(one).join('')}</div></div>`;
+    <div class="d-chgrp" role="group" aria-label="워커"><span class="st">워커</span>${CH_CREW.map(one).join('')}</div>
+    ${CH_DRV.length ? `<div class="d-chgrp" role="group" aria-label="드라이버"><span class="st">드라이버</span>${CH_DRV.map(one).join('')}</div>` : ''}</div>`;
 }
-const roomCount = ms => { const n = k => ms.filter(m => k.includes(subBg(m, agg(m), status(m)))).length;
+const chSt = m => m.drv ? m.state : subBg(m, agg(m), status(m));  // a person's state in the office (a driver: drvSt)
+const roomCount = ms => { const n = k => ms.filter(m => k.includes(chSt(m))).length;
   return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
 const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
     <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
@@ -3591,28 +3749,42 @@ function teamName(c, qh, fallback) {
   return key || work ? `${key}${key && work ? ' ' : ''}${cut(work, 18)} 팀` : fallback;
 }
 let chFam = new Map(), chLinkList = [];
+let famShown = new Set(), famSlot = new Map();  // coordinator path → its colour slot in FAM_TEAM, kept across renders and reloads
+try { famSlot = new Map(JSON.parse(localStorage.getItem('adash.famslot')) || []); } catch {}
 const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
 function officeRooms(people) {
   const up = coordOf(families().fams), by = new Map(), on = new Set(people.map(s => s.path)), fams = new Map(), pairs = [];
   for (const s of people) { const k = wtKey(s); (by.get(k) || by.set(k, []).get(k)).push(s); }
   for (const s of people) {
-    const c = up.get(s.path)?.coord;
+    const c = s.drv ? s.owner : up.get(s.path)?.coord;
     if (!c || !on.has(c.path)) continue;
     (fams.get(c.path) || fams.set(c.path, { c, ws: [] }).get(c.path)).ws.push(s);
     if (wtKey(c) !== wtKey(s)) pairs.push([wtKey(c), wtKey(s)]);
   }
-  // colours in order of start, so a family keeps its colour while newer ones come and go
+  // a family keeps the colour it first got (famSlot): a newcomer takes the lowest colour no team on show wears, so
+  // teams ending or coming back never shift the others' colours
   chFam = new Map(); chLinkList = [];
   needReviews();  // the QA driver's tickets name the teams
-  const qh = qaHandles(), taken = new Map();
-  [...fams.values()].sort((x, y) => byStart(x.c, y.c)).forEach((f, i) => {
-    const [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
+  const qh = qaHandles(), taken = new Map(), byAge = [...fams.values()].sort((x, y) => byStart(x.c, y.c));
+  // teams already on show keep theirs first; one coming back whose colour went to another meanwhile gets a free one
+  const used = new Set();
+  const keep = f => famShown.has(f.c.path) * 2 + famSlot.has(f.c.path);
+  for (const f of [...byAge].sort((x, y) => keep(y) - keep(x))) {
+    let n = famSlot.get(f.c.path);
+    if (n == null || used.has(n)) { n = 0; while (used.has(n)) n++; famSlot.set(f.c.path, n); }
+    used.add(n);
+  }
+  famShown = new Set(fams.keys());
+  if (famSlot.size > 200) for (const p of [...famSlot.keys()].slice(0, famSlot.size - 200)) if (!fams.has(p)) famSlot.delete(p);
+  try { localStorage.setItem('adash.famslot', JSON.stringify([...famSlot])); } catch {}
+  byAge.forEach(f => {
+    const i = famSlot.get(f.c.path), [hue, tn] = FAM_TEAM[i % FAM_TEAM.length], k = wtKey(f.c), away = f.ws.filter(w => wtKey(w) !== k);
     let team = teamName(f.c, qh, tn + '팀' + (i >= FAM_TEAM.length ? ' ' + (Math.floor(i / FAM_TEAM.length) + 1) : ''));
     const n = (taken.get(team) || 0) + 1;
     taken.set(team, n);
     if (n > 1) team += ' ' + n;
     const cm = chFam.get(f.c.path) || {};
-    chFam.set(f.c.path, { ...cm, hue: cm.hue ?? hue, keys: [...(cm.keys || []), f.c.path], boss: { hue, team, n: f.ws.length, away: away.length } });
+    chFam.set(f.c.path, { ...cm, hue: cm.hue ?? hue, keys: [...(cm.keys || []), f.c.path], boss: { hue, team, n: f.ws.filter(w => !w.drv).length, away: away.length } });
     for (const w of f.ws) {
       const wm = chFam.get(w.path) || {};
       chFam.set(w.path, { ...wm, hue, keys: [f.c.path, ...(wm.keys || [])], of: { c: f.c, hue, team, room: wtKey(w) !== k ? roomName(f.c.place) : '' } });
@@ -3709,6 +3881,7 @@ function chBind(us = $('#view').querySelectorAll('.ch')) {  // us: the people pu
     u.onclick = () => {
       if (Date.now() - chPanAt < 400) return;
       if (u.dataset.staff) { location.hash = '#' + u.dataset.staff; return; }
+      if ('go' in u.dataset) { if (u.dataset.go) location.hash = u.dataset.go; return; }  // a script driver
       openSession(u.dataset.path);
     };
     if (u.dataset.fam) { u.onpointerenter = u.onfocus = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = u.onblur = () => chHot(null); }
@@ -4009,7 +4182,7 @@ function lobbySign(people) {
 // A company's sign (one per metrics server, once two or more are on): across the plane above its rooms, with the
 // server's name, its rooms and people, and the server's address in the tooltip.
 function coSign(x, rs) {
-  const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(subBg(s, agg(s), status(s)))).length, dec = ms.filter(s => s.decision).length;
+  const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length;
   return `<div class="ch-co" title="${esc(`메트릭 서버 ${x.url}`)}"><b class="co-name">${esc(x.name)}</b>
     <span class="co-n">방 <b>${rs.length}</b> · 출근 <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
 }
@@ -4088,7 +4261,7 @@ function renderOffice() {
   const people = [...fv.flatMap(f => f.members.filter(m => !filtering() || liveSess(m))), ...sv];
   // 홈 seats only the 운영실; the agents' rooms are the agents tab's
   if (home) chLinkList = [];
-  const placed = home ? [] : officeRooms(people);
+  const placed = home ? [] : officeRooms([...people, ...officeDrivers(fv)]);
   // Two or more servers on: each server is a company of its own — a sign across the plane, then that server's rooms —
   // in the order of the server list. Team lines still cross companies.
   const cos = multiSrv() ? srvOn().map(x => ({ x, rs: placed.filter(r => r.srv === x.id) })).filter(c => c.rs.length) : [];
@@ -4139,6 +4312,7 @@ function renderOffice() {
 const CH_INFO = {
   ren: ['렌', '검은 머리 · 둥근 안경 · 남색 카디건'], hina: ['히나', '분홍빛 포니테일 · 니트 조끼'],
   kaede: ['카에데', '검은 긴 머리 · 헤드셋 · 차콜 재킷'], yuki: ['유키', '은발 · 헤드셋 · 하늘색 셔츠'],
+  nova: ['노바', '흰 휴머노이드 · 청록 LED 눈 · 검은 바이저'],
   // 운영실 (HUB's who): never handed to a session
   sera: ['세라', '쪽진 갈색 머리 · 남색 정장 · 리본 블라우스'], daichi: ['다이치', '언더컷 · 회색 조끼 · 사원증 목걸이'],
   mina: ['미나', '청록 단발 · 검사 가운 · 루페 목걸이'], toru: ['토루', '주황 머리 · 보안경 · 실험 가운'],
@@ -4161,7 +4335,9 @@ if ('set' in chx) { chx.pose = chx.pose % 8 + 8 * (chx.set | 0); delete chx.set;
 if (!(chx.pose >= 0 && chx.pose < 32)) chx.pose = 1;
 const chxSave = () => { try { localStorage.setItem('adash.chars', JSON.stringify(chx)); } catch {} };
 const chxPose = who => chx.pose < chSets(who) * 8 ? chx.pose : chx.pose % 8;  // a person with set A only shows its pose
-const chxSel = () => { const l = [...CH_BOSS, ...CH_CREW]; return l.includes(chx.sel) ? chx.sel : l[0]; };
+const chxSel = () => { const l = [...CH_BOSS, ...CH_CREW, ...CH_DRV]; return l.includes(chx.sel) ? chx.sel : l[0]; };
+const CX_ROLE = [['', '워커', 'crew'], ['1', '코디네이터', 'boss'], ['d', '드라이버', 'driver']];  // the role seg: its key, label, list
+const cxRole = who => CX_ROLE.find(r => chList(r[2]) === chListed(who)) || CX_ROLE[0];
 const chxR2 = who => chR2.has(who) && !(who in (chBase?.art || {}));  // put up from the page, not built in
 const CX_SET = 'ABCD', CX_KIND = [['full', '전신'], ['bust', '상반신'], ['sd', 'SD 픽셀']];
 // The office's seven looks, in the office's style and frame, each set coming in turn as it does there.
@@ -4187,8 +4363,8 @@ function chxTile(who, n, cur) {
 // The person shown: the chosen pose in the three stages, all 32 poses (a row a set), the office's looks, and managing
 // them — name, look and role (chars.json), one sheet redrawn (a metric server's Mac draws it and puts it up), delete.
 function chxDetail(who, n) {
-  const [name, look] = CH_INFO[who], boss = CH_BOSS.includes(who), on = chPool[who] !== false, sets = chSets(who), f = chxPose(who);
-  const sd = CH_ART[who][chSd(chx.fr)], last = (boss ? CH_BOSS : CH_CREW).length < 2, srv = srvOn().find(x => x.live);
+  const [name, look] = CH_INFO[who], role = cxRole(who), on = chPool[who] !== false, sets = chSets(who), f = chxPose(who);
+  const sd = CH_ART[who][chSd(chx.fr)], last = role[2] !== 'driver' && chList(role[2]).length < 2, srv = srvOn().find(x => x.live);
   const rows = [...Array(sets).keys()].map(s => `<div class="cx-row" role="group" aria-label="세트 ${CX_SET[s]}"><span class="cx-set">${CX_SET[s]}</span>${[...Array(8).keys()].map(i => {
     const k = s * 8 + i, l = `세트 ${CX_SET[s]} · ${CH_POSE_L[s][i]}`;
     return `<button type="button" class="cx-pose${k === f ? ' on' : ''}" data-pose="${k}" aria-pressed="${k === f}" data-tip="${esc(l)}" aria-label="${esc(l)}">
@@ -4203,7 +4379,7 @@ function chxDetail(who, n) {
     : rd.state === 'failed' ? `<span class="sp-msg bad">${esc(rd.error || '실패했습니다')}</span>` : `<span class="sp-msg ok">${CX_KIND.find(k => k[0] === rd.kind)[1]} 세트 ${rd.set.toUpperCase()} 를 다시 그려 올렸습니다</span>`;
   const seg = (id, l, cur) => `<span class="seg" id="${id}">${l.map(([k, t]) => `<button type="button" data-k="${k}" class="${k === cur ? 'on' : ''}" aria-pressed="${k === cur}">${t}</button>`).join('')}</span>`;
   return `<section class="cx-detail surface" data-who="${who}" aria-label="${esc(name)}">
-    <div class="cx-h"><h2>${esc(name)}</h2><span class="badge">${boss ? '코디네이터' : '워커'}</span>${chxR2(who) ? '<span class="badge" title="배포 없이 R2 에 올린 캐릭터">R2</span>' : ''}<code>${who}</code>
+    <div class="cx-h"><h2>${esc(name)}</h2><span class="badge">${role[1]}</span>${chxR2(who) ? '<span class="badge" title="배포 없이 R2 에 올린 캐릭터">R2</span>' : ''}<code>${who}</code>
       <span class="cx-look">${esc(look)}</span>
       <span class="cx-n">${on ? `맡은 세션 <b>${n}</b>` : '배치 안 함'}</span>
       <label class="cx-on"><input type="checkbox" data-pool="${who}"${on ? ' checked' : ''}> 사무실에 배치</label></div>
@@ -4217,7 +4393,7 @@ function chxDetail(who, n) {
     <div class="cx-mng">
       <div class="lp-row"><span>이름</span><input class="field" data-cx-meta="name" value="${esc(name)}" maxlength="20" autocomplete="off">
         <input class="field cx-look-in" data-cx-meta="look" value="${esc(look)}" maxlength="80" placeholder="생김새 (예: 빨간 단발 · 노란 우비)" autocomplete="off">
-        ${seg('cx-role', [['', '워커'], ['1', '코디네이터']], boss ? '1' : '')}
+        ${seg('cx-role', CX_ROLE, role[0])}
         <button type="button" class="act" data-cx-save${srv ? '' : ' disabled'} title="${srv ? '모든 기기의 목록·사무실에 반영 (chars.json)' : '연결된 메트릭 서버가 없습니다'}">저장</button></div>
       <div class="lp-row"><span>다시 그리기</span>${seg('cx-rk', CX_KIND, cx.kind)}${seg('cx-rs', [...CX_SET].map(l => [l.toLowerCase(), l]), cx.set)}
         <button type="button" class="act" data-cx-redraw${srv && rd?.state !== 'running' ? '' : ' disabled'} title="${srv ? '이 시트 한 장만 Codex 로 다시 그리고, 네 장을 다시 잘라 R2 에 올림 (몇 분)' : '연결된 메트릭 서버가 없습니다'}">${CX_KIND.find(k => k[0] === cx.kind)[1]} 세트 ${cx.set.toUpperCase()} 다시 그리기</button>${rdMsg}</div>
@@ -4233,7 +4409,7 @@ function chxDetail(who, n) {
 // and the SD sheet from that (scripts/char-gen.sh), and puts them up (scripts/char-publish.py). The job list below the
 // form reads how far each got from the files the agent leaves (/api/chars/jobs), every few seconds while one runs; a
 // job turning 「게시됨」 reloads chars.json, so the new person joins without a reload. The form survives re-renders (cn).
-const cn = { open: false, img: '', fname: '', who: '', name: '', look: '', boss: false, notes: '', agent: 'claude', server: null, busy: false, msg: '', cls: '' };
+const cn = { open: false, img: '', fname: '', who: '', name: '', look: '', role: '', notes: '', agent: 'claude', server: null, busy: false, msg: '', cls: '' };
 let cnJobs = null, cnSeen = '', cnTimer = 0;
 const CN_STEPS = [['ref', '원본'], ['desc', '설명'], ['full', '전신'], ['bust', '상반신'], ['sd', 'SD'], ['published', '게시']];
 const CN_WHO = /^[a-z][a-z0-9-]{1,23}$/;
@@ -4260,7 +4436,7 @@ function cnHtml() {
       <div class="cn-form">
         <label class="lp-row"><span>표시 이름</span><input class="field" data-cn="name" value="${esc(cn.name)}" placeholder="미오" maxlength="20" autocomplete="off"></label>
         <label class="lp-row"><span>영문 이름</span><input class="field" data-cn="who" value="${esc(cn.who)}" placeholder="mio" maxlength="24" spellcheck="false" autocomplete="off" pattern="[a-z][a-z0-9\\-]{1,23}"></label>
-        <div class="lp-row"><span>역할</span><span class="seg" data-cn-seg="boss"><button type="button" data-k="">워커</button><button type="button" data-k="1">코디네이터 (헤드셋)</button></span></div>
+        <div class="lp-row"><span>역할</span><span class="seg" data-cn-seg="role"><button type="button" data-k="">워커</button><button type="button" data-k="1">코디네이터 (헤드셋)</button><button type="button" data-k="d">스크립트 드라이버</button></span></div>
         <label class="lp-row"><span>생김새</span><input class="field" data-cn="look" value="${esc(cn.look)}" placeholder="비우면 에이전트가 원본을 보고 씀 (예: 빨간 단발 · 노란 우비)" maxlength="80" autocomplete="off"></label>
         <textarea class="field" data-cn="notes" rows="2" maxlength="1000" placeholder="요청 (선택) — 예: 안경은 빼고, 머리는 더 길게" aria-label="요청">${esc(cn.notes)}</textarea>
         <div class="lp-row"><span>에이전트</span><span class="seg" data-cn-seg="agent"><button type="button" data-k="claude">Claude</button><button type="button" data-k="codex">Codex</button></span>
@@ -4287,7 +4463,7 @@ function cnJobsHtml() {
     const pic = (f, l) => `<a href="${api.charFile(j.server, j.id, f, j.updated)}" target="_blank" rel="noopener" title="${l} — 새 탭에서 크게"><img src="${api.charFile(j.server, j.id, f, j.updated)}" alt="${l}" loading="lazy"></a>`;
     return `<article class="cn-job" data-job="${esc(j.id)}">
       <div class="cn-pics">${pic('ref', '원본')}${['full', 'bust', 'sd'].filter(f => j.sheets.includes(f)).map(f => pic(f, CN_STEPS.find(x => x[0] === f)[1] + ' 시트')).join('')}</div>
-      <div class="cn-meta"><div class="cx-h"><h3>${esc(j.name)}<span class="badge">${j.boss ? '코디네이터' : '워커'}</span></h3><code>${esc(j.who)}</code>
+      <div class="cn-meta"><div class="cx-h"><h3>${esc(j.name)}<span class="badge">${j.driver ? '드라이버' : j.boss ? '코디네이터' : '워커'}</span></h3><code>${esc(j.who)}</code>
         <span class="cn-st ${st[0]}">${st[1]}</span><span class="cx-n">${esc(j.agent)} · ${ago(j.created)} 시작</span></div>
         <ol class="cn-steps" aria-label="진행">${steps}</ol>
         ${j.error ? `<p class="sp-msg bad">${esc(j.error)}</p>` : ''}
@@ -4314,7 +4490,7 @@ function cnBind() {
   drop.ondragleave = () => drop.classList.remove('over');
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
   el.querySelectorAll('[data-cn-seg] button').forEach(b => {
-    const k = b.closest('[data-cn-seg]').dataset.cnSeg, v = k === 'boss' ? !!b.dataset.k : b.dataset.k;
+    const k = b.closest('[data-cn-seg]').dataset.cnSeg, v = b.dataset.k;
     b.classList.toggle('on', cn[k] === v); b.setAttribute('aria-pressed', cn[k] === v);
     b.onclick = () => { cn[k] = v; redraw(); };
   });
@@ -4343,7 +4519,7 @@ async function cnCreate() {
   if (!cnCan()) return;
   const say = (msg, cls = '') => { cn.msg = msg; cn.cls = cls; const el = $('#cn'); if (el) { el.outerHTML = cnHtml(); cnBind(); } };
   cn.busy = true; say('원본을 보내고 에이전트를 띄우는 중…');
-  const r = await api.charCreate(cn.server, { who: cn.who, name: cn.name.trim(), look: cn.look.trim(), boss: cn.boss, notes: cn.notes.trim(),
+  const r = await api.charCreate(cn.server, { who: cn.who, name: cn.name.trim(), look: cn.look.trim(), boss: cn.role === '1', driver: cn.role === 'd', notes: cn.notes.trim(),
     agent: cn.agent, image: cn.img.slice(cn.img.indexOf(',') + 1) });
   cn.busy = false;
   if (r.status !== 202) return say(r.body?.error || `맡기지 못했습니다 (${r.status})`, 'bad');
@@ -4400,15 +4576,15 @@ async function chDelete(who, b) {
 }
 function renderChars(fromPoll) {
   if (chxMounted) return;  // nothing here follows the live data closely enough to rebuild under the pointer
-  const cnt = {}; state.sessions.filter(liveSess).forEach(s => { const w = chWho(s); cnt[w] = (cnt[w] || 0) + 1; });
-  const who = chxSel(), all = [...CH_BOSS, ...CH_CREW], placed = all.filter(w => chPool[w] !== false).length;
+  const cnt = {}; [...state.sessions.filter(liveSess), ...officeDrivers(families().fams)].forEach(s => { const w = chWho(s); cnt[w] = (cnt[w] || 0) + 1; });
+  const who = chxSel(), all = [...CH_BOSS, ...CH_CREW, ...CH_DRV], placed = all.filter(w => chPool[w] !== false).length;
   const group = (title, l) => `<div class="cx-grp"><h3>${title} <small>${l.filter(w => chPool[w] !== false).length}/${l.length}명 배치</small></h3>
     <div class="cx-tiles">${l.map(w => chxTile(w, cnt[w] || 0, who)).join('')}</div></div>`;
   $('#view').innerHTML = `<div class="controls cx-top"><span class="st">캐릭터 ${all.length}명 · 사무실에 ${placed}명 — 한 목록에서 모두 끄면 그 목록 전원이 배치됩니다(이 기기에만 저장). 배치는 새 세션에만 적용되고, 한번 정해진 세션의 캐릭터는 바뀌지 않습니다.</span>
       <button type="button" class="act${cn.open ? ' on' : ''}" id="cx-new" aria-expanded="${cn.open}">${cn.open ? '새 캐릭터 닫기' : '+ 새 캐릭터'}</button></div>
     ${cn.open ? cnHtml() : ''}
     <div id="cn-jobs">${cnJobsHtml()}</div>
-    <div class="cx-wrap"><nav class="cx-side" aria-label="캐릭터">${group('코디네이터', CH_BOSS)}${group('워커', CH_CREW)}</nav>${chxDetail(who, cnt[who] || 0)}</div>`;
+    <div class="cx-wrap"><nav class="cx-side" aria-label="캐릭터">${group('코디네이터', CH_BOSS)}${group('워커', CH_CREW)}${CH_DRV.length ? group('드라이버', CH_DRV) : ''}</nav>${chxDetail(who, cnt[who] || 0)}</div>`;
   const again = () => { chxSave(); chxMounted = false; renderChars(); };
   const v = $('#view'), srv = () => srvOn().find(x => x.live)?.id;
   v.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { chx.sel = b.dataset.sel; again(); });
@@ -4425,7 +4601,7 @@ function renderChars(fromPoll) {
     again();
   });
   const meta = () => ({ who, name: v.querySelector('[data-cx-meta="name"]').value.trim(), look: v.querySelector('[data-cx-meta="look"]').value.trim(),
-    boss: !!v.querySelector('#cx-role button.on')?.dataset.k });
+    boss: v.querySelector('#cx-role button.on')?.dataset.k === '1', driver: v.querySelector('#cx-role button.on')?.dataset.k === 'd' });
   v.querySelector('[data-cx-save]').onclick = async e => {
     const b = e.currentTarget, m = meta();
     if (!m.name) return toast('이름이 비었습니다');
@@ -4440,7 +4616,7 @@ function renderChars(fromPoll) {
     const b = e.currentTarget, m = meta(), what = `${CX_KIND.find(k => k[0] === cx.kind)[1]} 세트 ${cx.set.toUpperCase()}`;
     if (!await uiConfirm(`「${chName(who)}」 의 ${what} 시트를 다시 그릴까요?\n\n서버의 Mac 에서 Codex 가 한 장을 새로 그리고, 네 세트를 다시 잘라 R2 에 올립니다(몇 분). 올라가면 모든 기기에서 바뀝니다.`, { ok: '다시 그리기' })) return;
     b.disabled = true;
-    const r = await api.charRedraw(srv(), { ...m, name: CH_INFO[who][0], look: CH_INFO[who][1], boss: CH_BOSS.includes(who), kind: cx.kind, set: cx.set });
+    const r = await api.charRedraw(srv(), { ...m, name: CH_INFO[who][0], look: CH_INFO[who][1], boss: CH_BOSS.includes(who), driver: CH_DRV.includes(who), kind: cx.kind, set: cx.set });
     if (r.status !== 202) { b.disabled = false; return toast(r.body?.error || `시작하지 못했습니다 (${r.status})`); }
     cxRedraws = [...cxRedraws.filter(x => x.who !== who), { ...r.body.redraw, server: srv() }];
     toast(`${what} 을(를) 다시 그리기 시작했습니다`);
@@ -5235,13 +5411,13 @@ let talkMounted = false;
 // One end of a message -> {name, path, note}. A session that owns the terminal wins; otherwise the Orca terminal
 // title, otherwise what the address itself says (a Run's coordinator, a task's worker).
 // ch: whose face the chat view draws, the session itself, else a stand-in the hash gives a person (a boss for a Run's
-// coordinator), so the same address keeps one face.
+// coordinator, a driver's person for a script driver's terminal), so the same address keeps one face.
 function talkEnd(term, kind, raw, m) {
   const s = term && (state.all || state.sessions).find(x => x.own_handle === term && !x.parent);
   if (s) return { key: term, name: nameOf(s), path: s.path, model: s.model, st: status(s), coord: s.role === 'coordinator' || isSubCoord(s), ch: s };
   const t = term && (state.orca.terminals || []).find(x => x.handle === term);
   const run = m.run_id && state.orca.runs.find(r => r.id === m.run_id), key = term || raw;
-  if (kind === 'run') return { key, name: t?.title ? `${t.title} (코디네이터)` : `Run 코디네이터${run ? ' · ' + cut(run.objective, 30) : ''}`, note: '세션 추적 범위 밖', coord: true, ch: { id: key, role: 'coordinator' } };
+  if (kind === 'run') return { key, name: t?.title ? `${t.title} (코디네이터)` : `Run 코디네이터${run ? ' · ' + cut(run.objective, 30) : ''}`, note: '세션 추적 범위 밖', coord: true, ch: officeDrivers(families().fams).some(x => x.drv.handle === term) ? { id: 'drv-' + term, role: 'driver' } : { id: key, role: 'coordinator' } };
   if (kind === 'dispatch') return { key, name: IX.tasks[m.task_id]?.display_name || t?.title || '워커 ' + raw.slice(9, 21), note: '세션 추적 범위 밖', ch: { id: key, role: 'worker' } };
   return { key, name: t?.title || (term ? '터미널 ' + term.slice(5, 13) : raw), note: t ? 'Orca 터미널' : '종료된 터미널', ch: { id: key } };
 }
@@ -5821,8 +5997,15 @@ function chatPaint(p) {
     n.hidden = !msg; n.textContent = msg; n.className = `chat-note sp-msg ${cls}`;
   });
   const dlg = $('#chat-dlg');
-  if (dlg?.open && dlg.dataset.path === p && s) dlg.querySelector('.chat-dlg-s').textContent = `${chName(chWho(s))} · ${ST_LABEL[status(s)]}`;
+  if (dlg?.open && dlg.dataset.path === p && s) {
+    dlg.querySelector('.chat-dlg-s').textContent = `${chName(chWho(s))} · ${ST_LABEL[status(s)]}`;
+    const o = dlg.querySelector('.chat-dlg-orca'), html = chatCloseBtn(s);
+    if (o.dataset.html !== html) { o.innerHTML = html; o.dataset.html = html; }
+  }
 }
+// The sheet's 「Orca 에서 닫기」 (the 「닫기」 beside it only closes the sheet): the same confirm as a card's 「닫기」.
+const chatCloseBtn = s => { const h = chatHandle(s);
+  return h && !closing.has(h) ? `<button type="button" class="act danger" data-act="close" data-handle="${esc(h)}" data-path="${esc(s.path)}" title="Orca 에서 이 터미널을 닫음 (세션 기록은 남음)">Orca 에서 닫기</button>` : ''; };
 const chatSync = () => new Set([...document.querySelectorAll('.chat[data-chat]')].map(el => el.dataset.chat)).forEach(chatPaint);
 async function chatSend(p) {
   const s = chatSess(p), h = chatHandle(s), text = (chat.draft[p] || '').trim();
@@ -5881,7 +6064,7 @@ function chatOpen(p) {
   if (d.open && d.dataset.path === p) return;
   d.dataset.path = p;
   d.innerHTML = `<div class="chat-dlg-in"><div class="chat-dlg-h">${chFace(s, 44)}<div class="chat-dlg-t"><b>${esc(nameOf(s))}</b><span class="st chat-dlg-s"></span></div>
-      <a class="act" href="#s=${encodeURIComponent(p)}" data-chat-detail>상세</a><button type="button" class="act" data-chat-close>닫기</button></div>${chatHtml(s)}</div>`;
+      <span class="chat-dlg-orca"></span><a class="act" href="#s=${encodeURIComponent(p)}" data-chat-detail>상세</a><button type="button" class="act" data-chat-close>닫기</button></div>${chatHtml(s)}</div>`;
   chat.stick[p] = true;
   if (!d.open) d.showModal();
   chatPaint(p);

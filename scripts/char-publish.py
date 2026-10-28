@@ -2,21 +2,22 @@
 """Put a character online without a deploy: uploads its four strips to the R2 bucket agent-dashboard-chars and lists it
 in chars/chars.json there, which the page reads through functions/chars (open tabs pick it up on their next load).
 
-    scripts/char-publish.py <who> --name 미오 --look '빨간 단발 · 노란 우비' [--boss] [--dir <folder>]
+    scripts/char-publish.py <who> --name 미오 --look '빨간 단발 · 노란 우비' [--boss | --driver] [--dir <folder>]
     scripts/char-publish.py <who> --remove
-    scripts/char-publish.py <who> --meta --name 미오 --look '…' [--boss]
+    scripts/char-publish.py <who> --meta --name 미오 --look '…' [--boss | --driver]
     scripts/char-publish.py --list
 
 <who> is the file name (a-z, 0-9, -); its strips hold 8 frames or 32 (four sets of the 8 poses), all four alike. --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
 as scripts/char-gen.sh leaves them (default: the current folder), and <who>-sd-run.png with <who>-sd-bust-run.png (the
 「실행 중」 motion, char-gen.sh run) and <who>-sd-done.png with <who>-sd-bust-done.png (the 「완료」 motion, done) when
 both of a pair are there. The frame sizes and head tops (CH_ART) are measured
-from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), otherwise with the
-workers. A built-in name (ren …) replaces that person's pictures. --dry-run prints chars.json instead of uploading.
+from the strips the way char-sprites.py does. --boss puts them with the coordinators (headset), --driver with the script
+drivers (driver: true, boss false), otherwise with the workers. A built-in name (ren …) replaces that person's
+pictures. --dry-run prints chars.json instead of uploading.
 --remove deletes for good: an added person's strips and entry go from R2; a built-in person (they live in the deploy until
 their files are taken out of the repo) is listed under hidden in chars.json, so every page leaves them out, and may not
-be put up again. Neither list may be emptied: one coordinator and one worker always stay.
---meta changes only the name, look and role (--boss or not) everywhere, no pictures: an added person's entry, or for a
+be put up again. Neither the coordinators nor the workers may be emptied: one of each always stays (the drivers may go).
+--meta changes only the name, look and role (--boss, --driver or neither) everywhere, no pictures: an added person's entry, or for a
 built-in one meta[<who>] in chars.json, which the page lays over its built-in name, look and list.
 Each entry carries v (when it was put up), which the page adds to the picture URLs so a redrawn person shows at once,
 and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
@@ -33,7 +34,8 @@ if not shutil.which('npx'):  # started by launchd (the metric server's 「삭제
     if nvm:
         os.environ['PATH'] = nvm[-1] + os.pathsep + os.environ.get('PATH', '')
 WRANGLER = ['npx', '--yes', 'wrangler@' + os.environ.get('WRANGLER_VERSION', '4.151.3')]
-BUILTIN = {'kaede': True, 'yuki': True, 'ren': False, 'hina': False}  # who: boss
+BUILTIN = {'kaede': 'boss', 'yuki': 'boss', 'ren': 'crew', 'hina': 'crew', 'nova': 'driver'}  # who: role
+ROLE_NAME = {'boss': '코디네이터', 'crew': '워커', 'driver': '드라이버'}
 FILES = {'full': '{}-full.webp', 'bust': '{}-bust.webp', 'sd': '{}-sd.png', 'sdb': '{}-sd-bust.png'}
 RUN = {'sdr': '{}-sd-run.png', 'sdbr': '{}-sd-bust-run.png', 'sdd': '{}-sd-done.png', 'sdbd': '{}-sd-bust-done.png'}  # optional, by pairs
 
@@ -79,28 +81,36 @@ def put_manifest(m):
         os.unlink(fh.name)
 
 
+def role_of(x):
+    """A chars.json entry's (or meta's) role: driver, boss or crew."""
+    return 'driver' if x.get('driver') else 'boss' if x.get('boss') else 'crew'
+
+
 def roles(m):
-    """{who: boss} for everyone on the page: built-ins not deleted, added people, meta's roles over both."""
+    """{who: role} for everyone on the page: built-ins not deleted, added people, meta's roles over both."""
     r = {w: b for w, b in BUILTIN.items() if w not in m.get('hidden', [])}
-    r.update({w: bool(x.get('boss')) for w, x in m['chars'].items()})
-    r.update({w: bool(x.get('boss')) for w, x in m.get('meta', {}).items() if w in r})
+    r.update({w: role_of(x) for w, x in m['chars'].items()})
+    r.update({w: role_of(x) for w, x in m.get('meta', {}).items() if w in r})
     return r
 
 
 ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
 ap.add_argument('who', nargs='?')
 ap.add_argument('--name'); ap.add_argument('--look', default='')
-ap.add_argument('--boss', action='store_true')
+ap.add_argument('--boss', action='store_true'); ap.add_argument('--driver', action='store_true')
 ap.add_argument('--dir', default='.')
 ap.add_argument('--remove', action='store_true'); ap.add_argument('--meta', action='store_true')
 ap.add_argument('--list', action='store_true')
 ap.add_argument('--dry-run', action='store_true')
 o = ap.parse_args()
+if o.boss and o.driver:
+    ap.error('--boss 와 --driver 는 함께 쓸 수 없습니다')
+role = 'driver' if o.driver else 'boss' if o.boss else 'crew'
 
 if o.list:
     m = manifest()
     for who, c in m['chars'].items():
-        print(f"{who}\t{c.get('name', '')}\t{'코디네이터' if c.get('boss') else '워커'}\t{c.get('look', '')}")
+        print(f"{who}\t{c.get('name', '')}\t{ROLE_NAME[role_of(c)]}\t{c.get('look', '')}")
     for who in m.get('hidden', []):
         print(f"{who}\t(기본 캐릭터, 삭제됨)")
     sys.exit()
@@ -114,10 +124,10 @@ if o.meta:
     if not o.name or len(o.name) > 20 or len(o.look) > 80:
         sys.exit('표시 이름은 1~20자, 생김새는 80자까지입니다')
     left = roles(m)
-    was = left[o.who]; left[o.who] = o.boss
-    if was != o.boss and was not in left.values():
-        sys.exit(f"{o.who}: 마지막 {'코디네이터' if was else '워커'}라 역할을 바꿀 수 없습니다")
-    entry = {'name': o.name, 'look': o.look, 'boss': o.boss}
+    was = left[o.who]; left[o.who] = role
+    if was != role and was != 'driver' and was not in left.values():
+        sys.exit(f"{o.who}: 마지막 {ROLE_NAME[was]}라 역할을 바꿀 수 없습니다")
+    entry = {'name': o.name, 'look': o.look, 'boss': o.boss, 'driver': o.driver}
     if o.who in m['chars']:
         m['chars'][o.who].update(entry)
     if o.who in BUILTIN:
@@ -134,9 +144,9 @@ if o.remove:
     if c is None and not builtin:
         sys.exit(f'{o.who}: chars.json 에 없습니다')
     left = roles(m)
-    boss = left.pop(o.who, bool(c and c.get('boss')))
-    if boss not in left.values():
-        sys.exit(f"{o.who}: 마지막 {'코디네이터' if boss else '워커'}는 삭제할 수 없습니다")
+    was = left.pop(o.who, role_of(c or {}))
+    if was != 'driver' and was not in left.values():
+        sys.exit(f"{o.who}: 마지막 {ROLE_NAME[was]}는 삭제할 수 없습니다")
     if builtin:
         hidden.append(o.who)
     m.get('meta', {}).pop(o.who, None)
@@ -165,7 +175,7 @@ if len({len(a['top']) for k, a in art.items() if k not in ('sdd', 'sdbd')}) > 1 
     sys.exit('스트립의 프레임 수가 다릅니다: ' + ', '.join(f"{k} {len(a['top'])}" for k, a in art.items()))
 if o.who in hidden:
     sys.exit(f'{o.who}: 영구 삭제한 기본 캐릭터입니다 — 다른 이름으로 올리세요')
-m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'v': int(time.time()), 'art': art}
+m['chars'][o.who] = {'name': o.name or o.who, 'look': o.look, 'boss': o.boss, 'driver': o.driver, 'v': int(time.time()), 'art': art}
 if o.dry_run:
     print(json.dumps(m, ensure_ascii=False, indent=1))
     sys.exit()

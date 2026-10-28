@@ -20,7 +20,7 @@ REPO = os.path.dirname(HERE)
 WORK = os.path.join(HOME, ".cache/agent-dashboard/chars")
 STORE = os.path.join(HOME, ".cache/agent-dashboard/char-sheets")  # every person's sheets, for redraws (redraw.py)
 WHO = re.compile(r"[a-z][a-z0-9-]{1,23}")
-BUILTIN = {"ren", "hina", "kaede", "yuki"}
+BUILTIN = {"ren", "hina", "kaede", "yuki", "nova"}
 STAFF = {"sera", "daichi", "mina", "toru", "midori", "gonta", "fumi", "sho", "aki"}  # 운영실's people (app.js HUB)
 MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"RIFF", "webp"))
 IMAGE_MAX = 10 << 20
@@ -113,8 +113,9 @@ def check_create(body):
         raise ValueError("원본 그림은 10MB 까지입니다")
     if any(j["who"] == who and j["state"] == "running" for j in list_jobs()):
         raise ValueError(f"「{who}」 를 만드는 작업이 이미 돌고 있습니다")
-    return who, {"name": name, "look": look, "notes": notes, "boss": bool(body.get("boss")), "agent": agent,
-                 "model": model}, img, ext
+    boss = bool(body.get("boss"))
+    return who, {"name": name, "look": look, "notes": notes, "boss": boss, "driver": bool(body.get("driver")) and not boss,
+                 "agent": agent, "model": model}, img, ext
 
 
 def repo_worktree():
@@ -135,13 +136,15 @@ def create(who, f, img, ext):
     ref = os.path.join(d, "ref." + ext)
     with open(ref, "wb") as fh:
         fh.write(img)
-    boss = f["boss"]
+    boss, driver = f["boss"], f.get("driver")
     with open(os.path.join(d, "brief.md"), "w") as fh:
         fh.write(BRIEF.format(
-            name=f["name"], who=who, work=d, ref=ref, repo=REPO, role="코디네이터" if boss else "워커",
+            name=f["name"], who=who, work=d, ref=ref, repo=REPO, role="코디네이터" if boss else "스크립트 드라이버" if driver else "워커",
             look=f["look"] or "(없음 — 원본에서 읽는다)", notes=f["notes"] or "(없음)",
-            boss_line="코디네이터이므로 머리에 `black wireless gaming headset with a small boom microphone worn on the head` 를 넣는다(다른 코디네이터 kaede·yuki 와 같은 표시)." if boss else "워커이므로 헤드셋은 넣지 않는다(헤드셋은 코디네이터 표시).",
-            boss_flag=" --boss" if boss else ""))
+            boss_line="코디네이터이므로 머리에 `black wireless gaming headset with a small boom microphone worn on the head` 를 넣는다(다른 코디네이터 kaede·yuki 와 같은 표시)." if boss
+            else "스크립트 드라이버(에이전트가 아닌 스크립트가 워커를 띄우는 자리)이므로 헤드셋은 넣지 않는다(헤드셋은 코디네이터 표시)." if driver
+            else "워커이므로 헤드셋은 넣지 않는다(헤드셋은 코디네이터 표시).",
+            boss_flag=" --boss" if boss else " --driver" if driver else ""))
     label = f"캐릭터 · {f['name']}"
     args = ["agent", "launch", "--worktree", "id:" + wt["id"], "--agent", f["agent"], "--surface", "terminal",
             "--prompt", f"{d}/brief.md 를 읽고 그 순서대로 캐릭터 「{f['name']}」({who})를 만들어 올려 주세요."]
