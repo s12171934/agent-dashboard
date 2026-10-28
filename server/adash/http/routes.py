@@ -13,6 +13,7 @@ from adash.features.sessions import api as sessions
 from adash.features.terminals import api as terminals
 from adash.features.tests import api as tests
 from adash.features.vault import api as vault
+from adash.features.worktrees import api as worktrees
 from adash.http import snapshot
 
 GET = {
@@ -41,6 +42,7 @@ GET = {
     "/api/design/refs": designs.get_design_refs,
     "/api/chars/jobs": chars.get_jobs,
     "/api/chars/file": chars.get_file,
+    "/api/worktrees": worktrees.get_worktrees,
 }
 
 # The endpoint reads its action from the last path segment where one function serves several paths.
@@ -62,6 +64,8 @@ POST = {
     "/api/chars/unpublish": chars.post_char,
     "/api/chars/meta": chars.post_char,
     "/api/chars/redraw": chars.post_char,
+    "/api/worktrees/open": worktrees.post_worktree,
+    "/api/worktrees/web": worktrees.post_worktree,
     **{f"/api/decision/{a}": decisions.post_decision
        for a in ("ask", "answer", "release", "mode", "inbox", "guard", "dismiss")},
 }

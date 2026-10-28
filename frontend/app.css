@@ -1049,6 +1049,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .rv-web-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
 .rv-web-f { display: block; width: 100%; height: min(72vh, 760px); border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .rv-web-f[hidden] { display: none; }
+/* 워크트리 (#trees): every local worktree */
+.tr-path { font-size: 11.5px; overflow-wrap: anywhere; }
 /* Jira stage chips: 개발 완료 is outlined, QA 준비 완료 filled — the one the QA reviewer acts on */
 .rv-js { padding: 0 7px; border-radius: 9px; font-size: 11px; line-height: 18px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .rv-js.j-prog { color: var(--run); border-color: color-mix(in srgb, var(--run) 50%, var(--line)); }

@@ -260,7 +260,7 @@ function route() {
   if (h.startsWith('dz=')) { const p = h.slice(3).split('|'), sec = p.length > 2 ? p.pop() : ''; return { v: 'designs', server: p[0], key: p.slice(1).join('|'), sec }; }
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
 }
 // 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
 // and the screen stays as it was. Opened, it remembers the screen it came from (decFrom), and goes back there once
@@ -350,6 +350,7 @@ async function renderView(navigated) {
   if (r.v !== 'compare') cmpMounted = false;
   if (r.v !== 'tests') testsMounted = false;
   if (r.v !== 'worktrees') wtMounted = false;
+  if (r.v !== 'trees') trMounted = false;
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
@@ -363,6 +364,7 @@ async function renderView(navigated) {
   else if (r.v === 'talk') await renderTalk();
   else if (r.v === 'tests') await renderTests();
   else if (r.v === 'worktrees') await renderWorktrees();
+  else if (r.v === 'trees') await renderTrees();
   else if (r.v === 'decide') renderDecide();
   else if (r.v === 'usage') renderUsage();
   else if (r.v === 'chars') renderChars();
@@ -2563,7 +2565,7 @@ function wtWebPlace(root) {
 // theme change reopens the shown pages with the new one (VS Code restores their open editors) and retargets the rest.
 const wtWebUrl = u => { const x = new URL(u, location.href); x.searchParams.set('theme', document.documentElement.dataset.theme || 'light'); return x.href; };
 document.addEventListener('ds:theme', () => {
-  for (const el of wtWeb.values()) el.querySelectorAll('.rv-web-f').forEach(f => {
+  for (const el of [...wtWeb.values(), ...trWeb.values()]) el.querySelectorAll('.rv-web-f').forEach(f => {
     if (f.dataset.src) f.dataset.src = wtWebUrl(f.dataset.src);
     else if (new URL(f.src).searchParams.get('theme') !== document.documentElement.dataset.theme) f.src = wtWebUrl(f.src);
   });
@@ -2618,6 +2620,109 @@ async function wtClick(e) {
     if (body.approved) toast(body.output || '승인을 전달했습니다');
   }
   b.disabled = false; b.textContent = txt;  // a mark re-renders the list once the server's next pass lands
+}
+
+// ---------- 워크트리 (#trees): every git worktree on each server's Mac ----------
+// The repos Orca knows and all of their worktrees as git lists them, Orca-made or not (/api/worktrees). Each row opens
+// its worktree in the desktop VS Code, or unfolds the web one (read-only) under it, the 워크트리 리뷰 tab's panel. The
+// list is read again after TR_EVERY on a live update, or at once with 「새로 고침」; the body is rebuilt only when its
+// markup changes, and open web panels go back under their rows (trWeb, moved like wtWeb's).
+const TR_EVERY = 30000;
+let trData = null, trAt = 0, trBusy = false, trMounted = false, trBodyHtml = '';
+let trf = (() => { try { return { q: '', dirty: false, ...JSON.parse(localStorage.getItem('adash.tr') || '{}') }; } catch { return { q: '', dirty: false }; } })();
+const trWeb = new Map();  // server|path → panel
+const trKey = (srv, path) => srv + '|' + path;
+async function trLoad(fresh) {
+  if (trBusy) return;
+  trBusy = true;
+  try { trData = await api.worktrees(fresh); trAt = Date.now(); } finally { trBusy = false; }
+}
+function trRow(w, sv) {
+  const k = trKey(sv.server, w.path), live = state.sessions.filter(s => OPEN(status(s)) && s.place?.path === w.path).length;
+  const flags = [w.main && '<span class="badge">메인</span>', w.orca && '<span class="badge">Orca</span>',
+    w.detached && '<span class="rv-flag warn" title="브랜치가 아닌 커밋에 있음">분리 HEAD</span>',
+    w.locked && '<span class="rv-flag warn">잠김</span>', w.prunable && '<span class="rv-flag bad" title="git worktree prune 대상">정리 대상</span>',
+    w.missing && '<span class="rv-flag bad">디스크에 없음</span>',
+    w.dirty ? `<span class="rv-flag warn" title="커밋하지 않은 변경 (git status)">미커밋 ${w.dirty}</span>` : '',
+    live ? `<span class="badge srv" title="이 워크트리에서 도는 에이전트 세션">에이전트 ${live}</span>` : ''].filter(Boolean).join('');
+  const off = !sv.local ? ' disabled title="이 맥에서 연 화면(127.0.0.1)에서만 열 수 있습니다"' : w.missing || w.bare ? ' disabled title="디스크에 없습니다"' : '';
+  return `<div class="rv-tk tr-row${w.missing || w.prunable ? ' none' : ''}" data-tr="${esc(k)}">
+    <div class="rv-head"><b title="${esc(w.comment || '')}">${esc(w.name)}</b>
+      <span class="st">${w.branch ? esc(cut(w.branch, 60)) : esc(w.head || '')}</span>${flags}
+      <span class="rv-acts">
+        <button class="act big" data-tr-web="${esc(w.path)}" data-srv="${esc(sv.server)}" aria-expanded="${trWeb.has(k)}"${off || ' title="이 행 아래에 웹 VS Code(읽기 전용)를 펼칩니다"'}>${trWeb.has(k) ? '웹 접기' : '웹으로 보기'}</button>
+        <button class="act big accent" data-tr-open="${esc(w.path)}" data-srv="${esc(sv.server)}"${off || ' title="데스크톱 VS Code 창으로 엽니다. 이미 열린 창이면 앞으로 가져옵니다"'}>VS Code 로 열기</button></span></div>
+    <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
+      ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}</div>
+  </div>`;
+}
+async function renderTrees() {
+  const save = () => { try { localStorage.setItem('adash.tr', JSON.stringify(trf)); } catch {} };
+  if (!trMounted) {
+    $('#view').innerHTML = `<div class="sec-h"><h2>워크트리</h2><span>Orca 에 등록된 저장소마다 git 이 아는 모든 워크트리입니다 (Orca 가 만들지 않은 것도). VS Code 는 이 맥에서 연 화면에서만 열립니다.</span></div>
+      <div class="controls">
+        <input type="search" id="tr-q" class="field" placeholder="이름·브랜치·경로 검색" value="${esc(trf.q)}">
+        <label class="st"><input type="checkbox" id="tr-dirty"${trf.dirty ? ' checked' : ''}> 미커밋 있는 것만</label>
+        <button class="act big" id="tr-reload">새로 고침</button><span class="st" id="tr-sum"></span>
+      </div><div id="tr-body"><div class="empty">불러오는 중…</div></div>`;
+    $('#tr-q').oninput = e => { trf.q = e.target.value; save(); renderTrees(); };
+    $('#tr-dirty').onchange = e => { trf.dirty = e.target.checked; save(); renderTrees(); };
+    $('#tr-reload').onclick = async e => { e.target.disabled = true; await trLoad(true).catch(() => {}); e.target.disabled = false; renderTrees(); };
+    $('#tr-body').onclick = trClick;
+    trMounted = true;
+    trBodyHtml = '';
+  }
+  if (!trData || Date.now() - trAt > TR_EVERY) {
+    if (!trData) await trLoad(false).catch(() => {});
+    else trLoad(false).then(() => route().v === 'trees' && renderTrees(), () => {});  // the old list stays up meanwhile
+  }
+  if (!trData) return;
+  const q = trf.q.trim().toLowerCase(), multi = trData.servers.length > 1;
+  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment].some(x => (x || '').toLowerCase().includes(q)));
+  let shown = 0, all = 0;
+  const body = trData.servers.map(sv => {
+    const repos = sv.repos.map(rp => { const ws = rp.worktrees.filter(hit); all += rp.worktrees.length; shown += ws.length;
+      return ws.length || rp.error ? `<div class="sec-h"><h2>${esc(rp.name)}</h2><span title="${esc(rp.path)}">${ws.length}${ws.length !== rp.worktrees.length ? ' / ' + rp.worktrees.length : ''}개 · ${esc(rp.path)}</span></div>
+        ${rp.error ? `<div class="rv-err">${esc(rp.error)}</div>` : ''}<div class="rv-list">${ws.map(w => trRow(w, sv)).join('')}</div>` : ''; }).join('');
+    return (multi ? `<div class="sec-h"><h2>${esc(sv.name)}</h2><span class="badge srv">서버</span></div>` : '')
+      + (sv.error ? `<div class="rv-err">${esc(sv.name)}: ${esc(sv.error)}</div>` : '') + repos;
+  }).join('') || '';
+  $('#tr-sum').textContent = `${shown}${shown !== all ? ' / ' + all : ''}개 · ${ago(new Date(trAt).toISOString())} 읽음`;
+  const html = body + (shown ? '' : '<div class="empty">조건에 맞는 워크트리가 없습니다.</div>');
+  if (html === trBodyHtml) return;
+  for (const el of trWeb.values()) if (el.isConnected) wtWebMove(wtWebPark || (wtWebPark = Object.assign(document.body.appendChild(document.createElement('div')), { hidden: true })), el);
+  $('#tr-body').innerHTML = trBodyHtml = html;
+  for (const [k, el] of trWeb) {
+    const row = $('#tr-body').querySelector(`[data-tr="${CSS.escape(k)}"]`);
+    if (row) wtWebMove(row, el);
+  }
+}
+async function trClick(e) {
+  const b = e.target.closest('button[data-tr-open], button[data-tr-web]');
+  if (!b || b.disabled) return;
+  const srv = b.dataset.srv;
+  if (b.dataset.trOpen) {
+    const txt = b.textContent;
+    b.disabled = true; b.textContent = '여는 중…';
+    const { status: st, body } = await api.worktreeOpen(srv, b.dataset.trOpen);
+    b.disabled = false; b.textContent = txt;
+    return st === 200 ? toast('VS Code 로 열었습니다') : uiAlert(body.error || `실패 (${st})`);
+  }
+  const path = b.dataset.trWeb, k = trKey(srv, path);
+  const label = on => { b.textContent = on ? '웹 접기' : '웹으로 보기'; b.setAttribute('aria-expanded', on); };
+  if (trWeb.has(k)) { trWeb.get(k).remove(); trWeb.delete(k); trBodyHtml = ''; return label(false); }
+  b.disabled = true; b.textContent = '띄우는 중…';
+  const { status: st, body } = await api.worktreeWeb(srv, path);
+  b.disabled = false;
+  if (st !== 200) { label(false); return uiAlert(body.error || `실패 (${st})`); }
+  const el = document.createElement('div');
+  el.className = 'rv-web';
+  el.innerHTML = `<div class="rv-web-h"><b>${esc(path.split('/').pop())}</b><span class="st">웹 VS Code · 읽기 전용</span></div>
+    <iframe class="rv-web-f" src="${esc(wtWebUrl(body.url))}" title="${esc(path)} — 웹 VS Code"></iframe>`;
+  trWeb.set(k, el);
+  b.closest('.tr-row').append(el);
+  trBodyHtml = '';  // the button's label is part of the markup now
+  label(true);
 }
 
 // ---------- 관계 지도 · 진행 타임라인: the agents tab's flow views ----------
