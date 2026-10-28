@@ -1887,13 +1887,19 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-proj { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; padding: calc(8px * var(--lz, 1)) 18px; border-radius: 12px;
   color: var(--text); background: color-mix(in srgb, hsl(var(--rh, 30) 55% 60%) 22%, var(--panel)); border-left: 8px solid hsl(var(--rh, 30) 50% 52%);
   box-shadow: 0 10px 18px -10px rgb(0 0 0 / .35); }
+/* pressing a sign fits its project to the screen (chFocus), as a room's does */
+.ch-proj { cursor: zoom-in; }
 .ch-proj .pj-name { font-size: calc(18px * var(--lz, 1)); }
 .ch-proj .pj-n { font-size: calc(13px * var(--lz, 1)); color: var(--muted); }
 .ch-proj .pj-n b { color: var(--text); font-variant-numeric: tabular-nums; }
 /* a project's block: its sign over its rooms, --span columns of the plane's grid wide */
 .ch-pgrp { grid-column: span var(--span, 1); display: grid; grid-template-columns: repeat(var(--span, 1), var(--room-w, 680px)); gap: 28px; align-items: start; align-content: start; }
-/* a pinned project (PROJ_TOP) keeps its row to itself: no other project beside it */
+/* the pinned project (chTop) keeps its row to itself: no other project beside it. Its pin, at the sign's end, is
+   faint until pressed */
 .ch-pgrp.pg-solo { grid-column: 1 / -1; }
+.ch-proj .pj-pin { margin-left: auto; align-self: center; border: 0; background: none; cursor: pointer; font-size: calc(16px * var(--lz, 1)); opacity: .3; filter: grayscale(1); }
+.ch-proj .pj-pin:hover { opacity: .7; }
+.ch-proj .pj-pin.on { opacity: 1; filter: none; }
 
 /* 홈's 운영실 (staffRoom): a village across the plane (시안 D) — grass, a road across and one down meeting at the plaza
    (the office sign among four trees), and on its lot (grid-area) each screen's house: its room — the wall in the room's

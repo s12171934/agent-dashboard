@@ -3900,13 +3900,20 @@ function chZoom(k, px, py) {
 // it is so (not moved since), back to 맞춤. Twice, as the labels' growth (--lz) re-spaces the room's rows when the zoom changes.
 let chFocused = '';
 function chFit() { chFocused = ''; chView.fit = true; }
+// key: a room's (data-room), or 'p:' and a project's (data-proj, 「프로젝트별」) — the project's sign and rooms together
+// (the box round them: a pinned project's block is the plane's width, its rooms maybe not)
 function chFocus(key) {
-  const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world'), r = [...(w?.querySelectorAll('.room[data-room]') || [])].find(n => n.dataset.room === key);
+  const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world'), r = key.startsWith('p:')
+    ? [...(w?.querySelectorAll('.ch-pgrp[data-proj]') || [])].find(n => n.dataset.proj === key.slice(2))
+    : [...(w?.querySelectorAll('.room[data-room]') || [])].find(n => n.dataset.room === key);
   if (!r) return;
+  const box = () => { if (!r.matches('.ch-pgrp')) return r.getBoundingClientRect();
+    const bs = [...r.children].map(c => c.getBoundingClientRect()), left = Math.min(...bs.map(b => b.left)), top = Math.min(...bs.map(b => b.top));
+    return { left, top, width: Math.max(...bs.map(b => b.right)) - left, height: Math.max(...bs.map(b => b.bottom)) - top }; };
   const at = () => [key, chView.x, chView.y, chView.z, chView.fit].join('|');
   if (chFocused === at()) { chFocused = ''; chView.fit = true; chApply(); chViewSave(); return; }
   for (let i = 0; i < 2; i++) {
-    const { top, room, fw } = chFrame(cv), wr = w.getBoundingClientRect(), rr = r.getBoundingClientRect();
+    const { top, room, fw } = chFrame(cv), wr = w.getBoundingClientRect(), rr = box();
     const x = (rr.left - wr.left) / chView.z, y = (rr.top - wr.top) / chView.z, rw = rr.width / chView.z, rh = rr.height / chView.z;
     const z = Math.min(2, (fw - 24) / rw, room / rh);
     chView = { ...chView, z, fit: false, x: (fw - rw * z) / 2 - x * z, y: top + Math.max(0, (room - rh * z) / 2) - y * z };
@@ -3915,9 +3922,9 @@ function chFocus(key) {
   chFocused = at(); chViewSave();
 }
 document.addEventListener('click', e => {
-  const r = e.target.closest?.('#ch-canvas .ch-world .room[data-room]');
-  if (!r || e.target.closest('.ch, a, button, .ch-panel') || Date.now() - chPanAt < 400) return;
-  chFocus(r.dataset.room);
+  const r = e.target.closest?.('#ch-canvas .ch-world .room[data-room]'), g = !r && e.target.closest?.('#ch-canvas .ch-world .ch-proj')?.parentNode;
+  if (!(r || g?.dataset.proj) || e.target.closest('.ch, a, button, .ch-panel') || Date.now() - chPanAt < 400) return;
+  chFocus(r ? r.dataset.room : 'p:' + g.dataset.proj);
 });
 // the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
 // when that is the lower half); the page itself does not scroll. It keeps to the viewport: when iOS lays an installed
@@ -4212,20 +4219,30 @@ $('#chsort-btn').onclick = () => {
   chView.fit = true;  // the rooms move: fit them all again
   if ($('#view .office')) renderOffice();
 };
-// projects that always come first, in this order (the rest after them by name), each alone in its row
-const PROJ_TOP = ['plang_projects'];
-const projPin = p => { const i = PROJ_TOP.indexOf(p); return i < 0 ? PROJ_TOP.length : i; };
+// the project pinned on top (the pin on its sign, this device only, one at most): first, and alone in its row
+let chTop = '';
+try { chTop = localStorage.getItem('adash.chtop') || ''; } catch {}
+const projPin = p => p && p === chTop ? 0 : 1;
+document.addEventListener('click', e => {
+  const b = e.target.closest?.('#ch-canvas .pj-pin');
+  if (!b || Date.now() - chPanAt < 400) return;
+  chTop = chTop === b.dataset.pjpin ? '' : b.dataset.pjpin;
+  try { chTop ? localStorage.setItem('adash.chtop', chTop) : localStorage.removeItem('adash.chtop'); } catch {}
+  chView.fit = true;  // the rooms move: fit them all again
+  renderOffice();
+});
 function byProj(rs, cols) {
   if (chSort !== 'proj') return rs.map(r => r.html);
   const by = new Map();
   for (const r of rs) (by.get(r.proj) || by.set(r.proj, []).get(r.proj)).push(r);
   return [...by].sort(([x], [y]) => projPin(x) - projPin(y) || !x - !y || x.localeCompare(y, 'ko')).map(([proj, prs]) => { const lk = projLook(proj);
-    return `<div class="ch-pgrp${PROJ_TOP.includes(proj) ? ' pg-solo' : ''}" data-proj="${esc((prs[0].srv || '') + '|' + proj)}" style="--span:${Math.min(cols, prs.length)}${lk ? `;--rh:${lk.hue}` : ''}">${projSign(proj, prs)}${prs.map(r => r.html).join('')}</div>`; });
+    return `<div class="ch-pgrp${proj && proj === chTop ? ' pg-solo' : ''}" data-proj="${esc((prs[0].srv || '') + '|' + proj)}" style="--span:${Math.min(cols, prs.length)}${lk ? `;--rh:${lk.hue}` : ''}">${projSign(proj, prs)}${prs.map(r => r.html).join('')}</div>`; });
 }
 function projSign(proj, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length, lk = projLook(proj);
   return `<div class="ch-proj"${lk ? ` style="--rh:${lk.hue}"` : ''}><b class="pj-name">${proj ? `▤ ${esc(proj)}` : '위치 미상'}</b>
-    <span class="pj-n">방 <b>${rs.length}</b> · <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
+    <span class="pj-n">방 <b>${rs.length}</b> · <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span>
+    ${proj ? `<button class="pj-pin${proj === chTop ? ' on' : ''}" data-pjpin="${esc(proj)}" aria-pressed="${proj === chTop}" title="${proj === chTop ? '맨 위 고정 풀기' : '맨 위에 고정 (한 줄 단독)'}">📌</button>` : ''}</div>`;
 }
 function coSign(x, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length;
