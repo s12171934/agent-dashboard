@@ -4212,7 +4212,7 @@ $('#chsort-btn').onclick = () => {
   chView.fit = true;  // the rooms move: fit them all again
   if ($('#view .office')) renderOffice();
 };
-// projects that always come first, in this order (the rest after them by name)
+// projects that always come first, in this order (the rest after them by name), each alone in its row
 const PROJ_TOP = ['plang_projects'];
 const projPin = p => { const i = PROJ_TOP.indexOf(p); return i < 0 ? PROJ_TOP.length : i; };
 function byProj(rs, cols) {
@@ -4220,7 +4220,7 @@ function byProj(rs, cols) {
   const by = new Map();
   for (const r of rs) (by.get(r.proj) || by.set(r.proj, []).get(r.proj)).push(r);
   return [...by].sort(([x], [y]) => projPin(x) - projPin(y) || !x - !y || x.localeCompare(y, 'ko')).map(([proj, prs]) => { const lk = projLook(proj);
-    return `<div class="ch-pgrp" data-proj="${esc((prs[0].srv || '') + '|' + proj)}" style="--span:${Math.min(cols, prs.length)}${lk ? `;--rh:${lk.hue}` : ''}">${projSign(proj, prs)}${prs.map(r => r.html).join('')}</div>`; });
+    return `<div class="ch-pgrp${PROJ_TOP.includes(proj) ? ' pg-solo' : ''}" data-proj="${esc((prs[0].srv || '') + '|' + proj)}" style="--span:${Math.min(cols, prs.length)}${lk ? `;--rh:${lk.hue}` : ''}">${projSign(proj, prs)}${prs.map(r => r.html).join('')}</div>`; });
 }
 function projSign(proj, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length, lk = projLook(proj);

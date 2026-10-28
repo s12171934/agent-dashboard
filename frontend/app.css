@@ -1892,6 +1892,8 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-proj .pj-n b { color: var(--text); font-variant-numeric: tabular-nums; }
 /* a project's block: its sign over its rooms, --span columns of the plane's grid wide */
 .ch-pgrp { grid-column: span var(--span, 1); display: grid; grid-template-columns: repeat(var(--span, 1), var(--room-w, 680px)); gap: 28px; align-items: start; align-content: start; }
+/* a pinned project (PROJ_TOP) keeps its row to itself: no other project beside it */
+.ch-pgrp.pg-solo { grid-column: 1 / -1; }
 
 /* 홈's 운영실 (staffRoom): a village across the plane (시안 D) — grass, a road across and one down meeting at the plaza
    (the office sign among four trees), and on its lot (grid-area) each screen's house: its room — the wall in the room's
