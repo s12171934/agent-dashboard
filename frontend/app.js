@@ -3949,12 +3949,15 @@ function chBind(us = $('#view').querySelectorAll('.ch')) {  // us: the people pu
   us.forEach(u => {
     u.onclick = () => {
       if (Date.now() - chPanAt < 400) return;
-      if (u.dataset.staff) { location.hash = '#' + u.dataset.staff; return; }
+      if (u.dataset.staff) { staffGo(u); return; }
       if ('go' in u.dataset) { if (u.dataset.go) location.hash = u.dataset.go; return; }  // a script driver
       openSession(u.dataset.path);
     };
     if (u.dataset.fam) { u.onpointerenter = u.onfocus = () => chHot(u.dataset.fam.split(' ').pop()); u.onpointerleave = u.onblur = () => chHot(null); }
+    // a staff member turns to you at once, not at the next tick (:hover is not yet set inside pointerenter)
+    if (u.dataset.staff) u.onpointerenter = u.onpointerleave = u.onfocus = u.onblur = () => setTimeout(() => staffTick([u]));
   });
+  staffTick([...us].filter(u => u.dataset.staff));
 }
 addEventListener('resize', () => {
   if (!$('#view .office')) return;
@@ -4178,18 +4181,76 @@ const STAFF_PROP = {
     ${[9, 20, 31, 42, 53].map((y, i) => `<rect class="w3-scr" x="8" y="${y}" width="24" height="8" rx="1"/><circle class="w3-okf w3-led" cx="28" cy="${y + 4}" r="1.5" style="animation-delay:${i * .3}s"/><path class="w3-line light" d="M11 ${y + 4}h10"/>`).join('')}</svg>`,
 };
 const hubSt = r => r.tone === 'bad' ? 'stalled' : r.tone === 'hot' ? 'run' : 'wait';
+// The staff are not sessions, so they do not act out a state the way an agent does (one pose for one state). They
+// behave as people at work (staffMv): a quiet one goes about a routine — standing, at the laptop, a coffee, a stretch —
+// a pose a STAFF_SLOT, picked by the clock and their id so every device agrees, and dozes at night; one with something
+// to look at (hot) raises a hand to call you over, and one with something stuck (bad) looks worried. They react, too:
+// pointed at or focused they turn to you and greet (h.hi in the bubble, a hand up, or a peace sign when they were
+// calling), face the pointer while it is near (staffFace), raise a hand for a moment when their figure changes
+// (data-news), and hop before taking you to their screen (staffGo). staffTick lays this on the people on screen each
+// second without a render: the pose (a sprite swapped, a Live2D canvas told its move) and the emote over their head.
+const STAFF_ROUTINE = ['wait', 'run', 'wait', 'bg', 'run', 'done', 'run'], STAFF_SLOT = 9, STAFF_NEWS_MS = 2600;
+function staffMv(id, tone, u) {
+  if (u?.matches(':hover, :focus-visible')) return tone === 'hot' ? 'done' : 'dec';
+  if (u && +u.dataset.news > Date.now()) return 'dec';
+  if (tone === 'bad') return 'stalled';
+  if (tone === 'hot') return 'dec';
+  if (todOf() === 'night') return 'idle';
+  const h = chHash(id), k = Math.floor((Date.now() / 1000 + h % 1000 / 1000 * STAFF_SLOT) / STAFF_SLOT);
+  return STAFF_ROUTINE[chMix(h + k * 7919) % STAFF_ROUTINE.length];
+}
+const STAFF_EMO = { dec: '!', stalled: '!!', idle: 'z', done: '♪' };
+const staffMe = (id, who) => ({ id: 'staff-' + id, path: 'staff-' + id, role: 'staff', char: { who, pick: true } });
 function staffHtml(h, r = hubVal(h)) {
   // each screen has its own person, dressed for the job (h.who); one not drawn yet takes the agents' people in
   // turn, so the rooms next to each other have different faces
-  const who = CH_ART[h.who] ? h.who : [...CH_CREW, ...CH_BOSS][HUB.indexOf(h) % 6], st = hubSt(r), me = { id: 'staff-' + h.id, path: 'staff-' + h.id, role: 'staff', char: { who, pick: true } }, say = [r.v, r.sub, r.from && '← ' + r.from].filter(Boolean).join(' · ');
-  return `<button type="button" class="ch staff st-${st}${h.id === 'decide' && r.tone ? ' dec' : ''}" data-staff="${h.id}" data-id="staff-${h.id}" style="--c:var(--accent)"
+  const who = CH_ART[h.who] ? h.who : [...CH_CREW, ...CH_BOSS][HUB.indexOf(h) % 6], st = hubSt(r), tone = r.tone || '', mv = staffMv('staff-' + h.id, tone), say = [r.v, r.sub, r.from && '← ' + r.from].filter(Boolean).join(' · ');
+  return `<button type="button" class="ch staff st-${st}${h.id === 'decide' && r.tone ? ' dec' : ''}" data-staff="${h.id}" data-id="staff-${h.id}" data-who="${who}" data-tone="${tone}" style="--c:var(--accent)"
       title="${esc(`${h.staff} · ${h.name}\n${say}\n누르면 ${h.name} 화면으로`)}" aria-label="${esc(`${h.staff}: ${h.name}. ${say}`)}">
     <span class="ch-say"><span><b>${esc(r.v)}</b>${r.from ? ' ← ' + esc(cut(r.from, 40)) : r.sub ? ' ' + esc(cut(r.sub, 40)) : ''}</span></span>
-    ${chFig(st, me)}
+    <span class="staff-hi" aria-hidden="true"><span>${esc(h.hi || `${h.name} 화면으로 안내할게요`)}</span></span>
+    <span class="staff-body" aria-hidden="true"><i class="staff-spot"></i>${chFig(mv, staffMe(h.id, who))}</span>
     <span class="ch-tag"><span class="ch-name"><i class="ch-dot"></i><span class="ch-nm">${h.staff}</span></span>
       <span class="ch-meta">${h.name} →</span></span>
   </button>`;
 }
+const staffSeen = new Map();  // a staff member's figure (r.v) as last seen, to react when it changes
+function staffTick(us = document.querySelectorAll('#ch-canvas .ch.staff')) {
+  us.forEach(u => {
+    const body = u.querySelector('.staff-body'), fig = body?.querySelector('.ch-fig'), id = u.dataset.id, tone = u.dataset.tone;
+    if (!fig) return;
+    const v = u.querySelector('.ch-say b')?.textContent, was = staffSeen.get(id);
+    if (was !== undefined && was !== v) u.dataset.news = Date.now() + STAFF_NEWS_MS;
+    staffSeen.set(id, v);
+    const mv = staffMv(id, tone, u), hi = u.matches(':hover, :focus-visible');
+    const emo = hi ? '♪' : +u.dataset.news > Date.now() ? '!' : STAFF_EMO[mv] && (mv !== 'done' || tone) ? STAFF_EMO[mv] : '';
+    if (body.dataset.emo !== emo) { if (emo) body.dataset.emo = emo; else delete body.dataset.emo; }
+    if (fig.dataset.mv === mv) return;
+    if (fig.matches('canvas')) { fig.dataset.mv = mv; return; }  // Live2D reads its move each frame
+    const t = document.createElement('template');
+    t.innerHTML = chFig(mv, staffMe(u.dataset.staff, u.dataset.who));
+    fig.replaceWith(t.content.firstElementChild);
+  });
+}
+setInterval(() => { if (!document.hidden) staffTick(); }, 1000);
+function staffGo(u) {
+  if (chMotion.matches) { location.hash = '#' + u.dataset.staff; return; }
+  u.classList.add('staff-go');
+  setTimeout(() => { location.hash = '#' + u.dataset.staff; }, 240);
+}
+// the staff face a mouse pointer near them (within three of their heights), and lean a little its way
+let staffFaceRaf = 0;
+addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse' || staffFaceRaf || chPts.size) return;
+  staffFaceRaf = requestAnimationFrame(() => {
+    staffFaceRaf = 0;
+    document.querySelectorAll('#ch-canvas .ch.staff .staff-body').forEach(b => {
+      const r = b.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      const near = Math.hypot(dx, dy) < r.height * 3, side = !near || Math.abs(dx) < r.width / 4 ? 0 : Math.sign(dx);
+      if (b.dataset.face !== String(side)) b.dataset.face = side;
+    });
+  });
+});
 // The rooms stand as a village rather than a grid (운영실 배치 시안 D): a plaza in the middle with the office sign, a road
 // across and one down, and each screen a little house by the road — its room under a roof in the room's colour, as wide
 // as its screen weighs (a stuck one widest). Every house has its own lot (STAFF_LOT, by id), so nobody moves when the
@@ -7170,14 +7231,14 @@ function hubActiveHours() {
 }
 let hubPjLoad = null;
 const HUB = [
-  { id: 'decide', name: '결정 대기', who: 'sera', staff: '비서', room: '비서실', hue: 200, wall: ['calendar', 'mail'], prop: 'cabinet', val: () => {
+  { id: 'decide', name: '결정 대기', who: 'sera', staff: '비서', room: '비서실', hi: '결정할 일, 바로 정리해 드릴게요', hue: 200, wall: ['calendar', 'mail'], prop: 'cabinet', val: () => {
     const qs = state.decisions?.pending || [], n = qs.length, unread = (state.decisions?.inbox || []).filter(r => !r.read).length, ask = state.sessions.filter(s => !s.parent && hmAsk(s)).length;
     const ages = qs.map(q => ({ q, a: Date.now() / 1000 - q.created_at })), max = Math.max(...ages.map(x => x.a), 1);
     const mine = hmMine(), from = hubFrom(['결정', mine.filter(x => x.kind === 'dec').map(hmName)], ['보고', mine.filter(x => x.kind === 'ask').map(hmName)]);
     return { v: n ? `결정 ${n}` : '없음', sub: [n && `가장 오래 ${human(max)}`, ask && `보고 확인 ${ask}`, unread && `메일함 ${unread}`].filter(Boolean).join(' · ') || '기다리는 질문 없음', from, tone: n ? 'hot' : '', live: n + ask + unread > 0,
       chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` })), 'cap'),
       list: n => hubList([...ages].sort((x, y) => y.a - x.a).slice(0, n).map(x => [cut(x.q.questions?.[0]?.header || x.q.questions?.[0]?.question || '질문', 50), `${human(x.a)} 기다림`])) }; } },
-  { id: 'agents', name: '에이전트', who: 'daichi', staff: '매니저', room: '관리실', hue: 220, wall: ['kanban', 'monitors'], prop: 'plant', val: () => {
+  { id: 'agents', name: '에이전트', who: 'daichi', staff: '매니저', room: '관리실', hi: '에이전트들 상황 보고드리죠', hue: 220, wall: ['kanban', 'monitors'], prop: 'plant', val: () => {
     const ss = state.sessions.filter(s => !s.parent && hmRecent(s)), c = k => ss.filter(s => k.includes(status(s))).length, dev = state.flow?.items?.length || 0;
     return { v: `실행 ${c(['run', 'bg'])}`, sub: [`입력 대기 ${c(['wait'])}`, c(['stalled']) && `응답 없음 ${c(['stalled'])}`, dev && `흐름 이탈 ${dev}`].filter(Boolean).join(' · '),
       from: hubFrom(['응답 없음', ss.filter(s => status(s) === 'stalled').map(s => cut(nameOf(s), 30))]), tone: c(['stalled']) ? 'bad' : '', live: ss.length > 0,
@@ -7185,7 +7246,7 @@ const HUB = [
       // the ones to look at: 응답 없음 first, then 입력 대기, the longest quiet first
       list: n => hubList(ss.filter(s => ['stalled', 'wait'].includes(status(s))).sort((a, b) => (status(a) === 'stalled' ? 0 : 1) - (status(b) === 'stalled' ? 0 : 1) || (a.last_ts || '').localeCompare(b.last_ts || ''))
         .slice(0, n).map(s => [cut(nameOf(s), 50), `${ST_LABEL[status(s)]} · ${ago(s.last_ts)}`])) }; } },
-  { id: 'worktrees', name: '워크트리 리뷰', who: 'mina', staff: 'QA 담당', room: 'QA실', hue: 280, wall: ['pipeline', 'checklist'], prop: 'easel', val: () => {
+  { id: 'worktrees', name: '워크트리 리뷰', who: 'mina', staff: 'QA 담당', room: 'QA실', hi: '리뷰할 워크트리 보여드릴게요', hue: 280, wall: ['pipeline', 'checklist'], prop: 'easel', val: () => {
     const sets = (wtData.sets || []).filter(x => !x.retired);  // an ended QA has nothing left in the pipeline
     if (!sets.length) return { v: '—', sub: wtData.sets?.length ? '진행 중인 QA 없음' : 'QA 묶음 없음' };
     // a ticket left at 커밋 완료 with no worktree is a driver state left behind, not one waiting for approval (as on 내 차례);
@@ -7203,7 +7264,7 @@ const HUB = [
       chart: () => `<div class="hub-donut"><ds-donut segments="${cnt.map(x => `${x.n} ${x.c}`).join('; ')}" value="${ts.length}" caption="티켓"></ds-donut>
         <div class="hub-leg">${cnt.filter(x => x.n).map(x => `<span><i class="sw" style="background:${x.c}"></i> ${x.l} ${x.n}</span>`).join('')}</div></div>`,
       list: n => hubList(cnt.flatMap(x => x.xs.map(t => [t.key, `${x.l} · ${QA_ST[t.qa.stage] || t.qa.stage}`])).slice(0, n)) }; } },
-  { id: 'tests', name: '테스트', who: 'toru', staff: '테스터', room: '시험실', hue: 160, wall: ['flasks', 'checklist'], prop: 'lab', val: () => {
+  { id: 'tests', name: '테스트', who: 'toru', staff: '테스터', room: '시험실', hi: '테스트 결과 확인하실래요?', hue: 160, wall: ['flasks', 'checklist'], prop: 'lab', val: () => {
     const all = testItems(), live = all.filter(testLive).length, fin = all.filter(t => !testLive(t)).sort((a, b) => (a.finished_at || '').localeCompare(b.finished_at || ''));
     const bad = fin.filter(t => t.phase === 'failed' || t.failed).length;
     const nm = t => cut(t.label || t.key, 30);
@@ -7211,7 +7272,7 @@ const HUB = [
       from: hubFrom(['실패', fin.filter(t => t.phase === 'failed' || t.failed).reverse().map(nm)], ['실행', all.filter(testLive).map(nm)]), tone: bad ? 'bad' : live ? 'hot' : '', live: all.length > 0,
       chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = t.phase === 'failed' || t.failed; return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : '통과'} · ${ago(t.finished_at)}` }; }), 'cap'),
       list: n => hubList(fin.slice(-n).reverse().map(t => [nm(t), `${t.phase === 'failed' || t.failed ? '실패' : '통과'} · ${ago(t.finished_at)}`])) }; } },
-  { id: 'compare', name: '비교 · 비용', who: 'midori', staff: '회계', room: '회계실', hue: 45, wall: ['coins', 'clock'], prop: 'safe', val: () => {
+  { id: 'compare', name: '비교 · 비용', who: 'midori', staff: '회계', room: '회계실', hi: '오늘 비용 정리해 뒀어요', hue: 45, wall: ['coins', 'clock'], prop: 'safe', val: () => {
     const hs = hubCostHours(), sum = hs.reduce((a, x) => a + x, 0), max = Math.max(...hs, 1e-9);
     return { v: usd(sum), sub: '오늘 0시부터', live: sum > 0,
       chart: () => hubCols(hs.map((x, i) => ({ f: x / max, c: i === hs.length - 1 ? 'cur' : '', t: `${i}시 ${usd(x)}` }))),
@@ -7219,27 +7280,27 @@ const HUB = [
       list: n => { const day0 = new Date().setHours(0, 0, 0, 0);
         return hubList(state.sessions.filter(s => !s.parent).map(s => [s, Object.entries(s.slots || {}).reduce((a, [k, v]) => +k * 300e3 >= day0 ? a + v[4] : a, 0)])
           .filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, n).map(([s, c]) => [cut(nameOf(s), 50), usd(c)])); } }; } },
-  { id: 'usage', name: '플랜 사용량', who: 'gonta', staff: '관리인', room: '계기실', hue: 190, wall: ['status', 'warning'], prop: 'rack', val: () => {
+  { id: 'usage', name: '플랜 사용량', who: 'gonta', staff: '관리인', room: '계기실', hi: '한도 계기판 보러 가요', hue: 190, wall: ['status', 'warning'], prop: 'rack', val: () => {
     const live = (state.plan_usage || []).filter(a => !a.stale && !a.note), lim = live.flatMap(a => (a.limits || []).filter(b => b.percent != null).map(b => ({ a, b })));
     const top = Math.max(-1, ...lim.map(x => x.b.percent));
     if (top < 0) return { v: '—', sub: '사용량 정보 없음' };
     const hi = lim.filter(x => x.b.percent === top)[0];
     return { v: `${top}%`, sub: `가장 높은 한도 · 계정 ${live.length}`, from: top >= 70 ? hubFrom(['한도', [`${(hi.a.email || '').split('@')[0]} · ${hi.b.name || ''}`]]) : '', tone: top >= 90 ? 'bad' : top >= 70 ? 'hot' : '', live: true,
       chart: z => hubMeters(lim.sort((x, y) => y.b.percent - x.b.percent).slice(0, hubRows(z)).map(({ a, b }) => ({ l: `${(a.email || '').split('@')[0]} · ${b.name || ''}`, f: b.percent / 100, v: `${b.percent}%`, c: b.percent >= 90 ? 'ctx-bad' : b.percent >= 70 ? 'ctx-warn' : '' }))) }; } },
-  { id: 'talk', name: '상호작용', who: 'fumi', staff: '기록원', room: '기록실', hue: 30, wall: ['timeline', 'clock'], prop: 'boxes', val: () => {
+  { id: 'talk', name: '상호작용', who: 'fumi', staff: '기록원', room: '기록실', hi: '누가 누구와 일했는지 적어 뒀어요', hue: 30, wall: ['timeline', 'clock'], prop: 'boxes', val: () => {
     const on = families().fams.filter(f => f.members.some(hmRecent)), ws = f => f.members.filter(m => m !== f.coord);
     return { v: `묶음 ${on.length}`, sub: `워커 ${on.reduce((a, f) => a + ws(f).length, 0)}명 · 최근 1시간`, live: on.length > 0,
       // in words: who leads each team and how its workers stand
       chart: z => on.slice(0, hubRows(z)).map(f => { const c = k => ws(f).filter(m => k.includes(status(m))).length;
         return `<div class="hub-sum"><b>${esc(cut(f.coord ? nameOf(f.coord) : '묶음', 40))}</b><span>워커 ${ws(f).length}${[['실행', ['run', 'bg']], ['대기', ['wait']], ['응답 없음', ['stalled']], ['완료', ['done']]].map(([l, k]) => c(k) ? ` · ${l} ${c(k)}` : '').join('')}</span></div>`; }).join('') }; } },
-  { id: 'projects', name: '프로젝트', who: 'sho', staff: 'PM', room: 'PM실', hue: 260, wall: ['gantt', 'calendar'], prop: 'easel', val: () => {
+  { id: 'projects', name: '프로젝트', who: 'sho', staff: 'PM', room: 'PM실', hi: '프로젝트 진척 보러 가시죠', hue: 260, wall: ['gantt', 'calendar'], prop: 'easel', val: () => {
     if (!pjData) { hubPjLoad ||= api.projects().then(d => { pjData = d; }, () => { pjData = { enabled: false, projects: [] }; }).finally(() => { hubPjLoad = null; if (route().v === 'home') render(); }); return { v: '…', sub: '불러오는 중' }; }
     if (!pjData.enabled) return { v: '—', sub: '프로젝트 폴더 없음' };
     const ps = (pjData.projects || []).filter(p => !p.error && (p.ratio || 0) < 1);  // a finished project is not shown
     if (!ps.length) return { v: '없음', sub: '진행 중인 프로젝트 없음' };
     return { v: `${ps.length}개`, sub: `진행 중 · 평균 ${Math.round(ps.reduce((a, p) => a + (p.ratio || 0), 0) / ps.length * 100)}%`, live: true,
       chart: z => hubMeters(ps.slice(0, hubRows(z)).map(p => ({ l: p.name, f: p.ratio || 0, v: `${Math.round((p.ratio || 0) * 100)}%`, t: p.current?.name || '' }))) }; } },
-  { id: 'designs', name: '설계문서', who: 'aki', staff: '설계자', room: '설계실', hue: 210, wall: ['blueprint', 'poster'], prop: 'easel', val: () => {
+  { id: 'designs', name: '설계문서', who: 'aki', staff: '설계자', room: '설계실', hi: '설계문서 펼쳐 볼까요?', hue: 210, wall: ['blueprint', 'poster'], prop: 'easel', val: () => {
     const d = hmData('design', () => api.designs(), state.design?.version ?? '');
     if (d === undefined) return { v: '…', sub: '불러오는 중' };
     if (!d?.enabled) return { v: '—', sub: '설계 폴더 없음' };

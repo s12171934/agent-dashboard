@@ -1944,6 +1944,63 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .staff-prop svg { display: block; filter: drop-shadow(0 4px 4px rgb(0 0 0 / .12)); }
 .ch.staff .ch-name { color: var(--accent); }
 .ch.staff:hover .ch-meta { color: var(--accent); }
+/* the staff's own behaviour (staffMv, staffTick in app.js), apart from the agents': a sprite moves by the pose it is
+   given (data-mv), not by the button's state — a quiet one breathes, one calling raises a hand and bobs, a worried one
+   shakes in bursts, a dozing one sinks. Under them a shadow on the floor, which glows in the warning colour while they
+   call and the bad colour while something is stuck; over their head an emote (data-emo) in a pixel badge. Pointed at
+   or focused: a pixel outline in the room's colour, a greeting bubble (h.hi) over the figure's bubble, and the sprite
+   leaning the pointer's way (data-face); pressed, a hop before the screen opens (staff-go). */
+.ch.staff { --ol: color-mix(in srgb, hsl(var(--sh, 210) 85% 60%) 65%, #fff); }
+.staff-body { position: relative; display: block; flex: none; }
+.staff-body > .ch-fig { position: relative; z-index: 1; transition: translate .2s steps(2, end); }
+.staff-spot { position: absolute; left: 50%; bottom: -3px; width: 74%; height: 14px; border-radius: 50%; transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgb(0 0 0 / .26), rgb(0 0 0 / .12) 60%, transparent); }
+.ch.staff[data-tone="hot"] .staff-spot { width: 92%; height: 18px; bottom: -5px; animation: staff-glow 1.6s ease-in-out infinite;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--warn) 70%, transparent), color-mix(in srgb, var(--warn) 25%, transparent) 65%, transparent); }
+.ch.staff[data-tone="bad"] .staff-spot { width: 92%; height: 18px; bottom: -5px; animation: staff-glow 1.1s ease-in-out infinite;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--bad) 70%, transparent), color-mix(in srgb, var(--bad) 25%, transparent) 65%, transparent); }
+@keyframes staff-glow { 50% { opacity: .45; } }
+.ch.staff .fig-ai { animation: staff-breathe 2.4s steps(1, end) infinite var(--ph, 0s); }
+.ch.staff .fig-ai[data-mv="dec"] { animation: bob .8s steps(1, end) infinite var(--ph, 0s); --bob: -4px; }
+.ch.staff .fig-ai[data-mv="stalled"] { animation: shake-rest 2s steps(1, end) infinite var(--ph, 0s); }
+.ch.staff .fig-ai[data-mv="bg"] { animation: sip 7s steps(1, end) infinite var(--ph, 0s); }
+.ch.staff .fig-ai[data-mv="idle"] { animation: staff-doze 4s steps(1, end) infinite var(--ph, 0s); }
+.ch.staff .ch-fig.fig-ai[data-loop] { animation: none; }
+@keyframes staff-breathe { 0%, 45%, 100% { transform: none; } 50%, 95% { transform: translateY(-2px); } }
+@keyframes staff-doze { 0%, 100% { transform: none; } 50% { transform: translateY(2px); } }
+.staff-body[data-face="-1"] > .ch-fig { translate: -2px 0; }
+.staff-body[data-face="1"] > .ch-fig { translate: 2px 0; }
+.staff-body[data-face="-1"] > .fig-l2d { rotate: -2deg; transform-origin: bottom center; }
+.staff-body[data-face="1"] > .fig-l2d { rotate: 2deg; transform-origin: bottom center; }
+.ch.staff:is(:hover, :focus-visible) .fig-ai { filter: drop-shadow(2px 0 0 var(--ol)) drop-shadow(-2px 0 0 var(--ol)) drop-shadow(0 2px 0 var(--ol)) drop-shadow(0 -2px 0 var(--ol))
+  drop-shadow(2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent)); }
+.ch.staff:is(:hover, :focus-visible) .fig-l2d { filter: drop-shadow(0 0 2px var(--ol)) drop-shadow(0 0 6px var(--ol)); }
+.ch.staff:focus-visible { outline: none; }  /* the outline round the figure shows the focus */
+/* the emote: a pixel badge over the head, popping in; z floats up as it sleeps */
+.staff-body[data-emo]::after { content: attr(data-emo); position: absolute; z-index: 2; top: -2px; right: 8%; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 4px;
+  display: grid; place-items: center; font: 800 12px/1 ui-monospace, monospace; color: var(--accent); background: var(--panel); border: 2px solid currentColor; border-radius: 3px;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--ink) 30%, transparent); animation: staff-emo .3s steps(3, end); scale: var(--lz, 1); transform-origin: bottom left; }
+.staff-body[data-emo="!"]::after { color: var(--warn); animation: staff-emo .3s steps(3, end), bob 1s steps(1, end) .3s infinite; }
+.staff-body[data-emo="!!"]::after { color: var(--bad); animation: staff-emo .3s steps(3, end), shake-rest 2s steps(1, end) .3s infinite; }
+.staff-body[data-emo="z"]::after { color: var(--muted); border-style: dashed; animation: staff-zz 3s steps(6, end) infinite; }
+.staff-body[data-emo="♪"]::after { color: hsl(var(--sh, 210) 70% 45%); }
+@keyframes staff-emo { from { transform: translateY(6px); opacity: 0; } }
+@keyframes staff-zz { 0% { transform: none; opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(6px, -14px); opacity: 0; } }
+/* the greeting, over the figure's bubble while pointed at (beside the figure on a landscape village, as that bubble is) */
+.staff-hi { position: absolute; z-index: 3; left: 50%; top: 0; box-sizing: border-box; width: max-content; max-width: calc(100% / var(--lz, 1)); height: 36px; display: flex; align-items: center;
+  padding: 3px 10px; border: 2px solid hsl(var(--sh, 210) 70% 55%); border-radius: 10px; background: var(--panel); color: var(--text); font-size: 12px; font-weight: 700; line-height: 1.3;
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--ink) 20%, transparent); transform: translateX(-50%); scale: var(--lz, 1); transform-origin: bottom center; visibility: hidden; opacity: 0; pointer-events: none; }
+.staff-hi > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: keep-all; }
+.ch.staff:is(:hover, :focus-visible) > .staff-hi { visibility: visible; opacity: 1; animation: staff-hi .22s cubic-bezier(.3, 1.6, .5, 1); }
+.ch.staff:is(:hover, :focus-visible) > .ch-say { visibility: hidden; }
+@keyframes staff-hi { from { opacity: 0; translate: 0 6px; } }
+.vl-wide .ch.staff > .staff-hi { grid-area: s; position: relative; left: auto; justify-self: start; height: auto; max-width: calc(140px / var(--lz, 1)); padding: 5px 9px; transform: none; transform-origin: left center;
+  visibility: visible; display: none; }
+.vl-wide .ch.staff:is(:hover, :focus-visible) > .staff-hi { display: flex; }
+.vl-wide .ch.staff:is(:hover, :focus-visible) > .ch-say { display: none; }
+.ch.staff.staff-go .staff-body { animation: staff-hop .24s steps(3, end); }
+@keyframes staff-hop { 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .staff-spot, .staff-body::after, .staff-hi, .staff-body { animation: none !important; } }
 /* the trade's decorations (STAFF_WALL, STAFF_PROP): the office's palette, in the w3- set of the wall's own */
 .w3-edge { stroke: color-mix(in srgb, var(--ink) 25%, transparent); stroke-width: 1; }
 .w3-bad { fill: var(--bad); } .w3-okf { fill: var(--ok); } .w3-warnf { fill: var(--lamp); } .w3-inkf { fill: var(--ink); }
