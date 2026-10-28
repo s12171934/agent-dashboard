@@ -21,6 +21,7 @@ WORK = os.path.join(HOME, ".cache/agent-dashboard/chars")
 STORE = os.path.join(HOME, ".cache/agent-dashboard/char-sheets")  # every person's sheets, for redraws (redraw.py)
 WHO = re.compile(r"[a-z][a-z0-9-]{1,23}")
 BUILTIN = {"ren", "hina", "kaede", "yuki", "nova"}
+STAFF = {"sera", "daichi", "mina", "toru", "midori", "gonta", "fumi", "sho", "aki"}  # 운영실's people (app.js HUB)
 MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"RIFF", "webp"))
 IMAGE_MAX = 10 << 20
 KEEP = 14 * 86400  # finished jobs older than this are dropped from the list (and their folder)
@@ -95,7 +96,7 @@ def check_create(body):
     agent, model = body.get("agent") or "claude", body.get("model") or ""
     if not (isinstance(who, str) and WHO.fullmatch(who)):
         raise ValueError("영문 이름은 소문자로 시작하는 소문자·숫자·- 2~24자입니다 (파일 이름이 됩니다)")
-    if who in BUILTIN:
+    if who in BUILTIN | STAFF:
         raise ValueError(f"「{who}」 는 기본 캐릭터 이름입니다 — 다른 이름을 쓰세요")
     if not name or len(name) > 20 or len(look) > 80 or len(notes) > 1000 or "'" in name + look:
         raise ValueError("표시 이름은 20자, 생김새는 80자, 요청은 1000자까지입니다 (작은따옴표 ' 는 쓸 수 없음)")
