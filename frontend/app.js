@@ -3573,7 +3573,7 @@ const TICKET_RE = /[A-Z][A-Z0-9]+-\d+/;
 function teamName(c, qh, fallback) {
   const qa = qaOf(c, qh), p = c.place || {};
   const key = qa?.t.key || [c.title, p.worktree, p.branch].map(x => String(x || '').match(TICKET_RE)?.[0]).find(Boolean) || '';
-  const work = (qa?.t.summary || nameOf(c) || '').replace(new RegExp(`\\[?${key || '\\b\\B'}\\]?[\\s:·-]*`, 'g'), '').replace(/\s+/g, ' ').trim();
+  const work = (qa?.t.summary || (c.title !== c.id?.slice(0, 8) && nameOf(c)) || '').replace(new RegExp(`\\[?${key || '\\b\\B'}\\]?[\\s:·-]*`, 'g'), '').replace(/\s+/g, ' ').trim();
   return key || work ? `${key}${key && work ? ' ' : ''}${cut(work, 18)} 팀` : fallback;
 }
 let chFam = new Map(), chLinkList = [];
