@@ -67,16 +67,23 @@ $('#only-live').onchange = e => { onlyLive = e.target.checked; try { localStorag
 // Theme and material: the 테마 button (<ds-theme-toggle>) and the 「색 편집」 panel (<ds-theme-editor>) are design
 // system components; SVG charts read the CSS variables, so switching needs no re-render.
 $('#theme-edit').onclick = () => { $('#theme-panel').hidden = !$('#theme-panel').hidden; };
-// 「앱 아이콘」 panel: the PWA icon, 5 concepts × 4 colours (icon-boot.js lists them and swaps the links). This
-// device only, like the theme.
+// 「앱 아이콘」 panel: the PWA icon, 5 concepts × 4 colours, or a character's SD face (face-<who>, every person on the
+// page, CH_ART less the ones taken down; icon-boot.js lists the concepts and swaps the links). This device only, like
+// the theme.
 function iconPanel() {
   const el = $('#icon-panel'), cur = appIcon(), ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+  const faces = Object.keys(CH_ART).filter(w => !chHidden.has(w)).map(w => ({ id: `face-${w}`, name: CH_INFO[w]?.[0] || w }));
+  const label = id => (x => x ? `${x.concept} · ${x.colour}` : `캐릭터 · ${faces.find(f => f.id === id)?.name || id.slice(5)}`)(APP_ICONS.find(x => x.id === id));
+  const btn = id => `<button class="ip-icon${id === cur ? ' on' : ''}" data-id="${id}" title="${esc(label(id))}" aria-label="${esc(label(id))}" aria-pressed="${id === cur}"><img src="${appIconSrc(id)}" alt="" loading="lazy"></button>`;
   el.innerHTML = `<div class="pop-h"><b>앱 아이콘</b><span class="st">이 기기에만 저장</span><button class="act" data-ip="close">닫기</button></div>
-    <div class="ip-grid">${APP_ICONS.map(x => `<button class="ip-icon${x.id === cur ? ' on' : ''}" data-id="${x.id}" title="${x.concept} · ${x.colour}" aria-label="${x.concept} · ${x.colour}" aria-pressed="${x.id === cur}"><img src="${appIconSrc(x.id)}" alt="" loading="lazy"></button>`).join('')}</div>
-    <div class="ip-name">${(x => `${x.concept} · ${x.colour}`)(APP_ICONS.find(x => x.id === cur))}</div>
+    <div class="ip-grid">${APP_ICONS.map(x => btn(x.id)).join('')}</div>
+    <div class="ip-sub">캐릭터 얼굴 <small>SD 픽셀</small></div>
+    <div class="ip-grid ip-faces">${faces.map(f => btn(f.id)).join('')}</div>
+    <div class="ip-name">${esc(label(cur))}</div>
     <p class="ip-help">${ios ? '홈 화면 아이콘은 추가할 때 정해집니다. 바꾸려면 홈 화면에서 지우고 Safari 공유 → 홈 화면에 추가로 다시 넣으세요.'
       : '탭 아이콘은 바로 바뀝니다. 설치한 앱 아이콘은 브라우저가 다음에 앱을 확인할 때 바뀌며, 바꿀지 물어볼 수 있습니다.'}</p>`;
   el.querySelectorAll('.ip-icon').forEach(b => b.onclick = () => { setAppIcon(b.dataset.id); el.hidden = true; });
+  el.querySelectorAll('.ip-faces img').forEach(i => i.onerror = () => { i.parentElement.hidden = true; });  // no icon made yet
   el.querySelector('[data-ip=close]').onclick = () => { el.hidden = true; };
   el.hidden = false;
 }
@@ -95,18 +102,18 @@ let charMode = false;
 try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
 $('#char-mode').checked = charMode;
 $('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
-// 「캐릭터 설정」 panel (the bar's ⋯ menu; 캐릭터 모드 itself is a toggle on the bar): how the characters are drawn
-// (charStyle) and framed (charFrame), and the way to the 「캐릭터」 tab. This device only.
+// 「캐릭터 설정」 panel (the bar's ⋯ menu; 캐릭터 모드 itself is a toggle on the bar): how the characters are framed
+// (charFrame), and the way to the 「캐릭터」 tab. This device only.
 function charPanel() {
   const el = $('#char-panel');
   const seg = (k, cur, opts) => `<span class="seg" data-cp="${k}">${opts.map(([v, l]) => `<button data-k="${v}"${v === cur ? ' class="on"' : ''} aria-pressed="${v === cur}">${l}</button>`).join('')}</span>`;
   el.innerHTML = `<div class="pop-h"><b>캐릭터 설정</b><span class="st">이 기기에만 저장</span><button class="act" data-cp="close">닫기</button></div>
-    <div class="cp-row"><span>그림체</span>${seg('style', charStyle, [['ai', 'AI 생성 (SD 픽셀)'], ['l2d', 'Live2D']])}</div>
     <div class="cp-row"><span>보기</span>${seg('frame', charFrame, [['bust', '상반신'], ['full', '전신']])}</div>
     <a class="act cp-link" href="#chars">캐릭터 그림 관리 →</a>`;
-  const set = { style: k => { charStyle = k; try { localStorage.setItem('adash.charstyle', k); } catch {} },
-    frame: k => { charFrame = k; try { localStorage.setItem('adash.charframe', k); } catch {} } };
-  el.querySelectorAll('[data-cp=style] button, [data-cp=frame] button').forEach(b => b.onclick = () => { set[b.parentElement.dataset.cp](b.dataset.k); el.hidden = true; render(); });
+  el.querySelectorAll('[data-cp=frame] button').forEach(b => b.onclick = () => {
+    charFrame = b.dataset.k; try { localStorage.setItem('adash.charframe', charFrame); } catch {}
+    el.hidden = true; render();
+  });
   el.querySelector('[data-cp=close]').onclick = () => { el.hidden = true; };
   el.querySelector('.cp-link').onclick = () => { el.hidden = true; };
   el.hidden = false;
@@ -3348,12 +3355,9 @@ function agViewBind() {
 // Same sessions and filters as the tree. A worktree is one room (coordinators first, then by state), and rooms one
 // family spans are linked person to person by a line in the family's colour (officeRooms, chLinks). A room is one scene (wall with decorations, floor); each agent is one of the original
 // anime-style characters (frontend/chars, made by scripts/char-sprites.py), framed whole or from the waist up
-// (charFrame) and drawn in one of two styles (charStyle), both set in the bar's 「캐릭터 설정」 panel (charPanel): 「AI 생성」
-// shows the generated pose for the state as an SD chibi in pixel art, 「Live2D」 deforms the illustration live
-// (breathing, head tilt, hair on a spring, blinking — L2D). The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card. People
+// (charFrame, set in the bar's 「캐릭터 설정」 panel — charPanel) and shows the generated pose for the state as an SD
+// chibi in pixel art. The pose and speech bubble carry the state (a sign and words, not motion alone — A3). A person is a button: a click opens the session like a card. People
 // stand on the room's grid in order (chLayout) and are not moved by hand.
-let charStyle = 'ai';  // ai | l2d
-try { charStyle = localStorage.getItem('adash.charstyle') === 'l2d' ? 'l2d' : 'ai'; } catch {}
 let charFrame = 'bust';  // bust | full
 try { charFrame = localStorage.getItem('adash.charframe') === 'full' ? 'full' : 'bust'; } catch {}
 const CH_SIGN = { bg: '◍', stalled: '!', idle: 'z', done: '✓' };
@@ -3361,8 +3365,8 @@ const isBoss = s => s.role === 'coordinator' || isSubCoord(s);
 const chHash = t => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 // A sheet is 8 frames in a row (w × h each, top = where the head starts as a share of h), one pose per frame — or 32,
 // four sets (A–D) of the same 8 poses, each set its own action, and a person shows one set at a time (chAct). full and
-// bust are anime illustrations (Live2D); sd and sdb are the same character as an SD chibi in pixel art, whole and from
-// the waist up (AI 생성, pw × ph):
+// bust are anime illustrations (the base the SD is drawn from); sd and sdb are the same character as an SD chibi in pixel art, whole and from
+// the waist up (what the office shows, pw × ph):
 // 0 standing, 1 typing on a laptop, 2 coffee, 3 worried, 4 dozing, 5 peace sign, 6 hand up, 7 frame 0 with eyes shut.
 // The coordinators (kaede, yuki) wear a headset; the script drivers' person (nova) is a humanoid android; a session's
 // hash picks the person, so they keep theirs across refreshes.
@@ -3521,7 +3525,6 @@ const CH_FILEV = /*@chars-v*/{}/*@*/;
 const chV = (who, f) => chVer[who] ? '?v=' + chVer[who] : CH_FILEV[f] ? '?v=' + CH_FILEV[f] : '';
 const chSrc = (who, fr) => { const f = `${who}-${fr}.webp`; return `chars/${f}${chV(who, f)}`; };
 const chSd = fr => fr === 'bust' ? 'sdb' : 'sd', chSdSrc = (who, fr, mo = '') => { const f = `${who}-sd${fr === 'bust' ? '-bust' : ''}${mo}.png`; return `chars/${f}${chV(who, f)}`; };
-const CH_H = { bust: 132, full: 196 };
 // Only a running person changes action: of four sets one shows at random, picked again every CH_ACT_T seconds (offset
 // per person, so a room does not change at once). Every other state keeps set A, so a still state always looks the same.
 // The same id, pose and time give the same pick on every render and device. A person drawn with the run motion (sdr,
@@ -3547,18 +3550,16 @@ function chLoopFrame(id, mv, sets) {  // → the motion strip's frame now: the s
   while (k < 7 && ms >= ms0[k]) ms -= ms0[k++];
   return 8 * si + k;
 }
-function chFig(st, s, small) {  // small: the session detail's header (1.5× pixels on a 2× screen, a shorter canvas)
-  const who = chWho(s), a = CH_ART[who][charFrame], mv = chMove(st, s), f = chFrameOf(who, s.id || s.path, mv), n = chSets(who) * 8;
-  const H = Math.round(CH_H[charFrame] * (small ? .72 : 1)), W = Math.round(a.w * H / a.h), x = small ? (devicePixelRatio >= 2 ? 1.5 : 1) : 2;
-  if (charStyle === 'l2d') return `<canvas class="ch-fig fig-l2d ${charFrame}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${mv}" aria-hidden="true"></canvas>`;
-  // AI 생성: the SD pixel sprite at a whole 2× (in the detail 1.5×, a whole 3 device pixels on a 2× screen), so every
+function chFig(st, s, small) {  // small: the session detail's header (1.5× pixels on a 2× screen)
+  const who = chWho(s), mv = chMove(st, s), f = chFrameOf(who, s.id || s.path, mv), n = chSets(who) * 8;
+  const x = small ? (devicePixelRatio >= 2 ? 1.5 : 1) : 2;
+  // the SD pixel sprite at a whole 2× (in the detail 1.5×, a whole 3 device pixels on a 2× screen), so every
   // sprite pixel is a crisp block
   const sd = CH_ART[who][chSd(charFrame)], pw = sd.pw * x, ph = sd.ph * x, lp = chLoopArt(who, charFrame, mv);
   const k = lp ? chLoopFrame(s.id || s.path, mv, chSets(who)) : f, src = chSdSrc(who, charFrame, lp ? CH_LOOP[mv][1] : '');
   return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${src});background-size:${pw * (lp ? lp.top.length : n)}px ${ph}px;background-position:${-k * pw}px 0" data-who="${who}" data-mv="${mv}" data-pw="${pw}"${lp ? ' data-loop=""' : ''} aria-hidden="true"></span>`;
 }
-// AI 생성: a sprite whose slot has passed shows its new set, and the run motion its next frame (Live2D picks in its own
-// frame loop)
+// A sprite whose slot has passed shows its new set, and the run motion its next frame
 setInterval(() => {
   if (document.hidden) return;
   document.querySelectorAll('.fig-ai[data-mv]').forEach(n => {
@@ -3568,146 +3569,6 @@ setInterval(() => {
     if (n.style.backgroundPosition !== p) n.style.backgroundPosition = p;
   });
 }, 100);
-
-// Live2D: one shared WebGL canvas (a page may hold only ~16 contexts) renders each visible person's frame as a mesh the
-// vertex shader bends — the head turns about the neck, the upper body rises with each breath, hair beside the face
-// swings behind the head on a damped spring, the whole figure sways — and each person's own 2D canvas copies it. While
-// standing still the face blinks by crossfading to its set's frame 7, and a new set (chAct) crossfades in from the one
-// before over CH_FADE seconds. Without WebGL the frame is drawn flat with the same bob.
-const CH_FADE = .5;
-const L2D_MOVE = {  // t in seconds → tilt (rad), breath, sway, bob (shares of the frame), blink allowed
-  // still (wait, bg, idle): slow breath and blinks; lively (run, dec, stalled) and the one-off done move more
-  wait: t => [.012 * Math.sin(t * .5), .004 * Math.sin(t * 1.4), .002 * Math.sin(t * .4), 0, true],
-  run: t => [.05 + .03 * Math.sin(t * 6), .008 * Math.sin(t * 4.5), .003 * Math.sin(t * 1.7), .006 * Math.abs(Math.sin(t * 6)), false],
-  bg: t => [.015 * Math.sin(t * .4), .005 * Math.sin(t * 1.1), .003 * Math.sin(t * .4), 0, true],
-  stalled: t => [.012 * Math.sin(t * 23), .004 * Math.sin(t * 5), .003 * Math.sin(t * 31), 0, false],
-  idle: t => [.06 + .01 * Math.sin(t * .3), .006 * Math.sin(t * .8), .001 * Math.sin(t * .3), 0, false],
-  done: t => [.05 * Math.sin(t * 1.6), .006 * Math.sin(t * 3), .006 * Math.sin(t * 1.6), .022 * Math.abs(Math.sin(t * 3.2)), false],
-  dec: t => [.06 * Math.sin(t * 2), .006 * Math.sin(t * 2.6), .01 * Math.sin(t * 2.4), .006 * Math.abs(Math.sin(t * 2)), false],
-};
-const L2D = (() => {
-  const VS = `attribute vec2 a; uniform vec4 m; uniform vec4 p; uniform vec2 h; varying vec2 q;
-    void main() {
-      float ny = p.x, k = p.y, hs = p.z;  // neck y, frame aspect w/h, head size (share of h)
-      vec2 o = a;
-      float head = smoothstep(ny + .04 * hs, ny - .06 * hs, a.y);
-      vec2 d = (a - vec2(.5, ny)) * vec2(k, 1.); float an = m.x * head;
-      d = vec2(d.x * cos(an) - d.y * sin(an), d.x * sin(an) + d.y * cos(an));
-      o = vec2(.5, ny) + d / vec2(k, 1.);
-      float side = smoothstep(.1, .3, abs(a.x - .5)), band = smoothstep(ny - .8 * hs, ny - .3 * hs, a.y) * (1. - smoothstep(ny + .3 * hs, ny + 1.1 * hs, a.y));
-      o.x += (h.x + h.y * sin(p.w * 2.3 - a.y * 9.)) * side * band * (a.y - ny + hs) / hs;
-      float up = clamp((1. - a.y) / (1. - ny), 0., 1.);
-      o.y -= m.y * up + m.w;
-      o.x += m.z * (1. - a.y);
-      o = .04 + o * .92;
-      gl_Position = vec4(o.x * 2. - 1., 1. - o.y * 2., 0., 1.);
-      q = a;
-    }`;
-  const FS = `precision mediump float; uniform sampler2D t; uniform vec4 f; uniform vec4 e; uniform vec2 g; varying vec2 q;
-    void main() {  // f: frame, blink amount, the set's blink frame, frames in the strip; g: the frame before, its share
-      vec4 c = texture2D(t, vec2((f.x + q.x) / f.w, q.y));
-      if (g.y > 0.) c = mix(c, texture2D(t, vec2((g.x + q.x) / f.w, q.y)), g.y);
-      if (f.y > 0.) { vec2 r = (q - e.xy) / e.zw; float w = f.y * (1. - smoothstep(.7, 1., length(r)));
-        c = mix(c, texture2D(t, vec2((f.z + q.x) / f.w, q.y)), w); }
-      gl_FragColor = c;
-    }`;
-  let gl = null, cv = null, u = {}, tex = new Map(), raf = 0, last = 0, io = null;
-  const shown = new Set(), spring = new Map(), imgs = new Map();
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
-  function init() {
-    cv = document.createElement('canvas');
-    gl = cv.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: true, alpha: true });
-    if (!gl) return;
-    const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); return x; };
-    const pr = gl.createProgram();
-    gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
-    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { gl = null; return; }
-    gl.useProgram(pr);
-    const N = 24, v = [], ix = [];  // an N × N grid of the frame
-    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) v.push(i / N, j / N);
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * (N + 1) + i; ix.push(k, k + 1, k + N + 1, k + 1, k + N + 2, k + N + 1); }
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(ix), gl.STATIC_DRAW);
-    const al = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(al); gl.vertexAttribPointer(al, 2, gl.FLOAT, false, 0, 0);
-    u.n = ix.length; ['m', 'p', 'h', 'f', 'e', 'g'].forEach(k => u[k] = gl.getUniformLocation(pr, k));
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  }
-  const img = src => { if (!imgs.has(src)) { const im = new Image(); im.src = src; im.onload = () => kick(); imgs.set(src, im); } return imgs.get(src); };
-  function texOf(src) {
-    if (tex.has(src)) return tex.get(src);
-    const im = img(src);
-    if (!im.complete || !im.naturalWidth) return null;
-    const t = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
-    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    tex.set(src, t);
-    return t;
-  }
-  function draw(c, t, dt) {
-    const who = c.dataset.who, mv = c.dataset.mv, fr = c.dataset.fr, a = CH_ART[who]?.[fr], src = chSrc(who, fr);
-    if (!a) return;
-    const id = c.closest('.ch')?.dataset.id || who, ph = (chHash(id) % 1000) / 160, T = t + ph, p0 = +(c.dataset.pose ?? CH_POSE[mv] ?? 0);
-    // the set: the 「캐릭터」 tab's (data-set), or the slot's pick — by the clock, so reduced motion still changes it
-    const [si, bi, into] = c.dataset.set ? [+c.dataset.set, +c.dataset.set, CH_FADE] : chAct(id, mv, chSets(who), Date.now() / 1000);
-    const f = p0 + 8 * si, fade = into < CH_FADE && bi !== si ? 1 - into / CH_FADE : 0;
-    const [tilt, br, sway, bob, blinks] = (L2D_MOVE[mv] || L2D_MOVE.wait)(T);
-    // hair: a damped spring pulled by the head's tilt and the body's sway, so it lags and overshoots
-    const sp = spring.get(id) || { x: 0, v: 0 }; spring.set(id, sp);
-    const pull = -(tilt * .05 + sway * 2.5);
-    sp.v += ((pull - sp.x) * 60 - sp.v * 7) * dt; sp.x += sp.v * dt;
-    const blink = blinks && T % 4.2 < .16 ? Math.sin(T % 4.2 / .16 * Math.PI) : 0;
-    const ctx = c.getContext('2d'), W = c.width, H = c.height;
-    ctx.clearRect(0, 0, W, H);
-    if (!gl) {  // flat fallback
-      const im = img(src);
-      if (im.complete && im.naturalWidth) ctx.drawImage(im, f * a.w, 0, a.w, a.h, W * .04, H * (.04 - br - bob), W * .92, H * .92);
-      return;
-    }
-    const tx = texOf(src);
-    if (!tx) return;
-    if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); }
-    const top = a.top[f], full = fr === 'full', hs = full ? .11 : .34, ny = top + (full ? .12 : .36);
-    gl.viewport(0, cv.height - H, W, H);  // the top-left corner, read back below
-    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindTexture(gl.TEXTURE_2D, tx);
-    gl.uniform4f(u.m, tilt, br, full ? sway : sway * .4, bob);
-    gl.uniform4f(u.p, ny, a.w / a.h, hs, T);
-    gl.uniform2f(u.h, sp.x, .004);
-    gl.uniform4f(u.f, f, blink, 7 + 8 * si, a.top.length);
-    gl.uniform2f(u.g, p0 + 8 * bi, fade);
-    gl.uniform4f(u.e, .5, top + (full ? .06 : .18), full ? .1 : .2, full ? .022 : .055);
-    gl.drawElements(gl.TRIANGLES, u.n, gl.UNSIGNED_SHORT, 0);
-    ctx.drawImage(cv, 0, 0, W, H, 0, 0, W, H);
-  }
-  function frame(now) {
-    raf = 0;
-    if (!shown.size) return;
-    const dt = Math.min(.1, (now - (last || now)) / 1000);
-    if (now - last < 32 && last) { raf = requestAnimationFrame(frame); return; }  // ~30fps is plenty
-    last = now;
-    const t = reduce.matches ? 0 : now / 1000;
-    shown.forEach(c => c.isConnected ? draw(c, t, dt) : shown.delete(c));
-    if (!reduce.matches) raf = requestAnimationFrame(frame);
-  }
-  const kick = () => { if (!raf) raf = requestAnimationFrame(frame); };
-  // after each render: watch the new canvases, draw only those on screen
-  // A canvas rebuilt for the same person starts with the old one's picture, so it is never blank until its first frame.
-  let prev = new Map();
-  const key = c => `${c.closest('.ch')?.dataset.id || ''}|${c.dataset.who}|${c.width}x${c.height}`;
-  function mount(root) {
-    if (!cv) init();
-    io?.disconnect(); shown.clear();
-    const cs = root.querySelectorAll('canvas.fig-l2d');
-    const old = prev; prev = new Map();
-    cs.forEach(c => { const k = key(c), o = old.get(k); if (o && o !== c) c.getContext('2d').drawImage(o, 0, 0); prev.set(k, c); });
-    if (!cs.length) return;
-    io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? shown.add(e.target) : shown.delete(e.target)); kick(); });
-    cs.forEach(c => { c.dataset.fr ||= charFrame; io.observe(c); });  // the 캐릭터 tab names its own frame
-  }
-  return { mount };
-})();
 
 // The room's wall: shaded decorations in a row (hidden past what the width holds — chLayout).
 const WALL = {
@@ -4198,7 +4059,7 @@ const hubSt = r => r.tone === 'bad' ? 'stalled' : r.tone === 'hot' ? 'run' : 'wa
 // pointed at or focused they turn to you and greet (h.hi in the bubble, a hand up, or a peace sign when they were
 // calling), face the pointer while it is near (staffFace), raise a hand for a moment when their figure changes
 // (data-news), and hop before taking you to their screen (staffGo). staffTick lays this on the people on screen each
-// second without a render: the pose (a sprite swapped, a Live2D canvas told its move) and the emote over their head.
+// second without a render: the pose (a sprite swapped) and the emote over their head.
 const STAFF_ROUTINE = ['wait', 'run', 'wait', 'bg', 'run', 'done', 'run'], STAFF_SLOT = 9, STAFF_NEWS_MS = 2600;
 function staffMv(id, tone, u) {
   if (u?.matches(':hover, :focus-visible')) return tone === 'hot' ? 'done' : 'dec';
@@ -4236,7 +4097,6 @@ function staffTick(us = document.querySelectorAll('#ch-canvas .ch.staff')) {
     const emo = hi ? '♪' : +u.dataset.news > Date.now() ? '!' : STAFF_EMO[mv] && (mv !== 'done' || tone) ? STAFF_EMO[mv] : '';
     if (body.dataset.emo !== emo) { if (emo) body.dataset.emo = emo; else delete body.dataset.emo; }
     if (fig.dataset.mv === mv) return;
-    if (fig.matches('canvas')) { fig.dataset.mv = mv; return; }  // Live2D reads its move each frame
     const t = document.createElement('template');
     t.innerHTML = chFig(mv, staffMe(u.dataset.staff, u.dataset.who));
     fig.replaceWith(t.content.firstElementChild);
@@ -4330,7 +4190,7 @@ function coSign(x, rs) {
 let chLast = {};  // the office last built (renderOffice): its element, its HTML and that HTML parsed (tree)
 // Live updates change mostly words: 「n분 전」, the lobby's clock, an action in a tooltip, a count. They are written into
 // the office on screen instead of rebuilding it: a rebuild restarts every sprite's animation (the 완료 hop, a 결정's
-// pulse) and Live2D canvas, which showed as the characters blinking every few seconds. chPatch walks the last tree (a),
+// pulse), which showed as the characters blinking every few seconds. chPatch walks the last tree (a),
 // the new one (b) and the office on screen (l) together and gathers the changes (ctx.ops), or returns false to rebuild:
 // a changed part inside CH_SOFT is put in whole, a changed tooltip or label is set, and the rooms on the plane and the
 // people in a room (CH_KEYED) are matched by key (chKey) — one that changed in shape (a person in another state) is
@@ -4416,8 +4276,8 @@ function renderOffice() {
   if (scrollY) scrollTo(0, 0);
   // A live update that keeps the office's shape is written into it (chPatch). Otherwise a phase taken from the clock
   // (a multiple of every loop's length) keeps the characters' motion from restarting.
-  const html = `<div class="ch-canvas ch-${charStyle} tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
-      ${rooms.length ? `<div class="ch-world office ch-${charStyle}" style="--cols:${cols};--room-w:${Math.max(roomW, wide)}px;--ph:@PH@">${home ? '' : lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
+  const html = `<div class="ch-canvas tod-${todOf()}" id="ch-canvas" aria-label="사무실: 바닥을 끌어 이동, Ctrl·⌘ + 휠이나 두 손가락으로 확대">
+      ${rooms.length ? `<div class="ch-world office" style="--cols:${cols};--room-w:${Math.max(roomW, wide)}px;--ph:@PH@">${home ? '' : lobbyHtml(people)}${rooms.join('')}</div>` : '<div class="empty">표시할 에이전트가 없습니다.</div>'}
     </div>`;
   const now = $('#ch-canvas');
   if (now && now === chLast.el) {
@@ -4429,7 +4289,7 @@ function renderOffice() {
       ctx.ops.forEach(f => f());
       chLast = { el: now, html, tree: t.content.firstElementChild };
       chLayout();  // a bubble or a label may be taller or shorter, a person new
-      if (ctx.fresh.length) { chBind(ctx.fresh.flatMap(n => n.matches('.ch') ? [n] : [...n.querySelectorAll('.ch')])); L2D.mount($('#view')); }
+      if (ctx.fresh.length) chBind(ctx.fresh.flatMap(n => n.matches('.ch') ? [n] : [...n.querySelectorAll('.ch')]));
       chSize();
       return;
     }
@@ -4441,13 +4301,12 @@ function renderOffice() {
   chLayout();
   chBind();
   chSize();
-  L2D.mount($('#view'));
 }
 
-// ---------- 「캐릭터」 tab: each person's pictures, from the generated base through the SD sprite to Live2D ----------
-// One pose at a time in all three stages, so the chain reads left to right: 베이스 (frontend/chars/<who>-<fr>.webp, cut
+// ---------- 「캐릭터」 tab: each person's pictures, from the generated base to the SD sprite ----------
+// One pose at a time in both stages, so the chain reads left to right: 베이스 (frontend/chars/<who>-<fr>.webp, cut
 // from the AI sheet by char-sprites.py) → SD 픽셀 (<who>-sd[-bust].png, an SD chibi pixel sheet drawn from the full base,
-// 「AI 생성」 in the office) → Live2D (the base deformed live by L2D). A person can be left out of the office (chPool, this device only);
+// what the office shows). A person can be left out of the office (chPool, this device only);
 // the counts are the sessions on show (liveSess) drawn as that person now. Live updates leave the page alone (chxMounted).
 const CH_INFO = {
   ren: ['렌', '검은 머리 · 둥근 안경 · 남색 카디건'], hina: ['히나', '분홍빛 포니테일 · 니트 조끼'],
@@ -4466,7 +4325,6 @@ const CH_POSE_L = [  // per set (A–D), as char-gen.sh's CELLS draws them
   ['팔짱 · 입력 대기', '서류 · 실행 중', '샌드위치 · 백그라운드', '글썽 · 응답 없음', '베개 · 유휴', '엄지척 · 완료', '물음표 팻말 · 결정 대기', '눈 감기 · 깜빡임'],
   ['뒷짐 · 입력 대기', '휴대폰 입력 · 실행 중', '휴대폰 · 백그라운드', '경악 · 응답 없음', '코 풍선 · 유휴', '주먹 불끈 · 완료', '클립보드 · 결정 대기', '눈 감기 · 깜빡임'],
 ];
-const CH_POSE_MV = ['wait', 'run', 'bg', 'stalled', 'idle', 'done', 'dec', 'wait'];
 const cx = { kind: 'bust', set: 'a' };  // the redraw's choice
 let cxRedraws = [];  // every server's redraws (/api/chars/jobs), polled with the jobs
 let chx = { fr: 'bust', pose: 1, sel: '' }, chxMounted = false;  // pose: set × 8 + pose (0–31); sel: the person shown
@@ -4489,9 +4347,7 @@ function chxStages(who) {
   const arr = (l, t) => `<div class="cx-arr" title="${esc(t)}"><span>${l}</span><i aria-hidden="true"></i></div>`;
   return st('베이스', `AI 생성 원본 · ${a.w}×${a.h}`, spr(chSrc(who, fr), W, H, 'cx-base'))
     + arr('SD화', `전신 베이스를 참조로 AI 가 2등신 SD 픽셀 시트를 그리고(hina 외는 hina 의 SD 를 비율 템플릿으로), char-sprites.py 가 ${sd.ph}행 격자에 블록마다 가장 많은 색으로 정리`)
-    + st('SD 픽셀', `「AI 생성」 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'))
-    + arr('Live2D', '베이스 그림을 숨쉬기·고개 기울임·머리카락 흔들림·깜빡임으로 실시간 변형')
-    + st('Live2D', '베이스를 실시간 변형', `<canvas class="fig-l2d ${fr}" width="${W * 2}" height="${H * 2}" style="width:${W}px;height:${H}px" data-who="${who}" data-mv="${CH_POSE_MV[f % 8]}" data-pose="${f % 8}" data-set="${f >> 3}" data-fr="${fr}" aria-hidden="true"></canvas>`);
+    + st('SD 픽셀', `사무실 그림 · ${sd.pw}×${sd.ph} · 2배`, spr(chSdSrc(who, fr), pw, ph, 'cx-px'));
 }
 // The list: one small tile a person — face, name, how many sessions they draw now (liveSess), off when left out.
 function chxTile(who, n, cur) {
@@ -4527,7 +4383,7 @@ function chxDetail(who, n) {
     <div class="cx-flow">${chxStages(who)}</div>
     <h3 class="cx-hd">포즈 ${sets * 8}개 <small>세트마다 같은 8포즈를 다른 동작으로 — 사무실은 실행 중일 때만 ${CH_ACT_T}초마다 세트를 무작위로 바꾸고(그동안 5초 실행 중 모션을 되풀이, 완료는 잔잔한 5초 모션), 다른 상태는 세트 A${sets < 4 ? ' · 이 캐릭터는 세트 A 뿐 (다시 그리면 생김)' : ''}</small></h3>
     <div class="cx-grid">${rows}</div>
-    <h3 class="cx-hd">사무실에서 <small>${charStyle === 'l2d' ? 'Live2D' : 'AI 생성'} · ${charFrame === 'bust' ? '상반신' : '전신'} (캐릭터 설정에서 바꿈)</small></h3>
+    <h3 class="cx-hd">사무실에서 <small>${charFrame === 'bust' ? '상반신' : '전신'} (캐릭터 설정에서 바꿈)</small></h3>
     <div class="cx-pvs">${pv}</div>
     <h3 class="cx-hd">관리</h3>
     <div class="cx-mng">
@@ -4568,7 +4424,7 @@ function cnHtml() {
   if (!on.some(x => x.id === cn.server)) cn.server = on[0]?.id || null;
   const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
   return `<section class="cn surface" id="cn" aria-labelledby="cn-h">
-    <div class="cx-h"><h3 id="cn-h">새 캐릭터</h3><span class="cx-look">원본 그림 한 장 → Orca 에이전트가 설명을 쓰고 전신·상반신(Live2D)·SD 픽셀을 4세트(32포즈)씩 그려 배포 없이 올립니다 · 40~60분</span></div>
+    <div class="cx-h"><h3 id="cn-h">새 캐릭터</h3><span class="cx-look">원본 그림 한 장 → Orca 에이전트가 설명을 쓰고 전신·상반신·SD 픽셀을 4세트(32포즈)씩 그려 배포 없이 올립니다 · 40~60분</span></div>
     <div class="cn-body">
       <label class="cn-drop${cn.img ? ' has' : ''}" title="PNG·JPEG·WebP, 10MB 까지 — 사람 사진이면 얼굴은 닮게 그리지 않고 머리·옷·색만 가져옵니다">
         ${cn.img ? `<img src="${cn.img}" alt="고른 원본 그림">` : '<span>원본 그림 고르기<br><small>또는 여기에 끌어 놓기</small></span>'}
@@ -4767,7 +4623,6 @@ function renderChars(fromPoll) {
     .then(() => toast('명령을 복사했습니다'), () => toast('복사하지 못했습니다')));
   if (cn.open) cnBind(); else cnJobsBind();
   chxMounted = true;
-  L2D.mount(v);
   if (!fromPoll) cnPoll();
 }
 
@@ -5544,7 +5399,6 @@ function renderSession(navigated) {
     chSet(d, b.dataset.pick || null);
     reSess();
   });
-  if (ch) L2D.mount($('#view'));
   ticketGraphBind();
   flowBind(d);
   workerTableBind(d);

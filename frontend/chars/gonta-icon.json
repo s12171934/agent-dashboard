@@ -1,0 +1,32 @@
+{
+  "id": "../",
+  "name": "Agent Dashboard",
+  "short_name": "Agents",
+  "description": "Claude Code·Codex 에이전트 세션과 Orca Run 을 실시간으로 보는 대시보드",
+  "lang": "ko",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "background_color": "#0f1215",
+  "theme_color": "#0f1215",
+  "icons": [
+    {
+      "src": "gonta-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "gonta-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "gonta-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

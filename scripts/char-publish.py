@@ -5,6 +5,7 @@ in chars/chars.json there, which the page reads through functions/chars (open ta
     scripts/char-publish.py <who> --name 미오 --look '빨간 단발 · 노란 우비' [--boss | --driver] [--dir <folder>]
     scripts/char-publish.py <who> --remove
     scripts/char-publish.py <who> --meta --name 미오 --look '…' [--boss | --driver]
+    scripts/char-publish.py <who> --icons
     scripts/char-publish.py --list
 
 <who> is the file name (a-z, 0-9, -); its strips hold 8 frames or 32 (four sets of the 8 poses), all four alike. --dir holds <who>-full.webp, <who>-bust.webp, <who>-sd.png and <who>-sd-bust.png
@@ -19,11 +20,14 @@ their files are taken out of the repo) is listed under hidden in chars.json, so 
 be put up again. Neither the coordinators nor the workers may be emptied: one of each always stays (the drivers may go).
 --meta changes only the name, look and role (--boss, --driver or neither) everywhere, no pictures: an added person's entry, or for a
 built-in one meta[<who>] in chars.json, which the page lays over its built-in name, look and list.
+Putting a person up also makes their app icon from the SD bust (scripts/char-icons.py: <who>-icon-*.png and
+<who>-icon.json, the 「앱 아이콘」 panel's face) and uploads it with the strips; --icons does only that, from the
+<who>-sd-bust.png in R2 (for people put up before there were icons).
 Each entry carries v (when it was put up), which the page adds to the picture URLs so a redrawn person shows at once,
 and the folder gets a .published stamp (the 「캐릭터」 tab's job list reads it).
 Needs `npx wrangler login` once, and Pillow with numpy (run it with "$(scripts/char-python.sh)").
 """
-import argparse, glob, json, os, re, shutil, subprocess, sys, tempfile, time
+import argparse, glob, importlib.util, json, os, re, shutil, subprocess, sys, tempfile, time
 import numpy as np
 from PIL import Image
 
@@ -81,6 +85,20 @@ def put_manifest(m):
         os.unlink(fh.name)
 
 
+def put_icons(who, src):
+    """Make the app icon from <src>/<who>-sd-bust.png (char-icons.py) and upload it."""
+    spec = importlib.util.spec_from_file_location('char_icons', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'char-icons.py'))
+    ci = importlib.util.module_from_spec(spec); spec.loader.exec_module(ci)
+    with tempfile.TemporaryDirectory() as d:
+        for f in ci.make(who, ci.pathlib.Path(src), ci.pathlib.Path(d)):
+            r2('put', f'{BUCKET}/chars/{f.name}', '--file', str(f),
+               '--content-type', 'application/manifest+json; charset=utf-8' if f.suffix == '.json' else 'image/png')
+
+
+def icon_files(who):
+    return [f'{who}-icon-{k}.png' for k in ('192', '512', 'maskable-512', '180')] + [f'{who}-icon.json']
+
+
 def role_of(x):
     """A chars.json entry's (or meta's) role: driver, boss or crew."""
     return 'driver' if x.get('driver') else 'boss' if x.get('boss') else 'crew'
@@ -100,7 +118,7 @@ ap.add_argument('--name'); ap.add_argument('--look', default='')
 ap.add_argument('--boss', action='store_true'); ap.add_argument('--driver', action='store_true')
 ap.add_argument('--dir', default='.')
 ap.add_argument('--remove', action='store_true'); ap.add_argument('--meta', action='store_true')
-ap.add_argument('--list', action='store_true')
+ap.add_argument('--list', action='store_true'); ap.add_argument('--icons', action='store_true')
 ap.add_argument('--dry-run', action='store_true')
 o = ap.parse_args()
 if o.boss and o.driver:
@@ -116,6 +134,15 @@ if o.list:
     sys.exit()
 if not o.who or not re.fullmatch(r'[a-z0-9-]+', o.who):
     ap.error('<who> 는 영문 소문자·숫자·- 로 된 이름이어야 합니다')
+if o.icons:
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            r2('get', f'{BUCKET}/chars/{o.who}-sd-bust.png', '--file', os.path.join(d, f'{o.who}-sd-bust.png'), capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            sys.exit(f'{o.who}-sd-bust.png 을 R2 에서 받지 못했습니다\n' + e.stdout + e.stderr)
+        put_icons(o.who, d)
+    print(f'{o.who} 의 앱 아이콘을 올렸습니다')
+    sys.exit()
 m = manifest()
 hidden = m.setdefault('hidden', [])
 if o.meta:
@@ -154,11 +181,11 @@ if o.remove:
     if c is not None:
         for f in FILES.values():
             r2('delete', f'{BUCKET}/chars/' + f.format(o.who))
-        for f in RUN.values():
+        for f in [*(x.format(o.who) for x in RUN.values()), *icon_files(o.who)]:
             try:
-                r2('delete', f'{BUCKET}/chars/' + f.format(o.who), capture_output=True)
+                r2('delete', f'{BUCKET}/chars/' + f, capture_output=True)
             except subprocess.CalledProcessError:
-                pass  # put up without the run motion
+                pass  # put up without the run motion or the icon
     print(f'{o.who} 를 영구 삭제했습니다')
     sys.exit()
 
@@ -182,6 +209,7 @@ if o.dry_run:
 for k, p in paths.items():
     r2('put', f'{BUCKET}/chars/' + {**FILES, **RUN}[k].format(o.who), '--file', p,
        '--content-type', 'image/webp' if p.endswith('.webp') else 'image/png')
+put_icons(o.who, o.dir)
 put_manifest(m)  # last, so the page never lists someone whose pictures are not there yet
 with open(os.path.join(o.dir, '.published'), 'w') as fh:
     json.dump({'who': o.who, 'at': m['chars'][o.who]['v']}, fh)
