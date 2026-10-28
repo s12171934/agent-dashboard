@@ -788,7 +788,7 @@ function workerPlan(handle, extra = []) {
     for (const x of items) { const t = x.created ? toDate(x.created).getTime() : 0; if (prev !== null && t - prev > 180e3) k++; x.stage = k; prev = t; }
   }
   const c = k => items.filter(x => x.st === k).length;
-  // Cancelled tasks (취소) stay in the strip, dimmed, but leave the plan total: a plan with only done and cancelled tasks is complete.
+  // Cancelled tasks (취소) leave the plan total and the bar: a plan with only done and cancelled tasks is complete.
   return { items, byDeps, total: items.length - c('skip'), done: c('done'), fail: c('fail'), skip: c('skip'), live: c('spawned'), waiting: c('planned') + c('blocked'),
            spawnedEver: items.filter(x => x.st === 'spawned' || x.st === 'done' || x.st === 'fail').length };
 }
@@ -821,9 +821,9 @@ function pendCounts(wp, ex = { starting: 0, later: 0 }) {
 const swatch = k => `<i class="sw ${k}"></i>`;
 const pendLine = (c, withZero) => PEND.filter(([k]) => withZero || c[k]).map(([k, l]) => `<span class="pend" title="${PEND_TIP[k]}">${swatch(k)}${l} <b${k === 'starting' && c[k] ? ' style="color:var(--accent)"' : ''}>${c[k]}</b></span>`).join('');
 // Worker plan strip. Past ~100 entries one-cell-per-task stops being readable, so it becomes a proportional bar.
-const WP_ORDER = ['done', 'spawned', 'wait', 'fail', 'blocked', 'planned', 'starting', 'unborn', 'skip'];
-const WP_NAME = { done: '완료', spawned: '실행', wait: '대기', fail: '실패', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동', skip: '취소' };
-const wpSteps = (wp, ex) => [...wp.items.map(wpSeg), ...Array(ex.starting).fill('starting'), ...Array(ex.later).fill('unborn')];
+const WP_ORDER = ['done', 'spawned', 'wait', 'fail', 'blocked', 'planned', 'starting', 'unborn'];
+const WP_NAME = { done: '완료', spawned: '실행', wait: '대기', fail: '실패', blocked: '선행 대기', planned: '생성 대기', starting: '기동 대기', unborn: '드라이버 미기동' };
+const wpSteps = (wp, ex) => [...wp.items.filter(x => x.st !== 'skip').map(wpSeg), ...Array(ex.starting).fill('starting'), ...Array(ex.later).fill('unborn')];
 const wpCount = steps => steps.reduce((a, k) => (a[k] = (a[k] || 0) + 1, a), {});
 const wpBar = (wp, ex = { starting: 0, later: 0 }) => {
   const steps = wpSteps(wp, ex);
@@ -835,7 +835,7 @@ const wpBar = (wp, ex = { starting: 0, later: 0 }) => {
     bar = `<div class="pbar prop">${WP_ORDER.filter(k => c[k]).map(k => `<i class="${k}" style="flex:${c[k]}" title="${WP_NAME[k]} ${c[k]}"></i>`).join('')}</div>`;
   }
   const pc = pendCounts(wp, ex), pend = pc.blocked + pc.planned + pc.starting + pc.unborn;
-  return `<div class="wp-row">${bar}<div class="pline wp-leg"><b>워커 계획 ${wp.spawnedEver}/${total} 생성</b><span class="pend">${swatch('done')}완료 <b>${wp.done}</b></span>${wp.live ? `<span class="pend">${swatch('spawned')}실행 <b>${wp.live}</b></span>` : ''}${wp.fail ? `<span class="pend">${swatch('fail')}실패 <b>${wp.fail}</b></span>` : ''}${wp.skip ? `<span class="pend" title="Orca 에 취소 상태가 없어 result 가 「취소」로 시작하는 failed 로 닫은 태스크">${swatch('skip')}취소 <b>${wp.skip}</b></span>` : ''}${pend ? `<span class="pend-sep">생성 예정 ${pend} =</span>${pendLine(pc)}` : ''}</div></div>`;
+  return `<div class="wp-row">${bar}<div class="pline wp-leg"><b>워커 계획 ${wp.spawnedEver}/${total} 생성</b><span class="pend">${swatch('done')}완료 <b>${wp.done}</b></span>${wp.live ? `<span class="pend">${swatch('spawned')}실행 <b>${wp.live}</b></span>` : ''}${wp.fail ? `<span class="pend">${swatch('fail')}실패 <b>${wp.fail}</b></span>` : ''}${wp.skip ? `<span class="pend st" title="Orca 에 취소 상태가 없어 result 가 「취소」로 시작하는 failed 로 닫은 태스크 — 바에는 그리지 않음">취소 ${wp.skip}</span>` : ''}${pend ? `<span class="pend-sep">생성 예정 ${pend} =</span>${pendLine(pc)}` : ''}</div></div>`;
 };
 // The office's wpBar, under a coordinator's name tag: one proportional bar and 「계획 완료/전체」, the counts in its tooltip.
 const wpMini = (wp, ex = { starting: 0, later: 0 }) => {

@@ -62,7 +62,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
 
-- **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
+- **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다. 워커 계획 바(조율자 상세·사무실 이름표)에는 아예 그리지 않고 범례에 「취소 N」 글자만 남긴다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
 
 ## 실행
 
