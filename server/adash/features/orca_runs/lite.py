@@ -17,8 +17,8 @@ def lite_task(t):
         outcome = (json.loads(t.get("result") or "null") or {}).get("outcome")
     except (ValueError, AttributeError):
         outcome = None
-    return {**{k: t.get(k) for k in ("id", "run_id", "task_title", "display_name", "status", "deps",
-                                      "created_at", "completed_at")},
+    return {**{k: t.get(k) for k in ("id", "run_id", "task_title", "display_name", "status", "orca_status",
+                                      "deps", "created_at", "completed_at")},
             "place_hint": place.group(1).strip() if place else None,
             "ticket_key": ticket.group(1) if ticket else None,
             "outcome": outcome}

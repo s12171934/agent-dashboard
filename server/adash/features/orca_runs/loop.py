@@ -8,7 +8,7 @@ from adash.core.log import log
 from adash.core.orca import orca, orca_all
 from adash.core.state import bump, lock, loop_ok, report_failure, sessions
 from adash.features.orca_runs.settled import record_settled, save_settled, settled_store
-from adash.features.orca_runs.store import orca_state, run_coord
+from adash.features.orca_runs.store import as_cancelled, orca_state, run_coord
 from adash.features.sessions.config import WAIT_SECONDS
 from adash.features.sessions.usage import seconds_since
 
@@ -23,6 +23,10 @@ horizon_since = None
 
 
 HORIZON_MAX_HOURS = 72
+
+
+def task_list(rid):
+    return [as_cancelled(t) for t in orca("orchestration", "task-list", "--run", rid).get("tasks", [])]
 
 
 def window_start(hours):
@@ -91,7 +95,7 @@ def orca_loop(max_runs, hours):
                 if t is None or not settled or changed or due:
                     if t is not None and settled and not changed:
                         budget -= 1
-                    t = orca("orchestration", "task-list", "--run", r["id"]).get("tasks", [])
+                    t = task_list(r["id"])
                     w = orca_all("workers", "orchestration", "worker-list", "--run", r["id"])
                     cache[r["id"]] = (time.time(), t, w)
             tasks, workers = {}, []
@@ -119,7 +123,7 @@ def orca_loop(max_runs, hours):
                 sweeps -= 1
                 swept_at[rid] = time.time()
                 w = orca_all("workers", "orchestration", "worker-list", "--run", rid)
-                t = orca("orchestration", "task-list", "--run", rid).get("tasks", [])
+                t = task_list(rid)
                 dirty = record_settled(w, t) or dirty
                 if all(x.get("dispatchStatus") in ("completed", "failed", "cancelled") for x in w) \
                         and all(x.get("status") in ("completed", "failed", "cancelled") for x in t):

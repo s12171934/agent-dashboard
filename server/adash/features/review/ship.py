@@ -9,6 +9,7 @@ from adash.core.orca import orca, orca_all
 from adash.core.prefs import prefs
 from adash.core.state import lock
 from adash.core.util import short
+from adash.features.orca_runs.store import as_cancelled
 from adash.features.review.config import WT_KEY
 from adash.features.review.store import review_kick
 import adash.core.config as core_config
@@ -56,7 +57,7 @@ def ship_tasks(epic):
     for x in (orca("orchestration", "task-list", "--run", rid).get("tasks") or []) if rid else []:
         m = WT_KEY.match(x.get("task_title") or "")
         if m and str(x.get("created_at") or "") >= str((out.get(m.group(1)) or {}).get("at") or ""):
-            out[m.group(1)] = {"status": x.get("status"), "task_id": x.get("id"), "run_id": rid, "at": x.get("created_at")}
+            out[m.group(1)] = {"status": as_cancelled(x).get("status"), "task_id": x.get("id"), "run_id": rid, "at": x.get("created_at")}
     return out
 
 
