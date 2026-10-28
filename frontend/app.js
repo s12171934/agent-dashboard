@@ -3466,9 +3466,11 @@ let chPick = {}, chReady = false;
 try { chPick = JSON.parse(localStorage.getItem('adash.chpick') || '{}'); } catch {}
 const chListOf = s => s.role === 'driver' && CH_DRV.length ? CH_DRV : isBoss(s) ? CH_BOSS : CH_CREW;
 const chAuto = s => { const l = chIn(chListOf(s)); return l[chHash(s.id || s.path) % l.length]; };
-// The fewest is counted over the sessions not idle that keep a person (chCount); a tie goes to the first from the
-// hash's pick on, so devices pinning at once mostly agree.
-const chCount = list => { const n = {}; for (const s of list) if (s.state !== 'idle' && s.char?.who) n[s.char.who] = (n[s.char.who] || 0) + 1; return n; };
+// The fewest is counted over the sessions on show in Orca that keep a person (chCount: its own terminal, or its
+// parent's — what inOrca says, read off the list since chPin runs before IX), so the sessions long ended don't weigh
+// on the people who held them; a tie goes to the first from the hash's pick on, so devices pinning at once mostly agree.
+const chOrca = list => { const f = new Set(list.filter(s => s.orca_focus).map(s => s.id)); return s => !!(s.orca_focus || f.has(s.parent)); };
+const chCount = (list, on = chOrca(list)) => { const n = {}; for (const s of list) if (s.char?.who && on(s)) n[s.char.who] = (n[s.char.who] || 0) + 1; return n; };
 function chLeast(s, cnt) {
   const l = chIn(chListOf(s)), h = chHash(s.id || s.path);
   let best = l[h % l.length];
@@ -3482,7 +3484,7 @@ const chWho = s => { const t = chSnap(s), c = t.char; return CH_ART[c?.who] && (
 const chSent = new Set();
 function chPin(list) {
   if (!chReady) return;
-  const want = {}, cnt = chCount(list.filter(s => CH_ART[s.char?.who] && (s.char.pick || chFits(s.char.who, isBoss(s)))));
+  const want = {}, on = chOrca(list), cnt = chCount(list.filter(s => CH_ART[s.char?.who] && (s.char.pick || chFits(s.char.who, isBoss(s)))), on);
   for (const s of list) {
     if (!s.path || s.path.startsWith('orca-terminal:')) continue;
     const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
@@ -3492,7 +3494,7 @@ function chPin(list) {
     if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
     if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
     s.char = n;
-    if (!n.pick && s.state !== 'idle') cnt[n.who] = (cnt[n.who] || 0) + 1;
+    if (!n.pick && on(s)) cnt[n.who] = (cnt[n.who] || 0) + 1;
     const key = JSON.stringify(n);
     if (chSent.has(s.path + key)) continue;
     chSent.add(s.path + key);
