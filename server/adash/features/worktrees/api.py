@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 from adash.core.util import short
 from adash.features.review import vscode_web
 from adash.features.review.config import VSCODE_CLI
-from adash.features.worktrees.worktrees import NOTE_MAX, known, remove, set_note, worktrees
+from adash.features.worktrees.worktrees import NOTE_MAX, blockers, known, remove, set_note, worktrees
 
 
 def get_worktrees(h, url):
@@ -67,8 +67,10 @@ def post_note(h, url):
 
 def post_remove(h, url):
     """{"path", "force"} -> {"ok"}: remove a listed linked worktree (never a repo's main checkout). Without force, one
-    with uncommitted changes is refused (409, git's reason) so the page can ask again with force. Only from this
-    Mac's loopback: it deletes files there."""
+    that would lose something (blockers: uncommitted changes, a lock, a submodule's worktrees or unpushed commits) is
+    refused (409, {"error", "reasons"}) so the page can ask again with force; one that would lose nothing is removed
+    with git's own refusals overridden, so a clean worktree with submodules goes in one go. Only from this Mac's
+    loopback: it deletes files there."""
     try:
         body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))
         path, force = body["path"], body.get("force", False)
@@ -83,9 +85,10 @@ def post_remove(h, url):
     rp, w = hit
     if w["main"] or w["bare"]:
         return h.send_json({"error": "저장소의 메인 체크아웃은 지울 수 없습니다"}, 409)
-    if w["dirty"] and not force:
-        return h.send_json({"error": f"커밋하지 않은 변경 {w['dirty']}개가 있습니다", "dirty": w["dirty"]}, 409)
-    err = remove(rp, w, force)
+    why = [] if force else blockers(w)
+    if why:
+        return h.send_json({"error": "\n".join(why), "reasons": why}, 409)
+    err = remove(rp, w, True)
     if err:
-        return h.send_json({"error": "삭제 실패: " + err}, 409 if not force else 502)
+        return h.send_json({"error": "삭제 실패: " + err}, 502)
     h.send_json({"ok": True})

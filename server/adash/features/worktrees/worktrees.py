@@ -1,6 +1,8 @@
 """Every git worktree on this Mac, for the 「워크트리」 tab: each repo Orca knows, with all of its worktrees as git lists
-them (`git worktree list`), not only the ones Orca made, so worktrees made by hand or by Claude Code show too. Orca's
-name and comment ride along where Orca has the path. Read on request, cached for a short while.
+them (`git worktree list`), not only the ones Orca made, so worktrees made by hand or by Claude Code show too. A
+submodule's own worktrees (a submodule checked out inside a worktree, with a worktree of its own) are not in any repo
+Orca knows, so the git dirs under each repo's .git are walked for them and each such submodule shows as a repo of its
+own. Orca's name and comment ride along where Orca has the path. Read on request, cached for a short while.
 
 Each worktree can carry a note written on the page, kept by path in server/worktree-notes.json (the dashboard's own:
 Orca's comment field is left to the tools that write it, and worktrees outside Orca have none)."""
@@ -57,14 +59,35 @@ def _status(w):
             "committed": int(ts) if ts.isdigit() else None, "subject": short(subject, 120) or None}
 
 
-def _repo(r, by_path):
-    """One repo's worktrees, its main checkout first. A submodule lists its main worktree as the git dir under the
-    parent's .git/modules, so that row takes the checkout's own path."""
-    out = git_at(r["path"], "worktree", "list", "--porcelain")
-    if out is None:
-        return {"name": r["name"], "path": r["path"], "error": "git worktree list 실패", "worktrees": []}
-    rows = _porcelain(out)
-    top = git_at(r["path"], "rev-parse", "--show-toplevel")
+def nested_gitdirs(gd):
+    """Git dirs under gd (its modules/, and the modules/ of each of its linked worktrees' git dirs, to any depth) that
+    have linked worktrees of their own: the submodules with worktrees. gd itself is not one of them."""
+    found = []
+
+    def walk(d, depth):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            return
+        if "HEAD" in names and ("objects" in names or "commondir" in names):
+            if d != gd and "commondir" not in names and os.path.isdir(os.path.join(d, "worktrees")) \
+                    and os.listdir(os.path.join(d, "worktrees")):
+                found.append(d)
+            for sub in ("modules", "worktrees"):
+                if sub in names:
+                    walk(os.path.join(d, sub), depth + 1)
+        elif depth < 16:  # a submodule's name may hold slashes: modules/a/b/<git dir>
+            for n in names:
+                p = os.path.join(d, n)
+                if os.path.isdir(p) and not os.path.islink(p):
+                    walk(p, depth + 1)
+
+    walk(gd, 0)
+    return found
+
+
+def _rows(r, rows, top, by_path):
+    """r's worktrees as listed, its main checkout first; a main checkout git names by its git dir takes top."""
     for i, w in enumerate(rows):
         w["main"] = i == 0
         if i == 0 and top and "/.git/" in w["path"] + "/":
@@ -76,6 +99,33 @@ def _repo(r, by_path):
     return {"name": r["name"], "path": r["path"], "error": None, "worktrees": rows}
 
 
+def _repo(r, by_path):
+    """One repo's worktrees, its main checkout first. A submodule lists its main worktree as the git dir under the
+    parent's .git/modules, so that row takes the checkout's own path."""
+    out = git_at(r["path"], "worktree", "list", "--porcelain")
+    if out is None:
+        return {"name": r["name"], "path": r["path"], "error": "git worktree list 실패", "worktrees": []}
+    return _rows(r, _porcelain(out), git_at(r["path"], "rev-parse", "--show-toplevel"), by_path)
+
+
+def _module(gd, by_path):
+    """A submodule's worktrees, read from its git dir; its checkout (core.worktree) is the main row. Named after the
+    checkout and the folder it sits in, e.g. 「plang_rails · prd-31-writing」."""
+    try:
+        out = subprocess.run(["git", "--git-dir", gd, "worktree", "list", "--porcelain"], capture_output=True,
+                             text=True, timeout=10)
+        rel = subprocess.run(["git", "--git-dir", gd, "config", "core.worktree"], capture_output=True, text=True,
+                             timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return {"name": os.path.basename(gd), "path": gd, "error": "git worktree list 실패", "worktrees": []}
+    top = os.path.normpath(os.path.join(gd, rel.stdout.strip())) if rel.returncode == 0 and rel.stdout.strip() else None
+    r = {"name": f"{os.path.basename(top)} · {os.path.basename(os.path.dirname(top))}" if top else os.path.basename(gd),
+         "path": top or gd}
+    if out.returncode:
+        return {**r, "error": "git worktree list 실패", "worktrees": []}
+    return _rows(r, _porcelain(out.stdout), top, by_path)
+
+
 def collect():
     repos = [{"name": r.get("displayName") or os.path.basename(r["path"]), "path": r["path"]}
              for r in orca("repo", "list").get("repos") or [] if r.get("kind", "git") == "git" and r.get("path")]
@@ -83,6 +133,12 @@ def collect():
     by_path = {os.path.realpath(w["path"]): w for w in wts if w.get("path")}
     with ThreadPoolExecutor(8) as ex:
         out = list(ex.map(lambda r: _repo(r, by_path), repos))
+        # submodules with worktrees of their own, found under each repo's git dir; one that is itself a repo Orca
+        # knows (its git dir is that repo's) is already listed
+        common = set(filter(None, ex.map(lambda r: git_at(r["path"], "rev-parse", "--path-format=absolute",
+                                                          "--git-common-dir"), repos)))
+        mods = {os.path.realpath(m) for g in common for m in nested_gitdirs(g)} - {os.path.realpath(g) for g in common}
+        out += list(ex.map(lambda gd: _module(gd, by_path), sorted(mods)))
         # a repo listed twice (or the same checkout under two names) shows once
         seen, rows = set(), []
         for rp in out:
@@ -134,10 +190,32 @@ def known(path, fresh=False):
     return (not fresh and hit(worktrees())) or hit(worktrees(fresh=True))
 
 
+def blockers(w):
+    """Why removing w would lose something: uncommitted changes, a lock, worktrees of a submodule inside it (their git
+    dirs live in w's and go with it), commits in its submodules that no remote has (also kept only in w's git dir).
+    Empty when nothing is lost, and then git's refusal of a worktree with submodules is overridden."""
+    if w["missing"] or w["prunable"]:
+        return []
+    out = [f"커밋하지 않은 변경 {w['dirty']}개가 있습니다"] if w["dirty"] else []
+    if w["locked"]:
+        out.append("잠긴 워크트리입니다 (git worktree lock)")
+    gd = git_at(w["path"], "rev-parse", "--absolute-git-dir")
+    n = sum(len(os.listdir(os.path.join(m, "worktrees"))) for m in nested_gitdirs(gd)) if gd else 0
+    if n:
+        out.append(f"안의 서브모듈에 딸린 워크트리 {n}개가 함께 못 쓰게 됩니다 (그것부터 지우세요)")
+    if os.path.isfile(os.path.join(w["path"], ".gitmodules")):
+        sm = git_at(w["path"], "submodule", "foreach", "--recursive", "--quiet",
+                    'test -z "$(git rev-list -1 HEAD --branches --not --remotes)" || echo "$displaypath"', timeout=30)
+        if sm:
+            out.append("원격에 없는 커밋이 있는 서브모듈: " + ", ".join(sm.splitlines()))
+    return out
+
+
 def remove(rp, w, force):
     """Take a linked worktree off disk and out of git: Orca's own through Orca (it also drops the branch when it can
     prove the branch merged), any other with `git worktree remove` (the branch stays). One already gone from disk is
-    pruned. Without force git refuses uncommitted changes and submodules. Returns an error message, or None."""
+    pruned. Without force git refuses uncommitted changes and submodules (see blockers). Returns an error message, or
+    None."""
     main = next((x["path"] for x in rp["worktrees"] if x["main"]), rp["path"])
     if w["missing"] or w["prunable"]:
         cmd = ["git", "-C", main, "worktree", "prune"]

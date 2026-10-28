@@ -2730,8 +2730,9 @@ async function trNoteSave(b) {
   for (const w of trData.servers.find(x => x.server === srv)?.repos.flatMap(rp => rp.worktrees) || []) if (w.path === path) w.note = body.note;
   trEdit = null; trBodyHtml = ''; renderTrees();
 }
-// 삭제: confirmed once; a worktree git will not remove as it is (uncommitted changes, submodules) is asked about again
-// and then forced, which discards those changes.
+// 삭제: confirmed once; the server removes a worktree that loses nothing (a clean one with submodules too) in one go,
+// and one that would lose something (uncommitted changes, a lock, a submodule's worktrees or unpushed commits) comes
+// back 409 with the reasons, is asked about again and then forced.
 async function trRemove(b) {
   const srv = b.dataset.srv, path = b.dataset.trRm;
   const w = trData.servers.find(x => x.server === srv)?.repos.flatMap(rp => rp.worktrees).find(x => x.path === path);
@@ -2748,7 +2749,7 @@ async function trRemove(b) {
   const txt = b.textContent;
   b.disabled = true; b.textContent = '지우는 중…';
   let r = await api.worktreeRemove(srv, path, false);
-  if (r.status === 409 && !gone && await uiConfirm(`${r.body.error || 'git 이 지우기를 거부했습니다'}\n\n강제로 지울까요? 커밋하지 않은 변경은 되살릴 수 없습니다.`, { ok: '강제 삭제', danger: true }))
+  if (r.status === 409 && !gone && await uiConfirm(`${r.body.error || '지우면 잃는 것이 있습니다'}\n\n강제로 지울까요? 위의 것은 되살릴 수 없습니다.`, { ok: '강제 삭제', danger: true }))
     r = await api.worktreeRemove(srv, path, true);
   else if (r.status === 409 && !gone) { b.disabled = false; b.textContent = txt; return; }
   b.disabled = false; b.textContent = txt;
