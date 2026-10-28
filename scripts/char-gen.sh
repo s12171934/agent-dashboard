@@ -30,6 +30,7 @@ CHARS=(
   ren   'young man programmer, messy black hair, round thin glasses, gray eyes, navy blue cardigan over white collared shirt, gray slacks, brown loafers'
   hina  'young woman designer, long pinkish-brown hair in a high ponytail with a red ribbon, green eyes, white blouse with beige knit vest, red plaid skirt, white socks, brown loafers'
   kaede 'team leader woman, long straight black hair, violet eyes, black wireless gaming headset with a small boom microphone worn on her head, dark charcoal blazer over white shirt, black slacks, low black heels'
+  nova  'humanoid android robot with a human-like body shape and height, glossy white ceramic armor panels over a slim dark graphite bodysuit, a rounded white helmet-like head with a smooth black glass visor for a face showing two glowing cyan LED eyes that change shape with its mood (closing to thin lines when it blinks), small round cyan light units at the ears, a thin glowing cyan line down the chest, dark gray mechanical joints at the shoulders, elbows and knees, white gloves, white boots with cyan soles, no hair, no headset'
   yuki  'team leader young man, neat silver hair, light blue eyes, black wireless gaming headset with a small boom microphone worn on his head, light blue shirt with sleeves rolled up and loosened navy tie, black trousers, black shoes'
 )
 desc=${CHARS[$name]:-${CHAR_DESC:-}}
