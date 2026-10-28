@@ -302,7 +302,7 @@ const api = (() => {
     reviewMark: (server, key, done) => post(byId(server), '/api/review/mark', { key, done }),
     // Every git worktree on each server's Mac, for the 워크트리 tab: {servers[{server, name, local, error, repos[{name,
     // path, error, worktrees[{path, name, comment, branch, head, main, orca, detached, locked, prunable, bare, missing,
-    // dirty, committed, subject}]}]}]}. local: the server is this device's loopback, where VS Code can be opened.
+    // dirty, committed, subject, note{text, at} | null}]}]}]}. local: the server is this device's loopback, where VS Code can be opened.
     worktrees: async fresh => {
       const loop = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/;
       return { servers: await Promise.all(enabled().map(async srv => {
@@ -314,6 +314,11 @@ const api = (() => {
     // One listed worktree in a desktop VS Code window on that server's Mac, or {url} (absolute) of the web VS Code on
     // it. Same loopback-only terms as reviewOpen.
     worktreeOpen: (server, path) => post(byId(server), '/api/worktrees/open', { path }),
+    // The note on a listed worktree, kept by that server (blank text removes it): body.note {text, at} | null.
+    worktreeNote: (server, path, text) => post(byId(server), '/api/worktrees/note', { path, text }),
+    // Remove a listed linked worktree on that server's Mac (loopback only). 409 without force when it has uncommitted
+    // changes (body.dirty) or git refuses (submodules): the page asks again with force.
+    worktreeRemove: (server, path, force) => post(byId(server), '/api/worktrees/remove', { path, force }),
     worktreeWeb: async (server, path) => {
       const srv = byId(server), r = await post(srv, '/api/worktrees/web', { path });
       if (r.body.url) r.body.url = srv.url + r.body.url;

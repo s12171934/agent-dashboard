@@ -66,6 +66,8 @@ POST = {
     "/api/chars/redraw": chars.post_char,
     "/api/worktrees/open": worktrees.post_worktree,
     "/api/worktrees/web": worktrees.post_worktree,
+    "/api/worktrees/note": worktrees.post_note,
+    "/api/worktrees/remove": worktrees.post_remove,
     **{f"/api/decision/{a}": decisions.post_decision
        for a in ("ask", "answer", "release", "mode", "inbox", "guard", "dismiss")},
 }

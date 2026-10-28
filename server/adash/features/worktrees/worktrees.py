@@ -1,19 +1,29 @@
 """Every git worktree on this Mac, for the 「워크트리」 tab: each repo Orca knows, with all of its worktrees as git lists
 them (`git worktree list`), not only the ones Orca made, so worktrees made by hand or by Claude Code show too. Orca's
-name and comment ride along where Orca has the path. Read on request, cached for a short while."""
+name and comment ride along where Orca has the path. Read on request, cached for a short while.
 
+Each worktree can carry a note written on the page, kept by path in server/worktree-notes.json (the dashboard's own:
+Orca's comment field is left to the tools that write it, and worktrees outside Orca have none)."""
+
+import json
 import os
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from adash.core.config import HERE
+from adash.core.files import save_json
 from adash.core.git import git_at
-from adash.core.orca import orca
+from adash.core.orca import ORCA_ENV, orca
 from adash.core.util import short
 
 EVERY = 20
 _cache = {"at": 0, "value": None}
 _lock = threading.Lock()
+NOTES = os.path.join(HERE, "worktree-notes.json")  # {path: {"text", "at"}}
+NOTE_MAX = 4000
+_notes_lock = threading.Lock()
 
 
 def _porcelain(text):
@@ -84,15 +94,69 @@ def collect():
     return {"repos": out, "at": time.time()}
 
 
+def _notes():
+    try:
+        with open(NOTES) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def set_note(path, text):
+    """Write (or, with blank text, remove) the note on a worktree. Returns the stored note or None."""
+    with _notes_lock:
+        d = _notes()
+        text = text.strip()
+        if text:
+            d[path] = {"text": text[:NOTE_MAX], "at": time.time()}
+        else:
+            d.pop(path, None)
+        save_json(NOTES, d)
+        return d.get(path)
+
+
 def worktrees(fresh=False):
+    """The cached list with each worktree's note as it is now (notes are not cached: a save shows at once)."""
     with _lock:
         if fresh or not _cache["value"] or time.time() - _cache["at"] > EVERY:
             _cache["value"] = collect()
             _cache["at"] = time.time()
-        return _cache["value"]
+        v = _cache["value"]
+    notes = _notes()
+    return {**v, "repos": [{**rp, "worktrees": [{**w, "note": notes.get(w["path"])} for w in rp["worktrees"]]}
+                           for rp in v["repos"]]}
 
 
-def known(path):
-    """The listed worktree at this path (from the cached list, re-read once when it is not there), or None."""
-    hit = lambda v: next((w for rp in v["repos"] for w in rp["worktrees"] if w["path"] == path), None)
-    return hit(worktrees()) or hit(worktrees(fresh=True))
+def known(path, fresh=False):
+    """(repo, worktree) listed at this path (from the cached list, re-read once when it is not there), or None."""
+    hit = lambda v: next(((rp, w) for rp in v["repos"] for w in rp["worktrees"] if w["path"] == path), None)
+    return (not fresh and hit(worktrees())) or hit(worktrees(fresh=True))
+
+
+def remove(rp, w, force):
+    """Take a linked worktree off disk and out of git: Orca's own through Orca (it also drops the branch when it can
+    prove the branch merged), any other with `git worktree remove` (the branch stays). One already gone from disk is
+    pruned. Without force git refuses uncommitted changes and submodules. Returns an error message, or None."""
+    main = next((x["path"] for x in rp["worktrees"] if x["main"]), rp["path"])
+    if w["missing"] or w["prunable"]:
+        cmd = ["git", "-C", main, "worktree", "prune"]
+    elif w["orca"]:
+        cmd = ["orca", "worktree", "rm", "--worktree", "path:" + w["path"], *(["--force"] if force else []), "--json"]
+    else:
+        cmd = ["git", "-C", main, "worktree", "remove", *(["--force", "--force"] if force else []), w["path"]]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=ORCA_ENV)
+    except subprocess.TimeoutExpired:
+        return "2분 안에 끝나지 않았습니다"
+    if r.returncode:
+        return short(r.stderr or r.stdout, 400) or f"종료 코드 {r.returncode}"
+    if os.path.isdir(w["path"]) and not (w["missing"] or w["prunable"]):
+        return "명령은 끝났지만 폴더가 남아 있습니다"
+    with _notes_lock:
+        d = _notes()
+        if d.pop(w["path"], None):
+            save_json(NOTES, d)
+    with _lock:
+        _cache["at"] = 0  # the next read lists again
+    return None
