@@ -59,7 +59,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
 | 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
-| 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 `server/worktree-notes.json` 에 쓴다 |
+| 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`(그 .git 아래 워크트리를 가진 서브모듈 git 디렉터리도)·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 `server/worktree-notes.json` 에 쓴다 |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
 
