@@ -366,6 +366,7 @@ async function renderView(navigated) {
   $('#dz-pane-chk').checked = dz.pane;
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
   document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom figure (맞춤), on the bar
+  $('#chsort-btn').hidden = !office || r.v !== 'agents';  // 홈 has no worktree rooms to sort
   if (!office) document.documentElement.classList.remove('ch-full');
   if (r.v === 'home') { if (charMode) renderOffice(); else renderHome(); }
   else if (r.v === 'agents') renderAgents();
@@ -3585,8 +3586,8 @@ const WALL = {
     <path class="w3-pen b" d="M36 30l6-8 6 5 7-11"/><rect class="w3-note a" x="54" y="9" width="11" height="10" transform="rotate(4 59 14)"/><rect class="w3-note b" x="12" y="31" width="10" height="9" transform="rotate(-5 17 35)"/><rect class="w3-tray" x="20" y="44" width="34" height="3" rx="1"/></svg>`,
 };
 const WALL_ORDER = ['window', 'shelf', 'window', 'clock', 'poster', 'window', 'board', 'shelf', 'window', 'poster', 'clock', 'window'];
-const wallHtml = key => { const k = chHash(key) % WALL_ORDER.length;
-  return `<div class="room-wall" aria-hidden="true">${[...WALL_ORDER.slice(k), ...WALL_ORDER.slice(0, k)].map(w => `<span class="wall-item">${WALL[w]()}</span>`).join('')}</div>`; };
+const wallHtml = (key, order = WALL_ORDER) => { const k = chHash(key) % order.length;
+  return `<div class="room-wall" aria-hidden="true">${[...order.slice(k), ...order.slice(0, k)].map(w => `<span class="wall-item">${WALL[w]()}</span>`).join('')}</div>`; };
 
 // A bubble's text: home and long paths cut to their last two parts (~/…/a/b), a break allowed after each slash, at most
 // 60 characters.
@@ -3660,8 +3661,22 @@ function chPicker(d) {
 const chSt = m => m.drv ? m.state : subBg(m, agg(m), status(m));  // a person's state in the office (a driver: drvSt)
 const roomCount = ms => { const n = k => ms.filter(m => k.includes(chSt(m))).length;
   return [['일하는 중', n(['run', 'bg'])], ['결정', ms.filter(m => m.decision).length], ['응답 없음', n(['stalled'])]].filter(([, c]) => c).map(([l, c]) => `${l} <b>${c}</b>`).concat(`전체 <b>${ms.length}</b>`).join(' · '); };
-const roomBox = (title, key, ms, extra = '') => `<section class="box room" data-room="${esc(key)}"><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
-    <div class="room-floor">${wallHtml(key)}${ms.map(charHtml).join('')}</div></section>`;
+// A project's rooms share a look (projLook): the wall's tint, the floor (planks, tiles, carpet or parquet) and the set of
+// decorations on the wall, each room turning the set by its own key — so rooms of one project read as one floor of the
+// building, and the next project's as another.
+const PROJ_HUE = [212, 24, 148, 282, 350, 48, 186, 318, 96, 252];
+const PROJ_FLOOR = ['wood', 'tile', 'carpet', 'parquet'];
+const PROJ_WALL = [
+  ['window', 'shelf', 'window', 'clock', 'poster', 'window', 'board', 'shelf', 'window', 'poster', 'clock', 'window'],
+  ['board', 'window', 'clock', 'board', 'window', 'shelf', 'board', 'window', 'clock', 'window'],
+  ['shelf', 'poster', 'window', 'shelf', 'clock', 'poster', 'window', 'shelf', 'poster', 'window'],
+  ['poster', 'window', 'poster', 'clock', 'window', 'board', 'poster', 'window', 'shelf', 'window'],
+];
+const projLook = proj => { if (!proj) return null; const h = chHash(proj);
+  return { hue: PROJ_HUE[h % PROJ_HUE.length], floor: PROJ_FLOOR[(h >>> 4) % PROJ_FLOOR.length], wall: PROJ_WALL[(h >>> 8) % PROJ_WALL.length] }; };
+const roomBox = (title, key, ms, extra = '', proj = '') => { const lk = projLook(proj);
+  return `<section class="box room${lk ? ` fl-${lk.floor}` : ''}" data-room="${esc(key)}"${lk ? ` style="--rh:${lk.hue}"` : ''}><div class="room-h"><b>${title}</b>${extra}<span class="room-n">${roomCount(ms)}</span></div>
+    <div class="room-floor">${wallHtml(key, lk?.wall)}${ms.map(charHtml).join('')}</div></section>`; };
 // One room per worktree (wtKey): everyone on show sits where they run, so a coordinator and the workers it sent to other
 // worktrees sit in different rooms. Each coordinator with workers on show leads a team with its own colour and name
 // (chFam, FAM_TEAM, teamName): its people wear a chip in that colour — the coordinator 「★ QA-123 로그인 오류 팀 팀장 · N명」, a worker 「◆ QA-123 로그인 오류 팀」,
@@ -3735,7 +3750,7 @@ function officeRooms(people) {
   // the server goes with each room, so renderOffice can put each server's rooms in its own company
   return order.map(k => {
     const ms = by.get(k).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y)), p = ms.find(m => m.place)?.place, name = roomName(p);
-    return { srv: ms[0].server || '', ms, html: roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}`) };
+    return { srv: ms[0].server || '', proj: p?.project || '', ms, html: roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}`, p?.project) };
   });
 }
 // A person's family chips (charHtml): as a coordinator, then as a worker (a sub-coordinator wears both).
@@ -4181,6 +4196,31 @@ function lobbySign(people) {
 }
 // A company's sign (one per metrics server, once two or more are on): across the plane above its rooms, with the
 // server's name, its rooms and people, and the server's address in the tooltip.
+// 「프로젝트별」 (chSort, the bar's 정렬 button, this device only): a company's rooms by project, in name order, each
+// project behind its own sign (a strip in the project's colour, projLook); the rooms of a project keep their order.
+// 「팀순」 leaves the order officeRooms gives (linked rooms together, the most urgent first).
+let chSort = 'team';
+try { if (localStorage.getItem('adash.chsort') === 'proj') chSort = 'proj'; } catch {}
+const chSortShow = () => { $('#k-chsort').textContent = chSort === 'proj' ? '프로젝트별' : '팀순'; $('#chsort-btn').setAttribute('aria-pressed', chSort === 'proj'); };
+chSortShow();
+$('#chsort-btn').onclick = () => {
+  chSort = chSort === 'proj' ? 'team' : 'proj';
+  try { localStorage.setItem('adash.chsort', chSort); } catch {}
+  chSortShow();
+  chView.fit = true;  // the rooms move: fit them all again
+  if ($('#view .office')) renderOffice();
+};
+function byProj(rs) {
+  if (chSort !== 'proj') return rs.map(r => r.html);
+  const by = new Map();
+  for (const r of rs) (by.get(r.proj) || by.set(r.proj, []).get(r.proj)).push(r);
+  return [...by].sort(([x], [y]) => !x - !y || x.localeCompare(y, 'ko')).flatMap(([proj, prs]) => [projSign(proj, prs), ...prs.map(r => r.html)]);
+}
+function projSign(proj, rs) {
+  const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length, lk = projLook(proj);
+  return `<div class="ch-proj" data-proj="${esc((rs[0]?.srv || '') + '|' + proj)}"${lk ? ` style="--rh:${lk.hue}"` : ''}><b class="pj-name">${proj ? `▤ ${esc(proj)}` : '위치 미상'}</b>
+    <span class="pj-n">방 <b>${rs.length}</b> · <b>${ms.length}</b>명 · 일하는 중 <b>${busy}</b>${dec ? ` · 결정 <b>${dec}</b>` : ''}</span></div>`;
+}
 function coSign(x, rs) {
   const ms = rs.flatMap(r => r.ms), busy = ms.filter(s => ['run', 'bg'].includes(chSt(s))).length, dec = ms.filter(s => s.decision).length;
   return `<div class="ch-co" title="${esc(`메트릭 서버 ${x.url}`)}"><b class="co-name">${esc(x.name)}</b>
@@ -4196,8 +4236,8 @@ let chLast = {};  // the office last built (renderOffice): its element, its HTML
 // people in a room (CH_KEYED) are matched by key (chKey) — one that changed in shape (a person in another state) is
 // put in anew (ctx.fresh), the rest are patched and stay, moved only when the order changed. Anything else rebuilds.
 // The office's own additions (chLinks' lines and team tags, after everything) are not in the trees and are left alone.
-const CH_SOFT = '.ch-say, .ch-meta, .ch-wp, .room-n, .lobby-sign, .wall-item, .co-n, .vl-board-list', CH_KEYED = '.ch-world, .room-floor';
-const chKey = n => n.dataset.room || n.dataset.id || n.className + '|' + (n.title || '');
+const CH_SOFT = '.ch-say, .ch-meta, .ch-wp, .room-n, .lobby-sign, .wall-item, .co-n, .pj-n, .vl-board-list', CH_KEYED = '.ch-world, .room-floor';
+const chKey = n => n.dataset.room || n.dataset.proj || n.dataset.id || n.className + '|' + (n.title || '');
 function chPatch(l, a, b, ctx) {
   if (!l || a.nodeType !== b.nodeType || l.nodeType !== a.nodeType) return false;
   if (a.nodeType !== 1) { if (a.data !== b.data) ctx.ops.push(() => { l.data = b.data; }); return true; }
@@ -4265,7 +4305,7 @@ function renderOffice() {
   // Two or more servers on: each server is a company of its own — a sign across the plane, then that server's rooms —
   // in the order of the server list. Team lines still cross companies.
   const cos = multiSrv() ? srvOn().map(x => ({ x, rs: placed.filter(r => r.srv === x.id) })).filter(c => c.rs.length) : [];
-  const rooms = [home ? staffRoom(people) : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...c.rs.map(r => r.html)]) : placed.map(r => r.html)).filter(Boolean);
+  const rooms = [home ? staffRoom(people) : ''].concat(cos.length ? cos.flatMap(c => [coSign(c.x, c.rs), ...byProj(c.rs)]) : byProj(placed)).filter(Boolean);
   // rooms in a grid as square as it goes (the biggest company's rooms), one column on a narrow screen; together as wide as the canvas at 100%
   const most = cos.length ? Math.max(...cos.map(c => c.rs.length)) : rooms.length;
   const narrow = $('#view').clientWidth <= 700, cols = narrow ? 1 : Math.ceil(Math.sqrt(most));
