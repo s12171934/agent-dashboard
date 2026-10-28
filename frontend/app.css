@@ -1577,7 +1577,12 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .ch-name { display: flex; align-items: center; gap: 5px; box-sizing: border-box; padding: 2px 8px 3px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--text);
   background: var(--panel); border: 1px solid var(--line); box-shadow: inset 0 -3px var(--c), 0 2px 5px color-mix(in srgb, var(--ink) 18%, transparent); }
 .ch-meta { padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; color: color-mix(in srgb, var(--text) 72%, var(--panel)); background: color-mix(in srgb, var(--panel) 92%, transparent); }
-.ch-far .ch-meta, .ch-far .ch-far-x { display: none; }
+.ch-far .ch-meta, .ch-far .ch-far-x, .ch-far .ch-wp-n { display: none; }
+/* a coordinator's worker plan (wpMini) under its name tag: the bar always, the count when not far */
+.ch-wp { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 120px; max-width: 100%; margin-top: 1px; padding: 3px 6px; border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent); }
+.ch-wp .pbar { height: 5px; }
+.ch-wp-n { font-size: 10.5px; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--text) 72%, var(--panel)); }
 .ch-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* a flex item's own text cannot take the ellipsis */
 .ch-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .ch.st-run .ch-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
