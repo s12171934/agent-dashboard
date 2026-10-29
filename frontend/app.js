@@ -673,7 +673,7 @@ function plannedPlace(t, coordPlace) {
 
 // ---------- coordinator worker plan: its Runs' Tasks, planned (Task row) → spawned (worker session) → settled ----------
 const WP_LABEL = { planned: '계획됨', blocked: '선행 대기', spawned: '워커 실행', done: '완료', fail: '실패', skip: '취소' };
-const WP_IC = { planned: '', blocked: '…', spawned: '●', done: '✓', fail: '✕', skip: '–' };
+const WP_IC = { planned: '', blocked: '…', spawned: '●', done: '✓', fail: '✕', skip: '–', manual: '◇' };
 // ---------- time estimates ----------
 // A task's expected run time comes from sibling tasks that already finished in the same Orca run
 // (same model when available): they got the same kind of brief, so their times cluster. Measured on this
@@ -1343,7 +1343,7 @@ function famHtml(f, wk) {
 // The Jira key comes from the worktree the ticket's workers ran in, else from the task specs.
 // Returns '' when the run does not follow that naming, so the caller falls back to a plain worker list.
 const TK_ST = { completed: 'done', failed: 'fail', cancelled: 'skip' };
-const TK_IC = { done: '✓', fail: '✗', skip: '–', run: '●', bg: '◍', wait: '◐', stalled: '!', idle: '·', pending: '○', blocked: '◌' };
+const TK_IC = { done: '✓', fail: '✗', skip: '–', run: '●', bg: '◍', wait: '◐', stalled: '!', idle: '·', pending: '○', blocked: '◌', manual: '◇' };
 function taskState(t) {
   if (TK_ST[t.status]) return TK_ST[t.status];
   const w = estIndex().sess[t.id];
@@ -1417,7 +1417,7 @@ function ticketsHtml(d, activeOnly) {
       ${sheetOpen ? `<div class="tk-body">${onlySheet.map(k => `<div class="cbr"><span class="cbn">${esc(k.pkg)}</span>${k.key ? `<span class="tk-key">${esc(k.key)}</span>` : ''}${k.tasks.map(chip).join('')}</div>`).join('')}</div>` : ''}</div>` : ''}</div>`;
 }
 // ---------- external driver plans: a roster written ahead of time by a driver script (server: ext_plans) ----------
-const XP_KIND = { sheet: '착수 시트', impl: '구현', 'review-codex': '리뷰 codex', 'review-claude': '리뷰 claude', judge: '판정', driver: '드라이버', extra: '추가 태스크',
+const XP_KIND = { manual: '수동', sheet: '착수 시트', impl: '구현', 'review-codex': '리뷰 codex', 'review-claude': '리뷰 claude', judge: '판정', driver: '드라이버', extra: '추가 태스크',
   'contract-check': '실서버 대조', 'integration-review': '통합 리뷰', 'pr-review': 'PR 리뷰', 'completion-review': '구현 완료 리뷰', audit: '감사' };
 // Per-session tags: how an impl's verify box is checked, why a box was added after start (and which round of the check
 // added it), a review's round, whose server a contract check reads. The server fills reason_auto / round_auto from the
@@ -1458,11 +1458,12 @@ function xwtHtml(p) {
 const wtChain = items => { const ks = items.map(t => t.k).filter(k => k.worktree).sort((a, b) => (a.chain_position ?? 0) - (b.chain_position ?? 0));
   return ks.length ? ` · 워크트리 체인 ${ks.map(k => k.worktree.status === 'created' ? `<b>${esc(k.package)}</b>` : esc(k.package)).join(' → ')}` : ''; };
 const XP_TICKET = { verified: '검증 완료', closed: '1차 종결', running: '실행 중', ready: '준비됨', started: '착수', blocked: '선행 대기', planned: '계획됨',
-  rebase_pending: '리베이스 대기', box_waiting: '체크박스 차례 대기', box_deferred: '체크박스 이월' };
+  rebase_pending: '리베이스 대기', box_waiting: '체크박스 차례 대기', box_deferred: '체크박스 이월', manual: '수동' };
 // verified, or closed (first round wrapped up; deferred checkboxes move to a later batch)
 const tkDone = k => k.status === 'verified' || k.status === 'closed';
-const XP_PLAN = { planned: ['planned', '생성 예정'], created: ['planned', '생성 예정(태스크 등록됨)'], spawned: ['spawned', '워커 실행'], done: ['done', '완료'] };
-const XP_CHIP = { done: 'done', fail: 'fail', skip: 'skip', spawned: 'run', planned: 'pending', blocked: 'blocked' };
+// manual: a session of a 수동 ticket (one the driver does not run; a person does)
+const XP_PLAN = { planned: ['planned', '생성 예정'], created: ['planned', '생성 예정(태스크 등록됨)'], spawned: ['spawned', '워커 실행'], done: ['done', '완료'], manual: ['manual', '사람 진행'] };
+const XP_CHIP = { done: 'done', fail: 'fail', skip: 'skip', spawned: 'run', planned: 'pending', blocked: 'blocked', manual: 'manual' };
 function extPlanRow(x, ticket, byTitle, sess) {
   // The driver names its Orca task after the plan key; title matches count only inside the ticket's own run
   // (other runs reuse the same titles, e.g. test runs), so a ticket without a run matches by task_id alone.
@@ -1479,6 +1480,8 @@ function extPlanRow(x, ticket, byTitle, sess) {
 }
 // The full driver roster: one driver per ticket, ordered by repo chain then chain position.
 // done = ticket verified · run = its driver terminal exists · wait = not created yet (hold / predecessors / launch slot).
+// manual = a ticket outside the driver (status 'manual': a person runs it, no repo, no driver): listed, but counted apart
+// from the driver's totals. The plan does not say whether it is done.
 function driverPlan(p) {
   const repos = [], seen = {}, verified = new Set(p.tickets.filter(tkDone).map(k => k.package));
   p.tickets.forEach(k => { if (!repos.includes(k.repo)) repos.push(k.repo); });
@@ -1487,9 +1490,9 @@ function driverPlan(p) {
     const pos = k.chain_position ?? inRepo.indexOf(k) + 1, len = k.chain_length ?? inRepo.length;
     // Only a ticket the driver reports as running is 실행. A driver also exits mid-ticket (rebase_pending: done, waiting for
     // the previous ticket in its chain; box_waiting: waiting for its next checkbox's turn), so a driver handle alone is not enough.
-    const st = tkDone(k) ? 'done' : k.status === 'running' ? 'run' : 'wait';
+    const st = tkDone(k) ? 'done' : k.status === 'manual' ? 'manual' : k.status === 'running' ? 'run' : 'wait';
     const open = (k.predecessors || []).filter(x => !verified.has(x));
-    const why = st !== 'wait' ? null : k.hold ? { k: 'hold', t: '보류: ' + k.hold }
+    const why = st === 'manual' ? { k: 'manual', t: k.hold || '드라이버 밖 — 사람이 진행' } : st !== 'wait' ? null : k.hold ? { k: 'hold', t: '보류: ' + k.hold }
       : k.status === 'rebase_pending' ? { k: 'pred', t: '리베이스 대기: 구현 완료, 체인 앞 티켓 검증 뒤 재검증' }
       : k.status === 'box_waiting' ? { k: 'pred', t: '체크박스 차례 대기' }
       : k.status === 'box_deferred' ? { k: 'hold', t: '체크박스 이월' }
@@ -1498,15 +1501,15 @@ function driverPlan(p) {
     return { k, pos, len, st, why, planned: (k.sessions || []).filter(x => x.kind !== 'driver').length };
   }).sort((a, b) => repos.indexOf(a.k.repo) - repos.indexOf(b.k.repo) || a.pos - b.pos);
   const c = x => list.filter(y => y.st === x).length, w = x => list.filter(y => y.why?.k === x).length;
-  return { list, total: list.length, done: c('done'), run: c('run'), wait: c('wait'), hold: w('hold'), pred: w('pred'), start: w('start') };
+  return { list, total: list.length - c('manual'), done: c('done'), run: c('run'), wait: c('wait'), hold: w('hold'), pred: w('pred'), start: w('start'), manual: c('manual') };
 }
 // Every ticket of a driver plan as one chip (state, checkbox progress), always under the coordinator's plan line.
-const TKP = { done: ['done', '완료'], run: ['run', '드라이버 실행'], hold: ['blocked', '보류'], pred: ['blocked', '선행 대기'], start: ['pending', '기동 대기'] };
+const TKP = { done: ['done', '완료'], run: ['run', '드라이버 실행'], hold: ['blocked', '보류'], pred: ['blocked', '선행 대기'], start: ['pending', '기동 대기'], manual: ['manual', '수동'] };
 // A driver plan's tickets grouped by repository, in the plan's repo order (driverPlan sorts by repo, then chain position).
 function byRepo(items, repoOf = x => x.k.repo) {
   const groups = [];
   for (const x of items) {
-    const r = repoOf(x) || '저장소 없음';
+    const r = repoOf(x) || (x.k.status === 'manual' ? '수동 티켓' : '저장소 없음');
     let g = groups.find(y => y.repo === r);
     if (!g) groups.push(g = { repo: r, items: [] });
     g.items.push(x);
@@ -1516,7 +1519,7 @@ function byRepo(items, repoOf = x => x.k.repo) {
 // One repository's chain at a glance: tickets verified, running, waiting, and checkboxes done across them.
 const repoLine = xs => {
   const c = st => xs.filter(x => x.st === st).length, sum = f => xs.reduce((a, x) => a + (x.k[f] ?? 0), 0);
-  return `티켓 ${xs.length} · 완료 ${c('done')}${c('run') ? ` · 실행 <b style="color:var(--run)">${c('run')}</b>` : ''}${c('wait') ? ` · 대기 ${c('wait')}` : ''} · 체크박스 ${sum('boxes_done')}/${sum('boxes_total')}`;
+  return `티켓 ${xs.length} · 완료 ${c('done')}${c('run') ? ` · 실행 <b style="color:var(--run)">${c('run')}</b>` : ''}${c('wait') ? ` · 대기 ${c('wait')}` : ''}${c('manual') ? ` · 수동 ${c('manual')}` : ''} · 체크박스 ${sum('boxes_done')}/${sum('boxes_total')}`;
 };
 // One padded tag group per repository (its name on top, its ticket chips below), so a long repo name never pushes
 // the chips around; the groups flow side by side and wrap.
@@ -1525,7 +1528,7 @@ const ticketStrip = dp => `<div class="xp-strip">${byRepo(dp.list).map(g => `<di
   const tip = `${k.package}${k.jira ? ' · ' + k.jira : ''} · ${x.why && x.st === 'wait' ? x.why.t : XP_TICKET[k.status] || lbl} · 체크박스 ${k.boxes_done ?? 0}/${k.boxes_total ?? 0}`;
   return `<span class="tkc ${cls}" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${esc(k.package)} ${k.boxes_done ?? 0}/${k.boxes_total ?? 0}</span>`;
 }).join('')}</div></div>`).join('')}</div>`;
-const drvPlanLine = dp => `<b>드라이버 계획</b> 전체 ${dp.total} · 완료 ${dp.done} · 실행 <b style="color:var(--run)">${dp.run}</b> · 생성 예정 ${dp.wait}${dp.wait ? ` (보류 ${dp.hold} · 선행 대기 ${dp.pred} · <b style="color:var(--accent)">기동 대기 ${dp.start}</b>)` : ''}`;
+const drvPlanLine = dp => `<b>드라이버 계획</b> 전체 ${dp.total} · 완료 ${dp.done} · 실행 <b style="color:var(--run)">${dp.run}</b> · 생성 예정 ${dp.wait}${dp.wait ? ` (보류 ${dp.hold} · 선행 대기 ${dp.pred} · <b style="color:var(--accent)">기동 대기 ${dp.start}</b>)` : ''}${dp.manual ? ` · <span title="드라이버 밖 — 사람이 진행하는 티켓, 위 전체에 들지 않음">수동 티켓 ${dp.manual}</span>` : ''}`;
 const pdrvName = k => `${k.driver_terminal || k.package} 드라이버(생성 예정)`;
 // Coordinator family: scheduler first, then every ticket's driver in chain order — a real terminal at its first ticket's slot
 // (listing the tickets it drove), a dashed placeholder for a ticket whose driver does not exist yet.
@@ -1562,7 +1565,7 @@ function driversHtml(f, wk) {
         (p.tickets.filter(o => o.driver_terminal_handle === h).every(tkDone) ? finished : parts).push(dh({ handle: h, title: termOwner(h).title || x.k.driver_terminal || h, workers: [], runs: IX.runsByCoord[h] || [], drove: [x.k.package] }));
         continue;
       }
-      if (x.st === 'done') continue;
+      if (x.st === 'done' || x.st === 'manual') continue;  // a 수동 ticket gets no driver
       later.push(`<div class="drv xp-pdrv"><div class="drv-h"><b>⚙ ${esc(pdrvName(x.k))}</b>${x.k.jira ? `<span class="tk-key">${esc(x.k.jira)}</span>` : ''}<span>${esc(x.k.repo)} ${x.pos}/${x.len}</span>${x.why ? `<span class="xp-why ${x.why.k}">${esc(x.why.t)}</span>` : ''}<span>세션 예정 ${x.planned}</span></div></div>`);
     }
   }
@@ -1735,15 +1738,15 @@ function extPlansHtml(plans) {
       return ((k.run_id && state.orca.tasks[k.run_id]) || []).filter(t => !t.plan_row && !keys.has(t.task_title) && !ids.has(t.id) && TASK_NAME.exec(taskName(t))?.[1] === k.package)
         .map(t => ({ key: t.task_title, kind: 'extra', task_id: t.id, deps: [], status: '' })); };
     // Grouped by repository (each repo is one chain); inside a repo, started tickets lead the ones still waiting.
-    const tickets = byRepo(dp.list).flatMap(g => [...g.items.filter(d => d.st !== 'wait'), ...g.items.filter(d => d.st === 'wait')])
+    const tickets = byRepo(dp.list).flatMap(g => [...g.items.filter(d => d.st !== 'wait' && d.st !== 'manual'), ...g.items.filter(d => d.st === 'wait'), ...g.items.filter(d => d.st === 'manual')])
       .map(d => ({ k: d.k, x: d, rows: [...(d.k.sessions || []), ...extra(d.k)].map(x => extPlanRow(x, d.k, byTitle, sess)) }));
     const all = tally(tickets.flatMap(t => t.rows));
     const ticketHtml = ({ k, x, rows }) => {
       const id = 'ext:' + p.path + ':' + k.package, open = famMin[id] ?? !tkDone(k), n = tally(rows);
       const shared = p.tickets.filter(o => o !== k && o.driver_terminal_handle && o.driver_terminal_handle === k.driver_terminal_handle).map(o => o.package);
       return `<div class="tk ${open ? 'open' : ''}">
-        <div class="tk-h" data-ttoggle="${esc(id)}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>⚙ ${x.st === 'wait' ? esc(pdrvName(k)) : `${esc(k.driver_terminal || k.package)} 드라이버(스크립트)`}</b>${k.jira ? `<span class="tk-key">${esc(k.jira)}</span>` : ''}
-          <span>${esc(k.repo || '')} ${x.pos}/${x.len}</span>${x.why ? `<span class="xp-why ${x.why.k}">${esc(x.why.t)}</span>` : ''}<span title="${esc(k.driver_terminal_handle || '')}">${termNote(k.driver_terminal_handle)}${shared.length ? ` · 공유: ${shared.map(esc).join('·')}` : ''}</span>${k.run_id ? `<a href="#r=${esc(k.run_id)}" style="color:var(--accent)">Run</a>` : ''}<span>${esc(XP_TICKET[k.status] || k.status)}</span><span>체크박스 <b>${k.boxes_done ?? 0}/${k.boxes_total ?? 0}</b></span><span>${cnt(n)}</span>
+        <div class="tk-h" data-ttoggle="${esc(id)}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${x.st === 'manual' ? `◇ ${esc(k.package)} (수동)` : `⚙ ${x.st === 'wait' ? esc(pdrvName(k)) : `${esc(k.driver_terminal || k.package)} 드라이버(스크립트)`}`}</b>${k.jira ? `<span class="tk-key">${esc(k.jira)}</span>` : ''}
+          ${x.st === 'manual' ? '' : `<span>${esc(k.repo || '')} ${x.pos}/${x.len}</span>`}${x.why ? `<span class="xp-why ${x.why.k}">${esc(x.why.t)}</span>` : ''}<span title="${esc(k.driver_terminal_handle || '')}">${termNote(k.driver_terminal_handle)}${shared.length ? ` · 공유: ${shared.map(esc).join('·')}` : ''}</span>${k.run_id ? `<a href="#r=${esc(k.run_id)}" style="color:var(--accent)">Run</a>` : ''}<span>${esc(XP_TICKET[k.status] || k.status)}</span><span>체크박스 <b>${k.boxes_done ?? 0}/${k.boxes_total ?? 0}</b></span><span>${cnt(n)}</span>
           <span class="tk-bar">${pbar({ steps: rows.filter(r => !r.drv).map(r => r.st === 'spawned' && r.w && status(r.w) !== 'run' ? (status(r.w) === 'stalled' ? 'fail' : 'wait') : r.st) })}</span></div>
         ${tkWtHtml(k)}${e2eHtml(k)}
         ${open ? `<div class="tk-body">${rows.map(line).join('')}</div>` : ''}</div>`;
