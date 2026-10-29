@@ -6,7 +6,8 @@ import WebKit
 // and a tap presses the page's own element, so every handler, popover and checkbox works as on the bar, and an item
 // the page adds shows up here by itself. With the native bar on, the page's bar is hidden and its popovers open as a
 // sheet at the bottom, above the native row (--native-bar, set by the app), and its own 설정 button (.dock-fab) is hidden
-// too. Items the bar keeps in its 설정 menu (data-more) are read from there.
+// too. Items the bar keeps in its 설정 menu (data-more) are read from there, and those beside its 설정 (data-fab) from
+// .dock-fab (fab: the app puts them beside its own 설정).
 enum DockBridge {
     static let script = """
     (() => {
@@ -20,7 +21,8 @@ enum DockBridge {
       // ds-dock.js's own key for an item, so an item is found again after the bar moves it into its 설정 menu
       const keyOf = e => e.dataset.key || e.id || e.querySelector('input')?.id || e.getAttribute('href') || e.dataset.tip;
       const isItem = e => !e.hidden && !e.matches('.dock-cfg, .dock-show, .dock-launch, .dock-head') && (e.matches('ds-theme-toggle') || e.dataset.tip);
-      const all = () => [...(dock()?.children || []), ...(document.querySelector('.dock-menu')?.querySelectorAll('[data-tip], ds-theme-toggle, .dock-sep') || [])];
+      const all = () => [...(dock()?.children || []), ...(document.querySelector('.dock-fab')?.children || []),
+        ...(document.querySelector('.dock-menu')?.querySelectorAll('[data-tip], ds-theme-toggle, .dock-sep') || [])];
       const items = () => all().map(e => {
         if (e.matches('.dock-sep')) return e.dataset.label ? { sep: e.dataset.label } : null;
         if (!isItem(e)) return null;
@@ -29,7 +31,7 @@ enum DockBridge {
           icon: btn ? 'theme' : e.querySelector('ds-icon')?.getAttribute('name') || '',
           on: e.classList.contains('on') || !!input?.checked || e.getAttribute('aria-pressed') === 'true',
           badge: e.querySelector('b.dn:not([hidden])')?.textContent || '', text: e.querySelector(':scope > span')?.textContent || '',
-          toggle: !!input };
+          toggle: !!input, fab: !!e.closest('.dock-fab') };
       }).filter(Boolean);
       let on = false, timer = 0;
       const send = () => { clearTimeout(timer); timer = setTimeout(() => {
@@ -69,6 +71,7 @@ enum DockBridge {
         let key: String, tip: String, icon: String, on: Bool, badge: String, text: String
         let sep: String?
         var isToggle = false  // a checkbox (a filter, a mode): pressing flips it
+        var isFab = false  // beside 설정 (data-fab), not in its sheet
         // the name without the page's extra words ("결정 대기: 에이전트가…", "홈 · 내 차례 1")
         var name: String { String(tip.split(separator: ":")[0].split(separator: "·")[0]).trimmingCharacters(in: .whitespaces) }
     }
@@ -77,7 +80,7 @@ enum DockBridge {
         raw.map { d in
             Item(key: d["key"] as? String ?? "", tip: d["tip"] as? String ?? "", icon: d["icon"] as? String ?? "",
                  on: d["on"] as? Bool ?? false, badge: d["badge"] as? String ?? "", text: d["text"] as? String ?? "",
-                 sep: d["sep"] as? String, isToggle: d["toggle"] as? Bool ?? false)
+                 sep: d["sep"] as? String, isToggle: d["toggle"] as? Bool ?? false, isFab: d["fab"] as? Bool ?? false)
         }
     }
 

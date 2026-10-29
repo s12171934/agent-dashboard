@@ -12,6 +12,9 @@
 // menu, a row with its data-tip as the name (a separator's data-label heads a group there); a phone shows the same
 // bar, the menu as a sheet across the screen. The element moves, not a copy, so its id, handlers, checkbox and hidden
 // keep working. A count badge up in the menu shows on its row there only: 설정 gets no dot.
+// data-fab on a child keeps it off the bar and out of the menu: it sits in 설정's own round box, beside 설정 (on its
+// left by a bottom or top bar, below it by a side bar), and is not in 「바에 둘 항목」. The box's width is set as
+// --dock-fab-w on <html>, so a phone's bar leaves it room.
 // Half folded (see below) this element adds .dock-head (sheet-title attribute, default 「이동과 설정」) and toggles
 // [open], which turns the bar into a sheet of all its own children.
 // 「바에 둘 항목」 in the 설정 menu lets the user move any named item (data-tip) between the bar and the menu; the choice
@@ -41,7 +44,7 @@ class DsDock extends HTMLElement {
       (parseFloat(getComputedStyle(above).top) || 0) + above.offsetHeight + 'px');
     if (above) { new ResizeObserver(inset).observe(above); addEventListener('resize', inset); }
     // each named child (and data-more separator) keeps a marker at its place in the bar, to go back to
-    this.more = [...this.children].filter(e => e.dataset.tip || e.hasAttribute('data-more')).map(e => {
+    this.more = [...this.children].filter(e => e.dataset.tip || e.hasAttribute('data-more') || e.hasAttribute('data-fab')).map(e => {
       const mark = document.createComment('dock-more');
       e.before(mark);
       return [e, mark];
@@ -54,6 +57,7 @@ class DsDock extends HTMLElement {
     fab.className = 'dock-fab';
     fab.append(btn);
     document.body.append(fab);
+    new ResizeObserver(() => document.documentElement.style.setProperty('--dock-fab-w', fab.offsetWidth + 'px')).observe(fab);
 
     const menu = this.menu = document.createElement('div');
     menu.className = 'dock-menu dock-pop';
@@ -101,10 +105,12 @@ class DsDock extends HTMLElement {
     const p = prefs()[keyOf(e)];
     return p ? p === 'more' : e.hasAttribute('data-more');
   }
+  // data-fab items beside 설정, menu items in its menu, the rest on the bar; half folded, all on the bar (its sheet)
   place() {
     const box = this.menu.querySelector('.dock-more');
     for (const [el, mark] of this.more) {
-      if (HALF() || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
+      if (!HALF() && el.hasAttribute('data-fab')) this.fab.append(el);
+      else if (HALF() || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
     }
     this.seps();
   }
@@ -123,7 +129,7 @@ class DsDock extends HTMLElement {
   }
   // the 「바에 둘 항목」 list: one checkbox per named item, checked = on the bar
   picks() {
-    this.menu.querySelector('.dock-pick').innerHTML = this.more.filter(([e]) => e.dataset.tip).map(([e]) => {
+    this.menu.querySelector('.dock-pick').innerHTML = this.more.filter(([e]) => e.dataset.tip && !e.hasAttribute('data-fab')).map(([e]) => {
       const icon = e.querySelector('ds-icon')?.getAttribute('name') || (e.localName === 'ds-theme-toggle' ? 'sun' : 'grid');
       return `<label><ds-icon name="${icon}"></ds-icon><span>${esc(e.dataset.tip)}</span><input type="checkbox" data-k="${esc(keyOf(e))}"${this.inMore(e) ? '' : ' checked'}></label>`;
     }).join('');

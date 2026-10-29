@@ -33,10 +33,10 @@ ds-dock:not([open]) > [data-name]::before { content: attr(data-name); order: 2; 
 ds-dock:not([open]) > [data-name]::after { display: none; }
 ds-dock:not([open]) > [data-name] svg { width: calc(var(--dock-sz) * .48); height: calc(var(--dock-sz) * .48); }
 ds-dock:not([open]) > [data-name] .dn { right: 6px; }
-/* 설정: as tall as the bar of named items, its icon a little larger */
-.dock-fab > .dock-cfg { width: calc(var(--dock-sz) + 12px); height: calc(var(--dock-sz) + 12px); color: var(--text); }
+/* 설정 (and the data-fab items beside it): as tall as the bar of named items, its icon a little larger */
+.dock-fab > .dock-btn { width: calc(var(--dock-sz) + 12px); height: calc(var(--dock-sz) + 12px); color: var(--text); }
 .dock-fab svg { width: calc(var(--dock-sz) * .55); height: calc(var(--dock-sz) * .55); }
-.dock-fab > .dock-cfg:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dock-fab > .dock-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 :root:has(.dock-menu:not([hidden])) .dock-fab > .dock-cfg { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
 ds-dock .dn { position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; font-size: 10px; line-height: 16px;
   text-align: center; font-weight: 700; color: var(--on-warn); background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
@@ -101,19 +101,23 @@ ds-dock:not([open]) > .dock-sep[data-empty] { display: none; }
   overflow-y: auto; scrollbar-width: none; overscroll-behavior-y: contain; }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock::-webkit-scrollbar { display: none; }
 :root[data-dock="left"] ds-dock { left: calc(12px + env(safe-area-inset-left)); } :root[data-dock="right"] ds-dock { right: calc(12px + env(safe-area-inset-right)); }
-/* 설정 beside the bar: at the right end of a bottom or top bar's edge; for a side bar at the top right, below the
-   status bar's clock */
+/* 설정 beside the bar: at the right end of a bottom or top bar's edge, a data-fab item on its left; for a side bar at
+   the top right, below the status bar's clock, a data-fab item below it */
+.dock-fab > :not(.dock-cfg) { order: -1; }
+:root:is([data-dock="left"], [data-dock="right"]) .dock-fab { flex-direction: column; border-radius: 26px; }
+:root:is([data-dock="left"], [data-dock="right"]) .dock-fab > :not(.dock-cfg) { order: 0; }
 :root[data-dock="bottom"] .dock-fab { right: max(8px, env(safe-area-inset-right)); bottom: var(--dock-bottom); }
 :root[data-dock="top"] .dock-fab { right: max(8px, env(safe-area-inset-right)); top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); }
 :root:is([data-dock="left"], [data-dock="right"]) .dock-fab { right: calc(12px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top)); }
 /* no hover (a touch screen): a tap would leave the name stuck on screen, and aria-label already names the button */
 @media (hover: none) { ds-dock [data-tip]::after { display: none; } }
 
-/* phone (≤500px): the same bar across the bottom (dock-boot.js keeps it there), 설정 at its right, the 설정 menu a sheet across the screen
+/* phone (≤500px): the same bar across the bottom (dock-boot.js keeps it there), 설정 at its right (the bar leaves
+   --dock-fab-w, its box's width, set by ds-dock.js), the 설정 menu a sheet across the screen
    above it. The children stay the page's elements, so ids, checkboxes and click handlers keep working. */
 .dock-head { display: none; }
 @media (max-width: 500px) {
-  :root[data-dock] ds-dock { left: max(8px, env(safe-area-inset-left)); right: calc(max(8px, env(safe-area-inset-right)) + var(--dock-sz) + 32px); top: auto; bottom: var(--dock-bottom);
+  :root[data-dock] ds-dock { left: max(8px, env(safe-area-inset-left)); right: calc(max(8px, env(safe-area-inset-right)) + var(--dock-fab-w, calc(var(--dock-sz) + 24px)) + 8px); top: auto; bottom: var(--dock-bottom);
     width: auto; max-width: none; transform: none; padding: 5px; }
   :root[data-dock] .dock-fab { left: auto; right: max(8px, env(safe-area-inset-right)); top: auto; bottom: var(--dock-bottom); }
   :root[data-dock] .dock-menu.dock-pop { border-radius: 22px; }
