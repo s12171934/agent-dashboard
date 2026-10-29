@@ -571,6 +571,8 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
   .tc-col { max-width: 84%; }
 }
 .tests-all { margin-left: auto; font-size: 12px; }
+.trow .cbr > a, h3 .tests-all { color: var(--accent); text-decoration: none; }
+h3 .tests-all { float: right; font-weight: 400; }
 #tests-q { padding: 6px 10px; min-width: 200px; }
 
 /* the page's surfaces, drawn in the current material (ds materials/*.css): large panes */
@@ -1144,12 +1146,15 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 
 /* coordinator detail: summary line, folding sections, checkbox flow graph + side panel, worker table */
 .o-sum .pline { display: flex; flex-wrap: wrap; gap: 2px 14px; white-space: normal; }
-.dsec { margin: 4px 0; }
-.dsec > summary { cursor: pointer; list-style: none; }
-.dsec > summary::-webkit-details-marker { display: none; }
-.dsec > summary h2::before { content: "▸"; display: inline-block; width: 16px; color: var(--accent); }
-.dsec[open] > summary h2::before { content: "▾"; }
-.dsec > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+/* session detail: the summary box, then one tab per kind of content */
+.d-sum { display: flex; flex-direction: column; gap: 8px; }
+.d-sum .o-sum .pline { margin: 0; }
+.d-sum-l { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; white-space: normal; }
+.d-tabs { margin: 2px 0 12px; }
+.d-tab-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; vertical-align: 2px; }
+.d-tab-dot.run { background: var(--run); }
+.d-tab-dot.bad { background: var(--bad); }
+.d-pane[hidden], .chat-box[hidden] { display: none; }
 .fl { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
 .fl-wrap { position: relative; isolation: isolate; min-width: 0; }
 .fl-edges { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; }
