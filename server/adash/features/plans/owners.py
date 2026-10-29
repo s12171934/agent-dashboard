@@ -19,6 +19,9 @@ def resolve_plan_owner(path, plan, summaries):
     problem is reported (a restart used to cut the scheduler loose from its coordinator for the first snapshots)."""
     top = [sm for sm in summaries if not sm["parent"]]
     by_handle = {sm["own_handle"]: sm for sm in sorted(top, key=lambda sm: sm["last_ts"] or "") if sm.get("own_handle")}
+    for sm in top:  # a resumed coordinator's new terminal (coordinator.json rewritten to it) is still that session
+        for h in sm.get("own_aliases") or []:
+            by_handle.setdefault(h, sm)
     by_id = {}
     for sm in top:
         by_id[sm["id"]] = by_id[os.path.splitext(os.path.basename(sm["path"]))[0]] = sm
