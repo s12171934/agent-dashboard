@@ -152,10 +152,12 @@ ds-dock[open] .dock-sep { grid-column: 1 / -1; width: auto; height: auto; margin
 ds-dock[open] .dock-sep::after { content: attr(data-label); }
 /* half folded (<html data-posture>, fold.js): the sheet fills the second half — the right in "book" (held sideways),
    the bottom in "laptop" (upright) — and the page keeps to the first, as on the cover screen. Popovers open over the
-   page's half. Nothing to close, and no 설정 button (the position and size choices do not apply). */
+   page's half. Nothing to close, and no 설정 button (the position and size choices do not apply). Held sideways it
+   runs to the screen's right edge: an app that lays the page over iPhone Duo's side strip has the strip as a right
+   safe-area inset, which left that much of the sheet empty. */
 :root[data-posture] ds-dock[open] { max-height: none; border-radius: 0; box-shadow: none; align-content: start; }
 :root[data-posture="book"] ds-dock[open] { top: 0; left: calc(var(--seg-w) + var(--pane-gap)); border-width: 0 0 0 1px;
-  padding: calc(4px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) 16px; }
+  padding: calc(4px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom)) 16px; }
 :root[data-posture="laptop"] ds-dock[open] { top: calc(50% + var(--pane-gap) / 2); border-width: 1px 0 0; }
 :root[data-posture] :is(ds-dock .dock-show, .dock-fab) { display: none; }
 
