@@ -19,4 +19,5 @@ design-refs.json
 # web VS Code: serve-web's data and the relay's secret (review/vscode_web.py)
 vscode-web/
 plan-usage.json
+qa-sheets.json
 worktree-notes.json

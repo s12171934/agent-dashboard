@@ -8,6 +8,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from adash.core.config import HERE
+from adash.core.files import read_json_cached
 from adash.core.git import git_at
 from adash.core.jira import jira_epic
 from adash.core.log import log
@@ -30,6 +32,12 @@ def retired_at(watch):
         return datetime.fromtimestamp(os.path.getmtime(os.path.join(watch, "retired")), timezone.utc).isoformat() if watch else None
     except OSError:
         return None
+
+
+def qa_sheet(qs):
+    """The set's TC sheet progress as `aqa sheet` last recorded it (server/qa-sheets.json), with the sheet's link."""
+    got = read_json_cached(os.path.join(HERE, "qa-sheets.json")).get(qs.get("epic"))
+    return {**got, "url": qs.get("sheet")} if got or qs.get("sheet") else None
 
 
 def review_pass(jira, prs, stats):
@@ -141,7 +149,7 @@ def review_pass(jira, prs, stats):
                      "retired": bool(watch) and os.path.exists(os.path.join(watch, "retired")),
                      "retired_at": retired_at(watch),
                      "finished": bool(children) and all(jira_stage(c) == "qa" for c in children),
-                     "stages": QA_STAGES})
+                     "sheet": qa_sheet(qs), "stages": QA_STAGES})
     autos = qa_automations([s["epic"] for s in sets])
     live = {x["handle"] for x in orca_state.get("terminals") or [] if x.get("connected")}
     for s in sets:
