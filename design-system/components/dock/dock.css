@@ -2,14 +2,15 @@
    (dock-boot.js) puts it on an edge; --dock-inset-top keeps a top dock under a sticky header. The page keeps its own
    gutter on that side. Children: <a> tabs (.on = current), <button class="dock-btn">, <label class="dock-btn"> toggles,
    <i class="dock-sep">; data-tip names one on hover, <b class="dn"> on one is a count badge. Like the App Store's tab bar,
-   an item with data-name shows that name under its icon (and no hover name). */
-ds-dock { position: fixed; z-index: 40; display: flex; align-items: center; gap: 2px; padding: 5px;
+   an item with data-name shows that name under its icon (and no hover name). .dock-fab: 설정, the round button ds-dock.js
+   puts beside the bar, as tall as a bar of named items. */
+ds-dock, .dock-fab { position: fixed; z-index: 40; display: flex; align-items: center; gap: 2px; padding: 5px;
   border: 1px solid var(--surface-edge); border-radius: 99px; background: var(--surface-sheen), var(--surface-strong);
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow-float); }
 ds-dock > a, .dock-btn { position: relative; transition: background .15s, color .15s; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
   width: var(--dock-sz); height: var(--dock-sz); padding: 0; border: 0; border-radius: 99px; color: var(--muted);
   text-decoration: none; white-space: nowrap; cursor: pointer; }
-ds-dock svg { width: calc(var(--dock-sz) * .5); height: calc(var(--dock-sz) * .5); flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+:is(ds-dock, .dock-fab) svg { width: calc(var(--dock-sz) * .5); height: calc(var(--dock-sz) * .5); flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* the bar is the one surface; icons on it are flat, the current tab and lit filters get an accent tint */
 ds-dock > a:hover, .dock-btn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
 ds-dock > a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
@@ -32,8 +33,12 @@ ds-dock:not([open]) > [data-name]::before { content: attr(data-name); order: 2; 
 ds-dock:not([open]) > [data-name]::after { display: none; }
 ds-dock:not([open]) > [data-name] svg { width: calc(var(--dock-sz) * .48); height: calc(var(--dock-sz) * .48); }
 ds-dock:not([open]) > [data-name] .dn { right: 6px; }
-/* ⋯ with a count badge up among the menu's items */
-ds-dock:not([open]) > .dock-cfg.dot::after { display: block; content: ""; position: absolute; inset: 4px 10px auto auto; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%;
+/* 설정: as tall as the bar of named items, its icon a little larger; a count badge up among the menu's items puts a dot on it */
+.dock-fab > .dock-cfg { width: calc(var(--dock-sz) + 12px); height: calc(var(--dock-sz) + 12px); color: var(--text); }
+.dock-fab svg { width: calc(var(--dock-sz) * .55); height: calc(var(--dock-sz) * .55); }
+.dock-fab > .dock-cfg:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+:root:has(.dock-menu:not([hidden])) .dock-fab > .dock-cfg { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.dock-fab > .dock-cfg.dot::after { display: block; content: ""; position: absolute; inset: 4px 10px auto auto; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%;
   opacity: 1; transform: none; background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
 ds-dock .dn { position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; font-size: 10px; line-height: 16px;
   text-align: center; font-weight: 700; color: var(--on-warn); background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
@@ -58,6 +63,7 @@ ds-dock .dn[hidden] { display: none; }
 .dock-more:empty { display: none; }
 .dock-more :is(a, .dock-btn) { display: flex; align-items: center; width: auto; height: 36px; justify-content: flex-start; gap: 10px; padding: 0 10px;
   border: 0; border-radius: 10px; background: none; color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+.dock-more :is(a, .dock-btn)[hidden] { display: none; }  /* an item the page hides (one for another screen) */
 .dock-more :is(a, .dock-btn):hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .dock-more :is(a, .dock-btn):focus-visible, .dock-more .dock-btn:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dock-more svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
@@ -86,7 +92,7 @@ ds-dock .dn[hidden] { display: none; }
 ds-dock:not([open]) > .dock-sep[data-empty] { display: none; }
 /* folded (<html data-dock-hidden>, never on a phone: dock-boot.js): only .dock-show, which unfolds the bar */
 .dock-show { display: none; }
-:root[data-dock-hidden] ds-dock > :not(.dock-show) { display: none; }
+:root[data-dock-hidden] ds-dock > :not(.dock-show), :root[data-dock-hidden] .dock-fab { display: none; }
 :root[data-dock-hidden] ds-dock > .dock-show { display: inline-flex; opacity: .75; }
 :root[data-dock-hidden] ds-dock > .dock-show:hover { opacity: 1; }
 :root[data-dock="bottom"] ds-dock { left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); max-width: calc(100% - 16px); }
@@ -97,16 +103,22 @@ ds-dock:not([open]) > .dock-sep[data-empty] { display: none; }
   overflow-y: auto; scrollbar-width: none; overscroll-behavior-y: contain; }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock::-webkit-scrollbar { display: none; }
 :root[data-dock="left"] ds-dock { left: calc(12px + env(safe-area-inset-left)); } :root[data-dock="right"] ds-dock { right: calc(12px + env(safe-area-inset-right)); }
+/* 설정 beside the bar: at the right end of a bottom or top bar's edge; for a side bar at the top right, below the
+   status bar's clock */
+:root[data-dock="bottom"] .dock-fab { right: max(8px, env(safe-area-inset-right)); bottom: var(--dock-bottom); }
+:root[data-dock="top"] .dock-fab { right: max(8px, env(safe-area-inset-right)); top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px); }
+:root:is([data-dock="left"], [data-dock="right"]) .dock-fab { right: calc(12px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top)); }
 /* no hover (a touch screen): a tap would leave the name stuck on screen, and aria-label already names the button */
 @media (hover: none) { ds-dock [data-tip]::after { display: none; } }
 
-/* phone (≤500px): the same bar across the bottom (dock-boot.js keeps it there), the ⋯ menu a sheet across the screen
+/* phone (≤500px): the same bar across the bottom (dock-boot.js keeps it there), 설정 at its right, the 설정 menu a sheet across the screen
    above it. The children stay the page's elements, so ids, checkboxes and click handlers keep working. */
 .dock-head { display: none; }
 @media (max-width: 500px) {
-  :root[data-dock] ds-dock { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: auto; bottom: var(--dock-bottom);
+  :root[data-dock] ds-dock { left: max(8px, env(safe-area-inset-left)); right: calc(max(8px, env(safe-area-inset-right)) + var(--dock-sz) + 32px); top: auto; bottom: var(--dock-bottom);
     width: auto; max-width: none; transform: none; padding: 5px; }
-  :root[data-dock] .dock-menu.dock-pop { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); transform: none; border-radius: 22px; }
+  :root[data-dock] .dock-fab { left: auto; right: max(8px, env(safe-area-inset-right)); top: auto; bottom: var(--dock-bottom); }
+  :root[data-dock] .dock-menu.dock-pop { border-radius: 22px; }
   .dock-more :is(a, .dock-btn) { height: 44px; font-size: 15px; }
   /* the bar spans the screen, as the system's tab bar does: named items share what the others leave */
   ds-dock:not([open]) > [data-name] { flex: 1 1 0; min-width: 0; padding: 0 2px; }
@@ -137,12 +149,12 @@ ds-dock[open] .dock-sep { grid-column: 1 / -1; width: auto; height: auto; margin
 ds-dock[open] .dock-sep::after { content: attr(data-label); }
 /* half folded (<html data-posture>, fold.js): the sheet fills the second half — the right in "book" (held sideways),
    the bottom in "laptop" (upright) — and the page keeps to the first, as on the cover screen. Popovers open over the
-   page's half. Nothing to close, and no ⋯ menu (the position and size choices do not apply). */
+   page's half. Nothing to close, and no 설정 button (the position and size choices do not apply). */
 :root[data-posture] ds-dock[open] { max-height: none; border-radius: 0; box-shadow: none; align-content: start; }
 :root[data-posture="book"] ds-dock[open] { top: 0; left: calc(var(--seg-w) + var(--pane-gap)); border-width: 0 0 0 1px;
   padding: calc(4px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) 16px; }
 :root[data-posture="laptop"] ds-dock[open] { top: calc(50% + var(--pane-gap) / 2); border-width: 1px 0 0; }
-:root[data-posture] ds-dock :is(.dock-cfg, .dock-show) { display: none; }
+:root[data-posture] :is(ds-dock .dock-show, .dock-fab) { display: none; }
 
 /* .dock-pop: a popover that opens off the dock, on the side facing the page. It sits --dock-reach (the largest bar)
    from the edge, so resizing the bar moves nothing. Give it position: fixed and a z-index above the dock; open and
@@ -152,6 +164,13 @@ ds-dock[open] .dock-sep::after { content: attr(data-label); }
 :root[data-dock="top"] .dock-pop { left: 50%; transform: translateX(-50%); top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px + var(--dock-reach) + 10px); }
 :root[data-dock="left"] .dock-pop { left: calc(12px + env(safe-area-inset-left) + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
 :root[data-dock="right"] .dock-pop { right: calc(12px + env(safe-area-inset-right) + var(--dock-reach) + 10px); top: 50%; transform: translateY(-50%); }
+/* the 설정 menu opens off 설정, at its corner of the screen; on a phone across the screen above the bar */
+:root[data-dock] .dock-menu.dock-pop { left: auto; right: max(8px, env(safe-area-inset-right)); transform: none; }
+:root[data-dock="bottom"] .dock-menu.dock-pop { top: auto; bottom: calc(var(--dock-bottom) + var(--dock-sz) + 24px + 10px); }
+:root[data-dock="top"] .dock-menu.dock-pop { bottom: auto; top: calc(var(--dock-inset-top, env(safe-area-inset-top)) + 10px + var(--dock-sz) + 24px + 10px); }
+:root:is([data-dock="left"], [data-dock="right"]) .dock-menu.dock-pop { right: calc(12px + env(safe-area-inset-right)); bottom: auto;
+  top: calc(12px + env(safe-area-inset-top) + var(--dock-sz) + 24px + 10px); }
+@media (max-width: 500px) { :root[data-dock] .dock-menu.dock-pop { left: max(8px, env(safe-area-inset-left)); } }
 /* a hinge the browser reports: a top or bottom bar and its popovers centre on the first screen, not across the fold */
 @media (horizontal-viewport-segments: 2) {
   :root:is([data-dock="bottom"], [data-dock="top"]) :is(ds-dock, .dock-pop) { left: calc(var(--seg-w) / 2); }

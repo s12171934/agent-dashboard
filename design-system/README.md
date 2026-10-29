@@ -64,7 +64,7 @@ design-system/
 | --- | --- | --- |
 | 아이콘 | `<ds-icon name="users">` — `icons.svg` 의 심볼. 자기는 `display: contents`, 크기는 놓는 쪽이 `… svg` 로 정한다 (기본 1em) | `icon/` |
 | 상태 필 | `<ds-pill state="run\|wait\|idle\|done\|bg\|stalled">라벨</ds-pill>` — 앞의 점은 엘리먼트가 넣는다 | `pill/` |
-| 플로팅 바 | `<ds-dock>` 안에 `<a>` 탭(`.on` = 현재), `<button class="dock-btn">`, `<label class="dock-btn"><input type="checkbox">…</label>` 토글, `<i class="dock-sep">`. `data-tip` 은 호버 이름, `<b class="dn">` 은 개수 배지. `data-name` 을 붙인 항목은 앱스토어 탭 바처럼 아이콘 아래 이름이 붙는다(자주 쓰는 화면 몇 개에만). 마지막에 ⋯ 더보기 · 바 설정(위치·크기·바에 둘 항목·바 숨기기)을 스스로 붙인다. `data-more` 를 붙인 항목은 바에서 빠져 ⋯ 「더 보기」 메뉴의 이름 붙은 행이 되고(묶음 제목은 `.dock-sep` 의 `data-label`), 메뉴 안에 개수 배지가 뜨면 ⋯ 에 점이 찍힌다. 사용자는 「바에 둘 항목」에서 이름(`data-tip`) 있는 항목마다 바·메뉴를 바꿀 수 있고(기본값은 `data-more`), 「바 숨기기」로 바를 버튼 하나로 접는다(휴대폰 제외). 양쪽 옆에 보이는 항목이 없는 `.dock-sep` 는 스스로 숨는다. 휴대폰에서도 같은 바가 아래에 있고 ⋯ 메뉴가 화면 폭 시트로 열린다. 반 접힘에서는 모든 항목이 둘째 화면의 이름 붙은 시트(`[open]`)가 된다 | `dock/` |
+| 플로팅 바 | `<ds-dock>` 안에 `<a>` 탭(`.on` = 현재), `<button class="dock-btn">`, `<label class="dock-btn"><input type="checkbox">…</label>` 토글, `<i class="dock-sep">`. `data-tip` 은 호버 이름, `<b class="dn">` 은 개수 배지. `data-name` 을 붙인 항목은 앱스토어 탭 바처럼 아이콘 아래 이름이 붙는다(자주 쓰는 화면 몇 개에만). 바 옆(아래·위 바면 그 줄 오른쪽 끝, 옆 바면 화면 오른쪽 위 상태 막대 시계 아래)에 둥근 「설정」 버튼(`.dock-fab`, 위치·크기·바에 둘 항목·바 숨기기)을 스스로 붙인다. `data-more` 를 붙인 항목은 바에서 빠져 「설정」 메뉴의 이름 붙은 행이 되고(묶음 제목은 `.dock-sep` 의 `data-label`), 메뉴 안에 개수 배지가 뜨면 「설정」에 점이 찍힌다. 사용자는 「바에 둘 항목」에서 이름(`data-tip`) 있는 항목마다 바·메뉴를 바꿀 수 있고(기본값은 `data-more`), 「바 숨기기」로 바를 버튼 하나로 접는다(휴대폰 제외). 양쪽 옆에 보이는 항목이 없는 `.dock-sep` 는 스스로 숨는다. 휴대폰에서도 같은 바와 「설정」이 아래에 있고 「설정」 메뉴가 화면 폭 시트로 열린다. 반 접힘에서는 모든 항목이 둘째 화면의 이름 붙은 시트(`[open]`)가 된다 | `dock/` |
 | 바 팝오버 | `.dock-pop` — 바 쪽에서 열리는 팝오버 자리. `hidden` 으로 열고 닫으며, 하나가 열리면 다른 `.dock-pop` 은 닫히고, 바·`<dialog>` 밖을 누르면 열린 것이 닫힌다. 위치는 바의 최대 크기 기준이라 크기를 바꿔도 움직이지 않는다 | `dock/` |
 | 표면 | `.surface`, `.surface.surface-strong` — 현재 재질로 그린 판 | `surface/` |
 | 테마 버튼 | `<ds-theme-toggle button-class="…">` — 시스템 → 라이트 → 다크 순환, 아이콘·이름을 스스로 갱신 | `theme-toggle/` |
@@ -94,7 +94,7 @@ design-system/
 폭 세 단계(`max-width` 900 태블릿 · 700 좁은 화면 · 500 휴대폰)와 입력 방식(`pointer: coarse`, `hover: none`)을 따로 본다. 규칙은 GUIDELINES 10장(B1–B7).
 
 - 토큰: `--gutter` (페이지 가장자리 여백, 700px 이하 12px), `--tap` (누르는 영역, 손가락 기기 36px).
-- 컴포넌트가 스스로 하는 것: 휴대폰에서 바는 아래 가운데에 붙고 이름 붙은 항목이 폭에 맞게 좁아지며, ⋯ 메뉴는 화면 폭 시트(44px 행)로 열림(위치 설정은 휴대폰에서 쓰지 않음), 호버 없는 기기에서 바 이름표 끔, `.seg`·`.tscroll` 가로 스크롤, 손가락 기기에서 `.act`·`.tgl`·`.field` 누르는 영역 확대와 입력란 16px.
+- 컴포넌트가 스스로 하는 것: 휴대폰에서 바는 아래 가운데에 붙고 이름 붙은 항목이 폭에 맞게 좁아지며, 「설정」 메뉴는 화면 폭 시트(44px 행)로 열림(위치 설정은 휴대폰에서 쓰지 않음), 호버 없는 기기에서 바 이름표 끔, `.seg`·`.tscroll` 가로 스크롤, 손가락 기기에서 `.act`·`.tgl`·`.field` 누르는 영역 확대와 입력란 16px.
 - 미리보기 위쪽에 지금 폭 단계가 보인다. 창 폭을 바꾸거나 개발자 도구 기기 모드로 확인한다.
 
 ### 접이식 (펼친 화면)
@@ -119,7 +119,7 @@ design-system/
 
 - 페이지가 정하는 값: `--dock-inset-top` (위쪽 바를 끈적한 헤더 아래로 내릴 거리), 바가 가리지 않도록 본문에 두는 여백. 본문 좌우 여백은 `--gutter` 를 쓴다.
 - 페이지가 바에 주는 속성(선택): 항목의 `data-name` (바에서 아이콘 아래 이름), `sheet-title` (반 접힘 시트 제목), `.dock-sep` 의 `data-label` (더보기 메뉴·시트의 묶음 제목).
-- 기기별 저장값: `adash.theme`, `adash.theme.custom`, `adash.material` (theme.js), `adash.dock`, `adash.dock.size`, `adash.dock.hidden`, `adash.dock.items.v2` (dock-boot.js · ds-dock.js).
+- 기기별 저장값: `adash.theme`, `adash.theme.custom`, `adash.material` (theme.js), `adash.dock`, `adash.dock.size`, `adash.dock.hidden`, `adash.dock.items.v3` (dock-boot.js · ds-dock.js).
 
 ## 고칠 때
 
