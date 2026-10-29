@@ -23,6 +23,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
+| `apple/` | macOS·iPhone 앱(배포된 페이지를 감싼 네이티브 셸)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
 | `exports/` | 공개 스키마 | |
 
 ```
@@ -132,6 +133,24 @@ DEPLOY_OUT=/tmp/adash-out scripts/deploy-frontend.sh   # 배포하지 않고 올
 - 배포할 때 페이지가 이름으로 불러오는 파일(`index.html` 의 스크립트·스타일, `ds.css` 의 `@import`, `ds.js` 의 `import`, 아이콘 스프라이트 `icons.svg`)에 `?v=<build>` 를 붙인다(원본은 그대로). `dashboard.s-dante.com` zone 이 `_headers` 의 `no-cache` 를 무시하고 JS·CSS·SVG 를 4시간 브라우저 캐시로 내보내서, 새 `index.html` 이 예전 `app.js`·`app.css`·`icons.svg` 와 섞여 화면이 깨졌기 때문이다(`*.pages.dev` 주소는 `no-cache` 그대로). 근본적으로는 그 zone 의 Caching → Browser Cache TTL 을 「Respect Existing Headers」로 두면 된다. 서비스 워커는 파일을 쿼리 없이 경로로 캐시한다.
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 1분마다, 그리고 화면에 다시 나타나거나 포커스·네트워크를 되찾을 때마다(10초에 한 번까지) 이것을 확인해 새 배포면 서비스 워커를 갱신하고 새로 고친다. 설치한 PWA 는 다시 열기보다 백그라운드에서 돌아오는 일이 많아서다.
 - 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server/adash/http/snapshot.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
+
+## macOS·iPhone 앱 (`apple/`)
+
+배포된 페이지를 그대로 띄우는 네이티브 셸이다. 페이지를 묶어 넣지 않으므로 프론트 배포가 앱을 다시 빌드하지 않아도 보인다. PWA 와 함께 쓴다.
+
+```sh
+brew install xcodegen          # 한 번. Xcode 27.1 이상(iPhone Duo 의 옆 띠)
+apple/build.sh mac             # macOS 앱 → ~/Applications/Agent Dashboard.app
+apple/build.sh sim             # 켜진 시뮬레이터 (SIM=<udid>)
+apple/build.sh ios             # 연결한 iPhone (팀 필요)
+apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 생성 (첫 빌드에서 저절로, git 에는 없음)
+```
+
+- 서명: 기본은 Apple ID 없는 로컬 서명(이 Mac 에서만, 알림 없음). `ADASH_TEAM=<팀>` 또는 `apple/.team`(git 무시)에 팀 ID 를 두면 그 팀으로 서명한다. 무료 Apple ID 의 Personal Team 으로 충분하고, iPhone 설치는 7일 동안 유효해서 그 뒤에는 `apple/build.sh ios` 를 다시 돌린다.
+- **macOS:** 창 여러 개·탭, 메뉴 막대의 결정 대기 메뉴, Dock 배지, 알림(선택지 버튼으로 바로 답함). 페이지의 「앱 아이콘」 선택이 Dock 아이콘이 된다. 페이지는 앱 안의 루프백 프록시(`http://127.0.0.1:8790`)로 띄운다. https 페이지가 http 루프백 서버를 부르는 것을 WebKit 이 막기 때문이다. 이 프록시는 `/vscode/` 도 메트릭 서버로 그대로 넘겨서, 웹 VS Code 를 페이지와 같은 출처로 연다. 출처가 다른 iframe 은 WebKit 이 클릭 전까지 30fps 이하로 그린다.
+- **iPhone:** 시스템 탭 바(페이지 바의 다섯 탭 — 홈·에이전트·QA·프로젝트·테스트 — 와 더보기)가 페이지의 플로팅 바를 대신한다(`DockBridge`). 반쯤 접은 iPhone Duo 에서는 탭 바를 숨기고 페이지의 분할 화면을 쓴다. 「앱 아이콘」 선택은 앱의 대체 아이콘으로 바뀐다(캐릭터 얼굴은 제외).
+- **위젯(iPhone):** 결정 대기(선택지가 하나인 질문은 위젯 버튼으로 답함)·에이전트(상태별 수와 최근 에이전트)·테스트(실행 중인 테스트의 진행). 홈 화면과 잠금 화면에 둘 수 있다. 메트릭 서버의 `/api/glance`(수 KB 요약)를 읽고, 서버 주소는 앱이 키체인 공유 그룹으로 넘긴다(무료 팀은 App Group 을 쓸 수 없다). 누르면 앱이 `agentdash://` 로 그 화면이나 세션을 연다.
+- 알림과 결정 감시는 앱이 떠 있을 때(iPhone 은 내려 둔 직후까지)만 돈다. 메트릭 서버 주소는 페이지의 서버 목록에서 받는다.
 
 ## 플로팅 바 — 이동·필터·현황·설정
 
