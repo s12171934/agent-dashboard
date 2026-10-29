@@ -2098,13 +2098,6 @@ function testsTabHtml(runs, many) {
     <div class="tests tests-done">${runs.slice(0, DTEST_MAX).map(t => testRow(many ? t : { ...t, sess: null, owner: null }, false, true)).join('')}</div>
     ${runs.length > DTEST_MAX ? `<div class="st" style="margin-top:6px">최근 ${DTEST_MAX}건만 보입니다. 나머지는 「테스트」 탭에서 찾을 수 있습니다.</div>` : ''}</div>`;
 }
-// One line for the detail's summary: what is running, else how the last run ended.
-function testSumHtml(runs) {
-  if (!runs.length) return '';
-  const live = runs.filter(testLive), last = runs.find(t => !testLive(t)), nf = runs.filter(t => !testLive(t) && testFailed(t)).length;
-  const lastHtml = last ? `<span class="tkc ${testFailed(last) ? 'fail' : 'done'}" title="${esc(last.label || last.key || '')}"><i>${TK_IC[testFailed(last) ? 'fail' : 'done']}</i>마지막 ${testFailed(last) ? '실패' : '통과'} · ${ago(last.finished_at)}</span>` : '';
-  return `<span>테스트 <b>${runs.length - live.length}</b>회${nf ? ` · <b style="color:var(--bad)">실패 ${nf}</b>` : ''}</span>${live.length ? `<span class="tkc run"><i>${TK_IC.run}</i>실행 중 ${live.length}</span>` : ''}${lastHtml}`;
-}
 
 // ---------- 「테스트」 tab: running tests plus every finished run the server kept (/api/tests, 30 days) ----------
 const TEST_SPANS = { 1: '24시간', 7: '7일', 30: '30일' }, TEST_RESULTS = { all: '전체', failed: '실패', done: '통과' };
@@ -5482,14 +5475,14 @@ function renderSession(navigated) {
       <div class="box"><h3>로그 <span class="st">최근 ${d.log.length}건</span></h3>
         <div class="log">${d.log.map(l => `<div class="${l.role} ${hlTurn !== null && l.turn === hlTurn ? 'hl' : ''}"><span class="st">${hhmm(l.ts)}</span><span class="r">${l.role}${l.turn >= 0 ? ' #' + (l.turn + 1) : ''}</span>
           <span class="${l.error ? 'err' : ''}"><b class="r">${window.innerWidth <= 700 || isFold() ? esc(l.role) + ' ' : ''}</b>${esc(l.text)}${l.detail ? ' <span class="st">' + esc(l.detail) + '</span>' : ''}${l.size ? ' <span class="st">(' + fmt(l.size) + '자)</span>' : ''}</span></div>`).join('')}</div></div>`;
-  // The page is a summary that is always there (relations, coordinator plan bar and workers, plan, figures, tests), then
-  // one tab per kind of content. A coordinator (workers, a worker plan or a driver plan) opens on 오케스트레이션.
+  // The page is one tab per kind of content, opening on 요약 (relations and a tile per tab). A coordinator (workers, a
+  // worker plan or a driver plan) has 오케스트레이션 too.
   const wp = d.own_handle ? workerPlan(d.own_handle, delegatedOf(d)) : null, plans = plansOf(d);
   const orch = !!(wp || kids.length || plans.length);
   const truns = testRunsUnder([d.path], [d.own_handle, ...delegatedOf(d)]), tmany = orch || truns.some(t => t.sess.path !== d.path);
   const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0), eta = orch ? coordEta(d) : '';
   const attn = kids.some(k => ['stalled', 'wait'].includes(status(k)) || k.decision) || wp?.fail;
-  const lp = d.plans?.[d.plans.length - 1], lpDone = lp ? lp.steps.filter(x => x.st === 'done' || x.st === 'skip').length : 0, lpCur = lp?.steps.find(x => x.st === 'run' || x.st === 'fail');
+  const lp = d.plans?.[d.plans.length - 1], lpDone = lp ? lp.steps.filter(x => x.st === 'done' || x.st === 'skip').length : 0;
   const docs = designRefsBox(d) + vaultBox(d);
   const tabs = [
     orch && ['orch', '오케스트레이션', attn ? 'bad' : '', `${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
@@ -5503,12 +5496,10 @@ function renderSession(navigated) {
     ['stats', '지표', '', kpisHtml + costHtml + subsHtml + ctxHtml + useHtml],
     ['log', '로그', '', logHtml],
   ].filter(Boolean);
-  const tab = dtabOf(d, tabs.map(t => t[0]), orch ? 'orch' : 'plan');
-  const sum = `<div class="box d-sum">${rel}
-    ${orch ? `<div class="o-sum">${wp ? wpBar(wp, planExtra(d)) : ''}<div class="pline">${kids.length ? `<span>워커 <b>${kids.length}</b></span><span>실행 중 <b style="color:var(--run)">${kids.filter(k => agg(k).live).length}</b></span><span>워커 합계 비용 <b>${usd(kc)}</b></span>` : ''}${eta ? `<span>${eta}</span>` : ''}</div></div>` : ''}
-    <div class="pline d-sum-l">${lp ? `<span>계획 <b>${lpDone}/${lp.steps.length}</b>${lpCur ? ` · ${lpCur.st === 'fail' ? '✕' : '▶'} ${esc(cut(lpCur.t, 60))}` : lpDone === lp.steps.length ? ' · 모두 완료' : ''}</span>` : ''}<span>턴 <b>${d.turns}</b></span><span title="${ctxTitle(d)}">컨텍스트 <b class="${ctxLvl(d)}">${fmt(d.ctx_now)}</b></span><span>비용 <b>${usd(d.cost)}</b>${a.subs.length ? ` <small class="st">서브에이전트 포함 ${usd(a.cost)}</small>` : ''}</span>${d.compactions ? `<span>압축 <b>${d.compactions}</b></span>` : ''}${testSumHtml(truns)}</div></div>`;
-  const body = `${sum}
-    <span class="seg d-tabs" role="tablist">${tabs.map(([k, l, dot]) => `<button type="button" role="tab" data-dtab-btn="${k}"${k === tab ? ' class="on"' : ''}>${esc(l)}${dot ? `<i class="d-tab-dot ${dot}"></i>` : ''}</button>`).join('')}</span>
+  tabs.unshift(['sum', '요약', '', null]);
+  const tab = dtabOf(d, tabs.map(t => t[0]), 'sum');
+  const body = `<span class="seg d-tabs" role="tablist">${tabs.map(([k, l, dot]) => `<button type="button" role="tab" data-dtab-btn="${k}"${k === tab ? ' class="on"' : ''}>${esc(l)}${dot ? `<i class="d-tab-dot ${dot}"></i>` : ''}</button>`).join('')}</span>
+    <div class="d-pane" data-dtab="sum"${tab === 'sum' ? '' : ' hidden'}>${rel ? `<div class="box">${rel}</div>` : ''}${sumTiles(d, { has: tabs.map(t => t[0]), wp, kids, eta, attn, lp, lpDone, truns })}</div>
     ${tabs.filter(t => t[3] != null).map(([k, , , html]) => `<div class="d-pane" data-dtab="${k}"${k === tab ? '' : ' hidden'}>${html}</div>`).join('')}`;
   const ch = chShown(), who = chName(chWho(d));
   const html = `<a class="back" href="#agents">← 에이전트</a>
@@ -5532,7 +5523,12 @@ function renderSession(navigated) {
   chatPaint(d.path);
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
   for (const k of ['subs', 'prevplans', 'design', 'vault', 'wpchart']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { openState[k] = el.open; if (k === 'wpchart' && el.open) wpChart(d); }; }
-  $('#view').querySelectorAll('[data-dtab-btn]').forEach(b => b.onclick = () => { secSave(d, 'tab', b.dataset.dtabBtn); dtabShow(d, b.dataset.dtabBtn, true); });
+  const go = k => { secSave(d, 'tab', k); dtabShow(d, k, true); };
+  $('#view').querySelectorAll('[data-dtab-btn]').forEach(b => b.onclick = () => go(b.dataset.dtabBtn));
+  $('#view').querySelectorAll('[data-dtab-go]').forEach(t => {
+    t.onclick = e => { if (!e.target.closest('a')) { go(t.dataset.dtabGo); $('.d-tabs').scrollIntoView({ block: 'nearest' }); } };
+    t.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } };
+  });
   $('#view').querySelectorAll('[data-vstep]').forEach(b => b.onclick = () => openStep(...JSON.parse(b.dataset.vstep)));
   $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
     if (e.target.closest('a')) return;
@@ -5550,6 +5546,54 @@ function renderSession(navigated) {
   workerTableBind(d);
   dtabShow(d, tab, navigated || scroll === undefined, scroll);
   testHistLoad()?.then(ok => ok && route().v === 'session' && detail === d && reDetail());
+}
+// The 요약 tab: one tile per other tab, as the home screen does for the screens — a figure, a line under it and a small
+// chart or the few rows that matter; a tile opens its tab. Tiles that need attention turn red.
+function sumTiles(d, { has, wp, kids, eta, attn, lp, lpDone, truns }) {
+  const tile = (k, z, name, big, sub, chart, tone) => has.includes(k) ? `<section class="hw ${z} hub d-tile" data-dtab-go="${k}" tabindex="0" role="button" aria-label="${name} 탭 열기"><h3><span class="hw-name">${name}</span><span class="hw-more" aria-hidden="true">→</span></h3>
+    <div class="hw-body"><div class="hw-big${tone ? ' ' + tone : ''}">${big}</div><div class="st">${sub}</div>${chart ? `<div class="hub-chart">${chart}</div>` : ''}</div></section>` : '';
+  const rows = xs => xs.map(([l, v]) => `<div class="hub-sum"><b>${esc(l)}</b><span>${esc(v)}</span></div>`).join('');
+  const n = k => kids.filter(w => k.includes(status(w))).length;
+  // 오케스트레이션: workers by state, the worker plan bar, the workers that need a look (else the running ones)
+  const watch = kids.filter(w => ['stalled', 'wait'].includes(status(w)) || w.decision), runK = kids.filter(w => status(w) === 'run');
+  const orch = tile('orch', 'M', '오케스트레이션', kids.length ? `워커 ${kids.length}` : wp ? `태스크 ${wp.total}` : '드라이버 계획',
+    esc([kids.length && `실행 중 ${n(['run', 'bg'])}`, n(['stalled', 'wait']) && `주의 ${n(['stalled', 'wait'])}`, kids.length && `완료 ${n(['done', 'idle'])}`, eta].filter(Boolean).join(' · ')),
+    (wp ? wpBar(wp, planExtra(d)) : hubSeg([['완료', ['done', 'idle'], 'done'], ['실행', ['run', 'bg'], 'run'], ['대기', ['wait'], 'wait'], ['응답 없음', ['stalled'], 'fail']].map(([l, k, c]) => ({ l, n: n(k), c }))))
+      + rows((watch.length ? watch : runK).slice(0, 3).map(w => [nameOf(w), w.decision ? '결정 대기' : ST_LABEL[status(w)]])), attn ? 'bad' : '');
+  // 계획: steps done, the step on now and the next ones
+  const ended = ENDED(status(d)), cur = lp ? lp.steps.findIndex(x => x.st === 'run' || x.st === 'fail') : -1;
+  const plan = tile('plan', 'M', '계획', lp ? `${lpDone}/${lp.steps.length}` : '없음',
+    esc(!lp ? '이 세션은 계획을 남기지 않았습니다' : cur >= 0 ? `${lp.steps[cur].st === 'fail' ? '✕' : '▶'} ${cut(lp.steps[cur].t, 70)}` : lpDone === lp.steps.length ? '모두 완료' : ended ? `${lp.steps.length - lpDone}단계 표시 안 됨` : '다음 단계 대기'),
+    lp ? `<div class="pbar">${lp.steps.map(x => `<i class="${ended && (x.st === 'run' || x.st === 'todo') ? 'miss' : x.st === 'todo' ? '' : x.st}"></i>`).join('')}</div>`
+      + rows((lpDone < lp.steps.length ? lp.steps.map((x, i) => [i, x]).filter(([, x]) => x.st !== 'done' && x.st !== 'skip').slice(0, 3) : lp.steps.map((x, i) => [i, x]).slice(-3))
+        .map(([i, x]) => [`${i + 1}. ${x.t}`, x.st === 'run' ? '진행 중' : x.st === 'fail' ? '실패' : x.st === 'done' ? (x.ts0 && x.ts1 ? dur(x.ts0, x.ts1) : '완료') : x.st === 'skip' ? '건너뜀' : '남음'])) : '',
+    lp?.steps.some(x => x.st === 'fail') ? 'bad' : '');
+  // 테스트: finished runs as pass/fail columns (oldest left), then the latest few
+  const fin = truns.filter(t => !testLive(t)), live = truns.filter(testLive), nf = fin.filter(testFailed).length;
+  const tests = tile('tests', 'M', '테스트', truns.length ? `${fin.length}회` : '없음',
+    esc(truns.length ? [`통과 ${fin.length - nf}`, `실패 ${nf}`, live.length && `실행 중 ${live.length}`].filter(Boolean).join(' · ') : '실행한 테스트 기록이 없습니다'),
+    hubCols(fin.slice(0, 24).reverse().map(t => ({ f: 1, c: testFailed(t) ? 'bad' : 'ok', t: `${t.label || t.key} · ${testFailed(t) ? '실패' : '통과'}` })))
+      + rows([...live, ...fin].slice(0, 3).map(t => [t.label || t.key, `${testLive(t) ? '실행 중' : testFailed(t) ? '실패' : '통과'} · ${testLive(t) ? dur(t.started_at) + '째' : ago(t.finished_at)}`])),
+    fin[0] && testFailed(fin[0]) ? 'bad' : live.length ? 'hot' : '');
+  // 대화: what the agent is on, and the last thing said to it
+  const lastIn = [...d.log].reverse().find(l => l.role === 'user');
+  const chat = tile('chat', 'S', '대화', esc(ST_LABEL[status(d)] || status(d)), esc(d.last_action ? `${NOW_ROLE[d.last_action.role] || ''} · ${cut(d.last_action.text, 80)}` : '아직 활동 없음'),
+    lastIn ? rows([['마지막 입력', `${hhmm(lastIn.ts)}`]]) + `<div class="st d-tile-q">${esc(cut(lastIn.text, 120))}</div>` : '', d.decision ? 'hot' : '');
+  // 문서: the design documents it read and the vault notes it wrote
+  const refs = [...new Set((d.design_refs || []).map(x => x.doc))], notes = d.vault_notes || [];
+  const docs = tile('docs', 'S', '문서', refs.length + notes.length ? `${refs.length + notes.length}개` : '없음',
+    esc([refs.length && `설계 ${refs.length}`, notes.length && `볼트 노트 ${notes.length}`].filter(Boolean).join(' · ') || '읽은 설계문서도, 만든 볼트 노트도 없습니다'),
+    rows([...notes.slice(0, 2).map(x => [x.title, '노트']), ...refs.slice(0, 3 - Math.min(2, notes.length)).map(x => [x.split('/').pop(), '설계'])]));
+  // 지표: cost, the context against its window, the cache share
+  const tk = d.tokens, tin = tk.input + tk.cache_read + tk.cache_write;
+  const stats = tile('stats', 'S', '지표', usd(d.cost), esc(`턴 ${d.turns} · 압축 ${d.compactions} · 도구 ${d.tool_calls}회`),
+    hubMeters([d.ctx_window && { l: '컨텍스트', f: d.ctx_now / d.ctx_window, v: fmt(d.ctx_now), c: ctxLvl(d) === 'bad' ? 'ctx-bad' : ctxLvl(d) === 'warn' ? 'ctx-warn' : '' },
+      tin && { l: '캐시 읽기', f: tk.cache_read / tin, v: Math.round(tk.cache_read / tin * 100) + '%' }].filter(Boolean)));
+  // 로그: the last few lines
+  const lastL = d.log[d.log.length - 1];
+  const log = tile('log', 'S', '로그', `${d.log.length}건`, esc(lastL ? `마지막 ${hhmm(lastL.ts)}` : '기록 없음'),
+    rows(d.log.slice(-3).reverse().map(l => [l.text, NOW_ROLE[l.role] || l.role])), d.log.slice(-3).some(l => l.error) ? 'bad' : '');
+  return `<div class="hm-grid d-tiles">${orch}${plan}${tests}${chat}${docs}${stats}${log}</div>`;
 }
 // The detail's tabs: the one picked is kept per session (adash.dsec, beside the old section state); a tab that is
 // not there for this session falls back to the role's default.
