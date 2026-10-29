@@ -123,8 +123,9 @@ ds-dock:not([open]) > .dock-sep[data-empty] { display: none; }
 }
 
 /* the sheet ([open]): half folded (<html data-posture>), always. Only ds-dock.js sets [open], and only then, so these
-   rules need no media query. */
-:root[data-dock] ds-dock[open] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-width: none; margin: 0; transform: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+   rules need no media query. Its two columns keep their halves (minmax(0, …)): a long name (a tab's live status in
+   data-tip) is cut, not widening the sheet past the screen. */
+:root[data-dock] ds-dock[open] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-width: none; margin: 0; transform: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
   max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px calc(12px + env(safe-area-inset-bottom));
   border-bottom: 0; border-radius: 24px 24px 0 0; }
 ds-dock[open] > .dock-head { grid-column: 1 / -1; display: flex; align-items: center; padding: 8px 2px 4px; font-size: 16px; }

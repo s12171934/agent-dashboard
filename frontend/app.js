@@ -4211,6 +4211,8 @@ const staffWide = () => { const v = $('#view'); return v.clientWidth > 700 && v.
 // On a screen stood on end (HUB_TALL, as 홈's tiles) the village stands three houses across round a plaza in the middle
 // (.vl-tall), and below it a notice board carries 「최근 활동」 (hubEvents) down to the bottom of the screen (staffBoardFit).
 const staffTall = () => HUB_TALL.matches && !staffWide();
+// Else a view no wider than a phone (a phone, or the page's half of a half-folded screen, where the viewport is wide)
+// lays it out two houses across (.vl-narrow)
 const staffBoard = () => `<div class="vl-board"><b class="vl-board-h">게시판 · 최근 활동</b><div class="vl-board-list">${hubEvents().map(e =>
   `<a class="vl-note" href="#${e.go}"><time>${hubEvTime(e)}</time><span>${esc(e.t)}</span><em>${e.k}</em></a>`).join('') || '<span class="st">지난 24시간 동안 기록 없음</span>'}</div></div>`;
 function staffBoardFit() {
@@ -4225,7 +4227,7 @@ function staffRoom(people) {
   needReviews();  // the QA room's figure needs the 워크트리 리뷰 data
   const mine = hmMine(), todo = mine.length, from = hmFrom(mine);
   return `<section class="box room staff-room"><div class="room-h"><b>운영실</b><span class="st">화면마다 맡은 사람 · 누르면 그 화면</span><span class="room-n">${todo ? `<span title="${esc(from)}">내 차례 <b>${todo}</b> (${esc(cut(from, 60))})</span> · ` : ''}전체 <b>${HUB.length}</b></span></div>
-    <div class="staff-village${staffWide() ? ' vl-wide' : staffTall() ? ' vl-tall' : ''}"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
+    <div class="staff-village${staffWide() ? ' vl-wide' : staffTall() ? ' vl-tall' : $('#view').clientWidth <= 700 ? ' vl-narrow' : ''}"><div class="vl-plaza">${['nw', 'ne', 'sw', 'se'].map(k => `<span class="vl-tree t-${k}" aria-hidden="true">${TREE(.8)}</span>`).join('')}${lobbySign(people)}</div>
       <div class="vl-grove" aria-hidden="true">${TREE(1.1)}${TREE(.8)}${TREE()}</div>${HUB.map(staffCell).join('')}</div>${staffTall() ? staffBoard() : ''}</section>`;
 }
 

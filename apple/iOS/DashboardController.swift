@@ -81,6 +81,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     private func settingsItem() -> UIBarButtonItem {
         let item = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in self?.showMore() })
         item.accessibilityLabel = "설정: 다른 화면, 필터와 설정"
+        item.isHidden = halfFolded  // a tab first opened half folded: the sheet already lists all of it
         settingsItems.append(item)
         badgeSettings()
         return item
@@ -193,6 +194,8 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     private func fold() {
         setTabBarHidden(halfFolded, animated: true)
         for case let nav as UINavigationController in viewControllers ?? [] { nav.setNavigationBarHidden(halfFolded, animated: true) }
+        // half folded, the page's sheet lists everything 설정 would: no 설정 button, on tabs not opened yet either
+        for item in settingsItems { item.isHidden = halfFolded }
         web.evaluateJavaScript("window.adashDock?.enable(\(!halfFolded))")
     }
 
