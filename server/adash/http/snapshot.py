@@ -18,6 +18,7 @@ from adash.features.plans.store import EXTERNAL_PLANS, ext_plans
 from adash.features.projects.store import PROJECTS_DIRS
 from adash.features.review.qa import qa_family
 from adash.features.review.store import review_state
+from adash.features.sessions.aliases import fold_handle_aliases
 from adash.features.sessions.idle import apply_prefs
 from adash.features.terminals.pending import pending_sessions
 from adash.features.terminals.targets import close_tree, focus_targets
@@ -64,6 +65,7 @@ def build_state(encode):
                 sm.update(state="done", live=False, state_reason="Orca: dispatch " + settled[sm["task_id"]])
             sm["decision"] = waiting.get(sm["id"]) if sm["kind"] == "claude" else None
             summaries.append(sm)
+        fold_handle_aliases(summaries)
         # Owners first (from the sessions' own terminals), then each owner takes its plans' scripts.
         plan_owners.clear()
         plan_owners.update({p: resolve_plan_owner(p, plan, summaries) for p, plan in ext_plans.items()})

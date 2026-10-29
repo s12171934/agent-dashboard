@@ -62,6 +62,10 @@ class Session:
         self.bg_calls = {}  # tool call id -> tool name, for calls that may start a background task
         self.own_run_calls = set()  # tool call ids of this session's run-create/run-use
         self.own_votes = collections.Counter()
+        # Handles a run-create/run-use without --from bound this session as coordinator: a resumed session (reboot,
+        # closed pane) gets a new terminal, so it has every terminal it ever coordinated from, not only own_handle.
+        self.self_bind_calls = set()
+        self.self_handles = []
         self.own_runs = collections.Counter()  # Run ids this session's run-create printed
         self.create_calls = set()  # tool call ids of this session's run-create
         self.term_calls = {}  # tool call id -> command, for `orca terminal create`
@@ -166,6 +170,8 @@ class Session:
             self.awaits.update(h for h in HANDLE.findall(cmd) if h != self.own_handle)
         if call_id and isinstance(cmd, str) and OWN_RUN_CMD.search(cmd):
             self.own_run_calls.add(call_id)
+            if "--from" not in cmd:
+                self.self_bind_calls.add(call_id)
             if RUN_CREATE.search(cmd):
                 self.create_calls.add(call_id)
         if call_id and isinstance(cmd, str) and TERM_CREATE.search(cmd):
@@ -207,6 +213,8 @@ class Session:
                     self.made_terms.append(h)
         if call_id in self.own_run_calls and text:
             self.own_votes.update(COORD_HANDLE_STR.findall(text))
+            if call_id in self.self_bind_calls:
+                self.self_handles += [h for h in COORD_HANDLE_STR.findall(text) if h not in self.self_handles]
             # Only a Run the session created: run-create binds the calling terminal as its coordinator, while
             # run-use may act for another terminal (`--from <driver>`), so its Run's coordinator is not this one.
             if call_id in self.create_calls:
@@ -487,6 +495,9 @@ class Session:
                     votes[by_run[r]] += n
             if votes:
                 self.own_handle = votes.most_common(1)[0][0]
+        aliases = []
+        if self.role != "worker" and self.own_handle:
+            aliases = [h for h in self.self_handles + [self.pane_handle()] if h and h != self.own_handle]
         cost = {"input": 0.0, "cache_write": 0.0, "cache_read": 0.0, "output": 0.0}
         priced = bool(self.turns)
         for t in self.turns:
@@ -498,7 +509,7 @@ class Session:
                 cost[k] += v
         return {
             "role": self.role, "coord_handle": self.coord_handle, "task_id": cur_task, "task_ids": task_ids,
-            "own_handle": self.own_handle, "coordinates": self.issues_orchestration, "awaits": sorted(self.awaits),
+            "own_handle": self.own_handle, "own_aliases": list(dict.fromkeys(aliases)), "coordinates": self.issues_orchestration, "awaits": sorted(self.awaits),
             "cost": round(sum(cost.values()), 4) if priced else None,
             "cost_parts": {k: round(v, 4) for k, v in cost.items()} if priced else None,
             "id": self.id, "path": self.path, "kind": self.kind, "title": self.title or self.id[:8],
