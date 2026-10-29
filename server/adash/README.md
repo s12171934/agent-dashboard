@@ -5,7 +5,7 @@
 ## 레이어
 
 ```
-http/       요청을 받는 층: 호스트·출처 검사, CORS, JSON 응답, 경로 → 기능 엔드포인트(routes.py), /api/state 스냅숏과 /events
+http/       요청을 받는 층: 호스트·출처 검사, CORS, JSON 응답, 경로 → 기능 엔드포인트(routes.py), /api/state 스냅숏과 /events, 아이폰 위젯용 요약 /api/glance
 features/   기능별 폴더. 상태(store), 수집 루프(loop), 계산(service 등), 엔드포인트(api.py)
 core/       공용 기반: 경로 설정, 큰 lock 과 변경 번호(version), prefs.json, 로그, 파일 캐시, Orca CLI, git, Jira
 main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
