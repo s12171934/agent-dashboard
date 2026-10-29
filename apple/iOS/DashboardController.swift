@@ -13,7 +13,8 @@ import WebKit
 //   its account button (the system tab bar holds five tabs at most, the search tab's place included), opening a sheet
 //   listing the rest of the bar as the App Store lists its settings: the other screens, the filters (a check while
 //   on), the settings, each pressing the page's own element. A count badge among them shows on its row only: 설정
-//   gets no dot. An item the page keeps beside its 설정 (data-fab: 새 에이전트) is a button on 설정's left instead.
+//   gets no dot. An item the page keeps beside its 설정 (data-fab: 새 에이전트) is a button on 설정's left instead,
+//   opening its popover as a sheet of its own (PanelSheet).
 // One web view serves every tab: the selected tab's page holds it. The page fills the screen, the side strip of iPhone
 // Duo's outer display included (its content keeps to the safe area). Half folded (the hinge, iOS 27.1) the tab bar
 // hides and the page lays itself out as on the web — the first half a page, the second its bar's sheet (fold.js,
@@ -59,7 +60,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         web.navigationDelegate = self
         web.uiDelegate = self
         web.allowsBackForwardNavigationGestures = true
-        web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        web.translatesAutoresizingMaskIntoConstraints = false
 
         delegate = self
         tabs = Self.screens.map { key, title, symbol in
@@ -85,12 +86,12 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     }
 
     // 설정: the navigation bar's right button, where the App Store keeps its account button
-    // and on its left the page's data-fab items (새 에이전트), each pressing the page's own element
+    // and on its left the page's data-fab items (새 에이전트), each opening its popover as a sheet of its own (PanelSheet)
     private func barButtons(_ nav: UINavigationItem) {
         let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in self?.showMore() })
         settings.accessibilityLabel = "설정: 다른 화면, 필터와 설정"
         let fab = items.filter(\.isFab).map { it in
-            let b = UIBarButtonItem(image: UIImage(systemName: DockBridge.symbol(it.icon)), primaryAction: UIAction { [weak self] _ in self?.press(it.key) })
+            let b = UIBarButtonItem(image: UIImage(systemName: DockBridge.symbol(it.icon)), primaryAction: UIAction { [weak self] _ in self?.showPanel(it) })
             b.accessibilityLabel = it.tip
             return b
         }
@@ -105,16 +106,23 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // The page keeps its popovers and its last lines clear of the tab bar.
-        let reach = isTabBarHidden ? 0 : max(0, view.bounds.maxY - tabBar.frame.minY + 8)
+        // The page keeps its popovers and its last lines clear of the tab bar: from the bar's top when the bar has a
+        // place in the lower half, else (not laid out yet, or iOS 26's floating bar, whose tabBar frame can read as
+        // zero) from the page's safe area, which the tab bar is part of
+        let bar = tabBar.frame, slot = selectedViewController?.view
+        let reach = isTabBarHidden ? 0 : bar.height > 0 && bar.minY > view.bounds.midY ? view.bounds.maxY - bar.minY + 8
+            : (slot?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom) + 8
         web?.evaluateJavaScript("document.documentElement.style.setProperty('--native-bar', '\(Int(reach))px')")
     }
 
-    // The selected tab's page holds the one web view.
+    // The selected tab's page holds the one web view: its whole view, down to the keyboard while one is up, so the
+    // page's field and the popover it sits in (fixed to the page's foot) stay above it.
+    private var held: [NSLayoutConstraint] = []
     private func hold() {
         guard let slot = (selectedViewController as? UINavigationController)?.topViewController, web.superview !== slot.view else { return }
-        web.frame = slot.view.bounds
+        NSLayoutConstraint.deactivate(held)
         slot.view.addSubview(web)
+        held = KeyboardFit.pin(web, in: slot.view)
         slot.setContentScrollView(web.scrollView, for: .bottom)
     }
 
@@ -166,6 +174,16 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         }
         groups[groups.count - 1].1.append(DockBridge.Item(key: "", tip: "새로 고침", icon: "", on: false, badge: "", text: "", sep: nil))
         return groups.filter { !$0.1.isEmpty }
+    }
+
+    private func showPanel(_ it: DockBridge.Item) {
+        let nav = UINavigationController(rootViewController: PanelSheet(it))
+        if let s = nav.sheetPresentationController {
+            s.detents = [.medium(), .large()]
+            s.selectedDetentIdentifier = .large
+            s.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
 
     private func showMore() {
