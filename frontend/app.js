@@ -678,7 +678,8 @@ const WP_IC = { planned: '', blocked: '…', spawned: '●', done: '✓', fail: 
 // A task's expected run time comes from sibling tasks that already finished in the same Orca run
 // (same model when available): they got the same kind of brief, so their times cluster. Measured on this
 // machine, step-based estimates from a single session's own plan were too uneven to be useful.
-const TASK_NAME = /^([A-Z]+\d+)(?:#(\d+))?\s*(.*)$/;
+// Ticket keys come as ABC123, FC-NAV, TEST-FC, D-1: capitals with a digit or a hyphen somewhere, so a plain word is not one.
+const TASK_NAME = /^((?=[A-Z0-9-]*[\d-])[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)(?:#(\d+))?(?:\s+(.*))?$/;
 const taskName = t => t.display_name || t.task_title || '';
 const roleOf = t => { const m = TASK_NAME.exec(taskName(t)); return m ? (m[3] || '').trim() : taskName(t); };
 let EST = null;
@@ -869,15 +870,16 @@ const FLOW_ST = { skip: '취소', fail: '실패', stalled: '응답 없음', wait
 const flowItemSt = x => IX.tasks[x.id]?.status === 'cancelled' ? 'skip' : x.st === 'spawned' ? (x.live === 'stalled' ? 'stalled' : x.live === 'wait' ? 'wait' : 'run') : x.st;
 const flowSel = {};  // coordinator path -> selected node key; survives live re-renders
 function flowOf(wp) {
-  const named = wp.items.every(x => TASK_NAME.test(x.name || ''));
+  // One stray task (a driver fix, a manual check) must not undo the grouping: it goes to its own 기타 lane.
+  const named = wp.items.some(x => TASK_NAME.test(x.name || ''));
   const nodes = new Map(), nodeOf = {}, byId = Object.fromEntries(wp.items.map(x => [x.id, x]));
   const depIds = x => { try { return JSON.parse(IX.tasks[x.id]?.deps || '[]').filter(d => byId[d]); } catch { return []; } };
   for (const x of wp.items) {
-    const m = named && TASK_NAME.exec(x.name), role = m ? m[3].trim() : x.name;
+    const m = TASK_NAME.exec(x.name || ''), role = m ? (m[3] || '').trim() || '구현' : x.name;
     const base = role.replace(/\s+(codex|claude)$/, '');
     const key = !m ? x.id : m[2] ? `${m[1]}#${m[2]}` : `${m[1]} ${base} ${depIds(x).sort().join(',')}`;
     let n = nodes.get(key);
-    if (!n) nodes.set(key, n = { key, lane: m ? m[1] : '태스크', label: !m ? x.name : m[2] ? '#' + m[2] : base, items: [], deps: new Set() });
+    if (!n) nodes.set(key, n = { key, lane: m ? m[1] : named ? '기타' : '태스크', label: !m ? x.name : m[2] ? '#' + m[2] : base, items: [], deps: new Set() });
     n.items.push({ ...x, role, ist: flowItemSt(x) });
     nodeOf[x.id] = n;
   }
@@ -894,6 +896,11 @@ function flowOf(wp) {
     n.level = level(n.key);
     n.created = n.items.map(i => i.created || '').filter(Boolean).sort()[0] || '';
   }
+  // A retry made under a longer name (「스냅숏 batch-3」 → 「스냅숏 batch-3 재개」) lands in a node of its own: once it
+  // passes, the failed node it replaced stops counting as a failure.
+  for (const n of nodes.values()) if (n.st === 'fail' && [...nodes.values()].some(o => o !== n && o.lane === n.lane && o.st === 'done' && o.created >= n.created && o.label.startsWith(n.label + ' '))) {
+    n.st = 'done'; n.retried = true;
+  }
   const lanes = [];
   for (const n of [...nodes.values()].sort((a, b) => a.level - b.level || a.created.localeCompare(b.created))) {
     let l = lanes.find(y => y.key === n.lane);
@@ -906,7 +913,8 @@ function flowOf(wp) {
 const ATTN = ['fail', 'stalled', 'wait'];
 const flowDots = n => n.items.map(i => `<i class="${i.ist}" title="${esc(i.role)} · ${FLOW_ST[i.ist]}"></i>`).join('');
 // What a node is doing now, in a few words: the first step that is not done, else how long the whole node took.
-const flowNow = n => { const i = n.latest.find(x => x.ist !== 'done' && x.ist !== 'skip');
+const flowNow = n => { if (n.retried) return '실패 · 재시도로 통과';
+  const i = n.latest.find(x => x.ist !== 'done' && x.ist !== 'skip');
   if (!i) { const t0 = n.items.map(x => x.spawned).filter(Boolean).sort()[0], t1 = n.items.map(x => x.done).filter(Boolean).sort().pop(); return t0 && t1 ? '완료 · ' + dur(t0, t1) : '완료'; }
   return `${n.items.length > 1 ? i.role + ' ' : ''}${FLOW_ST[i.ist]}${i.spawned && !i.done ? ' · ' + dur(i.spawned) : ''}`; };
 function flowBox(d, wp) {
@@ -935,7 +943,17 @@ function flowBox(d, wp) {
       ${f.named || f.lanes.length > 1 ? `<button class="fl-lh" data-flane="${esc(lid)}" data-open="${open ? 1 : 0}" aria-expanded="${open}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(l.key)}</b><span>${sum}</span></button>` : ''}
       ${open ? `<div class="fl-ns">${body}</div>` : ''}</div>`;
   };
-  const lanes = f.lanes.map(laneHtml).join('');
+  // Finished tickets fold into one 「✓ 완료 티켓 N」 line on top, so the open lanes are what needs looking at.
+  // famMin[gk] = the user spread them out; a lane the user opened or the picked node keeps its own line.
+  const gk = id + ':alldone';
+  const doneLanes = f.lanes.length > 1 ? f.lanes.filter(l => l.nodes.every(n => n.st === 'done') && !l.nodes.some(n => n.key === sel) && famMin[id + ':' + l.key] !== true) : [];
+  const grouped = doneLanes.length >= 2 && !famMin[gk];
+  let lanes = f.lanes.filter(l => !grouped || !doneLanes.includes(l)).map(laneHtml).join('');
+  if (grouped) {
+    doneLanes.forEach(l => l.nodes.forEach(n => (vis[n.key] = 'lanes:done')));
+    const names = doneLanes.map(l => l.key).join(' · ');
+    lanes = `<div class="fl-lane"><button class="fl-lh" data-k="lanes:done" data-fold="${esc(gk)}" title="눌러서 티켓별로 펼치기"><span class="tk-arrow">▸</span><b>✓ 완료 티켓 ${doneLanes.length}</b><span>${esc(cutW(names, 80))}</span></button></div>` + lanes;
+  } else if (doneLanes.length >= 2) lanes += `<button class="act" data-fold="${esc(gk)}" data-unfold="1">완료 티켓 ${doneLanes.length}개 한 줄로 접기</button>`;
   for (const n of f.nodes.values()) for (const k of n.deps) { const a = vis[k], b = vis[n.key];
     if (a && b && a !== b && !edges.some(e => e.a === a && e.b === b)) edges.push({ a, b }); }
   const pick = sel && f.nodes.get(sel);
