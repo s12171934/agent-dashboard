@@ -2610,7 +2610,15 @@ function wtWebPlace(root) {
 }
 // The page follows the dashboard's light / dark: the server sets it as the page's default colour theme (?theme=), so a
 // theme change reopens the shown pages with the new one (VS Code restores their open editors) and retargets the rest.
-const wtWebUrl = u => { const x = new URL(u, location.href); x.searchParams.set('theme', document.documentElement.dataset.theme || 'light'); return x.href; };
+// In the macOS app the loopback server's VS Code opens on the page's own origin (the app passes /vscode/ through,
+// window.adashVscodePort): WebKit keeps a cross-origin iframe under 30 frames a second until it is clicked.
+const wtWebUrl = u => {
+  let x = new URL(u, location.href);
+  if (window.adashVscodePort && ['127.0.0.1', 'localhost'].includes(x.hostname) && +x.port === window.adashVscodePort
+      && x.origin !== location.origin) x = new URL(x.pathname + x.search, location.origin);
+  x.searchParams.set('theme', document.documentElement.dataset.theme || 'light');
+  return x.href;
+};
 document.addEventListener('ds:theme', () => {
   for (const el of [...wtWeb.values(), ...trWeb.values()]) el.querySelectorAll('.rv-web-f').forEach(f => {
     if (f.dataset.src) f.dataset.src = wtWebUrl(f.dataset.src);
