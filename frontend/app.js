@@ -1045,8 +1045,7 @@ function workerTableBind(d) {
   if (q) q.oninput = () => { wtab.q = q.value; const pos = q.selectionStart; rerender(); const n = $('#wt-q'); n.focus(); n.setSelectionRange(pos, pos); };
 }
 
-// Coordinator detail sections (오케스트레이션 · 이 세션 지표 · 로그): open state per session in adash.dsec. The
-// orchestration section opens by itself while a worker needs attention.
+// Per-session detail state in adash.dsec (the picked tab, under 'tab').
 let dsec = {};
 try { dsec = JSON.parse(localStorage.getItem('adash.dsec') || '{}'); } catch {}
 const secOpen = (d, k, dflt) => dsec[d.path]?.[k] ?? dflt;
@@ -2075,11 +2074,51 @@ function testCardHtml(s) {
   return rows.length ? `<div class="e2e e2e-card">${rows.map(t => testRow({ ...t, label: null }, true).replace('<b class="e2e-tag">', `<b class="e2e-tag" title="${esc(t.label || '')}">`)).join('')}</div>` : '';
 }
 
+// A detail's test record: the runs its own sessions started — the session, and under a coordinator (or a script driver)
+// every worker below it, through sub-coordinators and the script drivers it made. Matched by path, since the session
+// detail is its own copy of the session. Running first, then newest finished.
+function testRunsUnder(paths, handles) {
+  paths = new Set(paths); handles = new Set(handles.filter(Boolean));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const s of state.sessions) if (s.role === 'worker' && !s.parent && handles.has(s.coord_handle) && !paths.has(s.path)) {
+      paths.add(s.path); if (s.own_handle) handles.add(s.own_handle); grew = true; }
+  }
+  const live = [], done = [];
+  for (const t of allTestRuns()) if (t.sess && paths.has(t.sess.path)) (testLive(t) ? live : done).push(t);
+  return [...live.sort((a, b) => tms(a.started_at) - tms(b.started_at)), ...done.sort((a, b) => tms(b.finished_at) - tms(a.finished_at))];
+}
+const DTEST_MAX = 60;
+// many: runs from more than one session, so each row names who ran it
+function testsTabHtml(runs, many) {
+  if (!runs.length) return `<div class="box st">${many ? '이 세션과 그 아래 워커가' : '이 세션이'} 실행한 테스트 기록이 없습니다. <code>atest run</code> 으로 감싼 테스트와 run-tc 실행이 여기에 남습니다 (서버 보관 30일).</div>`;
+  const live = runs.filter(testLive), done = runs.filter(t => !testLive(t)), nf = done.filter(testFailed).length;
+  const by = new Set(runs.map(t => t.sess.path)).size;
+  return `<div class="box"><h3>테스트 기록 <span class="st">${live.length ? `실행 중 ${live.length} · ` : ''}완료 ${done.length}회 · 통과 ${done.length - nf} · ${nf ? `<b style="color:var(--bad)">실패 ${nf}</b>` : '실패 0'}${many ? ` · 실행한 세션 ${by}` : ''}</span> <a class="tests-all" href="#tests">전체 기록 →</a></h3>
+    <div class="tests tests-done">${runs.slice(0, DTEST_MAX).map(t => testRow(many ? t : { ...t, sess: null, owner: null }, false, true)).join('')}</div>
+    ${runs.length > DTEST_MAX ? `<div class="st" style="margin-top:6px">최근 ${DTEST_MAX}건만 보입니다. 나머지는 「테스트」 탭에서 찾을 수 있습니다.</div>` : ''}</div>`;
+}
+// One line for the detail's summary: what is running, else how the last run ended.
+function testSumHtml(runs) {
+  if (!runs.length) return '';
+  const live = runs.filter(testLive), last = runs.find(t => !testLive(t)), nf = runs.filter(t => !testLive(t) && testFailed(t)).length;
+  const lastHtml = last ? `<span class="tkc ${testFailed(last) ? 'fail' : 'done'}" title="${esc(last.label || last.key || '')}"><i>${TK_IC[testFailed(last) ? 'fail' : 'done']}</i>마지막 ${testFailed(last) ? '실패' : '통과'} · ${ago(last.finished_at)}</span>` : '';
+  return `<span>테스트 <b>${runs.length - live.length}</b>회${nf ? ` · <b style="color:var(--bad)">실패 ${nf}</b>` : ''}</span>${live.length ? `<span class="tkc run"><i>${TK_IC.run}</i>실행 중 ${live.length}</span>` : ''}${lastHtml}`;
+}
+
 // ---------- 「테스트」 tab: running tests plus every finished run the server kept (/api/tests, 30 days) ----------
 const TEST_SPANS = { 1: '24시간', 7: '7일', 30: '30일' }, TEST_RESULTS = { all: '전체', failed: '실패', done: '통과' };
 let tst = { span: 7, result: 'all', kind: 'all', q: '' }, testsMounted = false, testHist = { at: undefined, runs: [] };
 try { Object.assign(tst, JSON.parse(localStorage.getItem('adash.tests') || '{}')); } catch {}
 const testFailed = t => t.phase === 'failed' || t.failed > 0;
+const tms = ts => ts ? +toDate(ts) || 0 : 0;  // sources mix "Z" and "+09:00": compare instants, not strings
+// The archive is fetched again only when a server reports a newer history_at; one request at a time.
+let testHistReq = null;
+function testHistLoad() {
+  const at = state.tests?.history_at ?? null;
+  if (testHist.at === at) return null;
+  return testHistReq ||= api.tests().then(r => { testHist = { at, runs: r?.runs || [] }; return true; }, () => false).finally(() => { testHistReq = null; });
+}
 const testId = t => t.id || (t.src === 'file' ? `file:${t.key}:${t.started_at || t.finished_at}` : testLive(t) ? 'run-tc-live:' + t.key : 'run-tc:' + t.key);
 // Current items win over their archived copy (same id); archived ones get their session back when it is still tracked.
 function allTestRuns() {
@@ -2092,8 +2131,7 @@ const DOW = '일월화수목금토';
 const dayKey = ts => { const d = ts ? toDate(ts) : null; return d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : ''; };
 const dayLabel = k => { if (!k) return '날짜 미상'; const d = new Date(k + 'T00:00'); const today = dayKey(new Date().toISOString()); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[d.getDay()]})${k === today ? ' · 오늘' : ''}`; };
 async function renderTests() {
-  const at = state.tests?.history_at ?? null;
-  if (testHist.at !== at) { try { const r = await api.tests(); testHist = { at, runs: r?.runs || [] }; } catch { testHist.at = undefined; } }
+  await testHistLoad();
   const all = allTestRuns(), kinds = [...new Set(all.map(t => t.kind || 'test'))].sort();
   if (tst.kind !== 'all' && !kinds.includes(tst.kind)) tst.kind = 'all';
   const save = () => { try { localStorage.setItem('adash.tests', JSON.stringify(tst)); } catch {} };
@@ -2115,7 +2153,6 @@ async function renderTests() {
   const hit = t => (tst.kind === 'all' || (t.kind || 'test') === tst.kind)
     && (!q || [t.label, t.key, t.owner, t.detail, t.sess && nameOf(t.sess), ...(t.failures || []).map(f => f.id + ' ' + f.msg), ...(t.cases || []).map(c => c.id + ' ' + c.title)].some(x => x && String(x).toLowerCase().includes(q)));
   const live = all.filter(t => testLive(t) && hit(t) && tst.result === 'all').sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
-  const tms = ts => ts ? +toDate(ts) || 0 : 0;  // sources mix "Z" and "+09:00": compare instants, not strings
   const done = all.filter(t => !testLive(t) && ageS(t.finished_at) <= tst.span * 86400 && hit(t)).sort((a, b) => tms(b.finished_at) - tms(a.finished_at));
   const nf = done.filter(testFailed).length, shown = done.filter(t => tst.result === 'all' || (tst.result === 'failed') === testFailed(t));
   const days = {}; shown.forEach(t => (days[dayKey(t.finished_at)] ||= []).push(t));
@@ -5376,7 +5413,9 @@ function renderDriver(h) {
     ${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(dd, wp)}
       <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
     ${tk || e2e ? `<div class="box"><h3>티켓</h3>${tk}${e2e}</div>` : ''}
-    ${ws.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${n('run')} · 합계 비용 ${usd(cost)} · 합계 턴 ${fmt(ws.reduce((x, w) => x + agg(w).turns, 0))}</span></h3>${workerTable(dd, ws, wp)}</div>` : '<div class="box st">이 드라이버가 띄운 워커 세션이 아직 없습니다.</div>'}`;
+    ${ws.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${n('run')} · 합계 비용 ${usd(cost)} · 합계 턴 ${fmt(ws.reduce((x, w) => x + agg(w).turns, 0))}</span></h3>${workerTable(dd, ws, wp)}</div>` : '<div class="box st">이 드라이버가 띄운 워커 세션이 아직 없습니다.</div>'}
+    ${testsTabHtml(testRunsUnder(ws.map(w => w.path), [h]), true)}`;
+  testHistLoad()?.then(ok => ok && route().v === 'driver' && route().id === h && reDetail());
   if (wp) flowBind(dd);
   workerTableBind(dd);
   const wc = $('#d-wpchart');
@@ -5443,39 +5482,34 @@ function renderSession(navigated) {
       <div class="box"><h3>로그 <span class="st">최근 ${d.log.length}건</span></h3>
         <div class="log">${d.log.map(l => `<div class="${l.role} ${hlTurn !== null && l.turn === hlTurn ? 'hl' : ''}"><span class="st">${hhmm(l.ts)}</span><span class="r">${l.role}${l.turn >= 0 ? ' #' + (l.turn + 1) : ''}</span>
           <span class="${l.error ? 'err' : ''}"><b class="r">${window.innerWidth <= 700 || isFold() ? esc(l.role) + ' ' : ''}</b>${esc(l.text)}${l.detail ? ' <span class="st">' + esc(l.detail) + '</span>' : ''}${l.size ? ' <span class="st">(' + fmt(l.size) + '자)</span>' : ''}</span></div>`).join('')}</div></div>`;
-  // A coordinator (it has workers, a worker plan or a driver plan) reads orchestration first: a summary line that is
-  // always there, then 오케스트레이션 (flow graph + panel, driver plans, worker table), the session's own plan and notes,
-  // and its own metrics and log folded below. Everyone else keeps the plain layout.
+  // The page is a summary that is always there (relations, coordinator plan bar and workers, plan, figures, tests), then
+  // one tab per kind of content. A coordinator (workers, a worker plan or a driver plan) opens on 오케스트레이션.
   const wp = d.own_handle ? workerPlan(d.own_handle, delegatedOf(d)) : null, plans = plansOf(d);
   const orch = !!(wp || kids.length || plans.length);
-  let body;
-  if (orch) {
-    const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0), eta = coordEta(d);
-    const attn = kids.some(k => ['stalled', 'wait'].includes(status(k)) || k.decision) || wp?.fail;
-    const openOrch = attn || secOpen(d, 'orch', true), openSelf = secOpen(d, 'self', false), openLog = secOpen(d, 'log', false);
-    const sec = (k, open, title, sub, inner) => `<details class="dsec" id="d-${k}" ${open ? 'open' : ''}><summary class="sec-h"><h2>${title}</h2><span>${sub}</span></summary>${inner}</details>`;
-    body = `<div class="box o-sum">${wp ? wpBar(wp, planExtra(d)) : ''}<div class="pline">${kids.length ? `<span>워커 <b>${kids.length}</b></span><span>실행 중 <b style="color:var(--run)">${kids.filter(k => agg(k).live).length}</b></span><span>워커 합계 비용 <b>${usd(kc)}</b></span>` : ''}${eta ? `<span>${eta}</span>` : ''}</div></div>
-    ${sec('orch', openOrch, '오케스트레이션', [wp && `Orca 태스크 ${wp.total}`, kids.length && `워커 ${kids.length}`, plans.length && `드라이버 계획 ${plans.length}`].filter(Boolean).join(' · '),
-      `${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
+  const truns = testRunsUnder([d.path], [d.own_handle, ...delegatedOf(d)]), tmany = orch || truns.some(t => t.sess.path !== d.path);
+  const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0), eta = orch ? coordEta(d) : '';
+  const attn = kids.some(k => ['stalled', 'wait'].includes(status(k)) || k.decision) || wp?.fail;
+  const lp = d.plans?.[d.plans.length - 1], lpDone = lp ? lp.steps.filter(x => x.st === 'done' || x.st === 'skip').length : 0, lpCur = lp?.steps.find(x => x.st === 'run' || x.st === 'fail');
+  const docs = designRefsBox(d) + vaultBox(d);
+  const tabs = [
+    orch && ['orch', '오케스트레이션', attn ? 'bad' : '', `${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
         <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
       ${extPlansHtml(plans)}
-      ${kids.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${kids.filter(k => agg(k).live).length} · 합계 비용 ${usd(kc)} · 합계 턴 ${fmt(kids.reduce((x, k) => x + agg(k).turns, 0))}</span></h3>${workerTable(d, kids, wp)}</div>` : ''}`)}
-    ${planBox(d)}
-    ${designRefsBox(d)}
-    ${vaultBox(d)}
-    ${sec('self', openSelf, '이 세션 지표', `턴 ${d.turns} · 컨텍스트 ${fmt(d.ctx_now)} · 비용 ${usd(d.cost)} · 압축 ${d.compactions}`, kpisHtml + costHtml + subsHtml + ctxHtml + useHtml)}
-    ${sec('log', openLog, '로그', `최근 ${d.log.length}건${d.log.length ? ' · 마지막 ' + hhmm(d.log[d.log.length - 1].ts) : ''}`, logHtml)}`;
-  } else {
-    body = `${planBox(d)}
-    ${designRefsBox(d)}
-    ${vaultBox(d)}
-    ${kpisHtml}
-    ${costHtml}
-    ${subsHtml}
-    ${ctxHtml}
-    <div class="panes">${useHtml}${logHtml}
-    </div>`;
-  }
+      ${kids.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${kids.filter(k => agg(k).live).length} · 합계 비용 ${usd(kc)} · 합계 턴 ${fmt(kids.reduce((x, k) => x + agg(k).turns, 0))}</span></h3>${workerTable(d, kids, wp)}</div>` : ''}`],
+    ['plan', lp ? `계획 ${lpDone}/${lp.steps.length}` : '계획', '', planBox(d)],
+    ['chat', '대화', '', null],
+    ['tests', `테스트${truns.length ? ' ' + truns.length : ''}`, truns.some(testLive) ? 'run' : truns.find(t => !testLive(t)) && testFailed(truns.find(t => !testLive(t))) ? 'bad' : '', testsTabHtml(truns, tmany)],
+    docs && ['docs', '문서', '', docs],
+    ['stats', '지표', '', kpisHtml + costHtml + subsHtml + ctxHtml + useHtml],
+    ['log', '로그', '', logHtml],
+  ].filter(Boolean);
+  const tab = dtabOf(d, tabs.map(t => t[0]), orch ? 'orch' : 'plan');
+  const sum = `<div class="box d-sum">${rel}
+    ${orch ? `<div class="o-sum">${wp ? wpBar(wp, planExtra(d)) : ''}<div class="pline">${kids.length ? `<span>워커 <b>${kids.length}</b></span><span>실행 중 <b style="color:var(--run)">${kids.filter(k => agg(k).live).length}</b></span><span>워커 합계 비용 <b>${usd(kc)}</b></span>` : ''}${eta ? `<span>${eta}</span>` : ''}</div></div>` : ''}
+    <div class="pline d-sum-l">${lp ? `<span>계획 <b>${lpDone}/${lp.steps.length}</b>${lpCur ? ` · ${lpCur.st === 'fail' ? '✕' : '▶'} ${esc(cut(lpCur.t, 60))}` : lpDone === lp.steps.length ? ' · 모두 완료' : ''}</span>` : ''}<span>턴 <b>${d.turns}</b></span><span title="${ctxTitle(d)}">컨텍스트 <b class="${ctxLvl(d)}">${fmt(d.ctx_now)}</b></span><span>비용 <b>${usd(d.cost)}</b>${a.subs.length ? ` <small class="st">서브에이전트 포함 ${usd(a.cost)}</small>` : ''}</span>${d.compactions ? `<span>압축 <b>${d.compactions}</b></span>` : ''}${testSumHtml(truns)}</div></div>`;
+  const body = `${sum}
+    <span class="seg d-tabs" role="tablist">${tabs.map(([k, l, dot]) => `<button type="button" role="tab" data-dtab-btn="${k}"${k === tab ? ' class="on"' : ''}>${esc(l)}${dot ? `<i class="d-tab-dot ${dot}"></i>` : ''}</button>`).join('')}</span>
+    ${tabs.filter(t => t[3] != null).map(([k, , , html]) => `<div class="d-pane" data-dtab="${k}"${k === tab ? '' : ' hidden'}>${html}</div>`).join('')}`;
   const ch = chShown(), who = chName(chWho(d));
   const html = `<a class="back" href="#agents">← 에이전트</a>
     ${ch ? `<div class="d-hero">${chHero(d)}<div class="d-head">` : ''}
@@ -5483,9 +5517,8 @@ function renderSession(navigated) {
     <div class="sub-h">${d.role !== 'solo' ? `<span class="badge ${d.role === 'coordinator' ? 'coord' : isSubCoord(d) ? 'subcoord' : 'worker'}">${isSubCoord(d) ? '하위 코디네이터' : ROLE[d.role]}</span> ` : ''}${modelChip(d.model)} · ${d.kind}${srvBadge(d) ? ' · ' + srvBadge(d) : ''} · <b title="${esc(d.cwd || '')}">▣ ${esc(placeLabel(d.place))}</b><br>${esc(d.id)} · 시작 ${d.started ? esc(new Date(toDate(d.started)).toLocaleString('ko-KR', { hour12: false })) : '–'} · ${OPEN(status(d)) ? '가동' : '가동(종료)'} ${lifetime(d)}</div>${ch ? '</div>' : ''}
     <div class="c-top" style="margin:-4px 0 12px">${pill(status(d), d)}${actBtns(d, true)}${d.last_action ? `<span class="now" style="flex:1"><b>${status(d) === 'run' ? '지금' : '마지막'}</b>${esc(NOW_ROLE[d.last_action.role] || '')} · ${esc(d.last_action.text)}</span>` : ''}</div>
     ${ch ? `</div>${chPickOpen ? chPicker(d) : ''}` : ''}
-    <section class="box chat-box" data-chat-box="${esc(d.path)}"><h3>${esc(who)} 와 대화 <span class="st">Orca 터미널에 입력합니다 · Enter 보내기, Shift+Enter 줄바꿈</span></h3>${chatHtml(d)}</section>
-    ${rel ? `<div class="box">${rel}</div>` : ''}
-    ${body}`;
+    ${body}
+    <section class="box chat-box" data-dtab="chat" data-chat-box="${esc(d.path)}"${tab === 'chat' ? '' : ' hidden'}><h3>${esc(who)} 와 대화 <span class="st">Orca 터미널에 입력합니다 · Enter 보내기, Shift+Enter 줄바꿈</span></h3>${chatHtml(d)}</section>`;
   // A live update keeps the chat box itself (what is being typed, the focus, an IME composition) and replaces the rest.
   const keep = $('#view > .chat-box');
   if (keep?.dataset.chatBox === d.path) {
@@ -5499,7 +5532,7 @@ function renderSession(navigated) {
   chatPaint(d.path);
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
   for (const k of ['subs', 'prevplans', 'design', 'vault', 'wpchart']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { openState[k] = el.open; if (k === 'wpchart' && el.open) wpChart(d); }; }
-  for (const k of ['orch', 'self', 'log']) { const el = $('#d-' + k); if (el) el.ontoggle = () => { secSave(d, k, el.open); if (el.open && k === 'self') ctxChart(d); if (el.open && k === 'orch') flowBind(d); if (el.open && k === 'log') $('.log').scrollTop = $('.log').scrollHeight; }; }
+  $('#view').querySelectorAll('[data-dtab-btn]').forEach(b => b.onclick = () => { secSave(d, 'tab', b.dataset.dtabBtn); dtabShow(d, b.dataset.dtabBtn, true); });
   $('#view').querySelectorAll('[data-vstep]').forEach(b => b.onclick = () => openStep(...JSON.parse(b.dataset.vstep)));
   $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
     if (e.target.closest('a')) return;
@@ -5514,15 +5547,27 @@ function renderSession(navigated) {
     reSess();
   });
   ticketGraphBind();
-  flowBind(d);
   workerTableBind(d);
-  ctxChart(d);
-  planChart(d);
-  if (openState.wpchart) wpChart(d);
-  const log = $('.log');
+  dtabShow(d, tab, navigated || scroll === undefined, scroll);
+  testHistLoad()?.then(ok => ok && route().v === 'session' && detail === d && reDetail());
+}
+// The detail's tabs: the one picked is kept per session (adash.dsec, beside the old section state); a tab that is
+// not there for this session falls back to the role's default.
+const dtabOf = (d, ks, dflt) => { const k = secOpen(d, 'tab', dflt); return ks.includes(k) ? k : dflt; };
+// Show tab k and draw what needs a width (charts, the flow graph) or a scroll position (log, chat) now that it is seen.
+// fresh: a newly opened page or a picked tab, where the log starts at its end; otherwise it keeps logTop.
+function dtabShow(d, k, fresh, logTop) {
+  $('#view').querySelectorAll('[data-dtab]').forEach(x => x.hidden = x.dataset.dtab !== k);
+  $('#view').querySelectorAll('[data-dtab-btn]').forEach(b => b.classList.toggle('on', b.dataset.dtabBtn === k));
+  if (k === 'orch') { flowBind(d); if (openState.wpchart) wpChart(d); }
+  if (k === 'plan') planChart(d);
+  if (k === 'stats') ctxChart(d);
+  if (k === 'chat') chatPaint(d.path);
+  const log = k === 'log' && $('.log');
+  if (!log) return;
   if (hlTurn !== null) log.querySelector('.hl')?.scrollIntoView({ block: 'center' });
-  else if (navigated || scroll === undefined || d.live) log.scrollTop = log.scrollHeight;
-  else log.scrollTop = scroll;
+  else if (fresh || d.live || logTop === undefined) log.scrollTop = log.scrollHeight;
+  else log.scrollTop = logTop;
 }
 
 function ctxChart(d) {
@@ -5548,7 +5593,7 @@ function ctxChart(d) {
   el.querySelectorAll('.hit').forEach(r => {
     const show = e => { const t = T[+r.dataset.i]; tip.show(`<b>턴 #${+r.dataset.i + 1}</b> · ${hhmm(t.ts)}<br>컨텍스트 ${fmt(t.ctx)} · 출력 ${fmt(t.output)}${t.tools.length ? '<br>도구: ' + esc(t.tools.join(', ')) : ''}`, e); };
     r.onmousemove = show; r.onmouseleave = () => tip.hide();
-    r.onclick = e => { hlTurn = +r.dataset.i; tip.hide(); renderSession(); };
+    r.onclick = e => { hlTurn = +r.dataset.i; tip.hide(); secSave(d, 'tab', 'log'); renderSession(); };
   });
 }
 
