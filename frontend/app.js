@@ -3894,7 +3894,9 @@ addEventListener('resize', () => {
 // header (.ch-canvas, no page scroll), moved by dragging the floor (one finger on touch), the wheel or trackpad, and
 // zoomed with Ctrl/⌘ + wheel, a pinch or the − / + buttons. 「맞춤」 fits every room in view and keeps fitting as the
 // office changes, until the view is moved by hand. The view is kept on this device (adash.chview).
-let chView = { x: 0, y: 0, z: 1, fit: true };
+// fitW: the zoom is 맞춤's, so the plane is no wider than the screen: it stays centred across, and the wheel, trackpad or a
+// drag moves it only up and down — no sideways drift while reading down a tall office — until it is zoomed or a room is.
+let chView = { x: 0, y: 0, z: 1, fit: true, fitW: true };
 let chLz = 1;  // the label growth chLayout last spaced the rows for
 try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}'), fit: true }; } catch {}  // a load opens fitted too
 let chPanAt = 0, chSaveT;
@@ -3917,10 +3919,11 @@ function chApply() {
     const { top, room, fw } = chFrame(cv);
     let z = Math.min(1, (fw - 24) / ww, room / wh);
     if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
-    chView.z = z;
+    chView.z = z; chView.fitW = true;
     chView.x = (fw - ww * z) / 2;
     chView.y = top + (wh * z < room ? (room - wh * z) / 2 : 0);
   }
+  else if (chView.fitW) chView.x = (chFrame(cv).fw - ww * chView.z) / 2;
   // keep at least 80px of the office on screen, so it can never be lost
   chView.x = Math.min(cw - 80, Math.max(80 - ww * chView.z, chView.x));
   chView.y = Math.min(ch - 80, Math.max(80 - wh * chView.z, chView.y));
@@ -3939,7 +3942,7 @@ function chApply() {
 // zoom by k around a point of the canvas (px from its top left)
 function chZoom(k, px, py) {
   const z = Math.min(2, Math.max(.25, chView.z * k)), f = z / chView.z;
-  chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = false;
+  chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = chView.fitW = false;
   chApply(); chViewSave();
 }
 // a worktree room pressed (its title or floor, not a person): the view fits that room, up to 200%; pressed again while
@@ -3962,7 +3965,7 @@ function chFocus(key) {
     const { top, room, fw } = chFrame(cv), wr = w.getBoundingClientRect(), rr = box();
     const x = (rr.left - wr.left) / chView.z, y = (rr.top - wr.top) / chView.z, rw = rr.width / chView.z, rh = rr.height / chView.z;
     const z = Math.min(2, (fw - 24) / rw, room / rh);
-    chView = { ...chView, z, fit: false, x: (fw - rw * z) / 2 - x * z, y: top + Math.max(0, (room - rh * z) / 2) - y * z };
+    chView = { ...chView, z, fit: false, fitW: false, x: (fw - rw * z) / 2 - x * z, y: top + Math.max(0, (room - rh * z) / 2) - y * z };
     chApply();
   }
   chFocused = at(); chViewSave();
