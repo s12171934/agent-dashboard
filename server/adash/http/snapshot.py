@@ -1,6 +1,7 @@
 """The /api/state snapshot, built once per version, and the /events stream that announces new versions."""
 
 import gzip
+import json
 import os
 import threading
 import time
@@ -31,7 +32,7 @@ import adash.features.projects.store as projects_store
 import adash.features.terminals.targets as terminals_targets
 
 state_cache_lock = threading.Lock()  # one /api/state build at a time; the others wait and take its bytes
-state_cache = {"v": -1, "body": b"", "gz": b"", "at": 0.0}
+state_cache = {"v": -1, "body": b"", "gz": b"", "at": 0.0, "glance": None}
 STATE_CACHE_SECONDS = 5  # health.now and the age-based states move without a version bump
 
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
@@ -118,15 +119,65 @@ def get_root(h, url):
     h.send_json({"name": "agent-dashboard", "api": API_VERSION})
 
 
-def get_state(h, url):
-    # Every open page refetches on each version tick: build the snapshot once per version and hand the
-    # same bytes to the rest (three tabs used to rebuild it three times, each under the lock).
+def fresh_state(encode):
+    """-> (body, gzipped body) of the current snapshot. Every open page refetches on each version tick: build it once
+    per version and hand the same bytes to the rest (three tabs used to rebuild it three times, each under the lock)."""
     with state_cache_lock:
         if not (state_cache["v"] == core_state.version and time.time() - state_cache["at"] < STATE_CACHE_SECONDS):
-            v, raw = build_state(h.encode)
-            state_cache.update(v=v, body=raw, gz=gzip.compress(raw, 5), at=time.time())
-        raw, gz = state_cache["body"], state_cache["gz"]
+            v, raw = build_state(encode)
+            state_cache.update(v=v, body=raw, gz=gzip.compress(raw, 5), at=time.time(), glance=None)
+        return state_cache["body"], state_cache["gz"]
+
+
+def get_state(h, url):
+    raw, gz = fresh_state(h.encode)
     h.send_body(raw, gz=gz)  # sent outside the cache lock: a slow client holds up no one
+
+
+# /api/glance: what the iPhone widgets show, a few KB instead of the snapshot's megabytes (a widget has little memory
+# and time). The 결정 대기 questions, the agents by state with the busiest few, and the latest test runs.
+GLANCE_ORDER = ["run", "stalled", "wait", "bg"]  # the states shown, most urgent first
+
+
+def glance(state):
+    titles = {s["id"]: s.get("title") for s in state["sessions"]}
+    pend = (state.get("decisions") or {}).get("pending") or []
+    paths = {s["id"]: s.get("path") for s in state["sessions"]}
+    decisions = []
+    for d in pend:
+        qs = d.get("questions") or [{}]
+        q = qs[0]
+        decisions.append({
+            "id": d["id"], "title": titles.get(d.get("session_id")) or d.get("agent") or "에이전트",
+            "header": q.get("header"), "question": short(q.get("question", ""), 240), "more": len(qs) - 1,
+            # one single-choice question can be answered from the widget, as from a notification
+            "options": [o.get("label", "") for o in q.get("options") or []] if len(qs) == 1 and not q.get("multiSelect") else [],
+            "path": paths.get(d.get("session_id"))})
+    # the page's own agents only (no subagents), each in the state the page shows
+    agents = [s for s in state["sessions"] if s.get("role") != "sub" and not s.get("parent")]
+    counts = {k: sum(1 for s in agents if s.get("state") == k) for k in GLANCE_ORDER}
+    busy = sorted((s for s in agents if s.get("state") in GLANCE_ORDER), key=lambda s: s.get("last_ts") or "", reverse=True)
+    busy.sort(key=lambda s: GLANCE_ORDER.index(s["state"]))  # stable: the latest first within a state
+    files = (state.get("tests") or {}).get("files") or []
+    tests = sorted(files, key=lambda t: (t.get("phase") != "running", -(t.get("mtime") or 0)))[:4]
+    return {
+        "api": API_VERSION, "now": time.time(),
+        "decisions": decisions,
+        "agents": {"counts": counts,
+                   "busy": [{"title": s.get("title"), "state": s["state"], "model": s.get("model"), "last_ts": s.get("last_ts"),
+                             "path": s.get("path")} for s in busy[:6]]},
+        "tests": [{k: t.get(k) for k in ("label", "kind", "phase", "total", "done", "passed", "failed", "eta_s",
+                                          "started_at", "updated_at")} for t in tests],
+    }
+
+
+def get_glance(h, url):
+    raw, _ = fresh_state(h.encode)
+    with state_cache_lock:
+        if state_cache.get("glance") is None or state_cache["body"] is not raw:
+            state_cache["glance"] = h.encode(glance(json.loads(raw)))
+        body = state_cache["glance"]
+    h.send_json(body)
 
 
 def get_events(h, url):

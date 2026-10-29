@@ -19,6 +19,7 @@ from adash.http import snapshot
 GET = {
     "/": snapshot.get_root,
     "/api/state": snapshot.get_state,
+    "/api/glance": snapshot.get_glance,
     "/events": snapshot.get_events,
     "/api/session": sessions.get_session,
     "/api/chat": sessions.get_chat,
