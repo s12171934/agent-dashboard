@@ -6,7 +6,9 @@
 //   the people — and one taken down only loses the picture.
 // - applyIcon(id) swaps the manifest, favicon, apple-touch-icon and the header logo. An installed app takes the new
 //   icon when the browser next checks the manifest (Chrome on Android and desktop may ask first); iOS keeps the icon
-//   it was added with, so the page has to be added to the home screen again.
+//   it was added with, so the page has to be added to the home screen again. In the macOS and iOS apps (apple/) the page
+//   also hands the icon's 512px picture to the app: the Mac app puts it on its Dock icon, the iPhone app switches to
+//   the alternate icon of that name.
 (() => {
   const CONCEPTS = [['grid', '그리드'], ['pulse', '펄스'], ['bot', '봇'], ['terminal', '터미널'], ['nodes', '노드']];
   const COLOURS = [['blue', '블루'], ['emerald', '에메랄드'], ['sunset', '선셋'], ['graphite', '그래파이트']];
@@ -32,6 +34,8 @@
     set('link[rel=apple-touch-icon]', apple);
     const logo = document.querySelector('.hrow h1 img');
     if (logo) logo.src = fav;
+    const big = face(id) ? `chars/${face(id)}-icon-512.png` : dir(id) + 'icon-512.png';
+    window.webkit?.messageHandlers?.adash?.postMessage({ icon: new URL(big, location.href).href });
   };
   window.setAppIcon = id => {
     try { if (id === DEFAULT) localStorage.removeItem('adash.icon'); else localStorage.setItem('adash.icon', id); } catch {}

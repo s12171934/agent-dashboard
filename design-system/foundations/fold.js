@@ -10,6 +10,8 @@
 // device-posture: folded): "book" held sideways (the fold runs down: left and right halves), "laptop" upright (the
 // fold runs across: top and bottom halves). The first half is then a page like the cover screen and the second the
 // dock's sheet (dock.css, ds-dock.js); a change fires ds-posture on window. Opened flat or closed, no attribute.
+// - A native shell can say instead (window.dsHalfFolded = true | false, then a resize event): WKWebView does not report
+//   device-posture, so the iPhone app (apple/) reads the hinge (UIHingeInteraction) and passes it here.
 (() => {
   const root = document.documentElement;
   const HALF = matchMedia('(device-posture: folded)');
@@ -19,7 +21,7 @@
     const on = fold && innerWidth > innerHeight && long > 800
       && lost > 0 && lost <= 120 && screen.orientation?.type === 'landscape-secondary';
     root.style.setProperty('--fold-off', on ? lost / 2 + 'px' : '0px');
-    const posture = fold && HALF.matches ? (innerWidth > innerHeight ? 'book' : 'laptop') : '';
+    const posture = fold && (window.dsHalfFolded ?? HALF.matches) ? (innerWidth > innerHeight ? 'book' : 'laptop') : '';
     if (posture === (root.dataset.posture || '')) return;
     if (posture) root.dataset.posture = posture; else delete root.dataset.posture;
     dispatchEvent(new Event('ds-posture'));
