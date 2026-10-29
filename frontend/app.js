@@ -377,7 +377,7 @@ async function renderView(navigated) {
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
   document.querySelectorAll('.ch-dock').forEach(b => { b.hidden = !office; });  // the office canvas's zoom figure (맞춤), on the bar
   $('#chsort-btn').hidden = !office || r.v !== 'agents';  // 홈 has no worktree rooms to sort
-  if (!office) { document.documentElement.classList.remove('ch-full'); $('#ch-nav')?.setAttribute('hidden', ''); }
+  if (!office) document.documentElement.classList.remove('ch-full');
   if (r.v === 'home') { if (charMode) renderOffice(); else renderHome(); }
   else if (r.v === 'agents') renderAgents();
   else if (r.v === 'compare') renderCompare();
@@ -3925,7 +3925,7 @@ addEventListener('resize', () => {
 // zoomed with Ctrl/⌘ + wheel, a pinch or the − / + buttons. 「맞춤」 fits every room in view and keeps fitting as the
 // office changes, until the view is moved by hand. The view is kept on this device (adash.chview).
 // fitW: the zoom is 맞춤's, so the plane is no wider than the screen: it stays centred across, and the wheel, trackpad or a
-// drag moves it only up and down — no sideways drift while reading down a tall office — until it is zoomed or a room is.
+// drag moves it only up and down — no sideways drift while reading down a tall office — until it is zoomed.
 let chView = { x: 0, y: 0, z: 1, fit: true, fitW: true };
 let chLz = 1;  // the label growth chLayout last spaced the rows for
 try { chView = { ...chView, ...JSON.parse(localStorage.getItem('adash.chview') || '{}'), fit: true }; } catch {}  // a load opens fitted too
@@ -3969,75 +3969,14 @@ function chApply() {
   if (Math.abs(lz - chLz) > .1) { chLz = lz; chLayout(); }
   $('#k-zoom').textContent = Math.round(chView.z * 100) + '%';
   $('#zoom-btn').setAttribute('aria-pressed', chView.fit);
-  chNavShow();
 }
-// ‹ › while a room or project is fitted (chFocus): the rooms in the plane's order, or the projects' blocks (「프로젝트별」)
-const chNavKeys = () => chNavKey.startsWith('p:')
-  ? [...document.querySelectorAll('#ch-canvas .ch-pgrp[data-proj]')].map(n => 'p:' + n.dataset.proj)
-  : [...document.querySelectorAll('#ch-canvas .room[data-room]')].map(n => n.dataset.room);
-const chNavEl = document.createElement('div');
-chNavEl.id = 'ch-nav'; chNavEl.hidden = true;
-chNavEl.innerHTML = '<button class="act" data-d="-1" aria-label="이전 방">‹</button><button class="act" data-d="1" aria-label="다음 방">›</button>';
-document.body.append(chNavEl);
-function chNavShow() {
-  const cv = $('#ch-canvas'), ks = cv && !chView.fit && chNavKey ? chNavKeys() : [], i = ks.indexOf(chNavKey);
-  chNavEl.hidden = i < 0 || ks.length < 2;
-  if (chNavEl.hidden) return;
-  const r = cv.getBoundingClientRect(), { top, room, fw } = chFrame(cv);
-  Object.assign(chNavEl.style, { left: r.left + 'px', width: fw + 'px', top: r.top + top + room / 2 + 'px' });
-  const [prev, next] = chNavEl.children;
-  prev.disabled = i === 0; next.disabled = i === ks.length - 1;
-}
-function chNav(d) {
-  const ks = chNavKeys(), k = ks[ks.indexOf(chNavKey) + d];
-  if (k) chFocus(k);
-}
-chNavEl.onclick = e => { const b = e.target.closest('button[data-d]'); if (b) chNav(+b.dataset.d); };
-document.addEventListener('keydown', e => {
-  if (chNavEl.hidden || e.altKey || e.ctrlKey || e.metaKey || !['ArrowLeft', 'ArrowRight'].includes(e.key) || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
-  e.preventDefault(); chNav(e.key === 'ArrowLeft' ? -1 : 1);
-});
 // zoom by k around a point of the canvas (px from its top left)
 function chZoom(k, px, py) {
   const z = Math.min(2, Math.max(.25, chView.z * k)), f = z / chView.z;
-  chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = chView.fitW = false; chNavKey = '';
+  chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = chView.fitW = false;
   chApply(); chViewSave();
 }
-// a worktree room pressed (its title or floor, not a person): the view fits that room; pressed again while it is so
-// (not moved since), back to 맞춤. The room shows at 100% at most (a small one stood at 150–200%), and to fit a tall one
-// whole it shrinks no further than 90%, where the labels start to grow (below it, on a phone, a room zoomed out instead
-// of in and the labels' growth re-spaced every room — the office turned over): taller still, it shows from its top.
-// Twice, as the labels' growth (--lz) re-spaces the room's rows when the zoom changes.
-// While a room or project is so fitted, ‹ › on the canvas's sides (and ← →) fit the one before or after it (chNav).
-let chFocused = '', chNavKey = '';
-function chFit() { chFocused = ''; chNavKey = ''; chView.fit = true; }
-// key: a room's (data-room), or 'p:' and a project's (data-proj, 「프로젝트별」) — the project's sign and rooms together
-// (the box round them: a pinned project's block is the plane's width, its rooms maybe not)
-function chFocus(key) {
-  const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world'), r = key.startsWith('p:')
-    ? [...(w?.querySelectorAll('.ch-pgrp[data-proj]') || [])].find(n => n.dataset.proj === key.slice(2))
-    : [...(w?.querySelectorAll('.room[data-room]') || [])].find(n => n.dataset.room === key);
-  if (!r) return;
-  const box = () => { if (!r.matches('.ch-pgrp')) return r.getBoundingClientRect();
-    const bs = [...r.children].map(c => c.getBoundingClientRect()), left = Math.min(...bs.map(b => b.left)), top = Math.min(...bs.map(b => b.top));
-    return { left, top, width: Math.max(...bs.map(b => b.right)) - left, height: Math.max(...bs.map(b => b.bottom)) - top }; };
-  const at = () => [key, chView.x, chView.y, chView.z, chView.fit].join('|');
-  if (chFocused === at()) { chFit(); chApply(); chViewSave(); return; }
-  chNavKey = key;
-  for (let i = 0; i < 2; i++) {
-    const { top, room, fw } = chFrame(cv), wr = w.getBoundingClientRect(), rr = box();
-    const x = (rr.left - wr.left) / chView.z, y = (rr.top - wr.top) / chView.z, rw = rr.width / chView.z, rh = rr.height / chView.z;
-    const z = Math.min(1, (fw - 24) / rw, Math.max(room / rh, .9));
-    chView = { ...chView, z, fit: false, fitW: false, x: (fw - rw * z) / 2 - x * z, y: top + Math.max(0, (room - rh * z) / 2) - y * z };
-    chApply();
-  }
-  chFocused = at(); chViewSave();
-}
-document.addEventListener('click', e => {
-  const r = e.target.closest?.('#ch-canvas .ch-world .room[data-room]'), g = !r && e.target.closest?.('#ch-canvas .ch-world .ch-proj')?.parentNode;
-  if (!(r || g?.dataset.proj) || e.target.closest('.ch, a, button, .ch-panel') || Date.now() - chPanAt < 400) return;
-  chFocus(r ? r.dataset.room : 'p:' + g.dataset.proj);
-});
+function chFit() { chView.fit = true; }
 // the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
 // when that is the lower half); the page itself does not scroll. It keeps to the viewport: when iOS lays an installed
 // PWA out shorter than its screen (iPhone Duo sideways, now and then: 867×587 of 951×669), a box reaching past it is
