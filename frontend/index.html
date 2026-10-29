@@ -28,7 +28,7 @@
 <!-- the floating bar (<ds-dock>): tabs | view filters | 현황 (the figures, connection and errors — there is no page
      header), metric servers and display settings; data-tip names each.
      The bar adds its own 설정 button beside it (position, size, which items stay on the bar, hiding the bar); the
-     data-more items start in its menu instead of on the bar.
+     data-more items start in its menu instead of on the bar; 새 에이전트 (data-fab) sits beside 설정, off both.
      Like the App Store's tab bar it keeps five screens (data-name: named under the icon) — 홈, 에이전트, QA, 프로젝트,
      테스트; the rest sit in 설정 grouped under the separators' data-label, on a phone too. -->
 <ds-dock id="dock">
@@ -44,7 +44,7 @@
   <a href="#designs" data-more data-v="designs" data-tip="설계문서" aria-label="설계문서"><ds-icon name="book"></ds-icon></a>
   <a href="#trees" data-more data-v="trees" data-tip="워크트리" aria-label="워크트리: 이 맥의 모든 git 워크트리와 VS Code 로 열기"><ds-icon name="branch"></ds-icon></a>
   <a href="#usage" data-more data-v="usage" data-tip="플랜 사용량" aria-label="플랜 사용량: 구독 계정별 5시간·주간 한도와 초과 크레딧"><ds-icon name="zap"></ds-icon><b class="dn" id="k-usage" hidden></b></a>
-  <button class="dock-btn" id="launch-btn" data-more data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
+  <button class="dock-btn" id="launch-btn" data-fab data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
   <button class="dock-btn ch-dock" id="zoom-btn" data-more data-tip="확대 비율 · 누르면 맞춤" aria-label="사무실 확대 비율: 누르면 모든 방이 한눈에 들어오게 맞춤" aria-pressed="false" hidden><span id="k-zoom">100%</span></button>
   <button class="dock-btn ch-dock" id="chsort-btn" data-more data-tip="방 정렬 · 누르면 팀순·프로젝트별 전환" aria-label="사무실 방 정렬: 누르면 팀순과 프로젝트별을 바꿈" aria-pressed="false" hidden><span id="k-chsort">팀순</span></button>
   <i class="dock-sep" data-more data-label="필터"></i>

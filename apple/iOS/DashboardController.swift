@@ -11,7 +11,8 @@ import WebKit
 // - 설정, the right button of each tab's navigation bar (the screen's name in the middle), where the App Store keeps
 //   its account button (the system tab bar holds five tabs at most, the search tab's place included), opening a sheet
 //   listing the rest of the bar as the App Store lists its settings: the other screens, the filters (a check while
-//   on), the settings, each pressing the page's own element. A count badge up among them puts a dot on it (iOS 26).
+//   on), the settings, each pressing the page's own element. A count badge among them shows on its row only: 설정
+//   gets no dot. An item the page keeps beside its 설정 (data-fab: 새 에이전트) is a button on 설정's left instead.
 // One web view serves every tab: the selected tab's page holds it. The page fills the screen, the side strip of iPhone
 // Duo's outer display included (its content keeps to the safe area). Half folded (the hinge, iOS 27.1) the tab bar
 // hides and the page lays itself out as on the web — the first half a page, the second its bar's sheet (fold.js,
@@ -35,8 +36,8 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     private var items: [DockBridge.Item] = []
     private var following = false  // selecting the tab the page went to: not a press
     private weak var sheet: MoreController?
-    private var settingsItems: [UIBarButtonItem] = []  // one per tab's navigation bar
-    private var settingsDot = false
+    private var navItems: [UINavigationItem] = []  // each tab's navigation bar: 설정 and the data-fab items
+    private var fabKeys: [String] = []
     private var halfFolded = false {
         didSet { if halfFolded != oldValue { tellFold(); fold() } }
     }
@@ -64,7 +65,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
             UITab(title: title, image: UIImage(systemName: symbol), identifier: key) { [weak self] _ in
                 let slot = Slot()
                 slot.navigationItem.title = title
-                if let self { slot.navigationItem.rightBarButtonItem = settingsItem() }
+                if let self { navItems.append(slot.navigationItem); barButtons(slot.navigationItem) }
                 return UINavigationController(rootViewController: slot)
             }
         }
@@ -78,17 +79,17 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     }
 
     // 설정: the navigation bar's right button, where the App Store keeps its account button
-    private func settingsItem() -> UIBarButtonItem {
-        let item = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in self?.showMore() })
-        item.accessibilityLabel = "설정: 다른 화면, 필터와 설정"
-        item.isHidden = halfFolded  // a tab first opened half folded: the sheet already lists all of it
-        settingsItems.append(item)
-        badgeSettings()
-        return item
-    }
-    private func badgeSettings() {
-        guard #available(iOS 26.0, *) else { return }
-        for item in settingsItems { item.badge = settingsDot ? .indicator() : nil }
+    // and on its left the page's data-fab items (새 에이전트), each pressing the page's own element
+    private func barButtons(_ nav: UINavigationItem) {
+        let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in self?.showMore() })
+        settings.accessibilityLabel = "설정: 다른 화면, 필터와 설정"
+        let fab = items.filter(\.isFab).map { it in
+            let b = UIBarButtonItem(image: UIImage(systemName: DockBridge.symbol(it.icon)), primaryAction: UIAction { [weak self] _ in self?.press(it.key) })
+            b.accessibilityLabel = it.tip
+            return b
+        }
+        for b in [settings] + fab { b.isHidden = halfFolded }  // a tab first opened half folded: the sheet already lists all of it
+        nav.rightBarButtonItems = [settings] + fab  // the first is the rightmost
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -136,8 +137,8 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
             let b = new.first { $0.key == t.identifier }?.badge
             t.badgeValue = b?.isEmpty == false ? b : nil
         }
-        let dot = new.contains { !$0.badge.isEmpty && !Self.screens.map(\.0).contains($0.key) }
-        if dot != settingsDot { settingsDot = dot; badgeSettings() }
+        let fab = new.filter(\.isFab).map(\.key)
+        if fab != fabKeys { fabKeys = fab; navItems.forEach(barButtons) }
         // a screen off the tabs (결정 대기, a session) leaves the selection where it was
         if let cur = current, Self.screens.contains(where: { $0.0 == cur }) {
             if selectedTab?.identifier != cur, let t = tabs.first(where: { $0.identifier == cur }) {
@@ -155,7 +156,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         var groups: [(String, [DockBridge.Item])] = [("화면", [])]
         for it in items {
             if let sep = it.sep { groups.append((sep, [])) }
-            else if !Self.screens.contains(where: { $0.0 == it.key }) { groups[groups.count - 1].1.append(it) }
+            else if !it.isFab && !Self.screens.contains(where: { $0.0 == it.key }) { groups[groups.count - 1].1.append(it) }
         }
         groups[groups.count - 1].1.append(DockBridge.Item(key: "", tip: "새로 고침", icon: "", on: false, badge: "", text: "", sep: nil))
         return groups.filter { !$0.1.isEmpty }
@@ -195,7 +196,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         setTabBarHidden(halfFolded, animated: true)
         for case let nav as UINavigationController in viewControllers ?? [] { nav.setNavigationBarHidden(halfFolded, animated: true) }
         // half folded, the page's sheet lists everything 설정 would: no 설정 button, on tabs not opened yet either
-        for item in settingsItems { item.isHidden = halfFolded }
+        for nav in navItems { nav.rightBarButtonItems?.forEach { $0.isHidden = halfFolded } }
         web.evaluateJavaScript("window.adashDock?.enable(\(!halfFolded))")
     }
 
