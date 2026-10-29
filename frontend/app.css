@@ -133,6 +133,7 @@ tspan.ctx-warn { fill: var(--warn); font-weight: 600; } tspan.ctx-bad { fill: va
 .tkc.wait i, .tkc.stalled i { color: var(--warn); } .tkc.stalled { border-color: var(--bad); }
 .tkc.pending, .tkc.blocked { color: var(--muted); border-style: dashed; }
 .tkc.skip { color: var(--muted); opacity: .55; } .tkc.skip i { color: var(--idle); }
+.tkc.manual { color: var(--muted); border-style: dotted; }
 a.tkc:hover { border-color: var(--accent); }
 /* external driver plan (pre-planned worker roster) */
 .xp-err { color: var(--bad); font-size: 12px; }
@@ -145,7 +146,7 @@ a.tkc:hover { border-color: var(--accent); }
 .drv.xp-pdrv { border-color: var(--muted); background: transparent; padding: 6px 12px; margin-top: 6px; }
 .drv.xp-pdrv .drv-h { margin: 0; } .drv.xp-pdrv .drv-h > b { color: var(--muted); font-weight: 600; }
 .drv.xp-sched { padding: 6px 12px; } .drv.xp-sched .drv-h { margin: 0; }
-.xp-why { color: var(--warn); } .xp-why.hold { color: var(--bad); }
+.xp-why { color: var(--warn); } .xp-why.hold { color: var(--bad); } .xp-why.manual { color: var(--muted); }
 .tkc .tk-add { font-size: 10px; font-weight: 700; color: var(--warn); }
 .c-added { align-items: flex-start; }
 .c-added .badge { flex: none; }
@@ -881,6 +882,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tg-n.run .tg-k i, .tg-n.run .tg-bar i { color: var(--run); } .tg-n.run .tg-bar i { background: var(--run); }
 .tg-n.pending { border-color: var(--accent); border-style: dashed; }
 .tg-n.blocked { border-style: dashed; color: var(--muted); }
+.tg-n.manual { border-style: dotted; color: var(--muted); }
 .tg-e { fill: none; stroke-width: 1.5; transition: opacity .15s; }
 .tg-e.chain { stroke: var(--muted); }
 .tg-e.pred { stroke: var(--accent); stroke-dasharray: 4 3; opacity: .65; }
