@@ -2299,6 +2299,28 @@ function qaAutoHtml(s) {
   const sum = qs.length ? `<div class="rv-jsum">진행 ${WT_QA.length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
   return (qs.length ? qaLegend() : '') + (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
 }
+// The set's TC sheet (prefs `qa_sets[].sheet`): its Summary tab as `aqa sheet` last recorded it — the QA driver's run
+// reads the sheet through the Drive connector, so the numbers are only as fresh as the driver's last run.
+function qaSheetHtml(s) {
+  const g = s.sheet;
+  if (!g) return '';
+  const link = g.url ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">시트 열기</a>` : '';
+  if (g.total == null) return `<div class="qa-sheet"><div class="qsh-h"><b>TC 진행</b>${link}<span class="st">아직 받은 값이 없습니다 — QA 드라이버가 다음에 돌 때 읽습니다</span></div></div>`;
+  const n = g.total || 1, done = g.total - g.ntest, pct = v => Math.round(v / n * 1000) / 10;
+  const old = Date.now() - new Date(g.at) > 3 * 3600e3;
+  const parts = [['pass', 'Pass', 'var(--done)'], ['fail', 'Fail', 'var(--bad)'], ['blocked', 'Blocked', 'var(--warn)'], ['dropped', 'Dropped', 'var(--muted)']];
+  const bar = parts.map(([k, l, c]) => g[k] ? `<i style="width:${g[k] / n * 100}%;background:${c}" title="${l} ${g[k]}"></i>` : '').join('');
+  const tile = (v, l, tip) => `<div class="qs-tile"${tip ? ` title="${esc(tip)}"` : ''}><b>${v}</b><span>${l}</span></div>`;
+  const meta = [g.version, g.device, g.tester, g.period].filter(Boolean).map(esc).join(' · ');
+  return `<div class="qa-sheet"><div class="qsh-h"><b>TC 진행</b>${link}<span class="st">${meta}</span>
+      <span class="${old ? 'rv-flag warn' : 'st'}" title="${esc(clockAt(g.at))}">갱신 ${esc(ago(g.at))}</span></div>
+    <div class="qsh-bar" title="수행 ${done}/${g.total}">${bar}</div>
+    <div class="qs-tiles">${[
+      tile(`${pct(done)}%`, `수행률 ${done}/${g.total}`, '(총 TC − N-Test) / 총 TC'),
+      tile(`${pct(g.pass)}%`, 'Pass율', 'Pass / 총 TC'),
+      ...parts.map(([k, l, c]) => tile(g[k], `<i class="sw" style="background:${c}"></i> ${l}`)),
+      tile(g.ntest, '남음 (N-Test)')].join('')}</div></div>`;
+}
 // 「QA 통계」 of a set, all from /api/reviews: a summary, rounds started and finished per day, and the change size.
 function qaStatsHtml(s) {
   const T = s.tickets, n = T.length;
@@ -2525,7 +2547,7 @@ async function renderWorktrees() {
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
-      ${qaStatsHtml(s)}${ro ? '' : qaAutoHtml(s) + qaLegacyHtml(s)}
+      ${qaSheetHtml(s)}${qaStatsHtml(s)}${ro ? '' : qaAutoHtml(s) + qaLegacyHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list">${ts.map(t => wtTicket(t, s, ro)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   };

@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""aqa — hand a QA set's TC sheet progress to the agent dashboard.
+
+The sheet is read by an agent through the Google Drive connector (the dashboard server has no Google login):
+download_file_content on the sheet's file id with no export type gives the first tab — the 「Test Summary」 tab —
+as base64 CSV, and that string is passed here as is. Writes server/qa-sheets.json; the review pass attaches it to
+the set whose epic it names (`sheet` in /api/reviews).
+
+  aqa sheet <EPIC> <base64 CSV | ->     record the Summary tab (- reads the string from stdin)
+"""
+import base64
+import binascii
+import csv
+import io
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+STORE = os.path.join(HERE, "qa-sheets.json")
+# Summary tab label → field; each row holds two label/value pairs (A:B and C:D).
+LABELS = {"버전": "version", "단말": "device", "작성자": "author", "테스터": "tester", "테스트 일자": "period",
+          "배포 내역": "release", "총 TC": "total", "Pass": "pass", "Fail": "fail", "Blocked": "blocked",
+          "Dropped": "dropped", "N-Test": "ntest"}
+COUNTS = ("total", "pass", "fail", "blocked", "dropped", "ntest")
+
+
+def die(msg):
+    print(f"aqa: {msg}\n\n" + __doc__.split("\n\n", 2)[2], file=sys.stderr)
+    sys.exit(2)
+
+
+def parse(text):
+    got = {}
+    for row in csv.reader(io.StringIO(text)):
+        for label, value in zip(row[0::2], row[1::2]):
+            field = LABELS.get(label.strip())
+            if field and field not in got:
+                got[field] = value.strip()
+    missing = [f for f in COUNTS if not re.fullmatch(r"\d+", got.get(f, "").replace(",", ""))]
+    if missing:
+        raise ValueError("Summary 탭 양식이 아닙니다 (숫자를 못 찾음: " + ", ".join(missing) + ")")
+    for f in COUNTS:
+        got[f] = int(got[f].replace(",", ""))
+    return got
+
+
+def main(argv):
+    if len(argv) != 3 or argv[0] != "sheet":
+        die("unknown command")
+    epic, data = argv[1], argv[2]
+    if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", epic):
+        die(f"에픽 키가 아닙니다: {epic}")
+    if data == "-":
+        data = sys.stdin.read()
+    try:
+        text = base64.b64decode(re.sub(r"\s", "", data), validate=True).decode("utf-8-sig")
+        sheet = parse(text)
+    except (binascii.Error, UnicodeDecodeError, ValueError) as e:
+        print(f"aqa: {e}", file=sys.stderr)
+        sys.exit(1)
+    sheet["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    try:
+        with open(STORE) as f:
+            store = json.load(f)
+    except (OSError, ValueError):
+        store = {}
+    store[epic] = sheet
+    tmp = STORE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(store, f, ensure_ascii=False)
+    os.replace(tmp, STORE)
+    done = sheet["total"] - sheet["ntest"]
+    print(f"aqa: {epic} 수행 {done}/{sheet['total']} · Pass {sheet['pass']} · Fail {sheet['fail']}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

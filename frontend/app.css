@@ -1212,6 +1212,11 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
   .fl-ns { padding-left: 4px; gap: 12px 16px; }
   .wt-h .field { margin-left: 0; width: 100%; }
 }
+.qa-sheet { display: grid; gap: 8px; padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.qsh-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
+.qsh-h b { color: var(--text); font-size: 13px; }
+.qsh-bar { display: flex; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.qsh-bar i { display: block; height: 100%; }
 .qa-stats { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .qa-stats[open] > summary { margin-bottom: 8px; }
 .qs-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }

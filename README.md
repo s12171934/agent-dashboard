@@ -21,7 +21,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `apple/` | macOS·iPhone 앱(배포된 페이지를 감싼 네이티브 셸)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
 | `exports/` | 공개 스키마 | |
@@ -59,7 +59,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문. 터미널 선택기와 같은 질문이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
-| 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
+| 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter, `server/qa-sheets.json`(`aqa` 가 기록하는 TC 시트 진행) (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
 | 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`(그 .git 아래 워크트리를 가진 서브모듈 git 디렉터리도)·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 `server/worktree-notes.json` 에 쓴다 |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
@@ -537,7 +537,8 @@ atest end [passed|failed] [메모]               # 기본: 실패 케이스가 �
 QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모아 보여 주고, 한 번에 VS Code 로 열어 리뷰한 뒤 리뷰 결과를 볼트 스텝 노트에 남긴다. 「워크트리 리뷰」 탭(바의 겹친 판 아이콘)이 그린다.
 
 - 「QA 단계」 선택으로 QA 드라이버 단계(또는 막힘)의 티켓만 거른다. 홈의 「QA 파이프라인」 「외 n건」이 이 값을 정해 연다.
-- **묶음:** `qa_sets` 의 `{"epic", "project"}` 하나가 묶음이다. 티켓 = Jira `parent = <epic>` 의 이슈(5분마다, `jira_site`·`jira_email` + 환경 변수 `ATLASSIAN_API_TOKEN`. launchd 는 `~/.zshrc` 를 읽지 않으므로 없으면 대화형 zsh 에 한 번 물어 얻는다).
+- **묶음:** `qa_sets` 의 `{"epic", "project"}`(선택: `"sheet"` TC 시트 링크) 하나가 묶음이다. 티켓 = Jira `parent = <epic>` 의 이슈(5분마다, `jira_site`·`jira_email` + 환경 변수 `ATLASSIAN_API_TOKEN`. launchd 는 `~/.zshrc` 를 읽지 않으므로 없으면 대화형 zsh 에 한 번 물어 얻는다).
+- **TC 진행:** 묶음에 `sheet`(TC 스프레드시트 링크)를 두면 묶음 머리에 시트 「Test Summary」 탭의 수행률·Pass율·결과별 건수와 막대가 나온다. 서버에는 Google 로그인이 없어서, 에이전트가 Google Drive 커넥터로 `download_file_content`(파일 ID, export 형식 없이 = 첫 탭 CSV 를 base64 로)를 부르고 그 문자열을 그대로 `server/aqa sheet <EPIC> '<content>'` 에 넘긴다. `aqa` 가 `server/qa-sheets.json` 에 쓰면 다음 리뷰 회차(30초)에 화면에 붙는다. 지금은 그 에픽의 QA 드라이버 자동화 프롬프트가 드라이버 실행 뒤에 이 일을 하므로, precheck 가 회차를 건너뛰는 동안에는 갱신되지 않는다(「갱신 n분 전」, 3시간이 넘으면 주의 표시).
 - **티켓에 붙는 것:** 폴더 이름에 그 키가 든 Orca 워크트리(메인·보관 제외), 파일 이름에 키가 든 스텝 노트(`<project>/progress.json` 의 step 경로)와 같은 프로젝트 폴더의 다른 노트, 키가 든 최근 테스트 실행, 그 워크트리에서 도는 에이전트.
 - **저장소 줄:** 브랜치, 비교 베이스, 베이스보다 앞선 커밋 수·바뀐 파일 수·추가/삭제 줄, 뒤처진 커밋 수, 미커밋 파일 수. 베이스는 ① 그 브랜치 PR 의 base(`gh pr list --head`, 10분마다) ② `review_bases` 의 저장소별 값 ③ `main` 순이고, 로컬의 `origin/<베이스>`(없으면 `<베이스>`)와 비교한다. fetch 는 하지 않는다. git 수치는 30초마다, HEAD·베이스가 그대로면 캐시를 쓴다.
 - **VS Code 로 보기:** 티켓 줄 아래에 웹 VS Code 를 아코디언으로 펼친다(다시 누르면 접힘). 저장소마다 탭이 하나이고, 탭을 처음 열 때 로드한다. 파일은 읽기 전용이다(터미널은 열 수 있다). 작업 공간 신뢰는 끈다: 폴더마다 신뢰를 묻지 않고 Source Control(git)이 바로 보인다. 이 설정은 application 범위라 서버의 Machine 설정으로는 먹지 않아서, 중계가 workbench 첫 페이지의 `configurationDefaults` 에 `security.workspace.trust.enabled: false` 를 넣는다. 서버가 처음 열 때 `code serve-web` 을 사용자 임시 폴더의 unix 소켓으로 하나 띄우고(`--without-connection-token`, 데이터는 `server/vscode-web/`), `/vscode/<비밀값>/` 아래 요청을 그 소켓으로 중계한다. serve-web 은 프레임에 넣는 것을 막고(`X-Frame-Options`, `frame-ancestors`) 토큰을 SameSite=Lax 쿠키로 들고 다녀서 다른 출처의 페이지에 그대로 넣을 수 없기 때문이다. 중계는 그 헤더를 빼고, 비밀값은 serve-web 의 `--server-base-path` 라 모든 자산·웹소켓 주소에 실린다. 중계도 「VS Code 로 열기」와 같이 루프백에서만 된다. 화면 언어는 영어로 고정한다(한국어 브라우저에는 버전이 맞지 않는 언어팩이 붙어 문구가 틀렸다). 닫은 창의 확장 호스트는 5분 뒤 정리된다. 목록이 다시 그려져도 펼친 패널은 `moveBefore` 로 옮겨 다시 로드되지 않는다(없는 브라우저는 데이터가 바뀔 때 다시 로드). 색 테마는 대시보드의 라이트·다크를 따른다: 페이지가 주소에 `?theme=light|dark` 를 붙이면 중계가 같은 `configurationDefaults` 에 Default Light/Dark Modern 을 넣고, 대시보드 테마가 바뀌면 펼친 패널을 새 테마로 다시 연다(열려 있던 편집기는 VS Code 가 복원). iframe 의 `color-scheme` 은 안쪽 `prefers-color-scheme` 으로 전해지지 않아 VS Code 의 자동 감지로는 따라가지 않는다. VS Code 안에서 직접 고른 테마가 있으면 그것이 이긴다.
