@@ -1146,10 +1146,12 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 
 /* coordinator detail: summary line, folding sections, checkbox flow graph + side panel, worker table */
 .o-sum .pline { display: flex; flex-wrap: wrap; gap: 2px 14px; white-space: normal; }
-/* session detail: the summary box, then one tab per kind of content */
-.d-sum { display: flex; flex-direction: column; gap: 8px; }
-.d-sum .o-sum .pline { margin: 0; }
-.d-sum-l { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; white-space: normal; }
+/* session detail: one tab per kind of content; 요약 is a home-style grid of tiles, one per other tab */
+.d-tiles { margin-bottom: 12px; }
+.d-tile .wp-bar, .d-tile .pbar { margin: 0; }
+.d-tile .hub-cols { justify-content: flex-start; } .d-tile .hub-cols i { flex: 0 1 28px; }
+.d-tile-q { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .d-tabs { margin: 2px 0 12px; }
 .d-tab-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; vertical-align: 2px; }
 .d-tab-dot.run { background: var(--run); }
