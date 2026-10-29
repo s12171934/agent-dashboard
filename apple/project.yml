@@ -1,0 +1,89 @@
+name: AgentDashboard
+options:
+  bundleIdPrefix: com.s-dante
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # No Apple ID needed by default: "Sign to Run Locally". build.sh signs with a team when given one.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+    PRODUCT_BUNDLE_IDENTIFIER: com.s-dante.agent-dashboard
+    PRODUCT_NAME: Agent Dashboard
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+targets:
+  AgentDashboard-macOS:
+    type: application
+    platform: macOS
+    sources: [Shared, macOS]
+    info:
+      path: build/Info-macOS.plist
+      properties:
+        CFBundleDisplayName: Agent Dashboard
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSPrincipalClass: NSApplication
+        # The metric server is plain http on loopback (and the tailnet).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+  AgentDashboard-iOS:
+    type: application
+    platform: iOS
+    sources: [Shared, iOS]
+    dependencies:
+      - target: AgentDashboard-Widgets
+    entitlements:
+      path: build/iOS.entitlements
+      properties:
+        keychain-access-groups: [$(AppIdentifierPrefix)com.s-dante.agent-dashboard.shared]
+    info:
+      path: build/Info-iOS.plist
+      properties:
+        CFBundleDisplayName: Agents
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        # agentdash://decide, agentdash://session?path=… : where a widget tap opens the page
+        CFBundleURLTypes:
+          - CFBundleURLName: com.s-dante.agent-dashboard
+            CFBundleURLSchemes: [agentdash]
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        # Every icon set in the catalog goes in as an alternate icon (the 앱 아이콘 choices, tools/make-icons).
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+  # The home and lock screen widgets (결정 대기, 에이전트, 테스트): they read the server the app shares through a keychain group (Shared/AppGroup.swift).
+  AgentDashboard-Widgets:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets, Shared/AppGroup.swift]
+    entitlements:
+      path: build/Widgets.entitlements
+      properties:
+        keychain-access-groups: [$(AppIdentifierPrefix)com.s-dante.agent-dashboard.shared]
+    info:
+      path: build/Info-Widgets.plist
+      properties:
+        CFBundleDisplayName: Agents
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.s-dante.agent-dashboard.widgets
+        PRODUCT_NAME: AgentWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
