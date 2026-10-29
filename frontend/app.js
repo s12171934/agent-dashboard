@@ -2505,6 +2505,7 @@ async function renderWorktrees() {
   // Unchanged markup is left alone: a web VS Code open under a ticket survives a redraw only where moveBefore exists.
   const html = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
   if (html === wtBodyHtml && $('#wt-body').childElementCount) return;
+  if (WEB_HOLD && wtWeb.size && $('#wt-body').childElementCount) return;
   wtBodyHtml = html;
   wtWebStash();
   $('#wt-body').innerHTML = html;
@@ -2582,8 +2583,10 @@ async function qaSetClick(b) {
 // 웹 VS Code: 「VS Code 로 보기」 opens the ticket's worktrees, read-only, in the server's web VS Code (serve-web, relayed
 // by the server) in a panel at the bottom of the ticket row — a tab per repo, the desktop window one button away. The
 // panels live outside the rendered markup (wtWeb) and go back under their row after each redraw: moveBefore keeps the
-// iframe loaded where the browser has it, plain append reloads it.
+// iframe loaded where the browser has it, plain append reloads it. Without moveBefore (Safari, the macOS app's WebKit)
+// a list with a panel open is not redrawn at all until the panel closes: every redraw would reload VS Code (WEB_HOLD).
 const wtWeb = new Map();  // ticket key → panel
+const WEB_HOLD = !('moveBefore' in Element.prototype);
 let wtWebPark;
 const wtWebMove = (parent, el) => parent.moveBefore && el.isConnected ? parent.moveBefore(el, null) : parent.append(el);
 function wtWebStash() {
@@ -2608,7 +2611,11 @@ document.addEventListener('ds:theme', () => {
 });
 const wtWebLabel = (key, on) => document.querySelectorAll(`button[data-wt-web="${CSS.escape(key)}"]`)
   .forEach(x => { x.textContent = on ? 'VS Code 접기' : 'VS Code 로 보기'; x.setAttribute('aria-expanded', on); });
-const wtWebClose = key => { if (!wtWeb.has(key)) return; wtWeb.get(key).remove(); wtWeb.delete(key); wtWebLabel(key, false); };
+const wtWebClose = key => {
+  if (!wtWeb.has(key)) return;
+  wtWeb.get(key).remove(); wtWeb.delete(key); wtWebLabel(key, false);
+  if (WEB_HOLD) renderWorktrees();  // the redraws held while it was open
+};
 async function wtWebToggle(b) {
   const key = b.dataset.wtWeb, srv = b.dataset.srv, label = on => wtWebLabel(key, on);
   if (wtWeb.has(key)) return wtWebClose(key);
@@ -2733,6 +2740,7 @@ async function renderTrees() {
   $('#tr-sum').textContent = `${shown}${shown !== all ? ' / ' + all : ''}개 · ${ago(new Date(trAt).toISOString())} 읽음`;
   const html = body + (shown ? '' : '<div class="empty">조건에 맞는 워크트리가 없습니다.</div>');
   if (html === trBodyHtml || (trEdit && $('#tr-body .tr-edit textarea'))) return;  // an open note editor keeps its text
+  if (WEB_HOLD && trWeb.size && $('#tr-body').childElementCount) return;
   for (const el of trWeb.values()) if (el.isConnected) wtWebMove(wtWebPark || (wtWebPark = Object.assign(document.body.appendChild(document.createElement('div')), { hidden: true })), el);
   $('#tr-body').innerHTML = trBodyHtml = html;
   for (const [k, el] of trWeb) {
@@ -2811,7 +2819,7 @@ async function trClick(e) {
   }
   const path = b.dataset.trWeb, k = trKey(srv, path);
   const label = on => { b.textContent = on ? '웹 접기' : '웹으로 보기'; b.setAttribute('aria-expanded', on); };
-  if (trWeb.has(k)) { trWeb.get(k).remove(); trWeb.delete(k); trBodyHtml = ''; return label(false); }
+  if (trWeb.has(k)) { trWeb.get(k).remove(); trWeb.delete(k); trBodyHtml = ''; label(false); return WEB_HOLD && renderTrees(); }
   b.disabled = true; b.textContent = '띄우는 중…';
   const { status: st, body } = await api.worktreeWeb(srv, path);
   b.disabled = false;
@@ -2822,7 +2830,7 @@ async function trClick(e) {
     <iframe class="rv-web-f" src="${esc(wtWebUrl(body.url))}" title="${esc(path)} — 웹 VS Code"></iframe>`;
   trWeb.set(k, el);
   b.closest('.tr-row').append(el);
-  trBodyHtml = '';  // the button's label is part of the markup now
+  trBodyHtml = '';  // the button's label is part of the markup now (and the list held from here on, WEB_HOLD)
   label(true);
 }
 
