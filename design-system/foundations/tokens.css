@@ -33,19 +33,17 @@
   /* dock: --dock-pick is the chosen button size (components/dock/dock-boot.js) */
   --dock-sz: var(--dock-pick, 38px);
   /* how far popovers sit from the bar's screen edge: set by the largest bar size, so dragging 「크기」 moves nothing */
-  --dock-reach: 68px;
+  --dock-reach: 80px;
   /* the bottom bar's distance from the screen's bottom edge. The home indicator's safe area (an installed PWA on
      iPhone: 34px) is mostly empty: the indicator itself is the bottom ~13px. The bar sits just clear of it (22px)
      rather than above the whole area, like the system's own floating tab bars; elsewhere the margin is 14px */
   --dock-bottom: max(14px, env(safe-area-inset-bottom) - 12px);
 }
-/* phone: the bar is the launcher pill (dock.css), 58px tall whatever the chosen size */
-@media (max-width: 500px) { :root { --dock-reach: 58px; } }
 
 /* layout. Breakpoints (media queries cannot read custom properties, so these three widths are the contract — GUIDELINES B1):
      max-width: 900px  tablet   — side-by-side panes stack
      max-width: 700px  narrow   — grids fold to one column, the header compacts
-     max-width: 500px  phone    — the dock becomes a launcher and sheet, controls shrink to fit one row
+     max-width: 500px  phone    — the dock's ⋯ menu spans the screen, controls shrink to fit one row
    Input type is separate from width: (pointer: coarse) is a finger, (hover: none) has no hover. */
 :root {
   --gutter: 24px;  /* the page's side padding (a desktop window, installed or not; 12px on a narrow screen) */

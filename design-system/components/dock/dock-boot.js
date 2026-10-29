@@ -1,12 +1,12 @@
 // <ds-dock> placement, run before the first paint: load it with a plain <script> in <head> (ds-dock.js, a module,
 // comes later and only adds the settings menu).
 // - adash.dock = top | bottom (default) | left | right. A side bar needs room, so a narrow or short screen (a phone
-//   held sideways) shows it at the bottom, and a phone (≤500px wide, where the bar is a launcher, or a finger device
+//   held sideways) shows it at the bottom, and a phone (≤500px wide, or a finger device
 //   with either side ≤500px, i.e. held sideways) always does and offers no choice (dockLocked()); <html data-dock> carries the position in effect,
 //   not the choice. dockPos() reads the choice.
-// - adash.dock.size = button size in px (28–56), set as --dock-pick; a phone's launcher ignores it. dockSize().
+// - adash.dock.size = button size in px (28–56), set as --dock-pick. dockSize().
 // - adash.dock.hidden = '1' when the bar is folded to its one 「바 보이기」 button: <html data-dock-hidden>, except on
-//   a phone (≤500px wide), which keeps its launcher, or a half-folded screen (<html data-posture>, fold.js), whose
+//   a phone (≤500px wide), which keeps its bar, or a half-folded screen (<html data-posture>, fold.js), whose
 //   second half is the bar's sheet.
 (() => {
   const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };

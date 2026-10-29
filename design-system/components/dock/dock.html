@@ -1,27 +1,39 @@
 <!-- dock — the floating bar. One per page, a direct child of <body>.
-     <ds-dock id="…" summary="…" sheet-title="…">                                             summary, sheet-title: optional (phone)
+     <ds-dock id="…" sheet-title="…">                                                         sheet-title: optional (half folded)
        <a href="#view" data-tip="name" aria-label="name"><ds-icon name="…"></ds-icon></a>     a tab; the current one has .on
        <a …><ds-icon …></ds-icon><b class="dn" hidden>0</b></a>                               a tab with a count badge
+       <a … data-name="홈">…</a>                                                               a tab named under its icon
        <i class="dock-sep" data-label="group"></i>                                            a divider between groups; data-label
-                                                                                              (optional) heads the group in the phone sheet
+                                                                                              (optional) heads the group in the ⋯ menu and the sheet
        <label class="dock-btn" data-tip="name" aria-label="name"><input type="checkbox"><ds-icon …></ds-icon></label>   a toggle
        <button class="dock-btn" data-tip="name" aria-label="name"><ds-icon …></ds-icon></button>                      a button
      </ds-dock>
      Icons only: every item has data-tip (hover name) and aria-label (accessible name).
      The element appends the last button itself (⋯ 바 설정: position and size); do not write one.
-     data-more on an item (or a separator) keeps it off the bar: above the phone width it is a named row in the ⋯ menu
-     (then called 「더 보기」, a separator's data-label heads a group there); on a phone it stays in its place in the sheet.
-     Use it for settings that are not needed at a glance, so the bar keeps to tabs, filters and status.
+     data-more on an item (or a separator) keeps it off the bar: it is a named row in the ⋯ menu (then called 「더 보기」,
+     a separator's data-label heads a group there). Like the App Store's tab bar, the bar keeps to the few screens used
+     most, each with data-name (its name under the icon); the rest go in 「더 보기」, and a count badge up there puts a
+     dot on ⋯.
      The user can move any named item between the bar and the menu (⋯ 「바에 둘 항목」, data-more is the default) and
      fold the bar to one button (「바 숨기기」); give an item data-key when its id, input id and href are all missing.
-     Phone (≤500px): the bar is a launcher pill and [open] makes it a bottom sheet of the same children (tabs two to a
-     row, toggles as rows with a switch, data-tip as each row's name). The element adds .dock-launch (the .on tab's icon
-     and name, summary, a dot when a count badge is up) and .dock-head (sheet-title, default 「이동과 설정」, and a close
-     button) itself, and the scrim at the end of <body>; do not write them.
+     Phone (≤500px): the same bar at the bottom, the ⋯ menu a sheet across the screen above it. Half folded
+     (<html data-posture>) the bar is a sheet ([open]) on the second half holding every child, menu items included (tabs
+     two to a row, toggles as rows with a switch, data-tip as each row's name); the element adds its .dock-head
+     (sheet-title, default 「이동과 설정」) itself; do not write it.
      Popovers opened from the bar: <div class="… dock-pop" hidden> at the end of <body>, toggled with hidden; opening
      one closes the others, and a click outside them (not on the bar or a <dialog>) closes the open one. Placement before first paint needs components/dock/dock-boot.js in <head>. -->
-<!-- @story 기본 — 탭·토글·버튼과 구분선. 휴대폰 폭(390)에서는 런처 알약 -->
-<ds-dock summary="실행 1 · 대기 0">
+<!-- @story 기본 — 이름 붙은 탭(data-name), 토글·버튼과 구분선 -->
+<ds-dock>
+  <a href="#" class="on" data-tip="에이전트" data-name="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
+  <a href="#" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
+  <a href="#" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn">2</b></a>
+  <i class="dock-sep" data-label="필터"></i>
+  <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox"><ds-icon name="pulse"></ds-icon></label>
+  <i class="dock-sep" data-label="설정"></i>
+  <button class="dock-btn" data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
+</ds-dock>
+<!-- @story 시트 열림 — 반 접힘에서 둘째 화면을 채우는 이름 붙은 시트 -->
+<ds-dock sheet-title="이동과 설정" data-story-play="this.open(true)">
   <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
   <a href="#" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn">2</b></a>
@@ -30,18 +42,8 @@
   <i class="dock-sep" data-label="설정"></i>
   <button class="dock-btn" data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
 </ds-dock>
-<!-- @story 시트 열림 — 휴대폰 폭(390)에서 런처를 누른 상태: 이름 붙은 바텀시트 -->
-<ds-dock summary="실행 1 · 대기 0" sheet-title="이동과 설정" data-story-play="this.open(true)">
-  <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
-  <a href="#" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
-  <a href="#" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn">2</b></a>
-  <i class="dock-sep" data-label="필터"></i>
-  <label class="dock-btn" data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox"><ds-icon name="pulse"></ds-icon></label>
-  <i class="dock-sep" data-label="설정"></i>
-  <button class="dock-btn" data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
-</ds-dock>
-<!-- @story 더 보기 메뉴 — data-more 항목은 ⋯ 메뉴의 이름 붙은 행으로 (휴대폰 시트에서는 제자리) -->
-<ds-dock summary="실행 1 · 대기 0" data-story-play="setTimeout(() => this.querySelector('.dock-cfg').click())">
+<!-- @story 더 보기 메뉴 — data-more 항목은 ⋯ 메뉴의 이름 붙은 행으로, 묶음 제목은 구분선의 data-label -->
+<ds-dock data-story-play="setTimeout(() => this.querySelector('.dock-cfg').click())">
   <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
   <i class="dock-sep" data-label="설정"></i>
@@ -51,7 +53,7 @@
   <a href="#" data-more data-tip="디자인 시스템" aria-label="디자인 시스템"><ds-icon name="shapes"></ds-icon></a>
 </ds-dock>
 <!-- @story 바에 둘 항목 — ⋯ 메뉴의 「바에 둘 항목」을 펼친 상태: 체크를 끄면 그 항목이 메뉴로 -->
-<ds-dock summary="실행 1 · 대기 0" data-story-play="setTimeout(() => { this.querySelector('.dock-cfg').click(); this.menu.querySelector('.dock-items').open = true; })">
+<ds-dock data-story-play="setTimeout(() => { this.querySelector('.dock-cfg').click(); this.menu.querySelector('.dock-items').open = true; })">
   <a href="#a" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#b" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
   <i class="dock-sep" data-label="설정"></i>
@@ -59,7 +61,7 @@
   <button class="dock-btn" data-more data-tip="색 편집" aria-label="색 편집"><ds-icon name="palette"></ds-icon></button>
 </ds-dock>
 <!-- @story 배지 없음 — 개수 배지가 숨은 탭 (hidden) -->
-<ds-dock summary="대기 없음">
+<ds-dock>
   <a href="#" class="on" data-tip="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
   <a href="#" data-tip="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" hidden>0</b></a>
 </ds-dock>
