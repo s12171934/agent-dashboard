@@ -33,13 +33,11 @@ ds-dock:not([open]) > [data-name]::before { content: attr(data-name); order: 2; 
 ds-dock:not([open]) > [data-name]::after { display: none; }
 ds-dock:not([open]) > [data-name] svg { width: calc(var(--dock-sz) * .48); height: calc(var(--dock-sz) * .48); }
 ds-dock:not([open]) > [data-name] .dn { right: 6px; }
-/* 설정: as tall as the bar of named items, its icon a little larger; a count badge up among the menu's items puts a dot on it */
+/* 설정: as tall as the bar of named items, its icon a little larger */
 .dock-fab > .dock-cfg { width: calc(var(--dock-sz) + 12px); height: calc(var(--dock-sz) + 12px); color: var(--text); }
 .dock-fab svg { width: calc(var(--dock-sz) * .55); height: calc(var(--dock-sz) * .55); }
 .dock-fab > .dock-cfg:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 :root:has(.dock-menu:not([hidden])) .dock-fab > .dock-cfg { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
-.dock-fab > .dock-cfg.dot::after { display: block; content: ""; position: absolute; inset: 4px 10px auto auto; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%;
-  opacity: 1; transform: none; background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
 ds-dock .dn { position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; font-size: 10px; line-height: 16px;
   text-align: center; font-weight: 700; color: var(--on-warn); background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
 ds-dock .dn[hidden] { display: none; }

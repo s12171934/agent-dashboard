@@ -413,8 +413,9 @@ function renderHeader() {
   // a badge's tab names where its count came from in its tooltip
   { const xs = testItems().filter(testLive), n = xs.length; $('#k-tests').textContent = n; $('#k-tests').hidden = !n;
     $('#k-tests').parentElement.dataset.tip = n ? '테스트 · ' + hubFrom(['실행 중', xs.map(t => cut(t.label || t.key, 30))]) : '테스트'; }
-  { const mine = hmMine(), n = mine.length; $('#k-home').textContent = n; $('#k-home').hidden = !n;
-    $('#k-home').parentElement.dataset.tip = n ? '홈 · 내 차례 ' + hmFrom(mine) : '홈'; }
+  // 홈's badge counts only the 결정 questions (an agent stopped until answered); 보고·막힘·반출 승인 stay on 홈's list
+  { const mine = hmMine().filter(x => x.kind === 'dec'), n = mine.length; $('#k-home').textContent = n; $('#k-home').hidden = !n;
+    $('#k-home').parentElement.dataset.tip = n ? '홈 · ' + hmFrom(mine) : '홈'; }
   $('#k-runs').textContent = state.orca.error ? '오류' : state.orca.runs.filter(r => (state.orca.tasks[r.id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status))).length;
   renderHealth();
   usageBadge();
@@ -7176,7 +7177,7 @@ const hubMeters = xs => xs.map(x => `<div class="hub-meter" title="${esc(x.t || 
 const hubFrom = (...gs) => gs.filter(([, xs]) => xs.length).map(([l, xs]) => `${l} ${xs.slice(0, 3).join(', ')}${xs.length > 3 ? ` 외 ${xs.length - 3}` : ''}`).join(' · ');
 // A 내 차례 item's name: the session for a question or a report, the ticket for a 막힘 or an approval.
 const hmName = x => x.t ? x.t.key : x.s ? cut(nameOf(x.s), 30) : x.q?.agent || '에이전트';
-// 내 차례 (the 홈 tab's badge) by where each came from: the kind and the session or ticket
+// 내 차례 (on 홈's tile; the 홈 tab's badge has only its 결정) by where each came from: the kind and the session or ticket
 const HM_KIND = { dec: '결정', ask: '보고', blocked: '막힘', approve: '반출 승인' };
 const hmFrom = (mine = hmMine()) => hubFrom(...Object.entries(HM_KIND).map(([k, l]) => [l, mine.filter(x => x.kind === k).map(hmName)]));
 const HUB_N = { S: 6, M: 12, L: 18 };
