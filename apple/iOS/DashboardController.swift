@@ -8,7 +8,8 @@ import WebKit
 // - tabs for the five screens the page's bar keeps (홈, 에이전트, QA, 프로젝트, 테스트), with the page's badges; a tab
 //   press takes the page there (pressed again on 홈 or 에이전트, the page fits the office to the screen), and the page
 //   moving elsewhere (a link, a notification) moves the selection with it;
-// - 설정, the right button of each tab's navigation bar (the screen's name in the middle), where the App Store keeps
+// - 설정, the right button of each tab's navigation bar (a bar with no title or background: the page runs to the
+//   screen's top under it, only the buttons over it), where the App Store keeps
 //   its account button (the system tab bar holds five tabs at most, the search tab's place included), opening a sheet
 //   listing the rest of the bar as the App Store lists its settings: the other screens, the filters (a check while
 //   on), the settings, each pressing the page's own element. A count badge among them shows on its row only: 설정
@@ -64,9 +65,14 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         tabs = Self.screens.map { key, title, symbol in
             UITab(title: title, image: UIImage(systemName: symbol), identifier: key) { [weak self] _ in
                 let slot = Slot()
-                slot.navigationItem.title = title
                 if let self { navItems.append(slot.navigationItem); barButtons(slot.navigationItem) }
-                return UINavigationController(rootViewController: slot)
+                let nav = UINavigationController(rootViewController: slot)
+                // no bar of its own: no title, background or line; only its buttons show, over the page
+                let look = UINavigationBarAppearance()
+                look.configureWithTransparentBackground()
+                nav.navigationBar.standardAppearance = look
+                nav.navigationBar.scrollEdgeAppearance = look
+                return nav
             }
         }
         if #available(iOS 26.0, *) { tabBarMinimizeBehavior = .onScrollDown }
@@ -291,12 +297,12 @@ private final class Relay: NSObject, WKScriptMessageHandler {
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { owner?.received(m.body) }
 }
 
-// A tab's page, under its navigation bar (no title; 설정 on its right): holds the web view while its tab is selected.
+// A tab's page, under its navigation bar (only its buttons, on the right): holds the web view while its tab is selected.
 private final class Slot: UIViewController {
     static var background = DashboardController.pageBackground  // the page's, once it has told it (follow)
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Self.background
-        edgesForExtendedLayout = .bottom  // the page starts below the navigation bar; the tab bar floats over its end
+        // the page runs under the navigation bar (to the screen's top, its safe area clear of the buttons) and the tab bar
     }
 }
