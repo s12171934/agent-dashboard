@@ -1,36 +1,35 @@
-// <ds-dock>: the floating bar. Its children are the buttons (see dock.css); this element adds the last one, ⋯ 바 설정,
-// with a menu for where the bar sits (not on a phone: dockLocked() keeps it at the bottom) and how big it is. The choice is saved as adash.dock / adash.dock.size, and
+// <ds-dock>: the floating bar. Its children are the buttons (see dock.css); this element adds the last one, ⋯ 더보기,
+// with a menu of the items kept off the bar and of where the bar sits (not on a phone: dockLocked() keeps it at the
+// bottom) and how big it is. The choice is saved as adash.dock / adash.dock.size, and
 // dock-boot.js (loaded in <head>) applies it before the first paint; applyDock, dockPos and dockSize come from there.
 // The menu lives at the end of <body>, not in the bar: the bar's transform would make it the menu's containing block.
 // inset-from="SELECTOR": a sticky element (the page header) the bar keeps below when it sits at the top; the bar
 // tracks its height and sets --dock-inset-top (its sticky top + height) on <html>.
-// On a phone (≤500px) the bar is a launcher (dock.css): this element adds .dock-launch (the current tab — the child
-// <a> with .on — the summary attribute and a menu button) and .dock-head (sheet-title attribute, default 「이동과 설정」,
-// and a close button), and toggles [open], which turns the bar into a sheet of its own children. The scrim behind it
-// lives at the end of <body> for the same reason as the menu. Following a tab, or a button that opens a .dock-pop,
-// closes the sheet; toggles and other buttons (the theme) leave it open.
-// data-more on a child (a button, toggle, tab or separator) keeps it off the bar: above the phone width it moves into the
-// ⋯ menu, a row with its data-tip as the name (a separator's data-label heads a group there), and on a phone it goes back
-// to its place in the sheet. The element moves, not a copy, so its id, handlers, checkbox and hidden keep working.
+// The bar reads as the App Store's tab bar: a few tabs with their names under the icons (data-name), and ⋯ 더보기 for
+// everything else. data-more on a child (a button, toggle, tab or separator) keeps it off the bar: it moves into the ⋯
+// menu, a row with its data-tip as the name (a separator's data-label heads a group there); a phone shows the same
+// bar, the menu as a sheet across the screen. The element moves, not a copy, so its id, handlers, checkbox and hidden
+// keep working. A count badge up in the menu puts a dot on ⋯.
+// Half folded (see below) this element adds .dock-head (sheet-title attribute, default 「이동과 설정」) and toggles
+// [open], which turns the bar into a sheet of all its own children.
 // 「바에 둘 항목」 in the ⋯ menu lets the user move any named item (data-tip) between the bar and the menu; the choice
-// overrides data-more and is saved as adash.dock.items ({key: 'bar' | 'more'}, key = data-key, id, the toggle's input
+// overrides data-more and is saved as adash.dock.items.v2 ({key: 'bar' | 'more'}, key = data-key, id, the toggle's input
 // id, href or data-tip). A separator left with nothing visible beside it on the bar hides itself ([data-empty]).
 // 「바 숨기기」 folds the bar to one button that brings it back (adash.dock.hidden, <html data-dock-hidden> set by
-// dock-boot.js's applyDock, before the first paint); a phone keeps its launcher.
+// dock-boot.js's applyDock, before the first paint); a phone keeps its bar.
 // Half folded (<html data-posture>, fold.js), the sheet is always open and fills the screen's second half, the page
-// keeping to the first as on the cover screen: no scrim, no close button, and following a tab leaves it open.
+// keeping to the first as on the cover screen; following a tab leaves it open.
 const SIDES = [['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
-const PHONE = matchMedia('(max-width: 500px)');
 const HALF = () => !!document.documentElement.dataset.posture;  // half folded (fold.js): the sheet stays open on the second half
-const ITEMS = 'adash.dock.items';
+const ITEMS = 'adash.dock.items.v2';  // v2: the App Store bar's defaults replaced the old all-on-the-bar choices
 const prefs = () => { try { return JSON.parse(localStorage.getItem(ITEMS)) || {}; } catch { return {}; } };
 const keyOf = e => e.dataset.key || e.id || e.querySelector('input')?.id || e.getAttribute('href') || e.dataset.tip;
 const esc = t => String(t).replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
 
 class DsDock extends HTMLElement {
-  static observedAttributes = ['summary', 'sheet-title'];
-  attributeChangedCallback() { if (this.launch) this.mark(); }
+  static observedAttributes = ['sheet-title'];
+  attributeChangedCallback() { if (this.head) this.mark(); }
   connectedCallback() {
     if (this.menu) return;
     if (!this.hasAttribute('role')) this.setAttribute('role', 'navigation');
@@ -47,8 +46,9 @@ class DsDock extends HTMLElement {
     });
     const btn = document.createElement('button');
     btn.className = 'dock-btn dock-cfg';
-    const name = '더 보기 · 바 설정';
+    const name = '더보기 · 바 설정';
     btn.dataset.tip = name;
+    btn.dataset.name = '더보기';
     btn.setAttribute('aria-label', name);
     btn.innerHTML = '<ds-icon name="more"></ds-icon>';
     this.append(btn);
@@ -86,16 +86,18 @@ class DsDock extends HTMLElement {
     show.innerHTML = '<ds-icon name="grid"></ds-icon>';
     show.onclick = e => { e.stopPropagation(); this.collapse(false); };
     this.append(show);
-    this.phone();
+    this.sheet();
     this.picks();
     this.place();
-    PHONE.addEventListener('change', () => this.place());
+    // a count badge up among the menu's items: a dot on ⋯
+    const dot = () => btn.classList.toggle('dot', !!menu.querySelector('.dock-more .dn:not([hidden])'));
+    new MutationObserver(dot).observe(menu, { subtree: true, attributes: true, attributeFilter: ['hidden'], childList: true });
+    dot();
     const half = () => { this.place(); this.open(HALF()); };
     addEventListener('ds-posture', half);
     if (HALF()) half();
   }
-  // menu items (data-more, or moved there in 「바에 둘 항목」): in the ⋯ menu above the phone width, back in the bar
-  // (its sheet) on a phone
+  // menu items (data-more, or moved there in 「바에 둘 항목」): in the ⋯ menu, back in the bar when half folded (its sheet)
   inMore(e) {
     if (!e.dataset.tip) return e.hasAttribute('data-more');
     const p = prefs()[keyOf(e)];
@@ -104,7 +106,7 @@ class DsDock extends HTMLElement {
   place() {
     const box = this.menu.querySelector('.dock-more');
     for (const [el, mark] of this.more) {
-      if (PHONE.matches || HALF() || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
+      if (HALF() || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
     }
     this.seps();
   }
@@ -115,7 +117,7 @@ class DsDock extends HTMLElement {
       if (el.classList.contains('dock-sep')) {
         el.toggleAttribute('data-empty', true);
         if (seen) { pend = el; seen = false; }
-      } else if (!el.matches('.dock-launch, .dock-head, .dock-cfg, .dock-show') && !el.hidden) {
+      } else if (!el.matches('.dock-head, .dock-cfg, .dock-show') && !el.hidden) {
         seen = true;
         if (pend) { pend.removeAttribute('data-empty'); pend = null; }
       }
@@ -133,58 +135,22 @@ class DsDock extends HTMLElement {
     applyDock();
     (on ? this.show : this.querySelector('.dock-cfg')).focus({ preventScroll: true });
   }
-  // the phone launcher and sheet (see the header comment)
-  phone() {
-    const launch = this.launch = document.createElement('button');
-    launch.className = 'dock-launch';
-    launch.setAttribute('aria-expanded', 'false');
-    launch.innerHTML = '<span><ds-icon></ds-icon><span></span></span><small></small><b><ds-icon name="grid"></ds-icon></b>';
+  // the half-folded sheet's head (see the header comment)
+  sheet() {
     const head = this.head = document.createElement('div');
     head.className = 'dock-head';
-    head.innerHTML = '<b></b><button class="dock-close" aria-label="닫기"><ds-icon name="x"></ds-icon></button>';
-    this.prepend(launch, head);
-    const scrim = this.scrim = document.createElement('div');
-    scrim.className = 'dock-scrim';
-    scrim.hidden = true;
-    document.body.append(scrim);
-    launch.onclick = e => { e.stopPropagation(); this.open(true); };
-    head.querySelector('.dock-close').onclick = () => this.open(false);
-    scrim.onclick = () => this.open(false);
-    addEventListener('keydown', e => { if (e.key === 'Escape') this.open(false); });
-    PHONE.addEventListener('change', () => this.open(false));
-    // after the click has done its work (page handlers run first): a tab, or a button that opened a popover, closes the sheet
-    this.addEventListener('click', e => {
-      const hit = e.target.closest('a, button');
-      if (!this.hasAttribute('open') || !hit || hit.parentElement === head) return;
-      setTimeout(() => { if (hit.matches('a') || [...document.querySelectorAll('.dock-pop')].some(p => !p.hidden)) this.open(false); });
-    });
-    new MutationObserver(() => { this.mark(); this.seps(); }).observe(this, { subtree: true, attributes: true, attributeFilter: ['class', 'hidden'], childList: true, characterData: true });
+    head.innerHTML = '<b></b>';
+    this.prepend(head);
+    new MutationObserver(() => this.seps()).observe(this, { subtree: true, attributes: true, attributeFilter: ['class', 'hidden'], childList: true });
     this.mark();
   }
   open(on) {
-    if (!this.launch || on === this.hasAttribute('open') || !on && HALF()) return;
+    if (!this.head || on === this.hasAttribute('open')) return;
     // the sheet holds every popover's button, so it is one of the group: opening it closes them
     if (on) document.querySelectorAll('.dock-pop').forEach(o => { o.hidden = true; });
     this.toggleAttribute('open', on);
-    this.scrim.hidden = !on || HALF();
-    this.launch.setAttribute('aria-expanded', on);
-    if (HALF()) return;
-    if (on) this.head.querySelector('.dock-close').focus({ preventScroll: true });
-    else if (this.contains(document.activeElement)) this.launch.focus({ preventScroll: true });
   }
-  // the launcher shows the current tab, the summary and a dot when any count badge is up
   mark() {
-    const cur = this.querySelector(':scope > a.on'), name = cur?.dataset.tip || '메뉴';
-    const icon = this.launch.querySelector('span ds-icon'), label = this.launch.querySelector('span span');
-    const iname = cur?.querySelector('ds-icon')?.getAttribute('name') || 'grid';
-    if (icon.getAttribute('name') !== iname) icon.setAttribute('name', iname);
-    if (label.textContent !== name) label.textContent = name;
-    const sum = this.getAttribute('summary') || '', small = this.launch.querySelector('small');
-    if (small.textContent !== sum) small.textContent = sum;
-    const dot = !!this.querySelector('.dn:not([hidden])'), go = this.launch.querySelector('b');
-    if (go.classList.contains('dot') !== dot) go.classList.toggle('dot', dot);
-    const aria = `메뉴 열기: 지금 ${name}${sum ? ' · ' + sum : ''}`;
-    if (this.launch.getAttribute('aria-label') !== aria) this.launch.setAttribute('aria-label', aria);
     const title = this.getAttribute('sheet-title') || '이동과 설정', h = this.head.querySelector('b');
     if (h.textContent !== title) h.textContent = title;
   }

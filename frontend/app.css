@@ -628,7 +628,7 @@ ds-dock[open] .srv-dot { position: static; order: 2; box-shadow: none; }
 #stat-btn:not(.bad) .srv-dot, #stat-btn .dn:not([hidden]) ~ .srv-dot { display: none; }  /* 현황: a collection problem, unless the 결정 count shows */
 
 /* the dock (<ds-dock>) floats over the page: keep a gutter on its side so it never covers the end of a scroll */
-:root[data-dock="bottom"] main { padding-bottom: calc(var(--dock-pick, 38px) + 44px + var(--dock-bottom)); }
+:root[data-dock="bottom"] main { padding-bottom: calc(var(--dock-pick, 38px) + 56px + var(--dock-bottom)); }
 :root[data-dock="top"] body { padding-top: calc(env(safe-area-inset-top) + var(--dock-pick, 38px) + 30px); }
 :root[data-dock="left"] :is(main, #dec-alert, #decisions, #decide-head, #inbox) { padding-left: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-left)); }
 :root[data-dock="right"] :is(main, #dec-alert, #decisions, #decide-head, #inbox) { padding-right: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-right)); }
@@ -1790,6 +1790,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock:not([open]) #chsort-btn { width: var(--dock-sz); padding: 0; font-size: 10px; }
 #zoom-btn { width: auto; min-width: var(--dock-sz); padding: 0 10px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 :root:is([data-dock="left"], [data-dock="right"]) ds-dock:not([open]) #zoom-btn { width: var(--dock-sz); padding: 0; font-size: 11px; }
+@media (max-width: 500px) { :is(#zoom-btn, #chsort-btn) { min-width: 0; padding: 0 6px; } }
 .ch-say[hidden] { visibility: hidden; display: flex; }
 /* The canvas backdrop: the corridor floor runs past the rooms in every direction and moves with the view (chApply sets
    --bx --by --bz), wood planks for 3D and tiles for 픽셀. The light follows the local hour (.tod-*: morning, day,

@@ -394,8 +394,6 @@ async function renderView(navigated) {
 function renderHeader() {
   const ss = state.sessions;
   $('#k-live').textContent = ss.filter(s => s.live).length;
-  { const dec = state.decisions?.pending?.length || 0;  // 입력 대기 is not the user's to do; a pending 결정 is
-    $('#dock').setAttribute('summary', `실행 ${ss.filter(s => status(s) === 'run').length}${dec ? ` · 결정 ${dec}` : ''}`); }
   const bg = ss.filter(s => status(s) === 'bg').length;
   $('#k-bg').textContent = bg;
   $('#k-bg-wrap').hidden = !bg;
