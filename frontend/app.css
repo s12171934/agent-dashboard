@@ -350,6 +350,8 @@ ds-tooltip i.sw { display: inline-block; width: 9px; height: 9px; border-radius:
 /* 메일함 mode is a state of the whole server, not a view filter: lit solid on the bar while it is on */
 ds-dock:not([open]) > #inbox-mode-btn:has(input:checked) { color: var(--on-accent-text); background: var(--accent); }
 :is(#dec-alert, #decisions, #decide-head, #inbox) { max-width: 960px; margin: 0 auto; padding: 14px 16px 0; }
+/* like main: clear of the safe area's sides (iPhone Duo's side strip, where the clock sits) */
+:is(#dec-alert, #decisions, #decide-head, #inbox) { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
 #decide-head .sec-h { align-items: center; margin-top: 0; }
 /* the 결정 대기 strip over the other screens (decAlert) and a waiting session's card */
 #dec-alert { position: sticky; top: 0; z-index: 5; max-width: none; padding-bottom: 4px; }
