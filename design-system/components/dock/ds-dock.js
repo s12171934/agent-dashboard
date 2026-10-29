@@ -1,28 +1,30 @@
-// <ds-dock>: the floating bar. Its children are the buttons (see dock.css); this element adds the last one, ⋯ 더보기,
-// with a menu of the items kept off the bar and of where the bar sits (not on a phone: dockLocked() keeps it at the
-// bottom) and how big it is. The choice is saved as adash.dock / adash.dock.size, and
+// <ds-dock>: the floating bar. Its children are the buttons (see dock.css); this element adds 설정, a round button of
+// its own beside the bar (.dock-fab: at the right end of a bottom or top bar's edge, at the top right, below the status
+// bar's clock, for a side bar), with a menu of the items kept off the bar and of where the bar sits (not on a phone:
+// dockLocked() keeps it at the bottom) and how big it is. The choice is saved as adash.dock / adash.dock.size, and
 // dock-boot.js (loaded in <head>) applies it before the first paint; applyDock, dockPos and dockSize come from there.
-// The menu lives at the end of <body>, not in the bar: the bar's transform would make it the menu's containing block.
+// The menu and the 설정 button live at the end of <body>, not in the bar: the bar's transform would make it their
+// containing block.
 // inset-from="SELECTOR": a sticky element (the page header) the bar keeps below when it sits at the top; the bar
 // tracks its height and sets --dock-inset-top (its sticky top + height) on <html>.
-// The bar reads as the App Store's tab bar: a few tabs with their names under the icons (data-name), and ⋯ 더보기 for
-// everything else. data-more on a child (a button, toggle, tab or separator) keeps it off the bar: it moves into the ⋯
+// The bar reads as the App Store's tab bar: a few tabs with their names under the icons (data-name), and 설정 beside it
+// for everything else. data-more on a child (a button, toggle, tab or separator) keeps it off the bar: it moves into the 설정
 // menu, a row with its data-tip as the name (a separator's data-label heads a group there); a phone shows the same
 // bar, the menu as a sheet across the screen. The element moves, not a copy, so its id, handlers, checkbox and hidden
-// keep working. A count badge up in the menu puts a dot on ⋯.
+// keep working. A count badge up in the menu puts a dot on 설정.
 // Half folded (see below) this element adds .dock-head (sheet-title attribute, default 「이동과 설정」) and toggles
 // [open], which turns the bar into a sheet of all its own children.
-// 「바에 둘 항목」 in the ⋯ menu lets the user move any named item (data-tip) between the bar and the menu; the choice
-// overrides data-more and is saved as adash.dock.items.v2 ({key: 'bar' | 'more'}, key = data-key, id, the toggle's input
+// 「바에 둘 항목」 in the 설정 menu lets the user move any named item (data-tip) between the bar and the menu; the choice
+// overrides data-more and is saved as adash.dock.items.v3 ({key: 'bar' | 'more'}, key = data-key, id, the toggle's input
 // id, href or data-tip). A separator left with nothing visible beside it on the bar hides itself ([data-empty]).
 // 「바 숨기기」 folds the bar to one button that brings it back (adash.dock.hidden, <html data-dock-hidden> set by
-// dock-boot.js's applyDock, before the first paint); a phone keeps its bar.
+// dock-boot.js's applyDock, before the first paint), 설정 with it; a phone keeps its bar.
 // Half folded (<html data-posture>, fold.js), the sheet is always open and fills the screen's second half, the page
 // keeping to the first as on the cover screen; following a tab leaves it open.
 const SIDES = [['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const HALF = () => !!document.documentElement.dataset.posture;  // half folded (fold.js): the sheet stays open on the second half
-const ITEMS = 'adash.dock.items.v2';  // v2: the App Store bar's defaults replaced the old all-on-the-bar choices
+const ITEMS = 'adash.dock.items.v3';  // v3: the bar keeps five tabs and 설정 sits beside it (v2: the App Store bar's defaults)
 const prefs = () => { try { return JSON.parse(localStorage.getItem(ITEMS)) || {}; } catch { return {}; } };
 const keyOf = e => e.dataset.key || e.id || e.querySelector('input')?.id || e.getAttribute('href') || e.dataset.tip;
 const esc = t => String(t).replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
@@ -44,14 +46,14 @@ class DsDock extends HTMLElement {
       e.before(mark);
       return [e, mark];
     });
-    const btn = document.createElement('button');
+    const btn = this.cfg = document.createElement('button');
     btn.className = 'dock-btn dock-cfg';
-    const name = '더보기 · 바 설정';
-    btn.dataset.tip = name;
-    btn.dataset.name = '더보기';
-    btn.setAttribute('aria-label', name);
-    btn.innerHTML = '<ds-icon name="more"></ds-icon>';
-    this.append(btn);
+    btn.setAttribute('aria-label', '설정: 다른 화면, 필터와 설정, 바 위치와 크기');
+    btn.innerHTML = '<ds-icon name="settings"></ds-icon>';
+    const fab = this.fab = document.createElement('div');
+    fab.className = 'dock-fab';
+    fab.append(btn);
+    document.body.append(fab);
 
     const menu = this.menu = document.createElement('div');
     menu.className = 'dock-menu dock-pop';
@@ -89,7 +91,7 @@ class DsDock extends HTMLElement {
     this.sheet();
     this.picks();
     this.place();
-    // a count badge up among the menu's items: a dot on ⋯
+    // a count badge up among the menu's items: a dot on 설정
     const dot = () => btn.classList.toggle('dot', !!menu.querySelector('.dock-more .dn:not([hidden])'));
     new MutationObserver(dot).observe(menu, { subtree: true, attributes: true, attributeFilter: ['hidden'], childList: true });
     dot();
@@ -97,7 +99,7 @@ class DsDock extends HTMLElement {
     addEventListener('ds-posture', half);
     if (HALF()) half();
   }
-  // menu items (data-more, or moved there in 「바에 둘 항목」): in the ⋯ menu, back in the bar when half folded (its sheet)
+  // menu items (data-more, or moved there in 「바에 둘 항목」): in the 설정 menu, back in the bar when half folded (its sheet)
   inMore(e) {
     if (!e.dataset.tip) return e.hasAttribute('data-more');
     const p = prefs()[keyOf(e)];
@@ -117,7 +119,7 @@ class DsDock extends HTMLElement {
       if (el.classList.contains('dock-sep')) {
         el.toggleAttribute('data-empty', true);
         if (seen) { pend = el; seen = false; }
-      } else if (!el.matches('.dock-head, .dock-cfg, .dock-show') && !el.hidden) {
+      } else if (!el.matches('.dock-head, .dock-show') && !el.hidden) {
         seen = true;
         if (pend) { pend.removeAttribute('data-empty'); pend = null; }
       }
@@ -133,7 +135,7 @@ class DsDock extends HTMLElement {
   collapse(on) {
     save('adash.dock.hidden', on ? '1' : '');
     applyDock();
-    (on ? this.show : this.querySelector('.dock-cfg')).focus({ preventScroll: true });
+    (on ? this.show : this.cfg).focus({ preventScroll: true });
   }
   // the half-folded sheet's head (see the header comment)
   sheet() {
@@ -165,9 +167,9 @@ new MutationObserver(records => {
     document.querySelectorAll('.dock-pop').forEach(o => { if (o !== el && !o.hidden) o.hidden = true; });
   }
 }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
-// A click outside them closes the open one. The bar is not outside (its buttons toggle their popover themselves), nor
-// is a <dialog> (a popover's confirm). Capture phase: a popover that redraws on the click still holds the target.
+// A click outside them closes the open one. The bar and 설정 are not outside (their buttons toggle their popover
+// themselves), nor is a <dialog> (a popover's confirm). Capture phase: a popover that redraws on the click still holds the target.
 document.addEventListener('click', e => {
-  if (e.target.closest?.('.dock-pop, ds-dock, dialog')) return;
+  if (e.target.closest?.('.dock-pop, ds-dock, .dock-fab, dialog')) return;
   document.querySelectorAll('.dock-pop').forEach(o => { if (!o.hidden) o.hidden = true; });
 }, true);

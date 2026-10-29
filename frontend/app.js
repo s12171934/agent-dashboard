@@ -104,7 +104,7 @@ let charMode = false;
 try { charMode = localStorage.getItem('adash.charmode') === '1'; } catch {}
 $('#char-mode').checked = charMode;
 $('#char-mode').onchange = e => { charMode = e.target.checked; try { localStorage.setItem('adash.charmode', charMode ? '1' : '0'); } catch {} render(); };
-// 「캐릭터 설정」 panel (the bar's ⋯ menu; 캐릭터 모드 itself is a toggle on the bar): how the characters are framed
+// 「캐릭터 설정」 panel (the bar's 설정 menu, as is the 캐릭터 모드 toggle): how the characters are framed
 // (charFrame), and the way to the 「캐릭터」 tab. This device only.
 function charPanel() {
   const el = $('#char-panel');
@@ -288,6 +288,14 @@ addEventListener('hashchange', e => {
   if (['home', 'agents'].includes(route().v)) chFit();
   hlTurn = null; detail = null; openState = {}; render(true); window.scrollTo(0, 0);
 });
+// 홈 or 에이전트 pressed again on the bar while it is open (the hash stays, so no hashchange): the office fits the
+// screen again, as 「맞춤」 does; a list goes back to its top
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('#dock a[data-v], .dock-more a[data-v]');
+  if (!a || !['home', 'agents'].includes(a.dataset.v) || decodeURIComponent(location.hash.slice(1)) !== a.dataset.v) return;
+  chFit();
+  if ($('#ch-canvas')) { chApply(); chViewSave(); } else window.scrollTo({ top: 0, behavior: 'smooth' });
+});
 const openSession = path => location.hash = 's=' + encodeURIComponent(path);
 const openRun = id => location.hash = 'r=' + id;
 const drvHref = h => '#dr=' + encodeURIComponent(h);
@@ -355,7 +363,7 @@ async function render(navigated) {
 async function renderView(navigated) {
   const r = route();
   const tab = ['session', 'run', 'driver'].includes(r.v) ? 'agents' : r.v;
-  document.querySelectorAll('#dock a, .dock-more a').forEach(a =>  // a data-more tab sits in the ⋯ menu
+  document.querySelectorAll('#dock a, .dock-more a').forEach(a =>  // a data-more tab sits in the 설정 menu
     a.classList.toggle('on', a.dataset.v === tab));
   if (r.v !== 'talk') talkMounted = false;
   if (r.v !== 'compare') cmpMounted = false;
