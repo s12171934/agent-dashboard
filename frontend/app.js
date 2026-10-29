@@ -3944,19 +3944,20 @@ function chFrame(cv) {
 function chApply() {
   const cv = $('#ch-canvas'), w = cv?.querySelector('.ch-world');
   if (!w) return;
-  const cw = cv.clientWidth, ch = cv.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
+  const ww = w.offsetWidth, wh = w.offsetHeight, { top, room, fw } = chFrame(cv);
   if (chView.fit) {
-    const { top, room, fw } = chFrame(cv);
     let z = Math.min(1, (fw - 24) / ww, room / wh);
     if (z < .5) z = Math.min(1, (fw - 24) / ww);  // too small to read: fit the width and pan down instead
     chView.z = z; chView.fitW = true;
     chView.x = (fw - ww * z) / 2;
     chView.y = top + (wh * z < room ? (room - wh * z) / 2 : 0);
   }
-  else if (chView.fitW) chView.x = (chFrame(cv).fw - ww * chView.z) / 2;
-  // keep at least 80px of the office on screen, so it can never be lost
-  chView.x = Math.min(cw - 80, Math.max(80 - ww * chView.z, chView.x));
-  chView.y = Math.min(ch - 80, Math.max(80 - wh * chView.z, chView.y));
+  else if (chView.fitW) chView.x = (fw - ww * chView.z) / 2;
+  // the office stays inside the frame: one smaller than it moves only within it, one larger only as far as its edges
+  // (12px in from the sides), so no one is pushed off screen or left a strip of empty floor away
+  const lim = (v, a, b) => Math.min(Math.max(a, b), Math.max(Math.min(a, b), v));
+  chView.x = lim(chView.x, 12, fw - 12 - ww * chView.z);
+  chView.y = lim(chView.y, top, top + room - wh * chView.z);
   w.style.transform = `translate(${chView.x}px, ${chView.y}px) scale(${chView.z})`;
   // the corridor floor moves and scales with the plane (the backdrop in app.css)
   cv.style.setProperty('--bx', chView.x + 'px'); cv.style.setProperty('--by', chView.y + 'px'); cv.style.setProperty('--bz', chView.z);
@@ -3976,7 +3977,9 @@ function chZoom(k, px, py) {
   chApply(); chViewSave();
 }
 // a worktree room pressed (its title or floor, not a person): the view fits that room, up to 200%; pressed again while
-// it is so (not moved since), back to 맞춤. Twice, as the labels' growth (--lz) re-spaces the room's rows when the zoom changes.
+// it is so (not moved since), back to 맞춤. A room taller than the screen is not shrunk below 100% to fit it whole (on a
+// phone that zoomed out instead of in, and the labels' growth re-spaced every room — the office turned over): it fits
+// the width and shows from its top. Twice, as the labels' growth (--lz) re-spaces the room's rows when the zoom changes.
 let chFocused = '';
 function chFit() { chFocused = ''; chView.fit = true; }
 // key: a room's (data-room), or 'p:' and a project's (data-proj, 「프로젝트별」) — the project's sign and rooms together
@@ -3994,7 +3997,7 @@ function chFocus(key) {
   for (let i = 0; i < 2; i++) {
     const { top, room, fw } = chFrame(cv), wr = w.getBoundingClientRect(), rr = box();
     const x = (rr.left - wr.left) / chView.z, y = (rr.top - wr.top) / chView.z, rw = rr.width / chView.z, rh = rr.height / chView.z;
-    const z = Math.min(2, (fw - 24) / rw, room / rh);
+    const zw = (fw - 24) / rw, z = Math.min(2, zw, Math.max(room / rh, Math.min(1, zw)));
     chView = { ...chView, z, fit: false, fitW: false, x: (fw - rw * z) / 2 - x * z, y: top + Math.max(0, (room - rh * z) / 2) - y * z };
     chApply();
   }
