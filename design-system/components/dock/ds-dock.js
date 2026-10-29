@@ -11,7 +11,7 @@
 // for everything else. data-more on a child (a button, toggle, tab or separator) keeps it off the bar: it moves into the 설정
 // menu, a row with its data-tip as the name (a separator's data-label heads a group there); a phone shows the same
 // bar, the menu as a sheet across the screen. The element moves, not a copy, so its id, handlers, checkbox and hidden
-// keep working. A count badge up in the menu puts a dot on 설정.
+// keep working. A count badge up in the menu shows on its row there only: 설정 gets no dot.
 // Half folded (see below) this element adds .dock-head (sheet-title attribute, default 「이동과 설정」) and toggles
 // [open], which turns the bar into a sheet of all its own children.
 // 「바에 둘 항목」 in the 설정 menu lets the user move any named item (data-tip) between the bar and the menu; the choice
@@ -91,10 +91,6 @@ class DsDock extends HTMLElement {
     this.sheet();
     this.picks();
     this.place();
-    // a count badge up among the menu's items: a dot on 설정
-    const dot = () => btn.classList.toggle('dot', !!menu.querySelector('.dock-more .dn:not([hidden])'));
-    new MutationObserver(dot).observe(menu, { subtree: true, attributes: true, attributeFilter: ['hidden'], childList: true });
-    dot();
     const half = () => { this.place(); this.open(HALF()); };
     addEventListener('ds-posture', half);
     if (HALF()) half();
