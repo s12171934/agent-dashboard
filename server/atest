@@ -4,9 +4,12 @@
 Writes /private/tmp/agent-test-progress/<key>.json (the README's progress file format), tied to the calling
 session (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID, ORCA_TERMINAL_HANDLE).
 
-  atest run [--kind K] [--label L] [--key K] -- <command ...>
+  atest run [--kind K] [--label L] [--key K] [--expect-red] -- <command ...>
       run a test command, pass its output through and keep its exit code. RSpec gets a formatter (via SPEC_OPTS)
       that reports the running example; jest·vitest·node --test·playwright are read from their per-test lines.
+      The end is judged (adash/features/tests/judge.py): failing cases that were meant to fail (--expect-red, or a
+      label with "red"·"빨강") count as done, a non-zero exit with every test passed as done with a warning, a run
+      that ran no test as an error rather than a failure.
   atest start [--kind K] [--label L] [--key K] [--total N] [ID=제목 ...]
       begin a run whose cases the agent checks by hand (e.g. --kind figma: Storybook stories against Figma)
   atest case ID running|passed|failed|skipped [메모] [--title 제목] [--key K]
@@ -26,6 +29,9 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from adash.features.tests.judge import judge, read_log  # noqa: E402
 
 DIR = os.environ.get("ATEST_DIR") or "/private/tmp/agent-test-progress"  # override only for trying atest out
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -131,12 +137,14 @@ def split_title(title, n):
 
 
 def detect(argv):
-    words = " ".join(os.path.basename(a) for a in argv)
+    """The runner, named before the command's first option (`run-tc --repo … jest` is no jest run, so it gets no --verbose)."""
+    head = next((i for i, a in enumerate(argv) if a.startswith("-")), len(argv))
+    words = " ".join(os.path.basename(a) for a in argv[:head])
     for kind, pat in (("rspec", r"\brspec\b|parallel:spec"), ("vitest", r"\bvitest\b"), ("jest", r"\bjest\b"),
-                      ("playwright", r"\bplaywright\b"), ("node-test", r"(\bnode|\btsx)\b.*--test\b")):
+                      ("playwright", r"\bplaywright\b")):
         if re.search(pat, words):
             return kind
-    return "test"
+    return "node-test" if re.fullmatch(r"node|tsx", words.split(" ")[-1] if words else "") and "--test" in argv else "test"
 
 
 def rspec_has_format(argv):
@@ -248,9 +256,11 @@ def cmd_run(opts, argv):
         for c in run.cases.values():
             if c["status"] in ("running", "queued"):
                 c["status"] = "interrupted" if code else "skipped"
-        failed = any(c["status"] == "failed" for c in run.cases.values())
-        run.d.update(phase="failed" if code or failed else "done", exit=code,
-                     detail=f"종료 코드 {code}" if code and not failed else None)
+        phase, verdict, detail, extra = judge(code, list(run.cases.values()), read_log(log), run.d.get("label") or "",
+                                              bool(opts.get("expect-red")))
+        for c in extra:
+            run.case(c["id"], c["id"], c.get("title"), c["status"], c.get("msg"))
+        run.d.update(phase=phase, verdict=verdict, exit=code, detail=detail, judged=True)
         run.save()
     sys.exit(code)
 
@@ -337,7 +347,9 @@ def main(argv):
         if a == "--" and op == "run":
             args = rest
             break
-        if a in ("--kind", "--label", "--key", "--total", "--title"):
+        if a == "--expect-red" and op == "run":
+            opts["expect-red"] = True
+        elif a in ("--kind", "--label", "--key", "--total", "--title"):
             if not rest:
                 die(f"{a} needs a value")
             opts[a[2:]] = rest.pop(0)

@@ -418,9 +418,16 @@ atest note "Figma 스냅숏 수집"                 # 지금 하는 일
 atest case Dialog/Default running             # running|passed|failed|skipped [메모] [--title 제목]
 atest case Dialog/Default failed "패딩 24→20"
 atest end [passed|failed] [메모]               # 기본: 실패 케이스가 있으면 failed
+atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨강을 확인하는 실행
 ```
 
 - `run` 은 러너를 명령에서 알아낸다(`--kind` 로 지정 가능). RSpec 은 `SPEC_OPTS` 로 `server/atest-rspec.rb` 포매터를 붙여 예제마다 시작·결과·소요 시간·실패 메시지를 받는다(총 개수를 알아 남은 시간이 나온다. 다른 포매터가 지정돼 있지 않으면 `progress` 를 함께 단다). vitest·jest·`node`/`tsx --test`·playwright 는 테스트별 줄(✓·×)을 읽고, 그 줄이 나오도록 vitest 에는 `--reporter=verbose`, jest 에는 `--verbose`, node 에는 `--test-reporter=spec` 을 붙인다(이미 지정했으면 두고, `yarn <스크립트>` 처럼 러너가 명령에 직접 없으면 붙이지 않는다). 전체 출력은 `/private/tmp/agent-test-progress/logs/<key>.log`.
+- `run` 이 끝나면 종료 코드·케이스·출력으로 결과를 판정한다(`server/adash/features/tests/judge.py`). 종료 코드가 0 이 아니어도 실패 케이스가 없으면 실제 실패로 치지 않고 `verdict` 와 그 이유(`detail`)를 남긴다. 「테스트」 탭의 「확인·빨강·실행 오류」 필터가 이것들을 모아 보이고, 실패 건수와 통과율에서는 뺀다.
+  - `warn` 「통과 · 확인」 — 실행된 테스트가 모두 통과했는데 러너가 다른 이유로 실패를 냈다. 예: run-tc 가 요청한 ID 의 테스트를 못 찾음(종료 코드 2, `미발견 T-FC-17`), jest·vitest 의 다른 스위트가 로드되지 않음(`로드 실패 스위트 2개(…)`).
+  - `red` 「의도한 빨강」 — 실패할 것을 확인하려고 돌린 실행. `--expect-red`, run-tc `--expect-red` 의 `빨강 판정: 합격`, 또는 라벨에 `red`·`빨강` 이 있을 때. 라벨로 추정하는 경우는 실패를 빨강으로 바꾸기만 하고 통과를 실패로 바꾸지는 않는다. `--expect-red` 를 줬는데 실패가 없으면 실패다.
+  - `error` 「실행 오류」 — 테스트가 하나도 돌지 않았다(인자 오류, 빠진 설정, 브라우저 미설치 등). 출력의 첫 오류 줄을 이유로 남긴다. run-tc 자체 E2E 가 테스트 전에 `중단` 된 실행도 여기에 든다.
+  - run-tc 를 감싸 실행하면 ID 별 결과(`T-FC-01: 통과 …`, `미발견: …`)를 케이스로 받는다. 러너는 명령의 첫 옵션 앞에서만 알아내므로(`run-tc --repo … jest…` 는 jest 실행이 아니다) 다른 도구에 `--verbose` 같은 플래그를 붙이지 않는다.
+  - 판정이 생기기 전에 끝난 실행(진행 파일·보관 기록)은 서버가 로그를 읽어 한 번 다시 판정한다. 로그가 없으면 기록된 그대로 둔다.
 - `start`·`case`·`note`·`end` 는 에이전트가 손으로 확인하는 실행(Storybook 스토리를 Figma 시안과 대조 등)용이다. `start` 가 정한 실행을 같은 세션의 다음 명령이 이어 쓴다(다른 실행은 `--key`). `start --key K` 로 연 실행은 `--key` 로만 이어 쓰고 세션의 「지금 실행」을 바꾸지 않는다 — 여러 실행을 동시에 여는 녹화 러너용.
 - 녹화 실측도 테스트로 친다 — [aside-record](https://github.com/s12171934/aside-record)·[ego-record](https://github.com/s12171934/ego-record) 스킬의 러너가 `bin/atest` 로 녹화 하나를 실행 하나(`kind` `aside`·`ego`, 라벨 `녹화 실측 · <케이스 이름>`)로 남긴다. 케이스는 aside 가 `고정 탭`·`작업 수행`·`인코딩`·`탭 고정 판정`, ego 가 `준비`·act 라운드 `R1`…(제목은 `--say`)·`인코딩`·`고정 페이지 판정`이다. `[폐기]` 판정과 실패한 작업·라운드는 실패 케이스가 되고, 중간에 멈추거나 abort 하면 실행이 실패로 닫힌다.
 - 세션은 `aplan` 과 같이 `CLAUDE_CODE_SESSION_ID`·`CODEX_THREAD_ID`·`ORCA_TERMINAL_HANDLE` 로 잇는다.
@@ -611,7 +618,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 - `aplan` CLI 와 그 기록 형식 (`~/.agent-plans/*.jsonl`)
 - `bin/atest` CLI (위 「atest」 절의 명령)
 - `server/server.py` 실행 옵션과 `server/launchd/install.sh` 환경 변수
-- 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`, 선택 `cases` — `[{"id", "title", "status", "msg", "ms"}]`. `cases` 가 있으면 「테스트」의 실행 줄 아래 「케이스」 토글에 케이스 코드(`id`, 예: `TC-A-23`)와 그 케이스가 확인하는 내용(`title`), 통과·실패(`status`: `passed`·`failed`·`skipped` 등), 실패 메시지가 실패 먼저 나온다. run-tc 실행은 진행 파일 옆 `e2e-runs/<run>.tests.json` 에서 같은 목록을 읽는다(제목 앞의 `TC-…` 를 코드로 뗀다)
+- 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `verdict`(선택, `warn`·`red`·`error` — 위 atest 절) `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`, 선택 `cases` — `[{"id", "title", "status", "msg", "ms"}]`. `cases` 가 있으면 「테스트」의 실행 줄 아래 「케이스」 토글에 케이스 코드(`id`, 예: `TC-A-23`)와 그 케이스가 확인하는 내용(`title`), 통과·실패(`status`: `passed`·`failed`·`skipped` 등), 실패 메시지가 실패 먼저 나온다. run-tc 실행은 진행 파일 옆 `e2e-runs/<run>.tests.json` 에서 같은 목록을 읽는다(제목 앞의 `TC-…` 를 코드로 뗀다)
 
 - 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 서버는 `--projects-dir` 아래에서 읽어 위 「프로젝트 진행 API」로 준다. 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
 

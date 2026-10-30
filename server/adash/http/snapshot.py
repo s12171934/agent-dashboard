@@ -166,7 +166,7 @@ def glance(state):
         "agents": {"counts": counts,
                    "busy": [{"title": s.get("title"), "state": s["state"], "model": s.get("model"), "last_ts": s.get("last_ts"),
                              "path": s.get("path")} for s in busy[:6]]},
-        "tests": [{k: t.get(k) for k in ("label", "kind", "phase", "total", "done", "passed", "failed", "eta_s",
+        "tests": [{k: t.get(k) for k in ("label", "kind", "phase", "verdict", "total", "done", "passed", "failed", "eta_s",
                                           "started_at", "updated_at")} for t in tests],
     }
 

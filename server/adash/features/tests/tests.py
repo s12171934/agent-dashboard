@@ -12,6 +12,7 @@ from adash.core.prefs import prefs
 from adash.core.state import bump, lock
 from adash.core.util import short
 from adash.features.plans.store import ext_plans
+from adash.features.tests.judge import rejudge
 
 
 # Long test runs (rspec, E2E, jest, builds) report progress for the 「테스트」 area. Two sources:
@@ -21,13 +22,14 @@ from adash.features.plans.store import ext_plans
 #   terminal (ORCA_TERMINAL_HANDLE) / session_id (CLAUDE_CODE_SESSION_ID) tie it to a session card, as run-tc's rows do.
 #   A file untouched for TEST_KEEP_S drops out of view (the file itself is left alone).
 #   Optional "cases": [{"id", "title", "status": passed|failed|skipped|..., "msg", "ms"}] — every case of the run with what it
-#   checks, shown as a toggle under the run.
+#   checks, shown as a toggle under the run. Optional "verdict": warn|red|error with "detail" saying why (judge.py) — a
+#   finished run that is not simply passed or failed; atest writes it with "judged", older runs are judged here once.
 # - run-tc progress files ({"active", "latest", "history"}): RUN_TC_PROGRESS plus every plan ticket's e2e_progress.
 #   A finished run's cases are in e2e-runs/<run>.tests.json beside the progress file ([{"tc", "title", "status", ...}]).
 TEST_DIR = "/private/tmp/agent-test-progress"
 TEST_KEEP_S = 24 * 3600
-TEST_FIELDS = ("label", "kind", "phase", "detail", "total", "done", "passed", "failed", "pending", "started_at",
-               "updated_at", "eta_s", "log", "owner", "terminal", "session_id")
+TEST_FIELDS = ("label", "kind", "phase", "verdict", "detail", "total", "done", "passed", "failed", "pending", "started_at",
+               "updated_at", "eta_s", "log", "owner", "terminal", "session_id", "exit", "judged")
 RUN_TC_PROGRESS = prefs.get("run_tc_progress") or []  # run-tc progress files, listed in prefs.json
 test_progress = {"files": [], "run_tc": {}, "history_n": 0, "history_at": None}
 # Finished runs outlive their sources (a progress file drops out after TEST_KEEP_S, /private/tmp empties on reboot):
@@ -43,6 +45,7 @@ try:
         test_history = {}
 except (OSError, ValueError):
     test_history = {}
+test_history_judged = False  # the kept runs recorded before judge.py, judged on the first collect_tests
 
 
 def finished_key(r):
@@ -72,6 +75,7 @@ def norm_cases(raw):
 
 
 cases_cache = {}  # tests.json path -> (mtime, cases); a finished run's file is written once
+judged_files = {}  # progress file path -> (mtime, the file judged by judge.py), for runs atest did not judge
 
 
 def run_tc_cases(progress, run):
@@ -106,9 +110,11 @@ def archive_tests(files, run_tc):
                 continue
             ids = h.get("ids") if isinstance(h.get("ids"), list) else []
             bad = (h.get("failed") or 0) > 0 or bool(re.search("실패|중단", str(h.get("outcome") or "")))
+            halted = not h.get("failed") and "중단" in str(h.get("outcome") or "")  # stopped before a test ran
             recs["run-tc:" + str(h["run"])] = {
                 "src": "run-tc", "key": h["run"], "kind": "e2e", "label": "E2E " + ", ".join(map(str, ids)),
-                "owner": h.get("caller"), "phase": "failed" if bad else "done", "detail": h.get("outcome"),
+                "owner": h.get("caller"), "phase": "failed" if bad else "done", "verdict": "error" if halted else None,
+                "judged": True, "detail": h.get("outcome"),
                 "passed": h.get("passed"), "failed": h.get("failed"), "started_at": h.get("started_at"),
                 "finished_at": h.get("finished_at"), "updated_at": h.get("finished_at"), "log": h.get("log"),
                 "cases": run_tc_cases(path, h["run"]),
@@ -147,17 +153,29 @@ def collect_tests():
             d = {**d, "phase": "failed" if st == "failed" or (st == "done" and d.get("exit")) else st,
                  "detail": d.get("detail") or d.get("summary"), "label": d.get("task") or d.get("label"),
                  "updated_at": d.get("updated_at") or d.get("finished_at")}
+        if d.get("phase") == "failed" and not d.get("judged"):  # finished before atest judged its runs
+            hit = judged_files.get(p)
+            if not hit or hit[0] != mtime:
+                hit = judged_files[p] = (mtime, rejudge({**d, "cases": norm_cases(d.get("cases"))}))
+            d = hit[1]
         fails = [{"id": short(str(f.get("id") or ""), 200), "msg": short(str(f.get("msg") or ""), 300)}
                  for f in (d.get("failures") or [])[:20] if isinstance(f, dict)] if isinstance(d.get("failures"), list) else []
         files.append({**{k: d.get(k) for k in TEST_FIELDS}, "key": n[:-5], "mtime": mtime, "failures": fails,
                       "cases": norm_cases(d.get("cases"))})
     for p in [p for p in e2e_cache if p.startswith(TEST_DIR + "/") and os.path.basename(p) not in names]:
         e2e_cache.pop(p, None)  # a removed run file
+        judged_files.pop(p, None)
     paths = set(RUN_TC_PROGRESS) | {t["e2e_progress"] for plan in list(ext_plans.values())
                                     for t in plan["tickets"] if isinstance(t.get("e2e_progress"), str)}
     run_tc = {p: d for p in sorted(paths) if (d := read_json_cached(p))}
+    global test_history_judged
     with lock:
         archived = archive_tests(files, run_tc)
+        if not test_history_judged:
+            for k, r in list(test_history.items()):
+                if (j := rejudge(r)) is not r:
+                    test_history[k], archived = j, True
+            test_history_judged = True
         if archived:
             save_json(TEST_HISTORY_PATH, test_history)
             test_progress.update(history_n=len(test_history), history_at=time.time())
