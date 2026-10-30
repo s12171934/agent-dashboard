@@ -25,6 +25,7 @@
     try { id = localStorage.getItem('adash.icon') || DEFAULT; } catch {}
     return face(id) || APP_ICONS.some(x => x.id === id) ? id : DEFAULT;
   };
+  let sent;
   window.applyIcon = (id = appIcon()) => {
     const set = (sel, href) => { const el = document.querySelector(sel); if (el && el.getAttribute('href') !== href) el.setAttribute('href', href); };
     const [mf, fav, apple] = links(id);
@@ -35,7 +36,8 @@
     const logo = document.querySelector('.hrow h1 img');
     if (logo) logo.src = fav;
     const big = face(id) ? `chars/${face(id)}-icon-512.png` : dir(id) + 'icon-512.png';
-    window.webkit?.messageHandlers?.adash?.postMessage({ icon: new URL(big, location.href).href });
+    // once per choice: the head and DOMContentLoaded both apply it, and the app takes one switch at a time
+    if (big !== sent) { sent = big; window.webkit?.messageHandlers?.adash?.postMessage({ icon: new URL(big, location.href).href }); }
   };
   window.setAppIcon = id => {
     try { if (id === DEFAULT) localStorage.removeItem('adash.icon'); else localStorage.setItem('adash.icon', id); } catch {}
