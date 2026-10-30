@@ -281,8 +281,37 @@ def parsed(st, name):
 
 
 # /api/glance: what the iPhone widgets show, a few KB instead of the snapshot's megabytes (a widget has little memory
-# and time). The 결정 대기 questions, the agents by state with the busiest few, and the latest test runs.
+# and time). The 결정 대기 questions, the agents by state with the busiest few, the latest test runs, the plan usage
+# limits, the live agents' step plans, the projects' ticket progress and the flow check's deviations.
 GLANCE_ORDER = ["run", "stalled", "wait", "bg"]  # the states shown, most urgent first
+
+
+def glance_usage(pu):
+    return [{"provider": a.get("provider"), "email": a.get("email"), "plan": a.get("plan"), "stale": bool(a.get("stale")),
+             "limits": [{k: l.get(k) for k in ("kind", "name", "percent", "resets_at")} for l in a.get("limits") or []]}
+            for a in (pu or {}).get("accounts") or [] if a.get("limits")]
+
+
+def glance_projects(plans):
+    out = []
+    for p in plans or []:
+        ts = p.get("tickets") or []
+        done = [t for t in ts if t.get("status") in ("verified", "closed")]  # the page's tkDone
+        open_ = [t for t in ts if t not in done and t.get("status") != "manual"]
+        open_.sort(key=lambda t: -(t.get("boxes_done") or 0))  # the ones under way first
+        out.append({"project": p.get("project"), "error": p.get("error"), "tickets": len(ts), "done": len(done),
+                    "boxes_done": sum(t.get("boxes_done") or 0 for t in ts), "boxes_total": sum(t.get("boxes_total") or 0 for t in ts),
+                    "open": [{"jira": t.get("jira"), "package": t.get("package"), "status": t.get("status"),
+                              "done": t.get("boxes_done") or 0, "total": t.get("boxes_total") or 0} for t in open_[:4]]})
+    return out
+
+
+def glance_flow(flow, paths):
+    items = (flow or {}).get("items") or []
+    items = sorted(items, key=lambda i: i.get("severity") != "bad")  # stable: bad first, the check's order within
+    return {"bad": sum(1 for i in items if i.get("severity") == "bad"), "warn": sum(1 for i in items if i.get("severity") == "warn"),
+            "items": [{"rule": i.get("rule_name"), "severity": i.get("severity"), "reason": short(i.get("reason") or "", 120),
+                       "title": paths.get(i.get("session")), "path": i.get("session")} for i in items[:5]]}
 
 
 def glance(state):
@@ -304,6 +333,9 @@ def glance(state):
     counts = {k: sum(1 for s in agents if s.get("state") == k) for k in GLANCE_ORDER}
     busy = sorted((s for s in agents if s.get("state") in GLANCE_ORDER), key=lambda s: s.get("last_ts") or "", reverse=True)
     busy.sort(key=lambda s: GLANCE_ORDER.index(s["state"]))  # stable: the latest first within a state
+    # the live agents' aplan steps, the latest first
+    planned = [s for s in agents if s.get("state") in GLANCE_ORDER and (s.get("plan") or {}).get("total")]
+    planned.sort(key=lambda s: s.get("last_ts") or "", reverse=True)
     files = (state.get("tests") or {}).get("files") or []
     tests = sorted(files, key=lambda t: (t.get("phase") != "running", -(t.get("mtime") or 0)))[:4]
     return {
@@ -314,6 +346,12 @@ def glance(state):
                              "path": s.get("path")} for s in busy[:6]]},
         "tests": [{k: t.get(k) for k in ("label", "kind", "phase", "verdict", "total", "done", "passed", "failed", "eta_s",
                                           "started_at", "updated_at")} for t in tests],
+        "usage": glance_usage(state.get("plan_usage")),
+        "plans": [{"title": s.get("title"), "state": s["state"], "path": s.get("path"), "steps": s["plan"].get("steps") or [],
+                   "done": s["plan"].get("done") or 0, "total": s["plan"]["total"], "cur": short(s["plan"].get("cur_text") or "", 120)}
+                  for s in planned[:6]],
+        "projects": glance_projects(state.get("ext_plans")),
+        "flow": glance_flow(state.get("flow"), {s.get("path"): s.get("title") for s in state["sessions"]}),
     }
 
 
@@ -322,7 +360,9 @@ def get_glance(h, url):
     with state_cache_lock:
         if st["glance"] is None:
             st["glance"] = h.encode(glance({"sessions": parsed(st, "sessions"), "decisions": parsed(st, "decisions"),
-                                            "tests": {"files": parsed(st, "tests.files")}}))
+                                            "tests": {"files": parsed(st, "tests.files")},
+                                            "plan_usage": parsed(st, "plan_usage"), "ext_plans": parsed(st, "ext_plans"),
+                                            "flow": parsed(st, "flow")}))
         body = st["glance"]
     h.send_json(body)
 

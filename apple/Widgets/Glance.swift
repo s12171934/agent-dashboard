@@ -20,9 +20,37 @@ struct Glance: Decodable {
         var running: Bool { phase == "running" }
         var fraction: Double? { total.flatMap { $0 > 0 ? Double(done ?? 0) / Double($0) : nil } }
     }
+    // 사용량: one subscription account's limits (the 플랜 사용량 page)
+    struct Account: Decodable {
+        struct Limit: Decodable {
+            let kind: String?, name: String, percent: Double?, resets_at: Double?
+            var resets: Date? { resets_at.map { Date(timeIntervalSince1970: $0) } }
+        }
+        let provider: String?, email: String?, plan: String?, stale: Bool, limits: [Limit]
+    }
+    // 작업 계획: a live agent's aplan steps (done|run|todo|skip|fail each)
+    struct Plan: Decodable {
+        let title: String?, state: String, path: String?, steps: [String], done: Int, total: Int, cur: String
+    }
+    // 프로젝트: a driver plan's tickets, the open ones under way first
+    struct Project: Decodable {
+        struct Ticket: Decodable { let jira: String?, package: String?, status: String?, done: Int, total: Int }
+        let project: String?, error: String?, tickets: Int, done: Int, boxes_done: Int, boxes_total: Int, open: [Ticket]
+        var fraction: Double { boxes_total > 0 ? Double(boxes_done) / Double(boxes_total) : tickets > 0 ? Double(done) / Double(tickets) : 0 }
+    }
+    // 흐름 점검: the flow check's deviations, bad first
+    struct Flow: Decodable {
+        struct Item: Decodable { let rule: String?, severity: String?, reason: String, title: String?, path: String? }
+        let bad: Int, warn: Int, items: [Item]
+    }
     let decisions: [Decision]
     let agents: Agents
     let tests: [Test]
+    // optional: a server older than these widgets leaves them out
+    var usage: [Account]? = nil
+    var plans: [Plan]? = nil
+    var projects: [Project]? = nil
+    var flow: Flow? = nil
 
     static func load() async throws -> Glance {
         var req = URLRequest(url: AppGroup.serverURL.appending(path: "api/glance"))
@@ -41,7 +69,21 @@ struct Glance: Decodable {
                               Agent(title: "PL-PIN 통합 리뷰", state: "run", model: "claude-opus-5-5", last_ts: nil, path: nil),
                               Agent(title: "QA 드라이버", state: "wait", model: "claude-sonnet-5-5", last_ts: nil, path: nil)]),
         tests: [Test(label: "PSD-1007 재연결 복구 jest", kind: "jest", phase: "running", total: 171, done: 120, passed: 118, failed: 2,
-                     eta_s: 40, started_at: nil, updated_at: nil)])
+                     eta_s: 40, started_at: nil, updated_at: nil)],
+        usage: [Account(provider: "claude", email: "me@example.com", plan: "Team", stale: false,
+                        limits: [.init(kind: "session", name: "5시간 세션", percent: 71, resets_at: Date.now.timeIntervalSince1970 + 7200),
+                                 .init(kind: "weekly_all", name: "주간 전체", percent: 87, resets_at: Date.now.timeIntervalSince1970 + 200_000)]),
+                Account(provider: "codex", email: "me@example.com", plan: "Business", stale: false,
+                        limits: [.init(kind: "primary_window", name: "주간", percent: 17, resets_at: nil)])],
+        plans: [Plan(title: "다양한 위젯", state: "run", path: nil, steps: ["done", "done", "run", "todo", "todo"], done: 2, total: 5,
+                     cur: "iOS 위젯 4종 추가"),
+                Plan(title: "QA 필터 탭 개선", state: "wait", path: nil, steps: ["done", "done", "done", "run"], done: 3, total: 4,
+                     cur: "PR 머지·포인터 갱신")],
+        projects: [Project(project: "PRD-51", error: nil, tickets: 3, done: 2, boxes_done: 13, boxes_total: 16,
+                           open: [.init(jira: "PSD-1007", package: "S3", status: "planned", done: 0, total: 3)]),
+                   Project(project: "PRD-60", error: nil, tickets: 12, done: 10, boxes_done: 68, boxes_total: 68, open: [])],
+        flow: Flow(bad: 1, warn: 3, items: [.init(rule: "정체", severity: "bad", reason: "기대 시간의 5.3배 경과", title: "PSD-1030 e2e", path: nil),
+                                            .init(rule: "계획 미이행", severity: "warn", reason: "세션이 끝났는데 계획 1단계가 남음", title: "PSQ-1109", path: nil)]))
 }
 
 private let isoFrac: ISO8601DateFormatter = {

@@ -2,22 +2,27 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-// The iPhone widgets: 결정 대기 (answerable from the widget), 에이전트 (who is running, waiting, stuck) and 테스트 (the
-// long runs' progress), on the home screen and the lock screen. Each reads the metric server's /api/glance.
+// The iPhone widgets: 결정 대기 (answerable from the widget), 에이전트 (who is running, waiting, stuck), 테스트 (the
+// long runs' progress), and in Insights.swift 사용량, 작업 계획, 프로젝트 and 흐름 점검, on the home screen and the lock
+// screen. Each reads the metric server's /api/glance.
 @main
 struct AgentWidgets: WidgetBundle {
     var body: some Widget {
         DecisionsWidget()
         AgentsWidget()
         TestsWidget()
+        UsageWidget()
+        PlansWidget()
+        ProjectsWidget()
+        FlowWidget()
     }
 }
 
-private extension AgentState {
+extension AgentState {
     var color: Color { [.run: .green, .stalled: .red, .wait: .orange, .bg: .blue][self]! }
 }
 
-private struct Header: View {
+struct Header: View {
     let title: String, symbol: String, tint: Color
     var trailing: String? = nil
     var body: some View {
@@ -32,7 +37,7 @@ private struct Header: View {
     }
 }
 
-private struct Offline: View {
+struct Offline: View {
     let error: String?
     var body: some View {
         VStack(spacing: 6) {
