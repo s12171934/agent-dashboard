@@ -2189,20 +2189,28 @@ async function renderTests() {
   const all = allTestRuns(), kinds = [...new Set(all.map(t => t.kind || 'test'))].sort();
   if (tst.kind !== 'all' && !kinds.includes(tst.kind)) tst.kind = 'all';
   const save = () => { try { localStorage.setItem('adash.tests', JSON.stringify(tst)); } catch {} };
-  if (!testsMounted || $('#tests-kind').dataset.kinds !== kinds.join(',')) {
+  if (!testsMounted) {
     $('#view').innerHTML = `<div class="controls">
         <div class="seg" id="tests-span">${Object.entries(TEST_SPANS).map(([k, l]) => `<button data-k="${k}">최근 ${l}</button>`).join('')}</div>
         <div class="seg" id="tests-result">${Object.entries(TEST_RESULTS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}</div>
-        <div class="seg" id="tests-kind" data-kinds="${esc(kinds.join(','))}"><button data-k="all">모든 종류</button>${kinds.map(k => `<button data-k="${esc(k)}">${esc(k.toUpperCase())}</button>`).join('')}</div>
+        <select id="tests-kind" class="field" title="테스트 종류"></select>
         <input type="search" id="tests-q" class="field" placeholder="이름·실행자·케이스·실패 검색" value="${esc(tst.q)}">
       </div><div id="tests-body"></div>`;
-    for (const [id, key] of [['#tests-span', 'span'], ['#tests-result', 'result'], ['#tests-kind', 'kind']])
+    for (const [id, key] of [['#tests-span', 'span'], ['#tests-result', 'result']])
       $(id).querySelectorAll('button').forEach(b => b.onclick = () => { tst[key] = key === 'span' ? +b.dataset.k : b.dataset.k; save(); renderTests(); });
+    $('#tests-kind').onchange = e => { tst.kind = e.target.value; save(); renderTests(); };
     $('#tests-q').oninput = e => { tst.q = e.target.value; save(); renderTests(); };
     testsMounted = true;
   }
-  for (const [id, key] of [['#tests-span', 'span'], ['#tests-result', 'result'], ['#tests-kind', 'kind']])
+  for (const [id, key] of [['#tests-span', 'span'], ['#tests-result', 'result']])
     $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === String(tst[key])));
+  // Kinds are open-ended (any atest --kind), so they go in a menu: the ones run within the span, most runs first.
+  const kc = {}, inSpan = all.filter(t => testLive(t) || ageS(t.finished_at) <= tst.span * 86400);
+  inSpan.forEach(t => { const k = t.kind || 'test'; kc[k] = (kc[k] || 0) + 1; });
+  if (tst.kind !== 'all') kc[tst.kind] ||= 0;
+  const kOpts = [['all', `모든 종류 ${inSpan.length}`], ...Object.entries(kc).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, n]) => [k, `${k.toUpperCase()} ${n}`])]
+    .map(([k, l]) => `<option value="${esc(k)}"${k === tst.kind ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  if ($('#tests-kind').dataset.h !== kOpts) { $('#tests-kind').innerHTML = kOpts; $('#tests-kind').dataset.h = kOpts; }
   const q = tst.q.trim().toLowerCase();
   const hit = t => (tst.kind === 'all' || (t.kind || 'test') === tst.kind)
     && (!q || [t.label, t.key, t.owner, t.detail, t.sess && nameOf(t.sess), ...(t.failures || []).map(f => f.id + ' ' + f.msg), ...(t.cases || []).map(c => c.id + ' ' + c.title)].some(x => x && String(x).toLowerCase().includes(q)));
@@ -2252,15 +2260,18 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // goes to the set's server and works only when that server is this device's loopback (set.local); elsewhere (a phone,
 // another machine) the button is not drawn.
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false, wtBodyHtml = '';
-// f: review / Jira filter, q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home 「QA 파이프라인」 sets it.
-const wtf = (() => { try { return { f: 'all', q: '', qa: '', ...JSON.parse(localStorage.getItem('adash.wt') || '{}') }; } catch { return { f: 'all', q: '', qa: '' }; } })();
+// f: review filter, j: Jira stage ('' all), q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home
+// 「QA 파이프라인」 sets it. f once held the Jira stage too ('j:<stage>'); a saved one moves to j.
+const wtf = (() => { const d = { f: 'all', j: '', q: '', qa: '' }; try { Object.assign(d, JSON.parse(localStorage.getItem('adash.wt') || '{}')); } catch {}
+  if (d.f.startsWith('j:')) [d.j, d.f] = [d.f.slice(2), 'all'];
+  return d; })();
 const wtQaHit = t => !wtf.qa || (wtf.qa === 'blocked' ? !!t.qa?.blocked : t.qa?.stage === wtf.qa);
-// The tab's three filters together; the home 「QA 파이프라인」 counts and lists only the tickets they let through.
+// The tab's filters together; the home 「QA 파이프라인」 counts and lists only the tickets they let through.
 const wtHit = t => { const q = wtf.q.trim().toLowerCase();
-  return (wtf.f === 'all' || t.review === wtf.f || 'j:' + jiraStage(t) === wtf.f) && wtQaHit(t)
+  return (wtf.f === 'all' || t.review === wtf.f) && (!wtf.j || jiraStage(t) === wtf.j) && wtQaHit(t)
     && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q))); };
 // The filters in force, named for the home widget's note ([] when none).
-const wtFilterNames = () => [wtf.f !== 'all' && (WT_FILTERS[wtf.f] || WT_JIRA[wtf.f.slice(2)]),
+const wtFilterNames = () => [wtf.f !== 'all' && WT_FILTERS[wtf.f], wtf.j && 'Jira ' + WT_JIRA[wtf.j],
   wtf.qa && (wtf.qa === 'blocked' ? 'QA 막힘' : 'QA ' + qaName(wtf.qa)), wtf.q.trim() && `「${wtf.q.trim()}」`].filter(Boolean);
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], reopened: ['fail', '재오픈 후 리뷰 대기'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'reopened', 'pending', 'done', 'none'];
@@ -2588,21 +2599,31 @@ async function renderWorktrees() {
   const save = () => { try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} };
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
-        <div class="seg" id="wt-f">${Object.entries(WT_FILTERS).map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('')}<span class="seg-sep"></span>${Object.entries(WT_JIRA).map(([k, l]) => `<button data-k="j:${k}" title="Jira 상태">${l}</button>`).join('')}</div>
+        <div class="seg" id="wt-f"></div>
+        <select id="wt-j" class="field" title="Jira 상태"></select>
         <select id="wt-qa" class="field" title="QA 드라이버 단계"></select>
         <input type="search" id="wt-q" class="field" placeholder="키·제목·브랜치 검색" value="${esc(wtf.q)}">
       </div><div id="wt-body"></div>`;
     $('#wt-qa').onchange = e => { wtf.qa = e.target.value; save(); renderWorktrees(); };
-    $('#wt-f').querySelectorAll('button').forEach(b => b.onclick = () => { wtf.f = b.dataset.k; save(); renderWorktrees(); });
+    $('#wt-j').onchange = e => { wtf.j = e.target.value; save(); renderWorktrees(); };
+    $('#wt-f').onclick = e => { const b = e.target.closest('button'); if (b) { wtf.f = b.dataset.k; save(); renderWorktrees(); } };
     $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
     $('#wt-body').onclick = wtClick;
     wtMounted = true;
     wtBodyHtml = '';
   }
-  $('#wt-f').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === wtf.f));
-  $('#wt-qa').innerHTML = [['', 'QA 단계 전체'], ...qaStages().filter(x => WT_QA.includes(x.key)).map(x => [x.key, 'QA ' + x.label]), ['blocked', 'QA 막힘']].map(([k, l]) => `<option value="${k}"${k === wtf.qa ? ' selected' : ''}>${esc(l)}</option>`).join('');
-  if (!(wtf.f in WT_FILTERS || wtf.f.slice(2) in WT_JIRA)) wtf.f = 'all';
+  if (!(wtf.f in WT_FILTERS)) wtf.f = 'all';
+  if (wtf.j && !(wtf.j in WT_JIRA)) wtf.j = '';
   if (wtf.qa && wtf.qa !== 'blocked' && !WT_QA.includes(wtf.qa)) wtf.qa = '';
+  // Counts over the running sets' tickets. A review chip with none is left out (unless picked); Jira stages and QA stages
+  // go in menus with their counts.
+  const tks = wtData.sets.filter(s => !s.retired).flatMap(s => s.tickets), cnt = fn => tks.filter(fn).length;
+  const opts = (sel, xs) => xs.map(([k, l, n]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(l)} ${n}</option>`).join('');
+  const setOpts = (id, h) => { const el = $(id); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } };
+  $('#wt-f').innerHTML = Object.entries(WT_FILTERS).map(([k, l]) => [k, l, k === 'all' ? tks.length : cnt(t => t.review === k)])
+    .filter(([k, , n]) => k === 'all' || n || k === wtf.f).map(([k, l, n]) => `<button data-k="${k}" class="${k === wtf.f ? 'on' : ''}">${l} ${n}</button>`).join('');
+  setOpts('#wt-j', opts(wtf.j, [['', 'Jira 전체', tks.length], ...Object.entries(WT_JIRA).map(([k, l]) => [k, 'Jira ' + l, cnt(t => jiraStage(t) === k)]).filter(([k, , n]) => n || k === wtf.j)]));
+  setOpts('#wt-qa', opts(wtf.qa, [['', 'QA 단계 전체', tks.length], ...qaStages().filter(x => WT_QA.includes(x.key)).map(x => [x.key, 'QA ' + x.label, cnt(t => t.qa?.stage === x.key)]), ['blocked', 'QA 막힘', cnt(t => t.qa?.blocked)]]));
   const num = k => +k.split('-').pop();
   const setHtml = (s, ro) => {
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
