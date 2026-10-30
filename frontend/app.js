@@ -6860,8 +6860,13 @@ function pjSelect(k, stage) {
   });
 }
 
-// On a phone the note takes the stages' place (and gives it back): bring the top of that place into view.
-const pjPhoneTop = box => { if (matchMedia('(max-width: 500px)').matches) box.querySelector('.pj-split')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+// On a phone the note takes the stages' place (and gives it back): bring the top of that place into view. Not when
+// the note stands beside the stages (two columns).
+const pjPhoneTop = box => {
+  const split = box.querySelector('.pj-split');
+  if (split && matchMedia('(max-width: 700px)').matches && getComputedStyle(split).gridTemplateColumns.split(' ').length < 2)
+    split.scrollIntoView({ block: 'start', behavior: 'smooth' });
+};
 
 document.addEventListener('click', e => {
   if (route().v !== 'projects') return;
