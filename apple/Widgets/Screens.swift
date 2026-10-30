@@ -5,11 +5,6 @@ import WidgetKit
 // QA (워크트리 리뷰), 상호작용, 설계문서, 워크트리 and 비용 (비교). They read the screens' summaries in /api/glance
 // (server/adash/http/glance_screens.py).
 
-// The page's QA driver stage names (frontend/app.js QA_ST).
-private let qaStage = ["selected": "선별", "worktree": "워크트리", "analysis": "분석", "implementing": "구현", "reviewing": "검토",
-                       "committed": "커밋 완료", "approved": "반출 승인", "delivered": "반출", "cleaned": "정리"]
-private let qaOrder = ["selected", "worktree", "analysis", "implementing", "reviewing", "committed", "approved", "delivered"]
-
 private func dollars(_ v: Double) -> String { v >= 100 ? String(format: "$%.0f", v) : String(format: "$%.2f", v) }
 
 // MARK: 홈
@@ -20,43 +15,53 @@ struct HomeWidget: Widget {
             HomeView(entry: e).containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("홈")
-        .description("내 차례(결정·막힌 QA·반출 승인)와 화면마다 지금의 숫자 하나.")
+        .description("내 차례(결정·보고 확인·QA 막힘·반출 승인)와 화면마다 페이지 홈과 같은 숫자 하나.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryCircular, .accessoryInline])
     }
 }
+
+// a 내 차례 item's kind, as the page's hmMine names it
+private let mineKind: [String: (String, Color)] = ["dec": ("결정", .orange), "ask": ("보고 확인", .indigo), "blocked": ("QA 막힘", .red),
+                                                   "approve": ("반출 승인", .orange)]
 
 struct HomeView: View {
     @Environment(\.widgetFamily) private var family
     let entry: GlanceEntry
     private var g: Glance? { entry.glance }
-    private var blocked: Int { g?.qa?.reduce(0) { $0 + $1.blocked.count } ?? 0 }
-    private var approve: Int { g?.qa?.reduce(0) { $0 + $1.approve.count } ?? 0 }
-    // the page's 내 차례: questions waiting, QA tickets stopped for a person, QA work waiting for 반출 승인
-    private var mine: Int { (g?.decisions.count ?? 0) + blocked + approve }
+    private var mine: Glance.Mine? { g?.mine }
+    private var total: Int { mine?.total ?? g?.decisions.count ?? 0 }
+    private func count(_ k: String) -> Int { mine?.counts[k] ?? 0 }
 
     private struct Tile: Identifiable {
         let id: String, label: String, value: String, symbol: String, tint: Color, hot: Bool
     }
+    // each the figure the page's 홈 tile shows for that screen
     private var tiles: [Tile] {
         guard let g else { return [] }
         let n = { (s: AgentState) in g.agents.counts[s.rawValue] ?? 0 }
-        let live = g.tests.filter(\.running).count
-        let flow = (g.flow?.bad ?? 0) + (g.flow?.warn ?? 0)
-        let usage = g.usage?.first { !$0.stale }?.limits.compactMap(\.percent).max()
-        let projects = g.projects?.filter { $0.fraction < 1 }.count
-        let qaOpen = g.qa?.reduce(0) { a, s in a + s.stages.filter { $0.key != "cleaned" }.values.reduce(0, +) }
-        let dirty = g.trees?.repos.reduce(0) { $0 + $1.dirty }
         var out = [
             Tile(id: "decide", label: "결정 대기", value: "\(g.decisions.count)", symbol: "questionmark.bubble.fill", tint: .orange, hot: !g.decisions.isEmpty),
-            Tile(id: "agents", label: "실행 · 대기", value: "\(n(.run)) · \(n(.wait))", symbol: "person.2.fill", tint: .green, hot: n(.stalled) > 0),
-            Tile(id: "tests", label: live > 0 ? "테스트 실행" : "테스트", value: live > 0 ? "\(live)" : "\(g.tests.count)", symbol: "flask.fill", tint: .purple, hot: false),
+            Tile(id: "agents", label: "실행 · 대기 \(n(.wait))", value: "\(n(.run) + n(.bg))", symbol: "person.2.fill", tint: .green, hot: n(.stalled) > 0),
         ]
-        if let qaOpen { out.append(Tile(id: "worktrees", label: "QA 진행", value: "\(qaOpen)", symbol: "checklist", tint: .pink, hot: blocked > 0)) }
-        if let projects { out.append(Tile(id: "projects", label: "프로젝트", value: "\(projects)", symbol: "point.3.connected.trianglepath.dotted", tint: .blue, hot: false)) }
+        if let t = g.test_counts {
+            out.append(t.live > 0 ? Tile(id: "tests", label: "테스트 실행 중", value: "\(t.live)", symbol: "flask.fill", tint: .purple, hot: true)
+                                  : Tile(id: "tests", label: "테스트 실패", value: "\(t.failed)", symbol: "flask.fill", tint: .red, hot: t.failed > 0))
+        }
+        if let qa = g.qa {
+            let c = { (k: String) in qa.reduce(0) { $0 + ($1.counts[k] ?? 0) } }
+            out.append(c("approve") > 0 ? Tile(id: "worktrees", label: "QA 반출 승인", value: "\(c("approve"))", symbol: "checklist", tint: .orange, hot: true)
+                                         : Tile(id: "worktrees", label: "QA 작업 중", value: "\(c("working"))", symbol: "checklist", tint: .pink, hot: c("blocked") > 0))
+        }
         if let c = g.cost { out.append(Tile(id: "compare", label: "오늘 비용", value: dollars(c.total), symbol: "chart.bar.fill", tint: .mint, hot: false)) }
-        if let usage { out.append(Tile(id: "usage", label: "사용량", value: "\(Int(usage))%", symbol: "gauge.with.dots.needle.67percent", tint: .teal, hot: usage >= 90)) }
-        out.append(Tile(id: "home", label: "흐름 점검", value: g.flow.map { _ in "\(flow)" } ?? "–", symbol: "stethoscope", tint: .red, hot: (g.flow?.bad ?? 0) > 0))
-        if let dirty { out.append(Tile(id: "trees", label: "미커밋 워크트리", value: "\(dirty)", symbol: "arrow.triangle.branch", tint: .brown, hot: false)) }
+        if let top = g.usage?.filter({ !$0.stale }).flatMap(\.limits).compactMap(\.percent).max() {
+            out.append(Tile(id: "usage", label: "사용량 최고", value: "\(Int(top))%", symbol: "gauge.with.dots.needle.67percent", tint: top >= 90 ? .red : .teal, hot: top >= 70))
+        }
+        if let ps = g.projects {
+            let open = ps.filter { !$0.finished && $0.error == nil }
+            out.append(Tile(id: "projects", label: "프로젝트 진행", value: open.isEmpty ? "없음" : "\(open.count)개", symbol: "point.3.connected.trianglepath.dotted", tint: .blue, hot: false))
+        }
+        if let f = g.flow { out.append(Tile(id: "home", label: "흐름 점검", value: "\(f.bad + f.warn)", symbol: "stethoscope", tint: .red, hot: f.bad > 0)) }
+        if let t = g.trees { out.append(Tile(id: "trees", label: "미커밋 워크트리", value: "\(t.repos.reduce(0) { $0 + $1.dirty })", symbol: "arrow.triangle.branch", tint: .brown, hot: false)) }
         return out
     }
 
@@ -67,63 +72,90 @@ struct HomeView: View {
                 AccessoryWidgetBackground()
                 VStack(spacing: 0) {
                     Image(systemName: "hand.raised").font(.caption)
-                    Text(g == nil ? "–" : "\(mine)").font(.title2.weight(.bold)).minimumScaleFactor(0.5)
+                    Text(g == nil ? "–" : "\(total)").font(.title2.weight(.bold)).minimumScaleFactor(0.5)
                 }
             }
             .widgetURL(Deep.screen("home"))
         case .accessoryInline:
-            Label(g == nil ? "내 차례 –" : mine == 0 ? "내 차례 없음" : "내 차례 \(mine)", systemImage: "hand.raised")
+            Label(g == nil ? "내 차례 –" : total == 0 ? "내 차례 없음" : "내 차례 \(total)", systemImage: "hand.raised")
                 .widgetURL(Deep.screen("home"))
         case .systemSmall:
             VStack(alignment: .leading, spacing: 4) {
                 Header(title: "내 차례", symbol: "hand.raised.fill", tint: .orange)
                 if g == nil { Offline(error: entry.error) }
+                else if total == 0 { allClear }
                 else {
-                    Text("\(mine)").font(.system(size: 38, weight: .bold, design: .rounded)).foregroundStyle(mine > 0 ? .orange : .secondary)
-                    Group {
-                        Text("결정 \(g?.decisions.count ?? 0)")
-                        if g?.qa != nil { Text("QA 막힘 \(blocked) · 승인 \(approve)") }
-                    }
-                    .font(.caption2).foregroundStyle(.secondary)
+                    Text("\(total)").font(.system(size: 38, weight: .bold, design: .rounded)).foregroundStyle(.orange)
+                    Text(["dec", "ask", "blocked", "approve"].filter { count($0) > 0 }.map { "\(mineKind[$0]!.0) \(count($0))" }.joined(separator: " · "))
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                     Spacer(minLength: 0)
                 }
             }
             .widgetURL(Deep.screen("home"))
         default:
             VStack(alignment: .leading, spacing: 8) {
-                Header(title: "홈", symbol: "house.fill", tint: .accentColor, trailing: g == nil ? nil : mine > 0 ? "내 차례 \(mine)" : "내 차례 없음")
+                Header(title: "홈", symbol: "house.fill", tint: .accentColor)
                 if g == nil { Offline(error: entry.error) }
                 else {
-                    let shown = Array(tiles.prefix(family == .systemLarge ? 9 : 6))
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
-                        ForEach(shown) { t in
-                            Link(destination: Deep.screen(t.id)) {
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Image(systemName: t.symbol).font(.caption2).foregroundStyle(t.tint)
-                                    Text(t.value).font(.system(size: family == .systemLarge ? 22 : 17, weight: .bold, design: .rounded))
-                                        .foregroundStyle(t.hot ? t.tint : .primary).lineLimit(1).minimumScaleFactor(0.6)
-                                    Text(t.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(6)
-                                .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                            }
-                        }
+                        ForEach(Array(tiles.prefix(family == .systemLarge ? 9 : 6))) { t in tile(t) }
                     }
-                    if family == .systemLarge, let d = g?.decisions.first {
-                        Divider()
-                        Link(destination: Deep.session(d.path)) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("가장 오래 기다린 결정").font(.caption2).foregroundStyle(.orange)
-                                Text(d.title).font(.caption.weight(.semibold)).lineLimit(1)
-                                Text(d.question).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                        }
-                    }
+                    if family == .systemLarge { mineList }
                     Spacer(minLength: 0)
                 }
             }
         }
+    }
+
+    private func tile(_ t: Tile) -> some View {
+        Link(destination: Deep.screen(t.id)) {
+            VStack(alignment: .leading, spacing: 1) {
+                Image(systemName: t.symbol).font(.caption2).foregroundStyle(t.tint)
+                Text(t.value).font(.system(size: family == .systemLarge ? 20 : 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(t.hot ? t.tint : .primary).lineLimit(1).minimumScaleFactor(0.6)
+                Text(t.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(6)
+            .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    // 대형: what is the user's to do, or a plain all-clear line when nothing is
+    @ViewBuilder private var mineList: some View {
+        HStack(spacing: 4) {
+            Text("내 차례").font(.caption.weight(.semibold))
+            if total > 0 { Text("\(total)").font(.caption.weight(.bold)).foregroundStyle(.orange) }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
+        if total == 0 {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Text("기다리는 결정도, 막힌 QA도 없습니다").font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            ForEach(Array((mine?.items ?? []).prefix(3).enumerated()), id: \.offset) { _, i in
+                let k = mineKind[i.kind] ?? ("할 일", .orange)
+                Link(destination: i.path.map(Deep.session) ?? Deep.screen(i.kind == "dec" ? "decide" : i.kind == "ask" ? "agents" : "worktrees")) {
+                    HStack(spacing: 5) {
+                        Text(k.0).font(.caption2.weight(.semibold)).foregroundStyle(k.1)
+                            .padding(.horizontal, 5).padding(.vertical, 1).background(k.1.opacity(0.15), in: Capsule())
+                        Text(i.title ?? "").font(.caption.weight(.medium)).lineLimit(1)
+                        Text(i.detail ?? "").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+    }
+
+    private var allClear: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill").font(.title).foregroundStyle(.green)
+            Text("내 차례 없음").font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -135,29 +167,33 @@ struct QAWidget: Widget {
             QAView(entry: e).containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("QA")
-        .description("QA 드라이버가 처리 중인 티켓의 단계와, 막혔거나 반출 승인을 기다리는 티켓.")
+        .description("QA 드라이버가 처리 중인 티켓: 막힘, 반출 승인 대기, 작업 중, 대기.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryInline])
     }
 }
+
+// the page's 워크트리 리뷰 tile groups
+private let qaGroups: [(String, String, Color)] = [("blocked", "막힘", .red), ("approve", "승인 대기", .orange), ("working", "작업 중", .green),
+                                                   ("waiting", "대기", .gray), ("delivered", "반출됨", .blue)]
 
 struct QAView: View {
     @Environment(\.widgetFamily) private var family
     let entry: GlanceEntry
     private var sets: [Glance.QASet]? { entry.glance?.qa }
-    private var blocked: [Glance.QASet.Ticket] { sets?.flatMap(\.blocked) ?? [] }
-    private var approve: [Glance.QASet.Ticket] { sets?.flatMap(\.approve) ?? [] }
-    private var open: Int { sets?.reduce(0) { a, s in a + s.stages.filter { $0.key != "cleaned" }.values.reduce(0, +) } ?? 0 }
+    private func c(_ k: String) -> Int { sets?.reduce(0) { $0 + ($1.counts[k] ?? 0) } ?? 0 }
+    private var open: Int { sets?.reduce(0) { $0 + $1.open } ?? 0 }
+    private var rows: [(Glance.QASet.Ticket, Bool)] { (sets ?? []).flatMap { $0.blocked.map { ($0, true) } + $0.approve.map { ($0, false) } } }
 
     var body: some View {
         Group {
             switch family {
             case .accessoryInline:
-                Text(sets == nil ? "QA –" : "QA 진행 \(open) · 막힘 \(blocked.count) · 승인 \(approve.count)")
+                Text(sets == nil ? "QA –" : "QA 작업 \(c("working")) · 막힘 \(c("blocked")) · 승인 \(c("approve"))")
             case .accessoryRectangular:
                 VStack(alignment: .leading, spacing: 1) {
-                    Label("QA", systemImage: "checklist").font(.headline)
-                    Text(sets == nil ? "–" : "진행 \(open) · 막힘 \(blocked.count) · 승인 \(approve.count)").font(.caption)
-                    if let t = blocked.first ?? approve.first { Text("\(t.key ?? "") \(t.summary)").font(.caption2).lineLimit(1) }
+                    Label("QA 진행 \(open)", systemImage: "checklist").font(.headline)
+                    Text(sets == nil ? "–" : "작업 \(c("working")) · 막힘 \(c("blocked")) · 승인 \(c("approve"))").font(.caption)
+                    if let t = rows.first?.0 { Text("\(t.key ?? "") \(t.summary)").font(.caption2).lineLimit(1) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             case .systemSmall:
@@ -165,14 +201,15 @@ struct QAView: View {
                     Header(title: "QA", symbol: "checklist", tint: .pink)
                     if entry.glance == nil { Offline(error: entry.error) }
                     else if sets == nil { Unsupported() }
+                    else if open == 0 { Empty(text: "진행 중인 QA 없음") }
                     else {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            count(open, "진행", .pink)
-                            count(blocked.count, "막힘", .red)
-                            count(approve.count, "승인", .orange)
+                            number(c("working"), "작업 중", .green)
+                            number(c("blocked"), "막힘", .red)
+                            number(c("approve"), "승인", .orange)
                         }
-                        if let t = blocked.first ?? approve.first {
-                            Text(t.key ?? "").font(.caption.weight(.semibold))
+                        if let (t, b) = rows.first {
+                            Text(t.key ?? "").font(.caption.weight(.semibold)).foregroundStyle(b ? .red : .orange)
                             Text(t.reason ?? t.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                         }
                         Spacer(minLength: 0)
@@ -180,17 +217,21 @@ struct QAView: View {
                 }
             default:
                 VStack(alignment: .leading, spacing: 8) {
-                    Header(title: "QA", symbol: "checklist", tint: .pink,
-                           trailing: sets.map { _ in "막힘 \(blocked.count) · 승인 \(approve.count)" })
+                    Header(title: "QA", symbol: "checklist", tint: .pink, trailing: sets.map { _ in "진행 티켓 \(open)" })
                     if entry.glance == nil { Offline(error: entry.error) }
                     else if let sets {
-                        if sets.isEmpty { Empty(text: "진행 중인 QA 없음") }
+                        if open == 0 { Empty(text: "진행 중인 QA 없음") }
                         else {
-                            ForEach(Array(sets.prefix(family == .systemLarge ? 2 : 1).enumerated()), id: \.offset) { _, s in
-                                StageBar(s: s)
+                            HStack(spacing: 10) {
+                                ForEach(qaGroups.filter { c($0.0) > 0 }, id: \.0) { g in number(c(g.0), g.1, g.2) }
+                                Spacer(minLength: 0)
                             }
-                            let rows = blocked.map { ($0, true) } + approve.map { ($0, false) }
-                            ForEach(Array(rows.prefix(family == .systemLarge ? 4 : 2).enumerated()), id: \.offset) { _, r in
+                            if family == .systemLarge {
+                                ForEach(Array(sets.enumerated()), id: \.offset) { _, s in
+                                    Text("\(s.epic ?? "QA") · \(s.summary) · \(s.open)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            ForEach(Array(rows.prefix(family == .systemLarge ? 5 : 2).enumerated()), id: \.offset) { _, r in
                                 QATicketRow(t: r.0, blocked: r.1)
                             }
                             Spacer(minLength: 0)
@@ -202,29 +243,10 @@ struct QAView: View {
         .widgetURL(Deep.screen("worktrees"))
     }
 
-    private func count(_ n: Int, _ label: String, _ tint: Color) -> some View {
+    private func number(_ n: Int, _ label: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("\(n)").font(.system(size: 24, weight: .bold, design: .rounded)).foregroundStyle(n > 0 ? tint : .secondary)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-    }
-}
-
-// a QA set's tickets by driver stage, one segment per stage that has any (정리 done ones left out)
-private struct StageBar: View {
-    let s: Glance.QASet
-    var body: some View {
-        let stages = qaOrder.compactMap { k in s.stages[k].map { (k, $0) } }
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 4) {
-                Text(s.epic ?? "QA").font(.caption.weight(.semibold))
-                Text(s.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 2)
-                Text("정리 \(s.stages["cleaned"] ?? 0)/\(s.tickets)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-            }
-            if !stages.isEmpty {
-                Text(stages.map { "\(qaStage[$0.0] ?? $0.0) \($0.1)" }.joined(separator: " · ")).font(.caption2).foregroundStyle(.pink).lineLimit(1)
-            }
+            Text("\(n)").font(.system(size: 22, weight: .bold, design: .rounded)).foregroundStyle(n > 0 ? tint : .secondary)
+            Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
     }
 }

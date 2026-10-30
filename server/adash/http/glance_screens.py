@@ -2,6 +2,8 @@
 설계문서, 워크트리, 비교) and 홈's 내 차례. Each reads a cache its own endpoint keeps, so a widget never waits on git or
 the Orca CLI except on the server's first read."""
 
+import re
+import time
 from datetime import datetime
 
 from adash.core.files import StaleWhileRefresh
@@ -17,28 +19,77 @@ TALK_TYPES = ("question", "escalation", "worker_done", "status", "dispatch")  # 
 _talk = StaleWhileRefresh("glance-talk", lambda: interactions(GLANCE_TALK, False), max(INBOX_TTL, 30))
 
 
+HM_STALE = 24 * 3600  # a 막힘 older than this counts at its stage, not as the user's turn (frontend/app.js HM_STALE)
+# the page's 워크트리 리뷰 tile groups, in the order a ticket is taken
+QA_GROUPS = [("blocked", None), ("approve", {"committed"}), ("working", {"analysis", "implementing", "reviewing", "approved"}),
+             ("waiting", {"selected", "worktree"}), ("delivered", {"delivered"})]
+
+
+def jira_stage(t):
+    """The page's jiraStage: Jira's status by name (보류, QA 준비, 개발 완료, QA 완료), else by its category."""
+    n = re.sub(r"\s", "", t.get("status") or "")
+    if re.search(r"hold|홀딩|보류", n, re.I):
+        return "hold"
+    if "QA준비" in n:
+        return "ready"
+    if "개발완료" in n:
+        return "dev"
+    if "QA완료" in n or t.get("cat") == "done":
+        return "qa"
+    return "todo" if t.get("cat") == "new" else "prog"
+
+
+def stage_age(qa, now):
+    at = (qa.get("at") or {}).get(qa.get("stage"))
+    try:
+        return now - datetime.strptime(at, "%Y-%m-%d %H:%M:%S").timestamp() if at else float("inf")
+    except ValueError:
+        try:
+            return now - datetime.fromisoformat(at).timestamp()
+        except ValueError:
+            return float("inf")
+
+
 def qa_summary():
-    """The running QA sets: tickets per driver stage, the blocked ones and the ones waiting for 반출 승인 (홈's 내 차례)."""
+    """The running QA sets counted as the page's 워크트리 리뷰 tile does: the tickets still in the pipeline (not 정리, not
+    ignored, not parked at Jira 보류, not a 커밋 완료 left with no worktree), each in one group — 막힘 (under a day),
+    승인 대기, 작업 중, 대기, 반출됨."""
     with lock:
         sets = [s for s in review_state["sets"] if not s.get("retired")]
-    out = []
+    now, out = time.time(), []
     for s in sets:
-        ts = s.get("tickets") or []
-        stages, blocked, approve = {}, [], []
-        for t in ts:
+        groups = {k: [] for k, _ in QA_GROUPS}
+        for t in s.get("tickets") or []:
             qa = t.get("qa") or {}
-            if not qa or qa.get("ignored"):
+            if not qa or qa.get("ignored") or qa.get("stage") == "cleaned" or jira_stage(t) == "hold":
                 continue
-            stages[qa.get("stage")] = stages.get(qa.get("stage"), 0) + 1
-            row = {"key": t.get("key"), "summary": short(t.get("summary") or "", 80), "stage": qa.get("stage")}
-            if qa.get("blocked"):
-                blocked.append({**row, "reason": short(qa.get("blocked_reason") or "", 120)})
-            elif qa.get("stage") == "committed" and t.get("repos"):
-                approve.append(row)
-        out.append({"epic": s.get("epic"), "summary": short(s.get("summary") or "", 60), "tickets": len(ts),
-                    "reopened": sum(1 for t in ts if t.get("review") == "reopened"),
-                    "stages": stages, "blocked": blocked[:4], "approve": approve[:4]})
+            if qa.get("stage") == "committed" and not t.get("repos"):
+                continue
+            stuck = qa.get("blocked") and stage_age(qa, now) < HM_STALE
+            for k, stages in QA_GROUPS:
+                if (k == "blocked" and stuck) or (k != "blocked" and qa.get("stage") in stages):
+                    groups[k].append({"key": t.get("key"), "summary": short(t.get("summary") or "", 80), "stage": qa.get("stage"),
+                                      "reason": short(qa.get("blocked_reason") or "", 120) if stuck else None})
+                    break
+        out.append({"epic": s.get("epic"), "summary": short(s.get("summary") or "", 60),
+                    "open": sum(len(v) for v in groups.values()), "counts": {k: len(v) for k, v in groups.items()},
+                    "blocked": groups["blocked"][:4], "approve": groups["approve"][:4]})
     return out
+
+
+def with_mine(g):
+    """홈's 내 차례 (the page's hmMine): questions waiting, agents stopped at a step that asks for the person, QA tickets
+    blocked under a day and QA work waiting for 반출 승인, oldest kind first."""
+    qa = g.get("qa") or []
+    items = ([{"kind": "dec", "title": d["title"], "detail": d.get("header") or d["question"], "path": d.get("path")} for d in g["decisions"]]
+             + [{"kind": "ask", **a} for a in g.get("asks") or []]
+             + [{"kind": "blocked", "title": t["key"], "detail": t.get("reason") or t["summary"], "path": None} for s in qa for t in s["blocked"]]
+             + [{"kind": "approve", "title": t["key"], "detail": t["summary"], "path": None} for s in qa for t in s["approve"]])
+    counts = {k: sum(1 for i in items if i["kind"] == k) for k in ("dec", "ask", "blocked", "approve")}
+    # the per-set lists stop at four: count the QA ones from the set totals
+    counts["blocked"] = sum(s["counts"]["blocked"] for s in qa)
+    counts["approve"] = sum(s["counts"]["approve"] for s in qa)
+    return {**g, "mine": {"total": sum(counts.values()), "counts": counts, "items": items[:6]}}
 
 
 def talk_summary(names):
