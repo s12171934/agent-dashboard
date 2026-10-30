@@ -24,6 +24,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `apple/` | macOS·iPhone 앱(배포된 페이지를 감싼 네이티브 셸)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
+| `bin/` | 공개 CLI 진입점 — `atest`(→ `server/atest`). 다른 저장소(스킬 등)는 이 경로로 부른다 | 로컬 Mac |
 | `exports/` | 공개 스키마 | |
 
 ```
@@ -420,7 +421,8 @@ atest end [passed|failed] [메모]               # 기본: 실패 케이스가 �
 ```
 
 - `run` 은 러너를 명령에서 알아낸다(`--kind` 로 지정 가능). RSpec 은 `SPEC_OPTS` 로 `server/atest-rspec.rb` 포매터를 붙여 예제마다 시작·결과·소요 시간·실패 메시지를 받는다(총 개수를 알아 남은 시간이 나온다. 다른 포매터가 지정돼 있지 않으면 `progress` 를 함께 단다). vitest·jest·`node`/`tsx --test`·playwright 는 테스트별 줄(✓·×)을 읽고, 그 줄이 나오도록 vitest 에는 `--reporter=verbose`, jest 에는 `--verbose`, node 에는 `--test-reporter=spec` 을 붙인다(이미 지정했으면 두고, `yarn <스크립트>` 처럼 러너가 명령에 직접 없으면 붙이지 않는다). 전체 출력은 `/private/tmp/agent-test-progress/logs/<key>.log`.
-- `start`·`case`·`note`·`end` 는 에이전트가 손으로 확인하는 실행(Storybook 스토리를 Figma 시안과 대조 등)용이다. `start` 가 정한 실행을 같은 세션의 다음 명령이 이어 쓴다(다른 실행은 `--key`).
+- `start`·`case`·`note`·`end` 는 에이전트가 손으로 확인하는 실행(Storybook 스토리를 Figma 시안과 대조 등)용이다. `start` 가 정한 실행을 같은 세션의 다음 명령이 이어 쓴다(다른 실행은 `--key`). `start --key K` 로 연 실행은 `--key` 로만 이어 쓰고 세션의 「지금 실행」을 바꾸지 않는다 — 여러 실행을 동시에 여는 녹화 러너용.
+- 녹화 실측도 테스트로 친다 — [aside-record](https://github.com/s12171934/aside-record)·[ego-record](https://github.com/s12171934/ego-record) 스킬의 러너가 `bin/atest` 로 녹화 하나를 실행 하나(`kind` `aside`·`ego`, 라벨 `녹화 실측 · <케이스 이름>`)로 남긴다. 케이스는 aside 가 `고정 탭`·`작업 수행`·`인코딩`·`탭 고정 판정`, ego 가 `준비`·act 라운드 `R1`…(제목은 `--say`)·`인코딩`·`고정 페이지 판정`이다. `[폐기]` 판정과 실패한 작업·라운드는 실패 케이스가 되고, 중간에 멈추거나 abort 하면 실행이 실패로 닫힌다.
 - 세션은 `aplan` 과 같이 `CLAUDE_CODE_SESSION_ID`·`CODEX_THREAD_ID`·`ORCA_TERMINAL_HANDLE` 로 잇는다.
 
 ## 세션이 만든 볼트 문서
@@ -607,6 +609,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 다른 도구·자동화가 의존해도 되는 것은 아래뿐이다. 나머지(웹 UI 가 쓰는 `/api/*` HTTP 엔드포인트 등)는 내부용이라 예고 없이 바뀔 수 있다.
 
 - `aplan` CLI 와 그 기록 형식 (`~/.agent-plans/*.jsonl`)
+- `bin/atest` CLI (위 「atest」 절의 명령)
 - `server/server.py` 실행 옵션과 `server/launchd/install.sh` 환경 변수
 - 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`, 선택 `cases` — `[{"id", "title", "status", "msg", "ms"}]`. `cases` 가 있으면 「테스트」의 실행 줄 아래 「케이스」 토글에 케이스 코드(`id`, 예: `TC-A-23`)와 그 케이스가 확인하는 내용(`title`), 통과·실패(`status`: `passed`·`failed`·`skipped` 등), 실패 메시지가 실패 먼저 나온다. run-tc 실행은 진행 파일 옆 `e2e-runs/<run>.tests.json` 에서 같은 목록을 읽는다(제목 앞의 `TC-…` 를 코드로 뗀다)
 
