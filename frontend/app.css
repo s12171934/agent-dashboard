@@ -711,25 +711,23 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-step .st { white-space: nowrap; }
 .pj-step .pj-short { display: none; }
 .pj-none { padding-left: 30px; }
-/* A phone, and iPhone Duo's inner screen either way up (the fold layout), keeps scrolling short. All nine stages fit
-   on one line (steps share the width, labels wrap). Folded, a project is a compact card: name, figures and a line of
-   bare stage nodes (a finished project drops the line). Open, the line gets its labels back and works as the stage
-   picker: the detail shows the picked stage's steps only, and a step's note takes the stages' place (in the fold
-   layout it stands beside them). The figures the summary already shows are not repeated. */
+/* A phone, and iPhone Duo's inner screen either way up (the fold layout), keeps scrolling short. Nodes keep their
+   size; it is the labels that do not fit. Folded, a project is a compact card: name, figures and a line of bare
+   stage nodes that shares the width (a finished project drops the line). Open, the line gets its labels back, runs
+   sideways with the picked stage brought to the middle (pjCenter), and works as the stage picker: the detail shows
+   the picked stage's steps only, and a step's note takes the stages' place (in the fold layout it stands beside
+   them). The figures the summary already shows are not repeated. */
 @media (max-width: 700px), (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
-  .pj-flow .pj-st { flex: 1 1 0; min-width: 0; gap: 4px; }
-  .pj-flow .pj-st::before, .pj-flow .pj-st::after { top: 10px; }
-  .pj-flow .pj-dot { width: 22px; height: 22px; font-size: 10px; }
-  .pj-flow .pj-st > span { font-size: 9.5px; max-width: 100%; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.2; }
   .pj-steps { padding-left: 4px; }
   details.pj-row > summary { padding: 10px 12px; gap: 6px; }
   .pj-head { gap: 2px 6px; }
   .pj-head .chip { font-size: 11px; padding: 1px 7px; }
   .pj-head .st { font-size: 12px; }
-  details.pj-row:not([open]) .pj-flow { padding: 4px 0; margin: 0; }
+  /* bare nodes fit, so the folded line need not scroll: the current stage's pulse ring (9px out) shows past its edges */
+  details.pj-row:not([open]) .pj-flow { overflow: visible; padding: 6px 0; margin: 0; }
+  details.pj-row:not([open]) .pj-flow .pj-st { flex: 1 1 0; min-width: 0; }
   details.pj-row:not([open]) .pj-flow .pj-st > span { display: none; }
-  details.pj-row:not([open]) .pj-flow .pj-dot { width: 18px; height: 18px; font-size: 9px; }
-  details.pj-row:not([open]) .pj-flow .pj-st::before, details.pj-row:not([open]) .pj-flow .pj-st::after { top: 8px; }
+  details.pj-row[open] .pj-flow { padding: 10px 0; margin: -8px 0; scroll-padding-inline: 12px; }
   details.pj-row.fin:not([open]) .pj-flow { display: none; }
   details.pj-row[open] .pj-flow .pj-st.sel > span { color: var(--accent); font-weight: 700; }
   details.pj-row[open] .pj-flow .pj-st.sel:not(.cur) .pj-dot { outline: 2px solid var(--accent); outline-offset: 2px; }
