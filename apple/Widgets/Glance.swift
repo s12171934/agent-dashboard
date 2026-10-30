@@ -43,6 +43,32 @@ struct Glance: Decodable {
         struct Item: Decodable { let rule: String?, severity: String?, reason: String, title: String?, path: String? }
         let bad: Int, warn: Int, items: [Item]
     }
+    // QA 워크트리 리뷰: a running QA set, its tickets per driver stage, the blocked and the ones waiting for 반출 승인
+    struct QASet: Decodable {
+        struct Ticket: Decodable { let key: String?, summary: String, stage: String?; var reason: String? = nil }
+        let epic: String?, summary: String, tickets: Int, reopened: Int, stages: [String: Int], blocked: [Ticket], approve: [Ticket]
+    }
+    // 상호작용: a message between agents
+    struct Message: Decodable {
+        let type: String?, from: String, to: String, subject: String, body: String, at: String?
+        var date: Date? { at.flatMap(parseDate) }
+    }
+    // 설계문서
+    struct Designs: Decodable {
+        struct Doc: Decodable { let key: String, title: String, kind: String?, mtime: Double?, sessions: Int }
+        let docs: Int, sources: Int, recent: [Doc], read: [Doc]
+    }
+    // 워크트리
+    struct Trees: Decodable {
+        struct Repo: Decodable { let name: String?, worktrees: Int, dirty: Int }
+        struct Dirty: Decodable { let repo: String?, name: String?, branch: String?, dirty: Int, committed: Double? }
+        let repos: [Repo], dirty: [Dirty]
+    }
+    // 비교: today's cost, by hour and by agent
+    struct Cost: Decodable {
+        struct Top: Decodable { let title: String?, model: String?, cost: Double, path: String? }
+        let total: Double, hours: [Double], now_hour: Int, top: [Top]
+    }
     let decisions: [Decision]
     let agents: Agents
     let tests: [Test]
@@ -51,6 +77,11 @@ struct Glance: Decodable {
     var plans: [Plan]? = nil
     var projects: [Project]? = nil
     var flow: Flow? = nil
+    var cost: Cost? = nil
+    var qa: [QASet]? = nil
+    var talk: [Message]? = nil
+    var designs: Designs? = nil
+    var trees: Trees? = nil
 
     static func load() async throws -> Glance {
         var req = URLRequest(url: AppGroup.serverURL.appending(path: "api/glance"))
@@ -83,7 +114,23 @@ struct Glance: Decodable {
                            open: [.init(jira: "PSD-1007", package: "S3", status: "planned", done: 0, total: 3)]),
                    Project(project: "PRD-60", error: nil, tickets: 12, done: 10, boxes_done: 68, boxes_total: 68, open: [])],
         flow: Flow(bad: 1, warn: 3, items: [.init(rule: "정체", severity: "bad", reason: "기대 시간의 5.3배 경과", title: "PSD-1030 e2e", path: nil),
-                                            .init(rule: "계획 미이행", severity: "warn", reason: "세션이 끝났는데 계획 1단계가 남음", title: "PSQ-1109", path: nil)]))
+                                            .init(rule: "계획 미이행", severity: "warn", reason: "세션이 끝났는데 계획 1단계가 남음", title: "PSQ-1109", path: nil)]),
+        cost: Cost(total: 305.02, hours: [15, 25, 19, 5, 0, 0, 0, 0, 0, 42, 63, 81, 55] + Array(repeating: 0, count: 11), now_hour: 12,
+                   top: [.init(title: "ego-lite 모바일 화면 실측", model: "claude-opus-5-5", cost: 15.49, path: nil),
+                         .init(title: "Orca 워커 브리프 검증", model: "claude-opus-5-5", cost: 14.74, path: nil)]),
+        qa: [QASet(epic: "PSQ-1096", summary: "[PRD49,50] S/W iBT TOEFL QA", tickets: 13, reopened: 1,
+                   stages: ["analysis": 1, "implementing": 2, "committed": 1, "cleaned": 9],
+                   blocked: [.init(key: "PSQ-1098", summary: "Speaking 활동 만들기 '텍스트 가리기' 설명 문구", stage: "analysis",
+                                   reason: "시트의 확정 문구가 아직 없어 사용자 결정에 따라 구현을 멈춤")],
+                   approve: [.init(key: "PSQ-1101", summary: "리딩 결과 화면 점수 표기", stage: "committed")])],
+        talk: [Message(type: "question", from: "rebase 워커", to: "코디네이터", subject: "Question", body: "fc 재베이스 충돌 판단: 필수와 선택 중 어느 쪽으로 갈까요?", at: nil),
+               Message(type: "status", from: "코디네이터", to: "rebase 워커", subject: "Re: Question", body: "B 로 간다. main 의 의도를 살린다.", at: nil)],
+        designs: Designs(docs: 659, sources: 10,
+                         recent: [.init(key: "a", title: "[PRD-19] 리스닝·리딩 모바일 사용성 개선 설계", kind: "md", mtime: Date.now.timeIntervalSince1970 - 3600, sessions: 421),
+                                  .init(key: "b", title: "TA 대화형 학습 — 설계 문서", kind: "md", mtime: Date.now.timeIntervalSince1970 - 40000, sessions: 4)],
+                         read: []),
+        trees: Trees(repos: [.init(name: "plang-front-common", worktrees: 16, dirty: 1), .init(name: "plang_projects", worktrees: 10, dirty: 7)],
+                     dirty: [.init(repo: "plang_projects", name: "PSQ-1098", branch: "PSQ-1098", dirty: 3, committed: nil)]))
 }
 
 private let isoFrac: ISO8601DateFormatter = {

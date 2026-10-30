@@ -32,6 +32,7 @@ import adash.features.designs.store as designs_store
 import adash.features.plan_usage.usage as plan_usage_mod
 import adash.features.projects.store as projects_store
 import adash.features.terminals.targets as terminals_targets
+from adash.http import glance_screens
 
 state_cache_lock = threading.Lock()  # one /api/state build at a time; the others wait and take its result
 # v: core version built · at: when · parts/sig: the build (parts_split) · cv: content version, the core version of
@@ -282,7 +283,8 @@ def parsed(st, name):
 
 # /api/glance: what the iPhone widgets show, a few KB instead of the snapshot's megabytes (a widget has little memory
 # and time). The 결정 대기 questions, the agents by state with the busiest few, the latest test runs, the plan usage
-# limits, the live agents' step plans, the projects' ticket progress and the flow check's deviations.
+# limits, the live agents' step plans, the projects' ticket progress, the flow check's deviations, today's cost, and
+# the other screens' summaries (glance_screens).
 GLANCE_ORDER = ["run", "stalled", "wait", "bg"]  # the states shown, most urgent first
 
 
@@ -352,6 +354,7 @@ def glance(state):
                   for s in planned[:6]],
         "projects": glance_projects(state.get("ext_plans")),
         "flow": glance_flow(state.get("flow"), {s.get("path"): s.get("title") for s in state["sessions"]}),
+        "cost": glance_screens.cost_summary(state["sessions"]),
     }
 
 
@@ -359,12 +362,15 @@ def get_glance(h, url):
     st = fresh_state(h.encode)
     with state_cache_lock:
         if st["glance"] is None:
-            st["glance"] = h.encode(glance({"sessions": parsed(st, "sessions"), "decisions": parsed(st, "decisions"),
-                                            "tests": {"files": parsed(st, "tests.files")},
-                                            "plan_usage": parsed(st, "plan_usage"), "ext_plans": parsed(st, "ext_plans"),
-                                            "flow": parsed(st, "flow")}))
-        body = st["glance"]
-    h.send_json(body)
+            sess = parsed(st, "sessions")
+            st["glance"] = (glance({"sessions": sess, "decisions": parsed(st, "decisions"),
+                                    "tests": {"files": parsed(st, "tests.files")},
+                                    "plan_usage": parsed(st, "plan_usage"), "ext_plans": parsed(st, "ext_plans"),
+                                    "flow": parsed(st, "flow")}),
+                            glance_screens.terminal_names(sess))
+        base, names = st["glance"]
+    # the screens' own caches, read outside the lock: a first read may wait on git or the Orca CLI
+    h.send_json({**base, **glance_screens.screens(names)})
 
 
 def get_decisions(h, url):
