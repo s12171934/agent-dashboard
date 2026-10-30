@@ -37,6 +37,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `plan_usage/` | 구독 계정별 플랜 사용량(「사용량」 탭): Claude 는 호스트 로그인(키체인 → `~/.claude/.credentials.json`)과 Orca 계정(키체인 `Orca Claude Code Managed Credentials`), Codex 는 `~/.codex`·Orca codex-accounts 의 토큰으로 각 사용량 API 를 계정마다 5분에 한 번(재시작해도 유지, 429·401 이면 늘려서) 읽는다. 토큰은 갱신하지 않고 읽기만 한다. 마지막 값은 `server/plan-usage.json` | (스냅숏에 실림) |
 | `vault/` | 볼트 노트와 그것을 만든 세션 | `/api/vault/recent` |
 | `flow/` | 정상 흐름 계약과 흐름 이탈 판정 | `POST /api/flow/ok` |
+| `usage/` | 페이지의 기능 사용 기록(`frontend/usage.js`)을 환경과 함께 `server/usage.jsonl` 에 덧붙임. 분석은 `server/ausage` | `POST /api/usage` |
 | `worktrees/` | 「워크트리」 탭: Orca 저장소마다 `git worktree list` 로 모든 워크트리(Orca 가 만들지 않은 것 포함, 각 저장소 .git 아래 서브모듈의 워크트리도 「서브모듈 · 상위 폴더」 저장소로)와 미커밋·마지막 커밋, 데스크톱·웹 VS Code 로 열기(루프백만), 워크트리별 메모(`server/worktree-notes.json`), 삭제(Orca 것은 `orca worktree rm`, 나머지는 `git worktree remove`, 메인 금지·루프백만; 잃는 것 — 미커밋·잠금·안의 서브모듈 워크트리·원격에 없는 서브모듈 커밋 — 이 없으면 서브모듈이 있어도 강제로 한 번에, 있으면 사유를 보이고 다시 물음) | `/api/worktrees`, `POST /api/worktrees/open·web·note·remove` |
 
 ## 상태를 다룰 때

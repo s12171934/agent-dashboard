@@ -12,6 +12,7 @@ from adash.features.review import api as review
 from adash.features.sessions import api as sessions
 from adash.features.terminals import api as terminals
 from adash.features.tests import api as tests
+from adash.features.usage import api as usage
 from adash.features.vault import api as vault
 from adash.features.worktrees import api as worktrees
 from adash.http import snapshot
@@ -52,6 +53,7 @@ GET = {
 POST = {
     "/api/pref": sessions.post_pref,
     "/api/flow/ok": flow.post_ok,
+    "/api/usage": usage.post_usage,
     "/api/orca/focus": terminals.post_terminal,
     "/api/orca/close": terminals.post_terminal,
     "/api/orca/launch": terminals.post_launch,

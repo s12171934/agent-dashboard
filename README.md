@@ -21,7 +21,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `apple/` | macOS·iPhone 앱(배포된 페이지를 감싼 네이티브 셸)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
 | `bin/` | 공개 CLI 진입점 — `atest`(→ `server/atest`). 다른 저장소(스킬 등)는 이 경로로 부른다 | 로컬 Mac |
@@ -87,6 +87,22 @@ tailscale serve --bg 8787                                                  # 다
 | `--projects-dir` | 없음 (기능 꺼짐) | 프로젝트 폴더들을 담은 폴더. 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 본다. 여러 번 줄 수 있다 |
 | `--design-dir` | 없음 | 설계문서 폴더. `prefs.json` 의 `design_dirs` 에 더해진다. 여러 번 줄 수 있다. 둘 다 없고 외부 계획에 `design_root` 도 없으면 「설계문서」 기능이 꺼진다 |
 | `--design-days` | `14` | `--hours` 밖의 세션 로그에서 설계문서 참조를 찾는 기간(일). 한 번 읽은 로그는 바뀌기 전까지 다시 읽지 않는다 |
+
+## 기능 사용 분석 (`ausage`)
+
+환경마다 어떤 화면·컨트롤을 자주 쓰고 어떤 것을 거의 안 쓰는지 보려고, 페이지가 사용 기록을 메트릭 서버로 보낸다.
+
+- **수집 (`frontend/usage.js`):** 문서 전체에 캡처 단계 클릭 훅 하나를 걸어, 눌린 컨트롤을 이름으로 적는다 — 안정적인 `id`, 없으면 첫 `data-*` 속성(값은 고정 키처럼 보일 때만), 없으면 라벨. 앞에 가장 가까운 `id` 조상을 붙인다(예: `#tests-span > [k=7]`). 숫자는 `#` 으로 바꾸고, 입력한 글자·경로·세션 id 는 보내지 않는다. `<select>` 는 고른 값(고정 키일 때), 검색 칸은 「(입력)」만 적는다. 화면은 열 때 `open`, 떠날 때(다른 화면·탭 숨김) 보인 초를 `stay` 로 적는다.
+- **환경:** `app`(`macos`·`ios` 는 네이티브 셸, 설치한 PWA 는 `pwa`, 나머지 `web`), `form`(`phone` ≤500px · `narrow` ≤700px — iPhone Duo 펼침 · `tablet` ≤1100px · `desktop`, 반쯤 접힌 자세면 `-book`/`-laptop`), `pointer`(`coarse`·`fine`), 기기마다 무작위 id(`localStorage adash.dev`).
+- **전송:** 30초마다, 그리고 페이지가 숨겨지거나 닫힐 때 묶어서 켜진 첫 메트릭 서버의 `POST /api/usage` 로 보낸다(keepalive). 서버는 이벤트마다 한 줄씩 `server/usage.jsonl` 에 덧붙인다(git 에 넣지 않음). 기기에서 끄려면 `localStorage.setItem('adash.usage', 'off')`.
+- **분석:** `server/ausage` 가 환경 요약(기기·클릭·화면 시간), 화면별 연 횟수·화면 시간 비율(한 번도 안 연 화면도 `-` 로), 환경별 많이 쓰는 기능, 「다른 환경에선 쓰는데 여기선 거의 안 쓰는 기능」, 「모든 환경에서 드문 기능」을 표로 낸다.
+
+```sh
+server/ausage                       # 최근 30일, 환경 = app/form
+server/ausage --by form --days 7    # 화면 폭만으로 묶어 최근 7일
+server/ausage --top 30 --rare 2     # 기능 30개씩, 2회 이하를 「드묾」으로
+server/ausage --json                # 표 대신 JSON
+```
 
 ## 상시 실행 (launchd)
 
