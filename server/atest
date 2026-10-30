@@ -15,7 +15,8 @@ session (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID, ORCA_TERMINAL_HANDLE).
   atest case ID running|passed|failed|skipped [메모] [--title 제목] [--key K]
   atest note "지금 하는 일"          the run's detail line (e.g. "Figma 스냅숏 수집")
   atest end [passed|failed] [메모]   finish (default: failed when a case failed)
-start without --key names the run; later commands of the same session use it.
+start without --key names the run; later commands of the same session use it. A run started with --key is
+addressed by --key only (the aside-record·ego-record recorders keep one per recording this way).
 """
 import fcntl
 import json
@@ -294,9 +295,9 @@ def cmd_start(opts, args):
         cid, _, title = a.partition("=")
         run.case(cid.strip(), cid.strip(), title.strip())
     run.save()
-    os.makedirs(DIR, exist_ok=True)
-    with open(cur_path(), "w") as f:
-        f.write(key)
+    if not opts.get("key"):  # a named run (a recorder's, several at once) leaves the session's current run alone
+        with open(cur_path(), "w") as f:
+            f.write(key)
     print(f"atest: run {key} started ({len(run.cases)} cases)")
 
 

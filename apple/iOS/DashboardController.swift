@@ -13,7 +13,8 @@ import WebKit
 //   its account button (the system tab bar holds five tabs at most, the search tab's place included), opening a sheet
 //   listing the rest of the bar as the App Store lists its settings: the other screens, the filters (a check while
 //   on), the settings, each pressing the page's own element. A count badge among them shows on its row only: 설정
-//   gets no dot. An item the page keeps beside its 설정 (data-fab: 새 에이전트) is a button on 설정's left instead.
+//   gets no dot. An item the page keeps beside its 설정 (data-fab: 새 에이전트) is a button on 설정's left instead,
+//   opening its popover as a sheet of its own (PanelSheet).
 // One web view serves every tab: the selected tab's page holds it. The page fills the screen, the side strip of iPhone
 // Duo's outer display included (its content keeps to the safe area). Half folded (the hinge, iOS 27.1) the tab bar
 // hides and the page lays itself out as on the web — the first half a page, the second its bar's sheet (fold.js,
@@ -44,13 +45,19 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     }
     var onServer: ((URL) -> Void)?
     private var loaded = false, waiting: String?
+    private var wantedIcon: String??  // the 앱 아이콘 choice not yet on the home screen (.some(nil): the default)
+    private var iconBusy = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Self.pageBackground
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.switchIcon() }
+        }
         let conf = WKWebViewConfiguration()
         relay.owner = self
         PageBridge.install(on: conf.userContentController, platform: "ios", handler: relay)
+        conf.userContentController.addUserScript(WKUserScript(source: Self.facesScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         conf.userContentController.addUserScript(WKUserScript(source: DockBridge.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         web = WKWebView(frame: view.bounds, configuration: conf)
         web.isInspectable = true
@@ -59,7 +66,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         web.navigationDelegate = self
         web.uiDelegate = self
         web.allowsBackForwardNavigationGestures = true
-        web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        web.translatesAutoresizingMaskIntoConstraints = false
 
         delegate = self
         tabs = Self.screens.map { key, title, symbol in
@@ -85,12 +92,12 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     }
 
     // 설정: the navigation bar's right button, where the App Store keeps its account button
-    // and on its left the page's data-fab items (새 에이전트), each pressing the page's own element
+    // and on its left the page's data-fab items (새 에이전트), each opening its popover as a sheet of its own (PanelSheet)
     private func barButtons(_ nav: UINavigationItem) {
         let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in self?.showMore() })
         settings.accessibilityLabel = "설정: 다른 화면, 필터와 설정"
         let fab = items.filter(\.isFab).map { it in
-            let b = UIBarButtonItem(image: UIImage(systemName: DockBridge.symbol(it.icon)), primaryAction: UIAction { [weak self] _ in self?.press(it.key) })
+            let b = UIBarButtonItem(image: UIImage(systemName: DockBridge.symbol(it.icon)), primaryAction: UIAction { [weak self] _ in self?.showPanel(it) })
             b.accessibilityLabel = it.tip
             return b
         }
@@ -105,16 +112,23 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // The page keeps its popovers and its last lines clear of the tab bar.
-        let reach = isTabBarHidden ? 0 : max(0, view.bounds.maxY - tabBar.frame.minY + 8)
+        // The page keeps its popovers and its last lines clear of the tab bar: from the bar's top when the bar has a
+        // place in the lower half, else (not laid out yet, or iOS 26's floating bar, whose tabBar frame can read as
+        // zero) from the page's safe area, which the tab bar is part of
+        let bar = tabBar.frame, slot = selectedViewController?.view
+        let reach = isTabBarHidden ? 0 : bar.height > 0 && bar.minY > view.bounds.midY ? view.bounds.maxY - bar.minY + 8
+            : (slot?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom) + 8
         web?.evaluateJavaScript("document.documentElement.style.setProperty('--native-bar', '\(Int(reach))px')")
     }
 
-    // The selected tab's page holds the one web view.
+    // The selected tab's page holds the one web view: its whole view, down to the keyboard while one is up, so the
+    // page's field and the popover it sits in (fixed to the page's foot) stay above it.
+    private var held: [NSLayoutConstraint] = []
     private func hold() {
         guard let slot = (selectedViewController as? UINavigationController)?.topViewController, web.superview !== slot.view else { return }
-        web.frame = slot.view.bounds
+        NSLayoutConstraint.deactivate(held)
         slot.view.addSubview(web)
+        held = KeyboardFit.pin(web, in: slot.view)
         slot.setContentScrollView(web.scrollView, for: .bottom)
     }
 
@@ -166,6 +180,16 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         }
         groups[groups.count - 1].1.append(DockBridge.Item(key: "", tip: "새로 고침", icon: "", on: false, badge: "", text: "", sep: nil))
         return groups.filter { !$0.1.isEmpty }
+    }
+
+    private func showPanel(_ it: DockBridge.Item) {
+        let nav = UINavigationController(rootViewController: PanelSheet(it))
+        if let s = nav.sheetPresentationController {
+            s.detents = [.medium(), .large()]
+            s.selectedDetentIdentifier = .large
+            s.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
 
     private func showMore() {
@@ -243,18 +267,46 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         }
     }
 
-    // The 앱 아이콘 choice as the home screen icon: one of the icons built into the app (icons/app/<id>/, or the
-    // default icons/). A character's face is not built in, so it leaves the icon as it is.
+    // The alternate icons built into the app (tools/make-icons): icons/app/<id>/ as <id>, characters as face-<who>.
+    private static let builtInIcons: Set<String> = {
+        let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+        return Set(((icons?["CFBundleAlternateIcons"] as? [String: Any]) ?? [:]).keys)
+    }()
+    // the characters the 앱 아이콘 panel may offer (app.js): only those built in, a person put up later has none
+    static var facesScript: String {
+        let faces = builtInIcons.filter { $0.hasPrefix("face-") }.map { "'\($0.dropFirst(5))'" }.sorted()
+        return "window.adashFaces = [\(faces.joined(separator: ","))];"
+    }
+
+    // The 앱 아이콘 choice as the home screen icon: one of the icons built into the app (icons/app/<id>/, a
+    // character's chars/<who>-icon-512.png, or the default icons/). One not built in leaves the icon as it is.
     private func setIcon(_ url: URL) {
         let parts = url.pathComponents
         let name: String?
         if let i = parts.firstIndex(of: "app"), i > 0, parts[i - 1] == "icons", i + 1 < parts.count { name = parts[i + 1] }
         else if parts.suffix(2) == ["icons", "icon-512.png"] { name = nil }
-        else { return }
+        else if parts.dropLast().last == "chars", url.lastPathComponent.hasSuffix("-icon-512.png") {
+            name = "face-" + url.lastPathComponent.dropLast("-icon-512.png".count)
+        } else { return }
+        if let name, !Self.builtInIcons.contains(name) { return }
+        wantedIcon = .some(name)
+        switchIcon()
+    }
+
+    // iOS turns a switch down while the app is not active or another is under way (the page asks on load, as the app
+    // comes up, and again once its DOM is in): one at a time, while active, and again on coming back until it holds.
+    private func switchIcon() {
         let app = UIApplication.shared
-        guard app.supportsAlternateIcons, app.alternateIconName != name else { return }
-        app.setAlternateIconName(name) { err in
-            if let err { log.error("icon \(name ?? "default", privacy: .public): \(err, privacy: .public)") }
+        guard let name = wantedIcon, !iconBusy, app.applicationState == .active else { return }
+        guard app.supportsAlternateIcons, app.alternateIconName != name else { wantedIcon = nil; return }
+        iconBusy = true
+        app.setAlternateIconName(name) { [weak self] err in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.iconBusy = false
+                if let err { log.error("icon \(name ?? "default", privacy: .public): \(err, privacy: .public)"); return }  // next time active
+                if self.wantedIcon == .some(name) { self.wantedIcon = nil } else { self.switchIcon() }  // chosen again meanwhile
+            }
         }
     }
 
