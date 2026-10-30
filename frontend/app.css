@@ -711,16 +711,17 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-step .st { white-space: nowrap; }
 .pj-step .pj-short { display: none; }
 .pj-none { padding-left: 30px; }
-/* A phone fits all nine stages on one line (steps share the width, labels wrap) and step dates go under the title. */
-@media (max-width: 500px) {
+/* A phone, and iPhone Duo's inner screen either way up (the fold layout), keeps scrolling short. All nine stages fit
+   on one line (steps share the width, labels wrap). Folded, a project is a compact card: name, figures and a line of
+   bare stage nodes (a finished project drops the line). Open, the line gets its labels back and works as the stage
+   picker: the detail shows the picked stage's steps only, and a step's note takes the stages' place (in the fold
+   layout it stands beside them). The figures the summary already shows are not repeated. */
+@media (max-width: 700px), (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
   .pj-flow .pj-st { flex: 1 1 0; min-width: 0; gap: 4px; }
   .pj-flow .pj-st::before, .pj-flow .pj-st::after { top: 10px; }
   .pj-flow .pj-dot { width: 22px; height: 22px; font-size: 10px; }
   .pj-flow .pj-st > span { font-size: 9.5px; max-width: 100%; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.2; }
   .pj-steps { padding-left: 4px; }
-  /* Folded, a project is a compact card: name, figures and a line of bare stage nodes (a finished project drops the
-     line). Open, the line gets its labels back and works as the stage picker: the detail shows the picked stage's
-     steps only, and a step's note takes the stages' place. The figures the summary already shows are not repeated. */
   details.pj-row > summary { padding: 10px 12px; gap: 6px; }
   .pj-head { gap: 2px 6px; }
   .pj-head .chip { font-size: 11px; padding: 1px 7px; }
@@ -822,6 +823,7 @@ a.act { text-decoration: none; display: inline-block; }
   .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .plan-grid, .pj-split.on, .pj-tlwrap.side.focused { grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }
   .pj-split.on .pj-note { position: sticky; max-height: calc(100vh - var(--hdr-top) - 90px); }
+  .pj-detail .pj-split.on .pj-stages { display: block; }  /* the note stands beside the stages, not in their place */
   .pj-split.on .pj-obs { display: none; }  /* half a screen is too narrow for it; the open note has 「Obsidian 에서 열기」 */
   .pj-tlwrap.side.focused .pj-focus { margin-top: 0; }
   details.pj-row > summary { grid-template-columns: minmax(0, 220px) 1fr; }
