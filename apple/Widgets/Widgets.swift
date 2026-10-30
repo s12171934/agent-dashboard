@@ -189,18 +189,20 @@ struct AgentsView: View {
     @Environment(\.widgetFamily) private var family
     let entry: GlanceEntry
     private func n(_ s: AgentState) -> Int { entry.glance?.agents.counts[s.rawValue] ?? 0 }
+    // the page's 실행: running and background together
+    private var running: Int { n(.run) + n(.bg) }
 
     var body: some View {
         Group {
             switch family {
             case .accessoryInline:
-                Text(entry.glance == nil ? "에이전트 –" : "실행 \(n(.run)) · 대기 \(n(.wait))" + (n(.stalled) > 0 ? " · 멈춤 \(n(.stalled))" : ""))
+                Text(entry.glance == nil ? "에이전트 –" : "실행 \(running) · 대기 \(n(.wait))" + (n(.stalled) > 0 ? " · 멈춤 \(n(.stalled))" : ""))
             case .accessoryRectangular:
                 VStack(alignment: .leading, spacing: 1) {
                     Label("에이전트", systemImage: "person.2").font(.headline)
                     if entry.glance == nil { Text("–").font(.caption) }
                     else {
-                        Text("실행 \(n(.run)) · 대기 \(n(.wait))").font(.caption)
+                        Text("실행 \(running) · 대기 \(n(.wait))").font(.caption)
                         Text("백그라운드 \(n(.bg)) · 응답 없음 \(n(.stalled))").font(.caption2).foregroundStyle(.secondary)
                     }
                 }
@@ -276,6 +278,8 @@ struct TestsView: View {
     @Environment(\.widgetFamily) private var family
     let entry: GlanceEntry
     private var runs: [Glance.Test] { entry.glance?.tests ?? [] }
+    // every run the server holds, not only the few listed (the page's 테스트 tile)
+    private var live: Int { entry.glance?.test_counts?.live ?? runs.filter(\.running).count }
 
     var body: some View {
         Group {
@@ -289,7 +293,7 @@ struct TestsView: View {
             default:
                 VStack(alignment: .leading, spacing: 8) {
                     Header(title: "테스트", symbol: "flask.fill", tint: .purple,
-                           trailing: runs.contains(where: \.running) ? "\(runs.filter(\.running).count)개 실행 중" : nil)
+                           trailing: live > 0 ? "\(live)개 실행 중" : entry.glance?.test_counts.map { "실패 \($0.failed) / \($0.finished)" })
                     if entry.glance == nil { Offline(error: entry.error) }
                     else if runs.isEmpty {
                         Text("최근 실행 없음").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -41,7 +41,9 @@ struct UsageView: View {
     // the first fresh account is the one in use (the server lists the active one first)
     private var main: Glance.Account? { accounts?.first { !$0.stale } ?? accounts?.first }
     // the limit nearest its end: the one that stops work first
-    private var tightest: Glance.Account.Limit? { main?.limits.max { ($0.percent ?? 0) < ($1.percent ?? 0) } }
+    private var tightest: Glance.Account.Limit? {
+        (accounts ?? []).filter { !$0.stale }.flatMap(\.limits).max { ($0.percent ?? 0) < ($1.percent ?? 0) }
+    }
 
     var body: some View {
         Group {
@@ -219,7 +221,7 @@ struct ProjectsWidget: Widget {
             ProjectsView(entry: e).containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("프로젝트")
-        .description("드라이버 프로젝트마다 검증을 마친 티켓과 체크박스 진행.")
+        .description("프로젝트 화면의 진행 중인 프로젝트: 진행률과 지금 단계.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryCircular, .accessoryRectangular])
     }
 }
@@ -228,54 +230,52 @@ struct ProjectsView: View {
     @Environment(\.widgetFamily) private var family
     let entry: GlanceEntry
     private var projects: [Glance.Project]? { entry.glance?.projects }
-    // the projects still moving first: a finished one is worth less space
-    private var ordered: [Glance.Project] {
-        (projects ?? []).enumerated().sorted { a, b in
-            let fa = a.element.fraction >= 1, fb = b.element.fraction >= 1
-            return fa != fb ? !fa : a.offset < b.offset
-        }.map(\.element)
-    }
+    // the page's 홈 tile: the unfinished ones (the server lists them first), and their average
+    private var open: [Glance.Project] { (projects ?? []).filter { !$0.finished && $0.error == nil } }
+    private var average: Double { open.isEmpty ? 0 : open.reduce(0) { $0 + $1.ratio } / Double(open.count) }
 
     var body: some View {
         Group {
             switch family {
             case .accessoryCircular:
-                if let p = ordered.first {
-                    Gauge(value: p.fraction) { Text(p.project ?? "") } currentValueLabel: { Text("\(p.done)").monospacedDigit() }
+                if let p = open.first {
+                    Gauge(value: p.ratio) { Text("PJ") } currentValueLabel: { Text("\(Int(p.ratio * 100))").monospacedDigit() }
                         .gaugeStyle(.accessoryCircularCapacity)
                 } else { ZStack { AccessoryWidgetBackground(); Text("–") } }
             case .accessoryRectangular:
                 VStack(alignment: .leading, spacing: 2) {
-                    Label("프로젝트", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
-                    if ordered.isEmpty { Text(entry.glance == nil ? "–" : "프로젝트 없음").font(.caption) }
-                    ForEach(Array(ordered.prefix(2).enumerated()), id: \.offset) { _, p in
-                        Text("\(p.project ?? "–") \(p.done)/\(p.tickets) · \(Int(p.fraction * 100))%").font(.caption).lineLimit(1)
+                    Label(open.isEmpty ? "프로젝트" : "프로젝트 \(open.count)개", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
+                    if open.isEmpty { Text(entry.glance == nil ? "–" : "진행 중인 프로젝트 없음").font(.caption) }
+                    ForEach(Array(open.prefix(2).enumerated()), id: \.offset) { _, p in
+                        Text("\(Int(p.ratio * 100))% \(p.name ?? "–")").font(.caption).lineLimit(1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             case .systemSmall:
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Header(title: "프로젝트", symbol: "point.3.connected.trianglepath.dotted", tint: .blue)
                     if entry.glance == nil { Offline(error: entry.error) }
-                    else if projects == nil { Unsupported() }
-                    else if let p = ordered.first {
-                        Text(p.project ?? "–").font(.caption.weight(.semibold)).lineLimit(1)
-                        Text("\(Int(p.fraction * 100))%").font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.blue)
-                        ProgressView(value: p.fraction).tint(.blue)
-                        Text("티켓 \(p.done)/\(p.tickets) 검증").font(.caption2).foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                    } else { Empty(text: "프로젝트 없음") }
+                    else if projects == nil { Empty(text: "프로젝트 폴더 없음") }
+                    else if open.isEmpty { Empty(text: "진행 중인 프로젝트 없음") }
+                    else {
+                        Text("\(open.count)개").font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.blue)
+                        Text("진행 중 · 평균 \(Int((average * 100).rounded()))%").font(.caption2).foregroundStyle(.secondary)
+                        Spacer(minLength: 2)
+                        if let p = open.first {
+                            Text(p.name ?? "–").font(.caption2.weight(.semibold)).lineLimit(1)
+                            ProgressView(value: p.ratio).tint(.blue)
+                        }
+                    }
                 }
             default:
                 VStack(alignment: .leading, spacing: 8) {
-                    Header(title: "프로젝트", symbol: "point.3.connected.trianglepath.dotted", tint: .blue)
+                    Header(title: "프로젝트", symbol: "point.3.connected.trianglepath.dotted", tint: .blue,
+                           trailing: open.isEmpty ? nil : "진행 중 \(open.count) · 평균 \(Int((average * 100).rounded()))%")
                     if entry.glance == nil { Offline(error: entry.error) }
-                    else if projects == nil { Unsupported() }
-                    else if ordered.isEmpty { Empty(text: "프로젝트 없음") }
+                    else if projects == nil { Empty(text: "프로젝트 폴더 없음") }
+                    else if open.isEmpty { Empty(text: "진행 중인 프로젝트 없음") }
                     else {
-                        ForEach(Array(ordered.prefix(family == .systemLarge ? 5 : 3).enumerated()), id: \.offset) { _, p in
-                            ProjectRow(p: p, tickets: family == .systemLarge)
-                        }
+                        ForEach(Array(open.prefix(family == .systemLarge ? 6 : 3).enumerated()), id: \.offset) { _, p in ProjectRow(p: p) }
                         Spacer(minLength: 0)
                     }
                 }
@@ -287,20 +287,16 @@ struct ProjectsView: View {
 
 private struct ProjectRow: View {
     let p: Glance.Project
-    let tickets: Bool
     var body: some View {
-        let finished = p.fraction >= 1
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                Text(p.project ?? "–").font(.caption.weight(.semibold)).lineLimit(1)
-                if p.error != nil { Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange) }
+                Text(p.name ?? "–").font(.caption.weight(.semibold)).lineLimit(1)
                 Spacer(minLength: 4)
-                Text("티켓 \(p.done)/\(p.tickets)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-                Text("\(Int(p.fraction * 100))%").font(.caption2.weight(.semibold)).foregroundStyle(finished ? .green : .blue).monospacedDigit()
+                Text("\(Int(p.ratio * 100))%").font(.caption2.weight(.semibold)).foregroundStyle(.blue).monospacedDigit()
             }
-            ProgressView(value: p.fraction).tint(finished ? .green : .blue)
-            if tickets, !p.open.isEmpty {
-                Text(p.open.prefix(3).map { "\($0.jira ?? $0.package ?? "–") \($0.done)/\($0.total)" }.joined(separator: " · "))
+            ProgressView(value: p.ratio).tint(.blue)
+            if let st = p.stage {
+                Text(["\(p.stage_no.map { "\($0)" } ?? "")\(p.stages.map { "/\($0)" } ?? "") \(st)", "\(p.done)/\(p.total) 단계"].joined(separator: " · "))
                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
         }

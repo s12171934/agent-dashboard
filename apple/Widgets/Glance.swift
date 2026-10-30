@@ -32,11 +32,10 @@ struct Glance: Decodable {
     struct Plan: Decodable {
         let title: String?, state: String, path: String?, steps: [String], done: Int, total: Int, cur: String
     }
-    // 프로젝트: a driver plan's tickets, the open ones under way first
+    // 프로젝트: a project folder's progress.json, as the 프로젝트 screen lists it
     struct Project: Decodable {
-        struct Ticket: Decodable { let jira: String?, package: String?, status: String?, done: Int, total: Int }
-        let project: String?, error: String?, tickets: Int, done: Int, boxes_done: Int, boxes_total: Int, open: [Ticket]
-        var fraction: Double { boxes_total > 0 ? Double(boxes_done) / Double(boxes_total) : tickets > 0 ? Double(done) / Double(tickets) : 0 }
+        let name: String?, error: String?, ratio: Double, total: Int, done: Int, stage: String?, stage_no: Int?, stages: Int?, end: String?
+        var finished: Bool { ratio >= 1 }
     }
     // 흐름 점검: the flow check's deviations, bad first
     struct Flow: Decodable {
@@ -45,9 +44,16 @@ struct Glance: Decodable {
     }
     // QA 워크트리 리뷰: a running QA set, its tickets per driver stage, the blocked and the ones waiting for 반출 승인
     struct QASet: Decodable {
-        struct Ticket: Decodable { let key: String?, summary: String, stage: String?; var reason: String? = nil }
-        let epic: String?, summary: String, tickets: Int, reopened: Int, stages: [String: Int], blocked: [Ticket], approve: [Ticket]
+        struct Ticket: Decodable { let key: String?, summary: String, stage: String?, reason: String? }
+        // counts: blocked, approve, working, waiting, delivered (the page's 워크트리 리뷰 tile groups)
+        let epic: String?, summary: String, open: Int, counts: [String: Int], blocked: [Ticket], approve: [Ticket]
     }
+    // 홈's 내 차례: dec (결정), ask (보고 확인), blocked (QA 막힘), approve (반출 승인)
+    struct Mine: Decodable {
+        struct Item: Decodable { let kind: String, title: String?, detail: String?, path: String? }
+        let total: Int, counts: [String: Int], items: [Item]
+    }
+    struct TestCounts: Decodable { let live: Int, finished: Int, failed: Int }
     // 상호작용: a message between agents
     struct Message: Decodable {
         let type: String?, from: String, to: String, subject: String, body: String, at: String?
@@ -78,17 +84,19 @@ struct Glance: Decodable {
     var projects: [Project]? = nil
     var flow: Flow? = nil
     var cost: Cost? = nil
+    var test_counts: TestCounts? = nil
+    var mine: Mine? = nil
     var qa: [QASet]? = nil
     var talk: [Message]? = nil
     var designs: Designs? = nil
     var trees: Trees? = nil
 
-    static func load() async throws -> Glance {
+    static func fetch() async throws -> Data {
         var req = URLRequest(url: AppGroup.serverURL.appending(path: "api/glance"))
         req.timeoutInterval = 10
         let (data, res) = try await URLSession.shared.data(for: req)
         guard (res as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-        return try JSONDecoder().decode(Glance.self, from: data)
+        return data
     }
 
     static let sample = Glance(
@@ -110,19 +118,22 @@ struct Glance: Decodable {
                      cur: "iOS 위젯 4종 추가"),
                 Plan(title: "QA 필터 탭 개선", state: "wait", path: nil, steps: ["done", "done", "done", "run"], done: 3, total: 4,
                      cur: "PR 머지·포인터 갱신")],
-        projects: [Project(project: "PRD-51", error: nil, tickets: 3, done: 2, boxes_done: 13, boxes_total: 16,
-                           open: [.init(jira: "PSD-1007", package: "S3", status: "planned", done: 0, total: 3)]),
-                   Project(project: "PRD-60", error: nil, tickets: 12, done: 10, boxes_done: 68, boxes_total: 68, open: [])],
+        projects: [Project(name: "PRD-19 리스닝·리딩 모바일 사용성", error: nil, ratio: 0.775, total: 40, done: 31, stage: "구현", stage_no: 5, stages: 9, end: "2026-10-30"),
+                   Project(name: "PRD-60 회원가입 마케팅 수신동의", error: nil, ratio: 0.69, total: 29, done: 20, stage: "구현", stage_no: 5, stages: 9, end: nil)],
         flow: Flow(bad: 1, warn: 3, items: [.init(rule: "정체", severity: "bad", reason: "기대 시간의 5.3배 경과", title: "PSD-1030 e2e", path: nil),
                                             .init(rule: "계획 미이행", severity: "warn", reason: "세션이 끝났는데 계획 1단계가 남음", title: "PSQ-1109", path: nil)]),
         cost: Cost(total: 305.02, hours: [15, 25, 19, 5, 0, 0, 0, 0, 0, 42, 63, 81, 55] + Array(repeating: 0, count: 11), now_hour: 12,
                    top: [.init(title: "ego-lite 모바일 화면 실측", model: "claude-opus-5-5", cost: 15.49, path: nil),
                          .init(title: "Orca 워커 브리프 검증", model: "claude-opus-5-5", cost: 14.74, path: nil)]),
-        qa: [QASet(epic: "PSQ-1096", summary: "[PRD49,50] S/W iBT TOEFL QA", tickets: 13, reopened: 1,
-                   stages: ["analysis": 1, "implementing": 2, "committed": 1, "cleaned": 9],
+        test_counts: TestCounts(live: 1, finished: 12, failed: 2),
+        mine: Mine(total: 2, counts: ["dec": 1, "ask": 0, "blocked": 1, "approve": 0],
+                   items: [.init(kind: "dec", title: "PSQ-1103 화면 실측", detail: "로그인", path: nil),
+                           .init(kind: "blocked", title: "PSQ-1098", detail: "시트의 확정 문구가 아직 없어 멈춤", path: nil)]),
+        qa: [QASet(epic: "PSQ-1096", summary: "[PRD49,50] S/W iBT TOEFL QA", open: 3,
+                   counts: ["blocked": 1, "approve": 1, "working": 1, "waiting": 0, "delivered": 0],
                    blocked: [.init(key: "PSQ-1098", summary: "Speaking 활동 만들기 '텍스트 가리기' 설명 문구", stage: "analysis",
                                    reason: "시트의 확정 문구가 아직 없어 사용자 결정에 따라 구현을 멈춤")],
-                   approve: [.init(key: "PSQ-1101", summary: "리딩 결과 화면 점수 표기", stage: "committed")])],
+                   approve: [.init(key: "PSQ-1101", summary: "리딩 결과 화면 점수 표기", stage: "committed", reason: nil)])],
         talk: [Message(type: "question", from: "rebase 워커", to: "코디네이터", subject: "Question", body: "fc 재베이스 충돌 판단: 필수와 선택 중 어느 쪽으로 갈까요?", at: nil),
                Message(type: "status", from: "코디네이터", to: "rebase 워커", subject: "Re: Question", body: "B 로 간다. main 의 의도를 살린다.", at: nil)],
         designs: Designs(docs: 659, sources: 10,
@@ -154,8 +165,40 @@ struct GlanceEntry: TimelineEntry {
     let error: String?
 }
 
-// Every widget reads the same glance; WidgetKit asks again after a few minutes, and the app asks it to whenever the
-// 결정 대기 list changes while it runs.
+// One glance for every widget: WidgetKit asks each widget for its timeline on its own, so a fetch each would show
+// numbers from different moments side by side. The extension keeps the last fetch for a short while and every widget
+// takes it; when a fetch brings something new, every widget is asked to redraw from it.
+actor GlanceCache {
+    static let shared = GlanceCache()
+    static let fresh: TimeInterval = 45
+    private var data: Data?, glance: Glance?, at = Date.distantPast
+    private var running: Task<Data, Error>?
+
+    func load() async throws -> Glance {
+        if let glance, Date.now.timeIntervalSince(at) < Self.fresh { return glance }
+        // widgets asking together wait on one request
+        let task = running ?? Task { try await Glance.fetch() }
+        running = task
+        defer { running = nil }
+        let new = try await task.value
+        let g = try JSONDecoder().decode(Glance.self, from: new)
+        let changed = data != nil && data != new
+        (data, glance, at) = (new, g, .now)
+        if changed { Task { @MainActor in WidgetCenter.shared.reloadAllTimelines() } }  // the others take it from here
+        return g
+    }
+
+    // after an answer from a widget: the next read fetches
+    func drop() { at = .distantPast }
+}
+
+// Every widget refreshes at the same five-minute marks (two when the server is not reachable), so they fetch together.
+private func nextMark(every: TimeInterval) -> Date {
+    Date(timeIntervalSince1970: (Date.now.timeIntervalSince1970 / every).rounded(.down) * every + every)
+}
+
+// Every widget reads the same glance (GlanceCache); WidgetKit asks again at the next mark, and the app asks it to
+// whenever the 결정 대기 list changes while it runs.
 struct GlanceProvider: TimelineProvider {
     func placeholder(in context: Context) -> GlanceEntry { GlanceEntry(date: .now, glance: .sample, error: nil) }
 
@@ -167,12 +210,12 @@ struct GlanceProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<GlanceEntry>) -> Void) {
         Task {
             let e = await entry()
-            completion(Timeline(entries: [e], policy: .after(.now.addingTimeInterval(e.glance == nil ? 120 : 300))))
+            completion(Timeline(entries: [e], policy: .after(nextMark(every: e.glance == nil ? 120 : 300))))
         }
     }
 
     private func entry() async -> GlanceEntry {
-        do { return GlanceEntry(date: .now, glance: try await Glance.load(), error: nil) }
+        do { return GlanceEntry(date: .now, glance: try await GlanceCache.shared.load(), error: nil) }
         catch { return GlanceEntry(date: .now, glance: nil, error: "대시보드 서버에 연결할 수 없음") }
     }
 }
@@ -195,6 +238,7 @@ struct AnswerIntent: AppIntent {
         req.httpBody = try JSONSerialization.data(withJSONObject: ["id": id, "answers": [answer]])
         req.timeoutInterval = 10
         _ = try await URLSession.shared.data(for: req)
+        await GlanceCache.shared.drop()
         return .result()  // WidgetKit reloads the widget after an intent
     }
 }

@@ -4,8 +4,10 @@ import collections
 import gzip
 import json
 import os
+import re
 import threading
 import time
+from datetime import datetime
 from urllib.parse import parse_qs
 
 from adash.core.state import health, lock, report_failure, sessions
@@ -286,26 +288,65 @@ def parsed(st, name):
 # limits, the live agents' step plans, the projects' ticket progress, the flow check's deviations, today's cost, and
 # the other screens' summaries (glance_screens).
 GLANCE_ORDER = ["run", "stalled", "wait", "bg"]  # the states shown, most urgent first
+# A plan step that hands the turn to the person (frontend/app.js HM_ASK): 내 차례 counts an agent waiting there.
+HM_ASK = re.compile(r"승인|보고|컨펌|확인 요청|검토 요청|결정|피드백|선택")
+
+
+def age_s(ts, now):
+    try:
+        return now - datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return float("inf")
+
+
+def on_board(s, now):
+    """The page's hmRecent: running, background or waiting, a pending question, a record in the last hour, or 응답 없음
+    for under six hours (one stalled since yesterday is a leftover, not work in progress)."""
+    st = s.get("state")
+    return st in ("run", "bg", "wait") or bool(s.get("decision")) or age_s(s.get("last_ts"), now) < (6 * 3600 if st == "stalled" else 3600)
+
+
+def asks(s, agents):
+    """The page's hmAsk: waiting at a plan step that asks for the person, unless its last turn handed work to an agent
+    that is still at it."""
+    plan = s.get("plan") or {}
+    if s.get("decision") or s.get("state") != "wait" or not plan.get("cur_text") or plan.get("done", 0) >= plan.get("total", 0):
+        return False
+    if not HM_ASK.search(plan["cur_text"]):
+        return False
+    aw = s.get("awaits") or []
+    return not (aw and any(x is not s and (x.get("orca_focus") or x.get("own_handle")) in aw and x.get("state") in ("run", "bg")
+                           for x in agents))
+
+
+def test_end(t):
+    """The page's testEnd: a verdict other than pass/fail stands, else failed or passed."""
+    v = t.get("verdict")
+    if v in ("warn", "red", "error"):
+        return v
+    return "fail" if t.get("phase") == "failed" or t.get("failed") else "pass"
 
 
 def glance_usage(pu):
-    return [{"provider": a.get("provider"), "email": a.get("email"), "plan": a.get("plan"), "stale": bool(a.get("stale")),
+    return [{"provider": a.get("provider"), "email": a.get("email"), "plan": a.get("plan"),
+             "stale": bool(a.get("stale") or a.get("note")),  # the page's 사용량 leaves out both
              "limits": [{k: l.get(k) for k in ("kind", "name", "percent", "resets_at")} for l in a.get("limits") or []]}
             for a in (pu or {}).get("accounts") or [] if a.get("limits")]
 
 
-def glance_projects(plans):
+def glance_projects():
+    """The 프로젝트 screen's projects (progress.json per folder): unfinished first, then the latest finished."""
+    if not PROJECTS_DIRS:
+        return None
     out = []
-    for p in plans or []:
-        ts = p.get("tickets") or []
-        done = [t for t in ts if t.get("status") in ("verified", "closed")]  # the page's tkDone
-        open_ = [t for t in ts if t not in done and t.get("status") != "manual"]
-        open_.sort(key=lambda t: -(t.get("boxes_done") or 0))  # the ones under way first
-        out.append({"project": p.get("project"), "error": p.get("error"), "tickets": len(ts), "done": len(done),
-                    "boxes_done": sum(t.get("boxes_done") or 0 for t in ts), "boxes_total": sum(t.get("boxes_total") or 0 for t in ts),
-                    "open": [{"jira": t.get("jira"), "package": t.get("package"), "status": t.get("status"),
-                              "done": t.get("boxes_done") or 0, "total": t.get("boxes_total") or 0} for t in open_[:4]]})
-    return out
+    for p in projects_store.projects["list"]:
+        cur = p.get("current") or {}
+        out.append({"name": p.get("name"), "error": short(p["error"], 120) if p.get("error") else None,
+                    "ratio": p.get("ratio") or 0, "total": p.get("total") or 0, "done": (p.get("counts") or {}).get("done") or 0,
+                    "stage": cur.get("name"), "stage_no": cur.get("no"), "stages": p.get("stage_count"),
+                    "end": p.get("end"), "mtime": p.get("mtime") or 0})
+    out.sort(key=lambda p: (p["ratio"] >= 1 or bool(p["error"]), -p["mtime"]))
+    return out[:8]
 
 
 def glance_flow(flow, paths):
@@ -331,15 +372,19 @@ def glance(state):
             "options": [o.get("label", "") for o in q.get("options") or []] if len(qs) == 1 and not q.get("multiSelect") else [],
             "path": paths.get(d.get("session_id"))})
     # the page's own agents only (no subagents), each in the state the page shows
+    now = time.time()
     agents = [s for s in state["sessions"] if s.get("role") != "sub" and not s.get("parent")]
-    counts = {k: sum(1 for s in agents if s.get("state") == k) for k in GLANCE_ORDER}
-    busy = sorted((s for s in agents if s.get("state") in GLANCE_ORDER), key=lambda s: s.get("last_ts") or "", reverse=True)
+    board = [s for s in agents if on_board(s, now)]  # what the page's 홈 and 에이전트 count
+    counts = {k: sum(1 for s in board if s.get("state") == k) for k in GLANCE_ORDER}
+    busy = sorted((s for s in board if s.get("state") in GLANCE_ORDER), key=lambda s: s.get("last_ts") or "", reverse=True)
     busy.sort(key=lambda s: GLANCE_ORDER.index(s["state"]))  # stable: the latest first within a state
     # the live agents' aplan steps, the latest first
-    planned = [s for s in agents if s.get("state") in GLANCE_ORDER and (s.get("plan") or {}).get("total")]
+    planned = [s for s in board if s.get("state") in GLANCE_ORDER and (s.get("plan") or {}).get("total")]
+    ask = [s for s in agents if asks(s, agents)]
     planned.sort(key=lambda s: s.get("last_ts") or "", reverse=True)
     files = (state.get("tests") or {}).get("files") or []
     tests = sorted(files, key=lambda t: (t.get("phase") != "running", -(t.get("mtime") or 0)))[:4]
+    live = [t for t in files if t.get("phase") not in ("done", "failed")]  # the page's testLive
     return {
         "api": API_VERSION, "now": time.time(),
         "decisions": decisions,
@@ -348,11 +393,15 @@ def glance(state):
                              "path": s.get("path")} for s in busy[:6]]},
         "tests": [{k: t.get(k) for k in ("label", "kind", "phase", "verdict", "total", "done", "passed", "failed", "eta_s",
                                           "started_at", "updated_at")} for t in tests],
+        # over every run the server holds (the page's 테스트 tile), not only the few listed
+        "test_counts": {"live": len(live), "finished": len(files) - len(live),
+                        "failed": sum(1 for t in files if t not in live and test_end(t) == "fail")},
+        "asks": [{"title": s.get("title"), "detail": short(s["plan"]["cur_text"], 120), "path": s.get("path")} for s in ask],
         "usage": glance_usage(state.get("plan_usage")),
         "plans": [{"title": s.get("title"), "state": s["state"], "path": s.get("path"), "steps": s["plan"].get("steps") or [],
                    "done": s["plan"].get("done") or 0, "total": s["plan"]["total"], "cur": short(s["plan"].get("cur_text") or "", 120)}
                   for s in planned[:6]],
-        "projects": glance_projects(state.get("ext_plans")),
+        "projects": glance_projects(),
         "flow": glance_flow(state.get("flow"), {s.get("path"): s.get("title") for s in state["sessions"]}),
         "cost": glance_screens.cost_summary(state["sessions"]),
     }
@@ -365,12 +414,12 @@ def get_glance(h, url):
             sess = parsed(st, "sessions")
             st["glance"] = (glance({"sessions": sess, "decisions": parsed(st, "decisions"),
                                     "tests": {"files": parsed(st, "tests.files")},
-                                    "plan_usage": parsed(st, "plan_usage"), "ext_plans": parsed(st, "ext_plans"),
+                                    "plan_usage": parsed(st, "plan_usage"),
                                     "flow": parsed(st, "flow")}),
                             glance_screens.terminal_names(sess))
         base, names = st["glance"]
     # the screens' own caches, read outside the lock: a first read may wait on git or the Orca CLI
-    h.send_json({**base, **glance_screens.screens(names)})
+    h.send_json(glance_screens.with_mine({**base, **glance_screens.screens(names)}))
 
 
 def get_decisions(h, url):
