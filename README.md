@@ -95,6 +95,7 @@ tailscale serve --bg 8787                                                  # 다
 - **수집 (`frontend/usage.js`):** 문서 전체에 캡처 단계 클릭 훅 하나를 걸어, 눌린 컨트롤을 이름으로 적는다 — 안정적인 `id`, 없으면 첫 `data-*` 속성(값은 고정 키처럼 보일 때만), 없으면 라벨. 앞에 가장 가까운 `id` 조상을 붙인다(예: `#tests-span > [k=7]`). 숫자는 `#` 으로 바꾸고, 입력한 글자·경로·세션 id 는 보내지 않는다. `<select>` 는 고른 값(고정 키일 때), 검색 칸은 「(입력)」만 적는다. 화면은 열 때 `open`, 떠날 때(다른 화면·탭 숨김) 보인 초를 `stay` 로 적는다.
 - **환경:** `app`(`macos`·`ios` 는 네이티브 셸, 설치한 PWA 는 `pwa`, 나머지 `web`), `form`(`phone` ≤500px · `narrow` ≤700px — iPhone Duo 펼침 · `tablet` ≤1100px · `desktop`, 반쯤 접힌 자세면 `-book`/`-laptop`), `pointer`(`coarse`·`fine`), 기기마다 무작위 id(`localStorage adash.dev`).
 - **전송:** 30초마다, 그리고 페이지가 숨겨지거나 닫힐 때 묶어서 켜진 첫 메트릭 서버의 `POST /api/usage` 로 보낸다(keepalive). 서버는 이벤트마다 한 줄씩 `server/usage.jsonl` 에 덧붙인다(git 에 넣지 않음). 기기에서 끄려면 `localStorage.setItem('adash.usage', 'off')`.
+- **확인 페이지:** 메트릭 서버 주소의 `/usage` (이 Mac 에서 `http://127.0.0.1:8787/usage`, 다른 기기는 `tailscale serve` 의 https 주소 + `/usage`). 아래 리포트와 같은 표에 최근 기록 40건을 더해 보여 주고 10초마다 새로 읽는다. 기간·환경 묶음·「드묾」 기준을 고를 수 있다. 데이터는 `GET /api/usage/report?days=&by=&top=&rare=`.
 - **분석:** `server/ausage` 가 환경 요약(기기·클릭·화면 시간), 화면별 연 횟수·화면 시간 비율(한 번도 안 연 화면도 `-` 로), 환경별 많이 쓰는 기능, 「다른 환경에선 쓰는데 여기선 거의 안 쓰는 기능」, 「모든 환경에서 드문 기능」을 표로 낸다.
 
 ```sh
