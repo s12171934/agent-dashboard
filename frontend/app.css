@@ -709,6 +709,7 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-step.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .pj-stitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-step .st { white-space: nowrap; }
+.pj-step .pj-short { display: none; }
 .pj-none { padding-left: 30px; }
 /* A phone fits all nine stages on one line (steps share the width, labels wrap) and step dates go under the title. */
 @media (max-width: 500px) {
@@ -716,10 +717,38 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
   .pj-flow .pj-st::before, .pj-flow .pj-st::after { top: 10px; }
   .pj-flow .pj-dot { width: 22px; height: 22px; font-size: 10px; }
   .pj-flow .pj-st > span { font-size: 9.5px; max-width: 100%; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.2; }
-  .pj-steps { padding-left: 22px; }
-  .pj-step { flex-wrap: wrap; gap: 0 8px; }
-  .pj-stitle { flex: 1 1 calc(100% - 20px); white-space: normal; }
-  .pj-step .st { margin-left: 17px; font-size: 11px; }
+  .pj-steps { padding-left: 4px; }
+  /* Folded, a project is a compact card: name, figures and a line of bare stage nodes (a finished project drops the
+     line). Open, the line gets its labels back and works as the stage picker: the detail shows the picked stage's
+     steps only, and a step's note takes the stages' place. The figures the summary already shows are not repeated. */
+  details.pj-row > summary { padding: 10px 12px; gap: 6px; }
+  .pj-head { gap: 2px 6px; }
+  .pj-head .chip { font-size: 11px; padding: 1px 7px; }
+  .pj-head .st { font-size: 12px; }
+  details.pj-row:not([open]) .pj-flow { padding: 4px 0; margin: 0; }
+  details.pj-row:not([open]) .pj-flow .pj-st > span { display: none; }
+  details.pj-row:not([open]) .pj-flow .pj-dot { width: 18px; height: 18px; font-size: 9px; }
+  details.pj-row:not([open]) .pj-flow .pj-st::before, details.pj-row:not([open]) .pj-flow .pj-st::after { top: 8px; }
+  details.pj-row.fin:not([open]) .pj-flow { display: none; }
+  details.pj-row[open] .pj-flow .pj-st.sel > span { color: var(--accent); font-weight: 700; }
+  details.pj-row[open] .pj-flow .pj-st.sel:not(.cur) .pj-dot { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pj-detail { padding: 10px 12px; }
+  .pj-detail .pj-kpis { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px; }
+  .pj-detail .pj-kpis .kpi { padding: 0; background: none; border: 0; box-shadow: none; display: flex; gap: 6px; align-items: baseline; }
+  .pj-detail .pj-kpis .kpi.pj-dup { display: none; }
+  .pj-detail .pj-kpis .kpi span { display: inline; }
+  .pj-detail .pj-kpis .kpi b { font-size: 12px; }
+  /* a step is one line (title, then its date); the note it opens carries the Obsidian link and the properties */
+  .pj-step { min-height: 30px; padding: 3px 6px; gap: 6px; }
+  .pj-step .st { font-size: 11px; }
+  .pj-steps .pj-obs, .pj-detail .pj-fm, .pj-step .pj-long { display: none; }
+  .pj-step .pj-short { display: inline; }
+  .pj-split.on .pj-note { padding: 8px 10px; }
+  .pj-detail .pj-prog { display: none; }
+  .pj-detail .pj-stage:not(.sel) { display: none; }
+  .pj-detail .pj-stage.sel { border-top: 0; }
+  .pj-detail .pj-split.on .pj-stages { display: none; }
+  .pj-split { scroll-margin: calc(var(--hdr-top) + 12px); }
 }
 .vn-list { list-style: none; margin: 10px 0 0; padding: 0 4px 0 0; max-height: 480px; overflow-y: auto; }
 .vn-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 6px 0; border-top: 1px solid var(--surface-edge); }
