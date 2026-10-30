@@ -327,6 +327,25 @@ def test_end(t):
     return "fail" if t.get("phase") == "failed" or t.get("failed") else "pass"
 
 
+TEST_RECENT_S = 86400  # the page's window for a driver's finished E2E runs
+
+
+def run_tc_counts(run_tc, now):
+    """The drivers' E2E runs as the page's testItems takes them: each active one is live, each finished in the last day
+    is done, failed when a case failed or the outcome says 실패 (중단 with no failed case is an error, not a failure)."""
+    live = finished = failed = 0
+    for d in run_tc.values():
+        live += len(d.get("active") or {})
+        for h in d.get("history") or []:
+            if age_s(h.get("finished_at") or h.get("started_at"), now) > TEST_RECENT_S:
+                continue
+            finished += 1
+            out = h.get("outcome") or ""
+            if h.get("failed") or ("실패" in out and "중단" not in out):
+                failed += 1
+    return {"live": live, "finished": finished, "failed": failed}
+
+
 def glance_usage(pu):
     return [{"provider": a.get("provider"), "email": a.get("email"), "plan": a.get("plan"),
              "stale": bool(a.get("stale") or a.get("note")),  # the page's 사용량 leaves out both
@@ -385,6 +404,7 @@ def glance(state):
     files = (state.get("tests") or {}).get("files") or []
     tests = sorted(files, key=lambda t: (t.get("phase") != "running", -(t.get("mtime") or 0)))[:4]
     live = [t for t in files if t.get("phase") not in ("done", "failed")]  # the page's testLive
+    e2e = run_tc_counts((state.get("tests") or {}).get("run_tc") or {}, now)
     return {
         "api": API_VERSION, "now": time.time(),
         "decisions": decisions,
@@ -394,8 +414,8 @@ def glance(state):
         "tests": [{k: t.get(k) for k in ("label", "kind", "phase", "verdict", "total", "done", "passed", "failed", "eta_s",
                                           "started_at", "updated_at")} for t in tests],
         # over every run the server holds (the page's 테스트 tile), not only the few listed
-        "test_counts": {"live": len(live), "finished": len(files) - len(live),
-                        "failed": sum(1 for t in files if t not in live and test_end(t) == "fail")},
+        "test_counts": {"live": len(live) + e2e["live"], "finished": len(files) - len(live) + e2e["finished"],
+                        "failed": sum(1 for t in files if t not in live and test_end(t) == "fail") + e2e["failed"]},
         "asks": [{"title": s.get("title"), "detail": short(s["plan"]["cur_text"], 120), "path": s.get("path")} for s in ask],
         "usage": glance_usage(state.get("plan_usage")),
         "plans": [{"title": s.get("title"), "state": s["state"], "path": s.get("path"), "steps": s["plan"].get("steps") or [],
@@ -413,7 +433,7 @@ def get_glance(h, url):
         if st["glance"] is None:
             sess = parsed(st, "sessions")
             st["glance"] = (glance({"sessions": sess, "decisions": parsed(st, "decisions"),
-                                    "tests": {"files": parsed(st, "tests.files")},
+                                    "tests": {**parsed(st, "tests"), "files": parsed(st, "tests.files")},
                                     "plan_usage": parsed(st, "plan_usage"),
                                     "flow": parsed(st, "flow")}),
                             glance_screens.terminal_names(sess))
