@@ -559,6 +559,13 @@ const api = (() => {
     charRedraw: (server, body) => post(byId(server), '/api/chars/redraw', body),
     // A job's uploaded picture (f=ref) or a sheet the agent drew (full, bust, sd); t busts the browser cache.
     charFile: (server, id, f, t) => `${byId(server)?.url || ''}/api/chars/file?job=${encodeURIComponent(id)}&f=${f}&t=${t || 0}`,
+    // Feature usage events (usage.js) to the first server that is on: fire and forget, and keepalive so a batch sent
+    // as the page is hidden or closed still goes out.
+    usage: (env, events) => {
+      const srv = enabled()[0];
+      if (srv) fetch(srv.url + '/api/usage', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env, events }) }).catch(() => {});
+    },
     // Version streams: each server sends its state version whenever it changes (version gets "<server>:<version>"),
     // and the page refetches state(). change fires when a server's connection opens or drops; projects when a server's
     // project progress changes ("<server>:<version>").

@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""ausage — which dashboard screens and controls get used in which environment, from server/usage.jsonl.
+
+The page's usage hook (frontend/usage.js) posts every control it sees clicked and every screen it shows, with the
+environment it runs in; the server appends them to usage.jsonl (adash/features/usage). This tallies them.
+
+  ausage [--days N] [--by app|form|both] [--top N] [--rare N] [--json]
+
+  --days   only the last N days (default 30; 0 = all)
+  --by     what an environment is: app (macos, ios, pwa, web), form (phone, narrow, tablet, desktop, with a fold
+           posture), or both (default: app/form)
+  --top    controls listed per environment (default 15)
+  --rare   a control used at most this many times in an environment counts as rarely used there (default 1)
+  --json   the tallies as JSON instead of tables
+
+Sections: environments (devices, clicks, screen time), screens (opens and share of screen time per environment, every
+screen listed even if never opened), most used controls per environment, and the rarely used ones: controls used in
+other environments but rarely or never in this one, and controls rarely used anywhere.
+"""
+import argparse
+import json
+import os
+import sys
+import unicodedata
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+LOG = os.path.join(HERE, "usage.jsonl")
+# Every screen route() knows (frontend/app.js), so a screen nobody opens still shows up as 0.
+VIEWS = ["home", "agents", "session", "run", "driver", "compare", "talk", "tests", "worktrees", "trees", "decide",
+         "chars", "usage", "projects", "designs"]
+
+
+def width(s):
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def pad(s, n, right=False):
+    s = str(s)
+    gap = " " * max(0, n - width(s))
+    return gap + s if right else s + gap
+
+
+def table(head, rows, right_from=1):
+    cols = [max([width(str(h))] + [width(str(r[i])) for r in rows]) for i, h in enumerate(head)]
+    line = lambda r: "  ".join(pad(c, cols[i], i >= right_from) for i, c in enumerate(r)).rstrip()
+    print(line(head))
+    print("  ".join("-" * c for c in cols))
+    for r in rows:
+        print(line(r))
+
+
+def hms(secs):
+    if secs < 60:
+        return f"{secs}s"
+    h, m = divmod(round(secs / 60), 60)
+    return f"{h}h{m:02d}m" if h else f"{m}m"
+
+
+def load(days, by):
+    if not os.path.exists(LOG):
+        sys.exit(f"ausage: {LOG} 가 없습니다 — 페이지에서 사용 기록이 아직 오지 않았습니다")
+    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    rows = []
+    with open(LOG, encoding="utf-8") as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+                if since and datetime.fromisoformat(r["ts"]) < since:
+                    continue
+            except (ValueError, KeyError):
+                continue
+            r["env"] = r["app"] if by == "app" else r["form"] if by == "form" else f"{r['app']}/{r['form']}"
+            rows.append(r)
+    return rows
+
+
+def tally(rows, top, rare):
+    envs = sorted({r["env"] for r in rows})
+    clicks = {e: Counter() for e in envs}
+    opens = {e: Counter() for e in envs}
+    stay = {e: Counter() for e in envs}
+    devs = defaultdict(set)
+    for r in rows:
+        e = r["env"]
+        if r.get("dev"):
+            devs[e].add(r["dev"])
+        if r["feat"] == "open":
+            opens[e][r["view"]] += 1
+        elif r["feat"] == "stay":
+            stay[e][r["view"]] += r.get("secs", 0)
+        else:
+            clicks[e][f"{r['view']} · {r['feat']}"] += 1
+    every = Counter()
+    for c in clicks.values():
+        every.update(c)
+    views = VIEWS + sorted({v for o in (*opens.values(), *stay.values()) for v in o} - set(VIEWS))
+    return {
+        "envs": [{"env": e, "devices": len(devs[e]), "clicks": sum(clicks[e].values()),
+                  "screen_secs": sum(stay[e].values())} for e in envs],
+        "screens": [{"view": v, **{e: {"opens": opens[e][v], "secs": stay[e][v],
+                                       "share": stay[e][v] / (sum(stay[e].values()) or 1)} for e in envs}}
+                    for v in views],
+        "top": {e: clicks[e].most_common(top) for e in envs},
+        # used somewhere else at least 3 times, here at most `rare`
+        "rare_here": {e: sorted(((f, clicks[e][f], every[f] - clicks[e][f]) for f in every
+                                 if clicks[e][f] <= rare and every[f] - clicks[e][f] >= 3), key=lambda x: -x[2])
+                      for e in envs},
+        "rare_everywhere": sorted((f, n) for f, n in every.items() if n <= rare),
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser(description="dashboard feature usage per environment")
+    ap.add_argument("--days", type=int, default=30)
+    ap.add_argument("--by", choices=("app", "form", "both"), default="both")
+    ap.add_argument("--top", type=int, default=15)
+    ap.add_argument("--rare", type=int, default=1)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+    rows = load(a.days, a.by)
+    if not rows:
+        sys.exit("ausage: 그 기간에 기록이 없습니다")
+    t = tally(rows, a.top, a.rare)
+    if a.json:
+        return print(json.dumps(t, ensure_ascii=False, indent=1))
+    envs = [x["env"] for x in t["envs"]]
+    span = f"최근 {a.days}일" if a.days else "전체"
+    print(f"# 환경별 대시보드 사용 ({span}, 기록 {len(rows)}건)\n")
+    table(["환경", "기기", "클릭", "화면 시간"], [[x["env"], x["devices"], x["clicks"], hms(x["screen_secs"])] for x in t["envs"]])
+    print("\n## 화면 — 연 횟수 · 화면 시간 비율\n")
+    table(["화면", *envs], [[s["view"], *(f"{s[e]['opens']} · {s[e]['share']:.0%}" if s[e]["opens"] or s[e]["secs"] else "-"
+                                         for e in envs)] for s in t["screens"]])
+    for e in envs:
+        print(f"\n## {e} — 많이 쓰는 기능\n")
+        total = next(x["clicks"] for x in t["envs"] if x["env"] == e) or 1
+        table(["기능 (화면 · 컨트롤)", "횟수", "비율"], [[f, n, f"{n / total:.0%}"] for f, n in t["top"][e]] or [["(클릭 없음)", "", ""]])
+    print(f"\n## 다른 환경에선 쓰는데 여기선 거의 안 쓰는 기능 (여기 ≤{a.rare}회, 다른 곳 ≥3회)\n")
+    rows = [[e, f, n, m] for e in envs for f, n, m in t["rare_here"][e][:a.top]]
+    table(["환경", "기능", "여기", "다른 곳"], rows or [["-", "(없음)", "", ""]], right_from=2)
+    print(f"\n## 모든 환경에서 드문 기능 (합계 ≤{a.rare}회)\n")
+    for f, n in t["rare_everywhere"]:
+        print(f"- {f} ({n})")
+    if not t["rare_everywhere"]:
+        print("(없음)")
+
+
+if __name__ == "__main__":
+    main()
