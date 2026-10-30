@@ -69,6 +69,47 @@ const api = (() => {
   }))).filter(([, d]) => d);
   const tag = (list, id) => (list || []).map(x => ({ ...x, server: id }));
 
+  // Per server, the last snapshot it sent: the next /api/state asks only for what changed since (?base=<its version>)
+  // and the answer is a delta over it ({version, base, health, delta: {part: value | {upd, del, order?}}}, see the
+  // server's adash/http/snapshot.py, parts_delta). Lists come item by item, keyed as the server keys them (KEYED there).
+  // The held snapshots are shared by every merge: views copy before they change anything (merge copies each item).
+  let held = {};
+  const PART_KEYS = { sessions: s => `${s.kind}:${s.id}`, ext_plans: p => p.path, 'tests.files': f => f.key };
+  const byLastTs = (a, b) => { const x = a.last_ts || '', y = b.last_ts || ''; return x < y ? 1 : x > y ? -1 : 0; };
+  function applyDelta(old, d) {
+    const out = { ...old, version: d.version, api: d.api, health: d.health };
+    for (const [name, v] of Object.entries(d.delta)) {
+      if (name === 'tests') out.tests = { ...v, files: out.tests?.files || [] };
+      else if (!(name in PART_KEYS)) out[name] = v;
+    }
+    for (const [name, key] of Object.entries(PART_KEYS)) {
+      const v = d.delta[name];
+      if (v === undefined) continue;
+      let list = v;
+      if (!Array.isArray(v)) {  // a list the server sent whole (a repeated key) is an array
+        const m = new Map((name === 'tests.files' ? out.tests?.files : out[name] || []).map(x => [key(x), x]));
+        for (const k of v.del) m.delete(k);
+        for (const x of v.upd) m.set(key(x), x);
+        list = v.order ? v.order.map(k => m.get(k)).filter(Boolean) : [...m.values()];
+        if (name === 'sessions') list.sort(byLastTs);  // the server sorts them so, and leaves the order to the page
+      }
+      if (name === 'tests.files') out.tests = { ...out.tests, files: list }; else out[name] = list;
+    }
+    return out;
+  }
+  // [srv, snapshot, changed] for one server: a delta over what it sent last when it still remembers that version.
+  async function stateOf(srv) {
+    const h = held[srv.id];
+    let d = await getJson(srv, '/api/state' + (h ? '?base=' + encodeURIComponent(h.version) : ''));
+    if (d?.delta && !(h && String(d.base) === String(h.version))) d = await getJson(srv, '/api/state');
+    if (!d) return [srv, null, true];
+    const changed = !d.delta || Object.keys(d.delta).length > 0;
+    const snap = d.delta ? applyDelta(h, d) : d;
+    if (snap.api === API_VERSION) held[srv.id] = snap; else delete held[srv.id];
+    return [srv, snap, changed];
+  }
+  let lastSet = '';
+
   // Collector loop health in this page's clock (servers' clocks may differ): per loop, the worst server wins.
   function mergeHealth(parts) {
     const now = Date.now() / 1000, loops = {};
@@ -95,7 +136,7 @@ const api = (() => {
       const id = srv.id, o = d.orca || {}, t = d.tests || {};
       out.sessions.push(...tag(d.sessions, id));
       out.orca.runs.push(...tag(o.runs, id));
-      Object.assign(out.orca.tasks, o.tasks);
+      for (const [run, ts] of Object.entries(o.tasks || {})) out.orca.tasks[run] = [...ts];  // app.js adds plan rows to these
       out.orca.workers.push(...tag(o.workers, id));
       out.orca.terminals.push(...tag(o.terminals, id));
       if (o.error) errors.push(parts.length > 1 ? `[${srv.name}] ${o.error}` : o.error);
@@ -206,6 +247,7 @@ const api = (() => {
     server: id => byId(id),
     // Replace the list (add, rename, remove, turn on/off) and reconnect to the servers now on.
     setServers: list => {
+      held = {};  // an address may have changed under the same id
       servers = list.map(s => ({ id: s.id || newId(), name: (s.name || '').trim() || hostOf(clean(s.url)), url: clean(s.url), on: !!s.on }));
       save();
       listChanged();
@@ -236,9 +278,15 @@ const api = (() => {
     // first), inbox_mode{server id: on}}}; each session
     // carries `decision` (its pending question or null). A server that fails or speaks another API version is left out
     // and named in server_errors.
+    // `unchanged`: every server answered that nothing changed since the last call (only health moved), so the views
+    // need no redraw.
     state: async () => {
       const parts = [], server_errors = [];
-      for (const [srv, d] of await fromAll('/api/state')) {
+      const got = await Promise.all(enabled().map(srv => stateOf(srv).catch(e => {
+        setStatus(srv.id, { error: e instanceof TypeError ? '연결할 수 없습니다' : String(e.message || e) });  // fetch's network failure is a TypeError
+        return [srv, null, true];
+      })));
+      for (const [srv, d] of got.filter(([, d]) => d)) {
         if (d.api !== API_VERSION) {
           const error = `서버 API v${d.api ?? '?'} 와 페이지 v${API_VERSION} 가 맞지 않습니다`;
           setStatus(srv.id, { error });
@@ -246,7 +294,10 @@ const api = (() => {
         } else { setStatus(srv.id, { error: null }); parts.push([srv, d]); }
       }
       for (const srv of enabled()) if (status[srv.id]?.error && !server_errors.some(e => e.startsWith(srv.name + ':'))) server_errors.push(`${srv.name}: ${status[srv.id].error}`);
-      return { ...merge(parts), server_errors };
+      const set = parts.map(([s]) => s.id).join(',') + '|' + server_errors.join(',');
+      const unchanged = set === lastSet && got.every(([, d, changed]) => d && !changed);
+      lastSet = set;
+      return { ...merge(parts), server_errors, unchanged };
     },
     // One session: the summary fields plus turn_list, compaction_turns, by_tool, log, cats, plans. null when unknown.
     session: async path => {
@@ -278,6 +329,12 @@ const api = (() => {
     tests: async () => {
       const runs = (await fromAll('/api/tests')).flatMap(([s, d]) => tag(d.runs, s.id));
       return { runs: runs.sort((a, b) => (b.finished_at || '').localeCompare(a.finished_at || '')) };
+    },
+    // One kept run with its cases, from the server that listed it (a finished run's cases are not in the snapshot):
+    // {..., id, cases[{id, title, status, msg, ms}]}, or null when that server has no such run.
+    testRun: async (id, server) => {
+      const srv = byId(server) || enabled()[0];
+      return srv ? getJson(srv, '/api/tests/run?id=' + encodeURIComponent(id)) : null;
     },
     // QA sets for the 워크트리 tab, over the servers that are on: {sets[{server, local, epic, summary, project, error,
     // stray[], tickets[{key, summary, status, cat, assignee, review none|pending|done|changed|reopened, review_at,

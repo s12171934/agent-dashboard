@@ -10,7 +10,7 @@ from adash.core.state import lock
 from adash.features.orca_runs.store import orca_state, run_coord
 
 
-inbox_cache = {"at": 0, "key": None, "body": None}
+inbox_cache = {}  # (limit, heartbeats) -> StaleWhileRefresh of (body, gzipped body); see api.get_interactions
 INBOX_TTL = 3
 INBOX_BODY_CAP = 6000
 TELL_TYPES = {"question", "escalation", "status", "dispatch"}  # the rest (answer, handoff, ...) read as status

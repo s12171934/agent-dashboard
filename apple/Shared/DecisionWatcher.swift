@@ -1,7 +1,7 @@
 import Foundation
 
 // Watches one metric server for 결정 대기 questions, the way the page does: /events says something changed, then
-// /api/state is read again. Runs whether or not the window is open, so the menu bar, the Dock badge and the
+// /api/decisions (the questions and the sessions holding them) is read again. Runs whether or not the window is open, so the menu bar, the Dock badge and the
 // notifications keep up with the page closed.
 @MainActor
 final class DecisionWatcher {
@@ -83,12 +83,16 @@ final class DecisionWatcher {
         repeat {
             again = false
             do {
-                let (data, _) = try await URLSession.shared.data(from: Self.serverURL.appending(path: "api/state"))
+                // /api/decisions is the few KB of this State; a server older than it (404) is read the old way.
+                var (data, res) = try await URLSession.shared.data(from: Self.serverURL.appending(path: "api/decisions"))
+                if (res as? HTTPURLResponse)?.statusCode == 404 {
+                    (data, _) = try await URLSession.shared.data(from: Self.serverURL.appending(path: "api/state"))
+                }
                 apply(try JSONDecoder().decode(State.self, from: data))
             } catch {
                 set(.down(error.localizedDescription))
             }
-            if again { try? await Task.sleep(for: .seconds(1)) }  // the state is megabytes: at most one read a second
+            if again { try? await Task.sleep(for: .seconds(1)) }  // at most one read a second
         } while again
     }
 

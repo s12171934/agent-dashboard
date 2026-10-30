@@ -324,7 +324,10 @@ async function refresh() {
   // Merged over the metrics servers that are on; one that fails or speaks another API version is left out and named
   // in state.server_errors (shown with the collector health).
   const hadDec = state?.decisions?.pending?.length || 0;
-  state = await api.state();
+  const next = await api.state();
+  // Nothing new on any server (only the collectors' health moved): keep the view as drawn.
+  if (state && next.unchanged) { state.health = next.health; renderHealth(); return; }
+  state = next;
   if (hadDec && !decLeft() && route().v === 'decide') location.hash = decFrom;  // the render below draws that screen
   state.all = state.sessions;
   chPin(state.all);
@@ -344,9 +347,16 @@ function scrollKey(el) {
   const peers = [...$('#view').querySelectorAll(el.classList[0] ? '.' + CSS.escape(cls) : el.tagName)];
   return cls + ':' + peers.indexOf(el);
 }
+// Elements that have scrolled (by the user or by a view that scrolls itself): saveScroll reads only these instead of
+// every node in the view (tens of thousands on the agents tab).
+const scrolled = new Set();
+document.addEventListener('scroll', e => { if (e.target instanceof Element) scrolled.add(e.target); }, { capture: true, passive: true });
 function saveScroll() {
-  const inner = [];
-  $('#view').querySelectorAll('*').forEach(el => { if ((el.scrollTop || el.scrollLeft) && !el.classList.contains('log') && !el.classList.contains('chat-log')) inner.push([scrollKey(el), el.scrollLeft, el.scrollTop]); });
+  const inner = [], view = $('#view');
+  for (const el of scrolled) {
+    if (!el.isConnected || !view.contains(el)) { scrolled.delete(el); continue; }
+    if ((el.scrollTop || el.scrollLeft) && !el.classList.contains('log') && !el.classList.contains('chat-log')) inner.push([scrollKey(el), el.scrollLeft, el.scrollTop]);
+  }
   return { y: window.scrollY, x: window.scrollX, h: document.documentElement.scrollHeight, inner };
 }
 function restoreScroll(sv) {
@@ -355,6 +365,33 @@ function restoreScroll(sv) {
     if (el) { el.scrollLeft = l; el.scrollTop = t; }
   }
   if (window.scrollY !== sv.y || window.scrollX !== sv.x) window.scrollTo(sv.x, sv.y);
+}
+
+// Puts html into el changing only what differs from what is there: subtrees that are the same stay as they are (no
+// new layout for them, their animations and scroll go on), changed text and attributes are set in place, the rest is
+// replaced. Live updates mostly change words (「n분 전」, a count, a state), so this is far less work for the browser than
+// innerHTML over the agents tab's tens of thousands of nodes. Event handlers are bound after it as after innerHTML.
+function morph(el, html) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  morphKids(el, t.content);
+}
+function morphKids(l, b) {
+  const ln = l.childNodes, bn = [...b.childNodes];
+  for (let i = 0; i < bn.length; i++) {
+    const x = ln[i], y = bn[i];
+    if (!x) { l.appendChild(y); continue; }
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { l.replaceChild(y, x); continue; }
+    if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
+    const names = new Set([...x.getAttributeNames(), ...y.getAttributeNames()]);
+    const same = [...names].every(n => x.getAttribute(n) === y.getAttribute(n));
+    // A custom element (<ds-icon>) draws its own children from its attributes: kept when they match, else redrawn.
+    // A card for another session or another id is another thing in this place: replaced, not patched.
+    if (x.localName.includes('-') || (x.id || x.dataset.path) !== (y.id || y.dataset.path)) { if (!same) l.replaceChild(y, x); continue; }
+    if (!same) for (const n of names) { const v = y.getAttribute(n); if (x.getAttribute(n) !== v) v === null ? x.removeAttribute(n) : x.setAttribute(n, v); }
+    morphKids(x, y);
+  }
+  while (ln.length > bn.length) l.lastChild.remove();
 }
 
 async function render(navigated) {
@@ -2041,7 +2078,7 @@ function testRow(t, inCard, allFails) {
     : `<span class="st">${ago(t.finished_at)}${t.started_at && t.finished_at ? ` · 소요 ${dur(t.started_at, t.finished_at)}` : ''}</span>`;
   const who = inCard ? '' : t.sess ? `<a href="#s=${encodeURIComponent(t.sess.path)}">${esc(cut(nameOf(t.sess), 34))}</a>` : t.owner ? `<span class="st">${esc(cut(t.owner, 34))}</span>` : '';
   const nf = allFails ? 20 : 3;
-  const fails = t.cases?.length ? casesHtml(t) : (t.failures || []).length ? `<details class="tfails"><summary>실패 ${t.failures.length}건${t.failures.length > nf ? ` (상위 ${nf})` : ''}</summary>${t.failures.slice(0, nf).map(f => `<div><code>${esc(cut(f.id, 90))}</code> <span class="st">${esc(cut(f.msg, 160))}</span></div>`).join('')}</details>` : '';
+  const fails = t.cases?.length || t.case_counts ? casesHtml(t) : (t.failures || []).length ? `<details class="tfails"><summary>실패 ${t.failures.length}건${t.failures.length > nf ? ` (상위 ${nf})` : ''}</summary>${t.failures.slice(0, nf).map(f => `<div><code>${esc(cut(f.id, 90))}</code> <span class="st">${esc(cut(f.msg, 160))}</span></div>`).join('')}</details>` : '';
   const tip = `${t.src === 'file' ? 'agent-test-progress/' + t.key + '.json' : 'run-tc ' + t.key}${t.log ? '\n로그 ' + t.log : ''}${t.detail ? '\n' + t.detail : ''}`;
   // A live run shows what it is on now (▶) and, when it has few cases (a Figma check, one spec file), a chip per case
   const cur = live ? (t.cases || []).filter(c => c.status === 'running') : [];
@@ -2057,14 +2094,30 @@ function testRow(t, inCard, allFails) {
 const CASE_ORDER = s => E2E_BAD.includes(s) ? 0 : s === 'running' ? 1 : s === 'passed' ? 3 : 2;
 const caseCls = s => E2E_BAD.includes(s) ? 'fail' : s === 'passed' ? 'done' : s === 'running' ? 'run' : s === 'queued' ? 'pending' : 'wait';
 const caseOpen = new Set();
+// A finished run comes without its cases (case_counts stands in): opening the toggle reads them from the server
+// that kept the run (hist_id -> cases, or null when it could not).
+const caseLists = new Map();
 function casesHtml(t) {
-  const cs = t.cases.map((c, i) => [c, i]).sort((a, b) => CASE_ORDER(a[0].status) - CASE_ORDER(b[0].status) || a[1] - b[1]).map(x => x[0]);
+  const list = t.cases?.length ? t.cases : caseLists.get(t.hist_id);
+  if (!list?.length) {
+    const c = t.case_counts, id = testId(t), rest = c.n - c.bad - c.ok;
+    const body = !caseLists.has(t.hist_id) ? '케이스를 불러오는 중…' : '보관된 케이스 목록을 읽지 못했습니다';
+    return `<details class="tcases" data-case="${esc(id)}" data-hist="${esc(t.hist_id)}" data-srv="${esc(t.server || '')}"${caseOpen.has(id) ? ' open' : ''}><summary>케이스 ${c.n} · 통과 ${c.ok}${c.bad ? ` · <b style="color:var(--bad)">실패 ${c.bad}</b>` : ''}${rest ? ` · 기타 ${rest}` : ''}</summary>
+      <div class="tcase-list"><div class="st">${body}</div></div></details>`;
+  }
+  const cs = list.map((c, i) => [c, i]).sort((a, b) => CASE_ORDER(a[0].status) - CASE_ORDER(b[0].status) || a[1] - b[1]).map(x => x[0]);
   const n = s => cs.filter(c => s.includes(c.status)).length, bad = n(E2E_BAD), ok = n(['passed']), rest = cs.length - bad - ok, id = testId(t);
   return `<details class="tcases" data-case="${esc(id)}"${caseOpen.has(id) ? ' open' : ''}><summary>케이스 ${cs.length} · 통과 ${ok}${bad ? ` · <b style="color:var(--bad)">실패 ${bad}</b>` : ''}${rest ? ` · 기타 ${rest}` : ''}</summary>
     <div class="tcase-list">${cs.map(c => { const k = caseCls(c.status);
       return `<div class="tcase ${k}"><span class="tkc ${k}"><i>${TK_IC[k] || '·'}</i>${esc(E2E_TEST[c.status] || c.status || '?')}</span><code>${esc(c.id || '—')}</code><span class="tcase-t">${esc(c.title || '')}</span>${c.ms ? `<span class="st">${Math.round(c.ms / 1000)}s</span>` : ''}${c.msg ? `<span class="tcase-msg">${esc(cut(c.msg, 200))}</span>` : ''}</div>`; }).join('')}</div></details>`;
 }
-document.addEventListener('toggle', e => { const id = e.target.dataset?.case; if (id != null) e.target.open ? caseOpen.add(id) : caseOpen.delete(id); }, true);
+document.addEventListener('toggle', e => {
+  const { case: id, hist, srv } = e.target.dataset || {};
+  if (id == null) return;
+  if (!e.target.open) return void caseOpen.delete(id);
+  caseOpen.add(id);
+  if (hist && !caseLists.has(hist)) api.testRun(hist, srv).catch(() => null).then(r => { caseLists.set(hist, r?.cases?.length ? r.cases : null); render(); });
+}, true);
 let testsOpen = true;
 // The agents view keeps only running tests; finished ones are in the 「테스트」 tab.
 function testsHtml() {
@@ -4795,12 +4848,17 @@ function renderAgents() {
   const seg = `<div class="controls ag-controls"><span class="seg" id="ag-view"><button data-k="tree">코디네이터 트리</button><button data-k="wt">워크트리별</button><button data-k="map">관계 지도</button><button data-k="tl">타임라인</button></span>${stalledAllBtn()}</div>`;
   if (agView === 'map' || agView === 'tl') {  // the flow views: one picture over every server that is on
     $('#view').innerHTML = seg + (agView === 'map' ? mapHtml() : tlHtml());
+    $('#view').dataset.ag = agView;
     agViewBind();
     if (agView === 'map') mapBind(); else { tlBind(); tlFill(); }
     return;
   }
   const h = srvView === 'split' && multiSrv() ? srvOn().map(one).join('').replace('sec-h srv-h', 'sec-h srv-h first') : one(null);
-  $('#view').innerHTML = seg + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>');
+  const html = seg + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>');
+  // morph over the same view drawn last time (dataset.ag), a full draw after another tab or view
+  const v = $('#view');
+  if (v.dataset.ag === agView && v.querySelector(':scope > .ag-controls')) morph(v, html); else v.innerHTML = html;
+  v.dataset.ag = agView;
   agViewBind();
   { const el = $('#view .tests-sec'); if (el) el.ontoggle = () => testsOpen = el.open; }  // survives live re-renders
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
@@ -5956,15 +6014,24 @@ function drawTalk() {
 }
 
 // ---------- live updates ----------
-// The version ticks almost every second while agents write logs, and each refresh refetches ~2MB and rebuilds
-// the view, so coalesce bursts into at most one refresh per MIN_GAP and skip work while the tab is hidden.
+// The server announces a new version only when the snapshot shows something new, and a refresh fetches only what
+// changed (api.state), but each one still rebuilds the view: coalesce bursts into at most one refresh per MIN_GAP,
+// hold it while the user is clicking or scrolling, and skip work while the tab is hidden.
 const MIN_GAP = 4000;
 let pending = false, again = false, lastRun = 0, gapT = null, stale = false;
+// A redraw replaces the view's HTML: one landing mid-click eats the click, mid-scroll it jumps. Hold it while a pointer
+// is down (at most HOLD_DOWN_MS, in case its pointerup went elsewhere) and for HOLD_MS after a scroll, wheel or key.
+const HOLD_MS = 400, HOLD_DOWN_MS = 5000;
+let downAt = 0, quietAt = 0;
+addEventListener('pointerdown', () => { downAt = Date.now(); }, true);
+for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => { downAt = 0; quietAt = Date.now() + HOLD_MS; }, true);
+for (const ev of ['wheel', 'keydown', 'scroll', 'touchmove']) addEventListener(ev, () => { quietAt = Date.now() + HOLD_MS; }, { capture: true, passive: true });
+const holdFor = () => downAt && Date.now() - downAt < HOLD_DOWN_MS ? HOLD_MS : quietAt - Date.now();
 // now: the user changed what to show (e.g. a metric server turned off), so skip the gap.
 async function pump(now) {
   if (document.hidden) { stale = true; return; }
   if (pending) { again = true; return; }
-  const wait = now ? 0 : lastRun + MIN_GAP - Date.now();
+  const wait = now ? 0 : Math.max(lastRun + MIN_GAP - Date.now(), holdFor());
   if (wait > 0) { if (!gapT) gapT = setTimeout(() => { gapT = null; pump(); }, wait); return; }
   pending = true;
   // A failed fetch or a render that throws on unexpected data keeps the last screen and says so, instead of an
