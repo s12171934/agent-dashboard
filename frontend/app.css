@@ -2000,6 +2000,14 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .sb-pie { flex: none; }
 .sb-pie circle { fill: none; stroke-width: 5.5; }
 .sb-pie .sb-track { stroke: color-mix(in srgb, var(--line) 70%, transparent); }
+/* a narrow village (a phone's 124px person): a smaller ring beside the figure, and the detail under both across the
+   whole bubble, wrapping to two lines instead of cut short */
+.vl-narrow .ch-say.staff-say { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 5px; padding: 5px 8px; }
+.vl-narrow .staff-say > span { display: contents; }
+.vl-narrow .sb-pie { width: 24px; height: 24px; }
+.vl-narrow .staff-say b em { font-size: 17px; }
+.vl-narrow .staff-say small { grid-column: 1 / -1; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* the staff's own behaviour (staffMv, staffTick in app.js), apart from the agents': a sprite moves by the pose it is
    given (data-mv), not by the button's state — a quiet one breathes, one calling raises a hand and bobs, a worried one
    shakes in bursts, a dozing one sinks. Under them a shadow on the floor, which glows in the warning colour while they
