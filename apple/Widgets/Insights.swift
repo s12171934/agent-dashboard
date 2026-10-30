@@ -7,14 +7,14 @@ import WidgetKit
 // A limit's colour by how much is used, as the 플랜 사용량 page bars go.
 private func usageTint(_ p: Double) -> Color { p >= 90 ? .red : p >= 70 ? .orange : .teal }
 
-private struct Unsupported: View {
+struct Unsupported: View {
     var body: some View {
         Text("서버를 최신으로 올리면 보입니다").font(.caption).foregroundStyle(.secondary)
             .multilineTextAlignment(.center).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-private struct Empty: View {
+struct Empty: View {
     let text: String
     var body: some View {
         Text(text).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)

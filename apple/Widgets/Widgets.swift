@@ -3,8 +3,9 @@ import SwiftUI
 import WidgetKit
 
 // The iPhone widgets: 결정 대기 (answerable from the widget), 에이전트 (who is running, waiting, stuck), 테스트 (the
-// long runs' progress), and in Insights.swift 사용량, 작업 계획, 프로젝트 and 흐름 점검, on the home screen and the lock
-// screen. Each reads the metric server's /api/glance.
+// long runs' progress), in Insights.swift 사용량, 작업 계획, 프로젝트 and 흐름 점검, and in Screens.swift one per
+// remaining page screen (홈, QA, 상호작용, 설계문서, 워크트리, 오늘 비용), on the home screen and the lock screen. Each
+// reads the metric server's /api/glance.
 @main
 struct AgentWidgets: WidgetBundle {
     var body: some Widget {
@@ -15,6 +16,12 @@ struct AgentWidgets: WidgetBundle {
         PlansWidget()
         ProjectsWidget()
         FlowWidget()
+        HomeWidget()
+        QAWidget()
+        TalkWidget()
+        DesignsWidget()
+        TreesWidget()
+        CostWidget()
     }
 }
 
