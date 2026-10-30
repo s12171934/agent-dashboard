@@ -57,6 +57,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         let conf = WKWebViewConfiguration()
         relay.owner = self
         PageBridge.install(on: conf.userContentController, platform: "ios", handler: relay)
+        conf.userContentController.addUserScript(WKUserScript(source: Self.facesScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         conf.userContentController.addUserScript(WKUserScript(source: DockBridge.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         web = WKWebView(frame: view.bounds, configuration: conf)
         web.isInspectable = true
@@ -266,14 +267,28 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         }
     }
 
-    // The 앱 아이콘 choice as the home screen icon: one of the icons built into the app (icons/app/<id>/, or the
-    // default icons/). A character's face is not built in, so it leaves the icon as it is.
+    // The alternate icons built into the app (tools/make-icons): icons/app/<id>/ as <id>, characters as face-<who>.
+    private static let builtInIcons: Set<String> = {
+        let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+        return Set(((icons?["CFBundleAlternateIcons"] as? [String: Any]) ?? [:]).keys)
+    }()
+    // the characters the 앱 아이콘 panel may offer (app.js): only those built in, a person put up later has none
+    static var facesScript: String {
+        let faces = builtInIcons.filter { $0.hasPrefix("face-") }.map { "'\($0.dropFirst(5))'" }.sorted()
+        return "window.adashFaces = [\(faces.joined(separator: ","))];"
+    }
+
+    // The 앱 아이콘 choice as the home screen icon: one of the icons built into the app (icons/app/<id>/, a
+    // character's chars/<who>-icon-512.png, or the default icons/). One not built in leaves the icon as it is.
     private func setIcon(_ url: URL) {
         let parts = url.pathComponents
         let name: String?
         if let i = parts.firstIndex(of: "app"), i > 0, parts[i - 1] == "icons", i + 1 < parts.count { name = parts[i + 1] }
         else if parts.suffix(2) == ["icons", "icon-512.png"] { name = nil }
-        else { return }
+        else if parts.dropLast().last == "chars", url.lastPathComponent.hasSuffix("-icon-512.png") {
+            name = "face-" + url.lastPathComponent.dropLast("-icon-512.png".count)
+        } else { return }
+        if let name, !Self.builtInIcons.contains(name) { return }
         wantedIcon = .some(name)
         switchIcon()
     }

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Make a character's app icon: their SD face (the standing frame of <who>-sd-bust.png, from the top of the head down
-to the chin) as crisp pixel art on a field in their own colour, for the 「앱 아이콘」 panel.
+"""Make a character's app icon for the 「앱 아이콘」 panel: their drawn icon art (<who>-icon-art.webp, 1024px, from
+scripts/char-icon-art.sh) when they have one, else their SD face (the standing frame of <who>-sd-bust.png, from the top
+of the head down to the chin) as crisp pixel art on a field in their own colour.
 
     scripts/char-icons.py <who> [<who> …] [--dir <folder>] [--out <folder>]
 
@@ -99,6 +100,15 @@ def manifest(who):
 
 
 def make(who, src, out):
+    art = src / f'{who}-icon-art.webp'
+    if art.exists():
+        # drawn full-bleed with the head inside the central circle, so the maskable one is the same picture
+        im = Image.open(art).convert('RGB')
+        out.mkdir(parents=True, exist_ok=True)
+        for name, (size, _) in SIZES.items():
+            im.resize((size, size), Image.LANCZOS).save(out / f'{who}-icon-{name}.png', optimize=True)
+        (out / f'{who}-icon.json').write_text(json.dumps(manifest(who), ensure_ascii=False, indent=2) + '\n')
+        return [out / f'{who}-{f}' for f in FILES]
     strip = src / f'{who}-sd-bust.png'
     if not strip.exists():
         sys.exit(f'{strip} 이 없습니다')

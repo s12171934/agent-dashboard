@@ -72,17 +72,18 @@ $('#theme-edit').onclick = () => { $('#theme-panel').hidden = !$('#theme-panel')
 // the theme.
 function iconPanel() {
   const el = $('#icon-panel'), cur = appIcon(), ios = /iP(hone|ad|od)/.test(navigator.userAgent), app = window.adashApp;
-  // the iPhone app switches only to icons built into it: no faces there
-  const faces = app === 'ios' ? [] : Object.keys(CH_ART).filter(w => !chHidden.has(w)).map(w => ({ id: `face-${w}`, name: CH_INFO[w]?.[0] || w }));
+  // the iPhone app switches only to icons built into it: there, only the faces it has (adashFaces)
+  const faces = Object.keys(CH_ART).filter(w => !chHidden.has(w) && (app !== 'ios' || window.adashFaces?.includes(w)))
+    .map(w => ({ id: `face-${w}`, name: CH_INFO[w]?.[0] || w }));
   const label = id => (x => x ? `${x.concept} · ${x.colour}` : `캐릭터 · ${faces.find(f => f.id === id)?.name || id.slice(5)}`)(APP_ICONS.find(x => x.id === id));
   const btn = id => `<button class="ip-icon${id === cur ? ' on' : ''}" data-id="${id}" title="${esc(label(id))}" aria-label="${esc(label(id))}" aria-pressed="${id === cur}"><img src="${appIconSrc(id)}" alt="" loading="lazy"></button>`;
   el.innerHTML = `<div class="pop-h"><b>앱 아이콘</b><span class="st">이 기기에만 저장</span><button class="act" data-ip="close">닫기</button></div>
     <div class="ip-grid">${APP_ICONS.map(x => btn(x.id)).join('')}</div>
-    ${faces.length ? `<div class="ip-sub">캐릭터 얼굴 <small>SD 픽셀</small></div>
+    ${faces.length ? `<div class="ip-sub">캐릭터 얼굴</div>
     <div class="ip-grid ip-faces">${faces.map(f => btn(f.id)).join('')}</div>` : ''}
     <div class="ip-name">${esc(label(cur))}</div>
     <p class="ip-help">${app === 'macos' ? '맥 앱의 Dock 아이콘이 바로 바뀝니다. 앱을 닫아 둔 동안 Finder·Dock 에는 기본 아이콘이 보입니다.'
-      : app === 'ios' ? '홈 화면 아이콘이 바로 바뀝니다(바뀌었다는 안내가 한 번 뜹니다). 캐릭터 얼굴은 앱에 들어 있지 않아 고를 수 없습니다.'
+      : app === 'ios' ? '홈 화면 아이콘이 바로 바뀝니다(바뀌었다는 안내가 한 번 뜹니다). 캐릭터 얼굴은 앱에 들어 있는 사람만 고를 수 있습니다.'
       : ios ? '홈 화면 아이콘은 추가할 때 정해집니다. 바꾸려면 홈 화면에서 지우고 Safari 공유 → 홈 화면에 추가로 다시 넣으세요.'
       : '탭 아이콘은 바로 바뀝니다. 설치한 앱 아이콘은 브라우저가 다음에 앱을 확인할 때 바뀌며, 바꿀지 물어볼 수 있습니다.'}</p>`;
   el.querySelectorAll('.ip-icon').forEach(b => b.onclick = () => { setAppIcon(b.dataset.id); el.hidden = true; });

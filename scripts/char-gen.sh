@@ -3,7 +3,7 @@
 # of 4×2 poses on white — A, then B, C and D side by side, each drawn from A so the four match — the same 8 poses with
 # a different action in each (CELLS below), then cut them into one 32-frame strip frontend/chars/<name>-<kind>.webp with
 # char-sprites.py.
-#   scripts/char-gen.sh <name> <full|bust|sd|run|done> [work dir] [sets]
+#   scripts/char-gen.sh <name> <full|bust|sd|run|done|icon> [work dir] [sets]
 # sets: which sheets to (re)draw, default abcd; the cut always takes all four (<name>_<kind>.png, _b, _c, _d).
 # run draws, for each set, 8 frames of the 「실행 중」 pose as one looping motion of about 5 seconds (RUN below; the page
 # times them, CH_RUN_MS), from that set's sd and full sheets, so make sd first. They are cut together with the sd
@@ -11,6 +11,9 @@
 # <name>-sd-bust-run.png beside <name>-sd.png; a later sd cut takes them along again. done draws one sheet (set A: every
 # state but 「실행 중」 keeps it) of the 「완료」 pose as a calmer 5-second loop (DONE below), cut the same way into
 # <name>-sd-done.png and <name>-sd-bust-done.png.
+# icon draws one 1024px app icon (a head-and-shoulders portrait on a full-bleed field, the head inside the circle icon
+# masks keep) from the first frame of <name>-bust.webp, saved as <name>-icon-art.webp; char-icons.py then makes the
+# page's icons from it, and apple/build.sh icons the iPhone app's face-<name>.
 # bust and sd (the chibi pixel sheet) take the full sheets as their reference, so make full first. Each call takes about
 # 20 minutes (A, then the other three at once); several run side by side. The frame sizes char-sprites.py prints go
 # into CH_ART in frontend/app.js.
@@ -130,6 +133,30 @@ DONE='1. exactly cell 6 of the FIRST attached sheet: very happy, eyes closed in 
 style='modern Japanese anime style (clean cel shading, crisp dark lineart, TV-anime look)'
 [[ $kind == (sd|run|done) ]] && style='SD (super deformed) chibi pixel art: a 16-bit game sprite look with big clearly visible square pixels, a limited palette, a 1-pixel dark outline, no anti-aliasing, no gradients'
 sheet() { [ "$1" = a ] && echo "${name}_$2.png" || echo "${name}_$2_$1.png"; }
+if [ $kind = icon ]; then
+  "$PY" - "$out/${name}-bust.webp" "${name}_icon_ref.png" <<'PY'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert('RGBA'); fw = im.width // 32
+f = im.crop((0, 0, fw, im.height)); bg = Image.new('RGBA', f.size, 'white'); bg.alpha_composite(f)
+bg.convert('RGB').resize((fw * 4, im.height * 4), Image.LANCZOS).save(sys.argv[2])
+PY
+  cat > "p_${name}_icon.txt" <<P
+Use your built-in image generation tool to create ONE image and save it as PNG at ./${name}_icon.png (in the current directory). Do nothing else; do not write code.
+
+Image: a square 1024x1024 app icon illustration in ${style}, high detail, polished, original character (not an existing IP).
+Character: ${desc}.
+The attached image is the reference for this character's exact design (hair, face, eyes, clothes, colours, accessories): keep that design, drawn at full quality.
+Composition: a close head-and-shoulders portrait, facing the viewer, a gentle friendly smile, eyes open looking at the viewer, the head centred and large (about 55% of the square's height); the whole head and hair stay inside the central 75% circle of the square (the corners and edges get cut by the icon mask).
+Background: full-bleed, filling the whole square edge to edge: a smooth soft gradient in a colour that suits the character, with a subtle light glow behind the head. No text, no border, no frame, no rounded corners, no transparency, no drop shadow around the square.
+P
+  rm -f "${name}_icon.png"
+  codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C . -i "${name}_icon_ref.png" < "p_${name}_icon.txt" > "log_${name}_icon.txt" 2>&1
+  [ -f "${name}_icon.png" ] || { echo "${name}_icon.png: 생성되지 않음 (log_${name}_icon.txt)" >&2; exit 1; }
+  "$PY" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").resize((1024, 1024), Image.LANCZOS).save(sys.argv[2], quality=92, method=6)' "${name}_icon.png" "$out/${name}-icon-art.webp"
+  "$PY" "$ROOT/scripts/char-icons.py" "$name" --dir "$out"
+  exit 0
+fi
 # One sheet: set $1. A takes its references as before; B–D also get this kind's A, to keep the look, scale and framing.
 gen() {
   local set=$1 frame ref=() same
