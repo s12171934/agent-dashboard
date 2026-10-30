@@ -1987,6 +1987,19 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .staff-prop svg { display: block; filter: drop-shadow(0 4px 4px rgb(0 0 0 / .12)); }
 .ch.staff .ch-name { color: var(--accent); }
 .ch.staff:hover .ch-meta { color: var(--accent); }
+/* a staff bubble (staffHtml): the figure's ring (staffPie) beside its words, the figure on top in large numbers
+   (staffNum) and the detail under it, smaller */
+.ch-say.staff-say { height: auto; min-height: 44px; gap: 7px; padding: 5px 10px 5px 6px; }
+.staff-say > span { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; text-align: left; }
+.staff-say b { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.15; white-space: nowrap; }
+.staff-say b em { font-style: normal; font-size: 19px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--text); }
+.ch.st-stalled .staff-say b em { color: var(--bad); } .ch.st-run .staff-say b em { color: var(--accent); }
+.ch.dec .staff-say b em { color: var(--warn); }
+.staff-say small { max-width: 100%; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staff-say small em { font-style: normal; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.sb-pie { flex: none; }
+.sb-pie circle { fill: none; stroke-width: 5.5; }
+.sb-pie .sb-track { stroke: color-mix(in srgb, var(--line) 70%, transparent); }
 /* the staff's own behaviour (staffMv, staffTick in app.js), apart from the agents': a sprite moves by the pose it is
    given (data-mv), not by the button's state — a quiet one breathes, one calling raises a hand and bobs, a worried one
    shakes in bursts, a dozing one sinks. Under them a shadow on the floor, which glows in the warning colour while they
