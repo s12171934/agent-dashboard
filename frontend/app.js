@@ -6528,6 +6528,14 @@ function pjPick(key, no) {
   pjStage[key] = no;
   const row = [...document.querySelectorAll('details.pj-row')].find(x => x.dataset.pj === key);
   row?.querySelectorAll('[data-st], [data-st-sec]').forEach(x => x.classList.toggle('sel', +(x.dataset.st || x.dataset.stSec) === no));
+  if (row) pjCenter(row);
+}
+// An open project's line wider than its card (a phone) runs sideways: bring the picked stage to the middle.
+function pjCenter(row) {
+  const flow = row.querySelector('.pj-flow'), node = flow?.querySelector('.pj-st.sel');
+  if (!node || flow.scrollWidth <= flow.clientWidth) return;
+  const f = flow.getBoundingClientRect(), n = node.getBoundingClientRect();
+  flow.scrollTo({ left: flow.scrollLeft + n.left - f.left - (f.width - n.width) / 2, behavior: 'smooth' });
 }
 
 // The detail of one project into box: figures, then the stages with their steps, split with the open note.
@@ -6841,6 +6849,7 @@ document.addEventListener('toggle', e => {
     document.querySelectorAll('details.pj-row[open]').forEach(x => { if (x !== row) x.open = false; });
     if (pjOpen !== k) { pjOpen = k; if (pjNote?.key !== k) pjNote = null; }
     if (!box.firstChild) pjDetail(box, k);
+    pjCenter(row);
   } else if (pjOpen === k) { pjOpen = null; pjNote = null; box.innerHTML = ''; }
 }, true);
 
