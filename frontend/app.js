@@ -6390,6 +6390,7 @@ let pjOpen = null;         // 프로젝트별: the project folded open
 let pjFocus = null;        // 전체 시계열: the focused project
 let pjNote = null;         // the note in the split: {key, path}, or null
 let pjScrollTo = null;     // a stage number to bring into view once the detail is drawn
+const pjStage = {};        // key -> the stage picked in the detail; a phone shows only that stage's steps
 let pjSrcKey = '';         // the servers on and their connection, as of the last projects fetch (connect() watches it)
 const pjVertical = () => pj.orient === 'v' || (pj.orient === 'auto' && innerWidth < innerHeight);
 
@@ -6441,13 +6442,22 @@ function pjRow(p) {
   const line = p.stages.map((st, i) => {
     const link = pjFin(st) && p.stages[i + 1] && pjFin(p.stages[i + 1]);  // green only between two finished stages
     const tip = `${st.no}. ${st.name} — ${PJ_ST[st.status]}${st.total ? ` · ${st.counts.done}/${st.total}` : ''}${pjFin(st) && st.end ? ` · 완료 ${st.end}` : ''}`;
-    return `<span class="pj-st ${st.status}${link ? ' link' : ''}${p.current?.no === st.no ? ' cur' : ''}" data-st="${st.no}" title="${esc(tip)}">${pjNode(st)}<span>${esc(st.name)}</span></span>`;
+    return `<span class="pj-st ${st.status}${link ? ' link' : ''}${p.current?.no === st.no ? ' cur' : ''}${pjStageOf(p) === st.no ? ' sel' : ''}" data-st="${st.no}" title="${esc(tip)}">${pjNode(st)}<span>${esc(st.name)}</span></span>`;
   }).join('');
-  return `<details class="box pj-row" data-pj="${esc(k)}"${pjOpen === k ? ' open' : ''}><summary>
+  return `<details class="box pj-row${p.status === 'done' ? ' fin' : ''}" data-pj="${esc(k)}"${pjOpen === k ? ' open' : ''}><summary>
       <span class="pj-head"><b>${esc(p.name)}</b>${srvBadge(p)}${pjChip(p.status)}
         <span class="st">${p.counts.done}/${p.total} · ${pct}% · 현재 ${p.current ? esc(`${p.current.no}. ${p.current.name}`) : '-'}</span></span>
       <span class="pj-flow hscroll">${line}</span></summary>
     <div class="pj-detail" data-pj-detail="${esc(k)}"></div></details>`;
+}
+
+// The stage picked in a project's detail: the one chosen last, else the current one, else the first.
+const pjStageOf = p => pjStage[pjKeyOf(p)] ?? p.current?.no ?? p.stages[0]?.no;
+// Mark the picked stage on the project's line and in its detail.
+function pjPick(key, no) {
+  pjStage[key] = no;
+  const row = [...document.querySelectorAll('details.pj-row')].find(x => x.dataset.pj === key);
+  row?.querySelectorAll('[data-st], [data-st-sec]').forEach(x => x.classList.toggle('sel', +(x.dataset.st || x.dataset.stSec) === no));
 }
 
 // The detail of one project into box: figures, then the stages with their steps, split with the open note.
@@ -6461,24 +6471,25 @@ async function pjDetail(box, key) {
   if (!p || p.error) { box.innerHTML = `<div class="empty">${esc(p?.error || '프로젝트를 불러오지 못했습니다.')}</div>`; return; }
   const pct = Math.round((p.ratio || 0) * 100), split = pjNote?.key === key;
   box.innerHTML = `<div class="kpis pj-kpis">
-      <div class="kpi"><span>완료 스텝</span><b>${p.counts.done}/${p.total}</b><small> · ${pct}%</small></div>
-      <div class="kpi"><span>현재 단계</span><b>${p.current ? esc(`${p.current.no}. ${p.current.name}`) : '-'}</b></div>
+      <div class="kpi pj-dup"><span>완료 스텝</span><b>${p.counts.done}/${p.total}</b><small> · ${pct}%</small></div>
+      <div class="kpi pj-dup"><span>현재 단계</span><b>${p.current ? esc(`${p.current.no}. ${p.current.name}`) : '-'}</b></div>
       <div class="kpi"><span>기간</span><b class="pj-sm">${pjPeriod(p.start, p.end)}</b></div>
       ${p.template ? `<div class="kpi"><span>템플릿</span><b class="pj-sm">${esc(p.template)}</b></div>` : ''}
     </div>
     <div class="prog pj-prog"><div style="width: ${pct}%; background: var(--done)"></div></div>
     <div class="pj-split${split ? ' on' : ''}">
-      <div class="pj-stages">${p.stages.map(st => `<section class="pj-stage" data-st-sec="${st.no}">
+      <div class="pj-stages">${p.stages.map(st => `<section class="pj-stage${pjStageOf(p) === st.no ? ' sel' : ''}" data-st-sec="${st.no}">
         <h4><span class="pj-st ${st.status}${p.current?.no === st.no ? ' cur' : ''}">${pjNode(st)}</span>${esc(st.name)} ${pjChip(st.status)}
           <span class="st">${st.total ? `${st.counts.done}/${st.total}` : ''}${st.start ? ` · ${pjPeriod(st.start, st.end)}` : ''}</span></h4>
         ${st.steps.length ? `<ul class="pj-steps">${st.steps.map(sp => `<li><button type="button" class="pj-step${split && pjNote.path === sp.path ? ' on' : ''}" data-pj-step="${esc(sp.path)}">
-            <i class="pj-sdot ${sp.status}"></i><span class="pj-stitle">${esc(sp.title)}</span><span class="st">${sp.date ? pjPeriod(sp.date, sp.endDate) : PJ_ST.scheduling}</span></button>
+            <i class="pj-sdot ${sp.status}"></i><span class="pj-stitle">${esc(sp.title)}</span><span class="st pj-long">${sp.date ? pjPeriod(sp.date, sp.endDate) : PJ_ST.scheduling}</span><span class="st pj-short">${sp.date ? pjPeriod(sp.date.slice(5), sp.endDate?.slice(5)).replace(' ~ ', '~') : '미정'}</span></button>
             <a class="act pj-obs" href="${pjObsidian(pjAbs(p, sp.path))}" aria-label="${esc(sp.title)} — Obsidian 에서 열기" data-tip="Obsidian 에서 열기">Obsidian</a></li>`).join('')}</ul>`
           : '<div class="st pj-none">스텝 없음</div>'}
       </section>`).join('')}</div>
       <div class="pj-note" data-pj-note></div>
     </div>`;
   if (split) pjShowNote(box, p);
+  if (pjScrollTo && box.dataset.pjDetail) pjPick(key, pjScrollTo);
   if (pjScrollTo) { box.querySelector(`[data-st-sec="${pjScrollTo}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); pjScrollTo = null; }
 }
 
@@ -6745,6 +6756,10 @@ function pjTimeline(box, d, vert) {
     const b = t.getBBox(), dx = Math.max(6 - b.x, 0) || Math.min(W - 6 - (b.x + b.width), 0);
     if (dx) t.querySelectorAll("tspan").forEach(s => s.setAttribute("x", +s.getAttribute("x") + dx)), t.setAttribute("x", +t.getAttribute("x") + dx);
   });
+  // a graph larger than its box (a phone) opens on today, where the work in progress is, with the trunk in the middle
+  const [tx, ty] = P(T(todaySlot), trunk);
+  box.scrollLeft = vert ? tx - box.clientWidth / 2 : tx - box.clientWidth * 0.7;
+  if (vert) box.scrollTop = ty - box.clientHeight * 0.7;
 }
 
 // Opening a project (프로젝트별): one at a time, like an accordion. Fires for the open attribute a redraw sets too.
@@ -6775,6 +6790,9 @@ function pjSelect(k, stage) {
   });
 }
 
+// On a phone the note takes the stages' place (and gives it back): bring the top of that place into view.
+const pjPhoneTop = box => { if (matchMedia('(max-width: 500px)').matches) box.querySelector('.pj-split')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+
 document.addEventListener('click', e => {
   if (route().v !== 'projects') return;
   const t = e.target, seg = t.closest('[data-pj-seg] button');
@@ -6789,6 +6807,7 @@ document.addEventListener('click', e => {
   if (node) {
     const row = node.closest('details.pj-row');
     pjScrollTo = +node.dataset.st;
+    pjPick(row.dataset.pj, pjScrollTo);
     if (row.open) { e.preventDefault(); row.querySelector(`[data-st-sec="${pjScrollTo}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); pjScrollTo = null; }
     return;
   }
@@ -6802,8 +6821,10 @@ document.addEventListener('click', e => {
     else pjNote = { key, path: step.dataset.pjStep };
     box.querySelector('.pj-split').classList.toggle('on', !!pjNote);
     if (pjNote) pjShowNote(box, pjFull[key]); else box.querySelectorAll('.pj-step.on').forEach(b => b.classList.remove('on'));
+    pjPhoneTop(box);
   } else if (t.closest('[data-pj-nclose]')) {
     pjNote = null; box.querySelector('.pj-split').classList.remove('on'); box.querySelectorAll('.pj-step.on').forEach(b => b.classList.remove('on'));
+    pjPhoneTop(box);
   }
 });
 // the graph's branches are role="button": Enter or Space picks one, as a click does
