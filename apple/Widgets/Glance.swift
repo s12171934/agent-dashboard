@@ -15,6 +15,7 @@ struct Glance: Decodable {
     struct Test: Decodable {
         let label: String?, kind: String?, phase: String?, total: Int?, done: Int?, passed: Int?, failed: Int?, eta_s: Double?
         let started_at: String?, updated_at: String?
+        var verdict: String? = nil  // warn|red|error: not a failing test (the server's judge.py)
         var updated: Date? { updated_at.flatMap(parseDate) }
         var running: Bool { phase == "running" }
         var fraction: Double? { total.flatMap { $0 > 0 ? Double(done ?? 0) / Double($0) : nil } }

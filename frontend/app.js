@@ -1989,6 +1989,11 @@ function foldAll(open) {
 // updated_at, finished_at, failures, log, detail}. run-tc's active rows and its last 24 h of history join in.
 const TEST_STALE_S = 300, TEST_RECENT_S = 86400;
 const TEST_PHASE = { building: '빌드', running: '실행 중', done: '통과', failed: '실패' };
+// How a finished run ended. The server's verdict (judge.py) sets apart what is no failing test: warn — every test passed,
+// the runner complained about something else (IDs with no test, suites that did not load); red — failing cases meant to
+// fail; error — no test ran (a usage error, a missing setting, a run stopped before testing). Only 'fail' counts as 실패.
+const TEST_END = { pass: ['done', '통과'], warn: ['wait', '통과 · 확인'], red: ['done', '의도한 빨강'], error: ['skip', '실행 오류'], fail: ['fail', '실패'] };
+const testEnd = t => TEST_END[t.verdict] && t.verdict !== 'pass' && t.verdict !== 'fail' ? t.verdict : t.phase === 'failed' || t.failed ? 'fail' : 'pass';
 const TEST_CHIPS_MAX = 40;  // more cases than this (a whole rspec suite) stay in the cases toggle only
 const testLive = t => t.phase !== 'done' && t.phase !== 'failed';
 const ageS = ts => ts ? (Date.now() - toDate(ts)) / 1000 : Infinity;
@@ -2016,8 +2021,8 @@ function testItems() {
     }
     for (const h of d.history || []) {
       if (ageS(h.finished_at || h.started_at) > TEST_RECENT_S) continue;
-      const bad = h.failed > 0 || /실패|중단/.test(h.outcome || '');
-      out.push({ src: 'run-tc', key: h.run, kind: 'e2e', label: `E2E ${(h.ids || []).join(', ')}`, owner: h.caller, phase: bad ? 'failed' : 'done',
+      const bad = h.failed > 0 || /실패|중단/.test(h.outcome || ''), halted = !h.failed && /중단/.test(h.outcome || '');
+      out.push({ src: 'run-tc', key: h.run, kind: 'e2e', label: `E2E ${(h.ids || []).join(', ')}`, owner: h.caller, phase: bad ? 'failed' : 'done', verdict: halted ? 'error' : null,
         detail: h.outcome, passed: h.passed, failed: h.failed, started_at: h.started_at, finished_at: h.finished_at, updated_at: h.finished_at, log: h.log,
         sess: e2eSessOf(h), failures: Object.entries(d.latest || {}).filter(([, l]) => l.run === h.run && l.status === 'failed').map(([tc, l]) => ({ id: tc, msg: l.error || '' })) });
     }
@@ -2025,11 +2030,11 @@ function testItems() {
   return out;
 }
 function testRow(t, inCard, allFails) {
-  const live = testLive(t), stale = live && ageS(t.updated_at) > TEST_STALE_S;
-  const cls = live ? (stale ? 'pending' : 'run') : t.phase === 'failed' || t.failed ? 'fail' : 'done';
+  const live = testLive(t), stale = live && ageS(t.updated_at) > TEST_STALE_S, end = live ? null : testEnd(t);
+  const cls = live ? (stale ? 'pending' : 'run') : TEST_END[end][0];
   const pct = t.total ? Math.min(100, (t.done || 0) / t.total * 100) : null;
   const bar = live && pct !== null ? `<span class="tbar" title="${t.done ?? 0}/${t.total}"><i style="width:${pct.toFixed(1)}%"></i>${t.failed ? `<i class="f" style="width:${Math.min(100, t.failed / t.total * 100).toFixed(2)}%"></i>` : ''}</span><span><b>${t.done ?? 0}/${t.total}</b> ${Math.floor(pct)}%</span>` : '';
-  const pf = t.passed != null || t.failed != null ? `<span>통과 ${t.passed ?? 0}${t.failed ? ` · <b style="color:var(--bad)">실패 ${t.failed}</b>` : ' · 실패 0'}${t.pending ? ` · 보류 ${t.pending}` : ''}</span>` : '';
+  const pf = t.passed != null || t.failed != null ? `<span>통과 ${t.passed ?? 0}${t.failed ? end === 'red' ? ` · 빨강 ${t.failed}` : ` · <b style="color:var(--bad)">실패 ${t.failed}</b>` : ' · 실패 0'}${t.pending ? ` · 보류 ${t.pending}` : ''}</span>` : '';
   const when = live ? `<span class="st">경과 ${dur(t.started_at)}${t.eta_s ? ` · 남은 약 ${dur(new Date(Date.now() - t.eta_s * 1000).toISOString())}` : ''}</span>`
     : `<span class="st">${ago(t.finished_at)}${t.started_at && t.finished_at ? ` · 소요 ${dur(t.started_at, t.finished_at)}` : ''}</span>`;
   const who = inCard ? '' : t.sess ? `<a href="#s=${encodeURIComponent(t.sess.path)}">${esc(cut(nameOf(t.sess), 34))}</a>` : t.owner ? `<span class="st">${esc(cut(t.owner, 34))}</span>` : '';
@@ -2043,7 +2048,7 @@ function testRow(t, inCard, allFails) {
   const byId = t.cases && new Set(t.cases.map(c => c.id)).size === t.cases.length;
   const chips = live && t.cases?.length > 1 && t.cases.length <= TEST_CHIPS_MAX ? `<div class="cbr e2e-tcs">${t.cases.map(c => { const k = caseCls(c.status);
     return `<span class="tkc ${k}" title="${esc(`${c.id || ''} ${c.title || ''}\n${E2E_TEST[c.status] || c.status || '?'}${c.ms ? ` · ${Math.round(c.ms / 1000)}s` : ''}${c.msg ? '\n' + c.msg : ''}`)}"><i>${TK_IC[k] || '·'}</i>${esc(cut(byId && c.id && !c.id.startsWith('#') ? c.id : c.title || c.id || '?', 28))}</span>`; }).join('')}</div>` : '';
-  return `<div class="trow"><div class="cbr" title="${esc(tip)}"><b class="e2e-tag">${esc((t.kind || 'test').toUpperCase())}</b><span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(live ? (t.src === 'run-tc' ? t.detail : TEST_PHASE[t.phase] || t.phase || '진행') : t.phase === 'failed' || t.failed ? '실패' : '통과')}</span>${inCard ? '' : `<b>${esc(cut(t.label || t.key, 60))}</b>`}${who}${bar}${pf}${when}${stale ? `<span class="tstale">⚠ ${dur(t.updated_at)}째 갱신 없음</span>` : ''}${live && t.detail && t.src === 'file' ? `<span class="st">${esc(cut(t.detail, 60))}</span>` : ''}${now}</div>${chips}${fails}</div>`;
+  return `<div class="trow"><div class="cbr" title="${esc(tip)}"><b class="e2e-tag">${esc((t.kind || 'test').toUpperCase())}</b><span class="tkc ${cls}"><i>${TK_IC[cls] || '·'}</i>${esc(live ? (t.src === 'run-tc' ? t.detail : TEST_PHASE[t.phase] || t.phase || '진행') : TEST_END[end][1])}</span>${inCard ? '' : `<b>${esc(cut(t.label || t.key, 60))}</b>`}${who}${bar}${pf}${when}${stale ? `<span class="tstale">⚠ ${dur(t.updated_at)}째 갱신 없음</span>` : ''}${live && t.detail && t.src === 'file' ? `<span class="st">${esc(cut(t.detail, 60))}</span>` : ''}${t.verdict && end !== 'pass' && end !== 'fail' && t.detail ? `<span class="st" title="${esc(t.detail)}">${esc(cut(t.detail, 90))}</span>` : ''}${now}</div>${chips}${fails}</div>`;
 }
 // The cases toggle under a run: each case's code, what it checks and how it ended (failed first). Open ones stay open
 // across re-renders (caseOpen, by run id).
@@ -2100,10 +2105,11 @@ function testsTabHtml(runs, many) {
 }
 
 // ---------- 「테스트」 tab: running tests plus every finished run the server kept (/api/tests, 30 days) ----------
-const TEST_SPANS = { 1: '24시간', 7: '7일', 30: '30일' }, TEST_RESULTS = { all: '전체', failed: '실패', done: '통과' };
+const TEST_SPANS = { 1: '24시간', 7: '7일', 30: '30일' }, TEST_RESULTS = { all: '전체', failed: '실패', done: '통과', other: '확인·빨강·실행 오류' };
 let tst = { span: 7, result: 'all', kind: 'all', q: '' }, testsMounted = false, testHist = { at: undefined, runs: [] };
 try { Object.assign(tst, JSON.parse(localStorage.getItem('adash.tests') || '{}')); } catch {}
-const testFailed = t => t.phase === 'failed' || t.failed > 0;
+const testFailed = t => testEnd(t) === 'fail';
+const testOther = t => !['pass', 'fail'].includes(testEnd(t));
 const tms = ts => ts ? +toDate(ts) || 0 : 0;  // sources mix "Z" and "+09:00": compare instants, not strings
 // The archive is fetched again only when a server reports a newer history_at; one request at a time.
 let testHistReq = null;
@@ -2147,9 +2153,11 @@ async function renderTests() {
     && (!q || [t.label, t.key, t.owner, t.detail, t.sess && nameOf(t.sess), ...(t.failures || []).map(f => f.id + ' ' + f.msg), ...(t.cases || []).map(c => c.id + ' ' + c.title)].some(x => x && String(x).toLowerCase().includes(q)));
   const live = all.filter(t => testLive(t) && hit(t) && tst.result === 'all').sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
   const done = all.filter(t => !testLive(t) && ageS(t.finished_at) <= tst.span * 86400 && hit(t)).sort((a, b) => tms(b.finished_at) - tms(a.finished_at));
-  const nf = done.filter(testFailed).length, shown = done.filter(t => tst.result === 'all' || (tst.result === 'failed') === testFailed(t));
+  const nf = done.filter(testFailed).length, no = done.filter(testOther).length, nerr = done.filter(t => testEnd(t) === 'error').length;
+  const shown = done.filter(t => tst.result === 'all' || (tst.result === 'failed' ? testFailed(t) : tst.result === 'other' ? testOther(t) : testEnd(t) === 'pass'));
   const days = {}; shown.forEach(t => (days[dayKey(t.finished_at)] ||= []).push(t));
-  const sum = done.length ? `완료 ${done.length}회 · 통과 ${done.length - nf} · ${nf ? `<b style="color:var(--bad)">실패 ${nf}</b>` : '실패 0'} · 통과율 ${Math.round((done.length - nf) / done.length * 100)}%` : '완료 기록 없음';
+  const other = no ? ` · 확인·빨강·실행 오류 ${no}` : '', ran = done.length - nerr;
+  const sum = done.length ? `완료 ${done.length}회 · 통과 ${done.length - nf - no} · ${nf ? `<b style="color:var(--bad)">실패 ${nf}</b>` : '실패 0'}${other}${ran ? ` · 통과율 ${Math.round((ran - nf) / ran * 100)}%` : ''}` : '완료 기록 없음';
   $('#tests-body').innerHTML = `<div class="sec-h"><h2>테스트 기록</h2><span>최근 ${TEST_SPANS[tst.span]} · ${sum}${live.length ? ` · 실행 중 ${live.length}` : ''}</span></div>
     ${live.length ? `<div class="sec-h"><h2>실행 중 ${live.length}</h2></div><div class="tests">${live.map(t => testRow(t, false, true)).join('')}</div>` : ''}
     ${Object.entries(days).map(([k, ts]) => `<div class="sec-h"><h2>${dayLabel(k)}</h2><span>${ts.length}회${ts.some(testFailed) ? ` · 실패 ${ts.filter(testFailed).length}` : ''}</span></div>
@@ -2223,9 +2231,9 @@ const obsLink = p => {
 const BASE_SRC = { PR: 'PR 의 base', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
 function wtTest(x) {
   if (!x) return '';
-  const live = x.phase !== 'done' && x.phase !== 'failed', bad = x.phase === 'failed' || x.failed > 0 || /[1-9]\d* failures?/.test(x.detail || '');
-  const cls = live ? 'run' : bad ? 'fail' : 'done';
-  return `<span class="tkc ${cls}" title="${esc([x.label, x.detail].filter(Boolean).join(' · '))}"><i>${TK_IC[cls]}</i>${esc((x.kind || '테스트').toUpperCase())} ${live ? '실행 중' : bad ? '실패' : '통과'} · ${ago(x.finished_at || x.updated_at || x.started_at)}</span>`;
+  const live = x.phase !== 'done' && x.phase !== 'failed', end = live ? null : testEnd(x) === 'pass' && /[1-9]\d* failures?/.test(x.detail || '') ? 'fail' : testEnd(x);
+  const cls = live ? 'run' : TEST_END[end][0];
+  return `<span class="tkc ${cls}" title="${esc([x.label, x.detail].filter(Boolean).join(' · '))}"><i>${TK_IC[cls]}</i>${esc((x.kind || '테스트').toUpperCase())} ${live ? '실행 중' : TEST_END[end][1]} · ${ago(x.finished_at || x.updated_at || x.started_at)}</span>`;
 }
 // 「PR 후 머지」: the server hands a 진행 중 ticket to a supervised Orca worker (Task title "<key> 반출").
 const WT_SHIP = { launching: ['run', '반출 시작 중'], pending: ['run', '반출 대기'], dispatched: ['run', '반출 중'], blocked: ['wait', '반출 막힘'],
@@ -7327,12 +7335,12 @@ const HUB = [
       list: n => hubList(cnt.flatMap(x => x.xs.map(t => [t.key, `${x.l} · ${QA_ST[t.qa.stage] || t.qa.stage}`])).slice(0, n)) }; } },
   { id: 'tests', name: '테스트', who: 'toru', staff: '테스터', room: '시험실', hi: '테스트 결과 확인하실래요?', hue: 160, wall: ['flasks', 'checklist'], prop: 'lab', val: () => {
     const all = testItems(), live = all.filter(testLive).length, fin = all.filter(t => !testLive(t)).sort((a, b) => (a.finished_at || '').localeCompare(b.finished_at || ''));
-    const bad = fin.filter(t => t.phase === 'failed' || t.failed).length;
+    const bad = fin.filter(testFailed).length;
     const nm = t => cut(t.label || t.key, 30);
     return { v: live ? `실행 중 ${live}` : `실패 ${bad}`, sub: `24시간 실행 ${fin.length}${live ? ` · 실패 ${bad}` : ''}`,
-      from: hubFrom(['실패', fin.filter(t => t.phase === 'failed' || t.failed).reverse().map(nm)], ['실행', all.filter(testLive).map(nm)]), tone: bad ? 'bad' : live ? 'hot' : '', live: all.length > 0,
-      chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = t.phase === 'failed' || t.failed; return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : '통과'} · ${ago(t.finished_at)}` }; }), 'cap'),
-      list: n => hubList(fin.slice(-n).reverse().map(t => [nm(t), `${t.phase === 'failed' || t.failed ? '실패' : '통과'} · ${ago(t.finished_at)}`])) }; } },
+      from: hubFrom(['실패', fin.filter(testFailed).reverse().map(nm)], ['실행', all.filter(testLive).map(nm)]), tone: bad ? 'bad' : live ? 'hot' : '', live: all.length > 0,
+      chart: z => hubCols(fin.slice(-HUB_N[z]).map(t => { const f = testFailed(t); return { f: f ? 1 : .55, c: f ? 'bad' : 'ok', t: `${cut(t.label || t.key, 40)} · ${f ? `실패 ${t.failed || ''}` : TEST_END[testEnd(t)][1]} · ${ago(t.finished_at)}` }; }), 'cap'),
+      list: n => hubList(fin.slice(-n).reverse().map(t => [nm(t), `${TEST_END[testEnd(t)][1]} · ${ago(t.finished_at)}`])) }; } },
   { id: 'compare', name: '비교 · 비용', who: 'midori', staff: '회계', room: '회계실', hi: '오늘 비용 정리해 뒀어요', hue: 45, wall: ['coins', 'clock'], prop: 'safe', val: () => {
     const hs = hubCostHours(), sum = hs.reduce((a, x) => a + x, 0), max = Math.max(...hs, 1e-9);
     return { v: usd(sum), sub: '오늘 0시부터', live: sum > 0,
@@ -7404,7 +7412,7 @@ function hubEvents() {
   }
   for (const t of testItems()) { const nm = t.label || t.key;
     if (testLive(t)) add(msOf(t.started_at), `${nm} 실행 시작`, '테스트', 'tests');
-    else add(msOf(t.finished_at), `${nm} ${t.phase === 'failed' || t.failed ? `실패${t.failed ? ' ' + t.failed : ''}` : '통과'}`, '테스트', 'tests'); }
+    else add(msOf(t.finished_at), `${nm} ${testFailed(t) ? `실패${t.failed ? ' ' + t.failed : ''}` : TEST_END[testEnd(t)][1]}`, '테스트', 'tests'); }
   for (const q of state.decisions?.pending || []) add(q.created_at * 1000, `결정 질문 — ${q.questions?.[0]?.header || q.questions?.[0]?.question || ''}`, '결정 대기', 'decide');
   for (const set of wtData.sets || []) for (const t of set.tickets) for (const [k, at] of Object.entries(t.qa?.at || {})) add(new Date(at).getTime(), `${t.key} ${QA_ST[k] || k}`, '워크트리 리뷰', 'worktrees');
   for (const m of talk.data?.messages || []) if (talk.types.has(m.type) && m.created_at)

@@ -10,7 +10,7 @@ def ticket_test(key):
     runs = [r for r in list(test_history.values()) + list(test_progress.get("files") or [])
             if any(key in str(r.get(f) or "") for f in ("key", "label", "owner"))]
     runs.sort(key=lambda r: str(r.get("finished_at") or r.get("updated_at") or r.get("started_at") or ""))
-    return {k: runs[-1].get(k) for k in ("label", "kind", "phase", "detail", "passed", "failed", "pending",
+    return {k: runs[-1].get(k) for k in ("label", "kind", "phase", "verdict", "detail", "passed", "failed", "pending",
                                           "started_at", "finished_at", "updated_at")} if runs else None
 
 

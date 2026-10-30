@@ -297,9 +297,13 @@ struct TestsView: View {
 private struct TestRow: View {
     let t: Glance.Test
     let compact: Bool
-    private var tint: Color { t.running ? .purple : (t.failed ?? 0) > 0 || t.phase == "failed" ? .red : .green }
+    private var tint: Color {
+        t.running ? .purple : t.verdict == "warn" ? .orange : t.verdict == "error" ? .gray : t.verdict == "red" ? .green
+            : (t.failed ?? 0) > 0 || t.phase == "failed" ? .red : .green
+    }
     private var status: String {
         if t.running { return t.total.map { "\(t.done ?? 0)/\($0)" } ?? "실행 중" }
+        if let v = ["warn": "통과 · 확인", "red": "의도한 빨강", "error": "실행 오류"][t.verdict ?? ""] { return v }
         if (t.failed ?? 0) > 0 { return "실패 \(t.failed!)" }
         return t.phase == "failed" ? "실패" : "통과" + (t.passed.map { $0 > 0 ? " \($0)" : "" } ?? "")
     }
