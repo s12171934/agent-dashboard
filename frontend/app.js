@@ -4177,8 +4177,11 @@ function staffMv(id, tone, u) {
 }
 const STAFF_EMO = { dec: '!', stalled: '!!', idle: 'z', done: '♪' };
 // A bubble's ring (r.pie): the figure's parts as a small doughnut from twelve o'clock, clockwise, each part in its own
-// colour; a gauge is one part and the rest left to the faint track. Numbers in the bubble's words stand out (staffNum).
-const staffPie = parts => { const on = (parts || []).filter(p => p.n > 0), sum = on.reduce((a, p) => a + p.n, 0); let o = 0;
+// colour; a gauge is one part and the rest left to the faint track. Only a figure that is a share has one (the agents'
+// states, the QA tickets' stages, the tests' results, a limit, the projects' progress) — a bare count or a sum does
+// not, nor one with nothing to share out. Numbers in the bubble's words stand out (staffNum).
+const staffPie = parts => { const on = (parts || []).filter(p => p.n > 0 && p.c !== 'transparent'), sum = (parts || []).reduce((a, p) => a + Math.max(0, p.n), 0); let o = 0;
+  if (!on.length) return '';
   return `<svg class="sb-pie" viewBox="0 0 36 36" width="34" height="34" aria-hidden="true"><circle class="sb-track" cx="18" cy="18" r="15.915"/>${on.map(p => {
     const f = p.n / sum * 100, c = `<circle cx="18" cy="18" r="15.915" stroke="${p.c}" stroke-dasharray="${f.toFixed(2)} ${(100 - f).toFixed(2)}" stroke-dashoffset="${(25 - o).toFixed(2)}"/>`; o += f; return c; }).join('')}</svg>`; };
 const staffNum = t => esc(t).replace(/\$?\d[\d.,]*(?:%|개|명)?/g, '<em>$&</em>');
@@ -7313,7 +7316,6 @@ const HUB = [
     const ages = qs.map(q => ({ q, a: Date.now() / 1000 - q.created_at })), max = Math.max(...ages.map(x => x.a), 1);
     const mine = hmMine(), from = hubFrom(['결정', mine.filter(x => x.kind === 'dec').map(hmName)], ['보고', mine.filter(x => x.kind === 'ask').map(hmName)]);
     return { v: n ? `결정 ${n}` : '없음', sub: [n && `가장 오래 ${human(max)}`, ask && `보고 확인 ${ask}`, unread && `메일함 ${unread}`].filter(Boolean).join(' · ') || '기다리는 질문 없음', from, tone: n ? 'hot' : '', live: n + ask + unread > 0,
-      pie: [{ n, c: 'var(--warn)' }, { n: ask, c: 'var(--accent)' }, { n: unread, c: 'var(--idle)' }],
       chart: z => hubCols(ages.slice(0, HUB_N[z]).map(x => ({ f: x.a / max, c: 'cur', t: `${cut(x.q.questions?.[0]?.question || x.q.questions?.[0]?.header || '', 60)} · ${human(x.a)} 기다림` })), 'cap'),
       list: n => hubList([...ages].sort((x, y) => y.a - x.a).slice(0, n).map(x => [cut(x.q.questions?.[0]?.header || x.q.questions?.[0]?.question || '질문', 50), `${human(x.a)} 기다림`])) }; } },
   { id: 'agents', name: '에이전트', who: 'daichi', staff: '매니저', room: '관리실', hi: '에이전트들 상황 보고드리죠', hue: 220, wall: ['kanban', 'monitors'], prop: 'plant', val: () => {
@@ -7355,10 +7357,7 @@ const HUB = [
       list: n => hubList(fin.slice(-n).reverse().map(t => [nm(t), `${TEST_END[testEnd(t)][1]} · ${ago(t.finished_at)}`])) }; } },
   { id: 'compare', name: '비교 · 비용', who: 'midori', staff: '회계', room: '회계실', hi: '오늘 비용 정리해 뒀어요', hue: 45, wall: ['coins', 'clock'], prop: 'safe', val: () => {
     const hs = hubCostHours(), sum = hs.reduce((a, x) => a + x, 0), max = Math.max(...hs, 1e-9);
-    // the bubble's ring: today's cost by model, in the models' colours
-    const day0 = new Date().setHours(0, 0, 0, 0), byM = {};
-    for (const s of state.sessions) for (const [k, v] of Object.entries(s.slots || {})) if (+k * 300e3 >= day0) byM[modelKey(s.model)] = (byM[modelKey(s.model)] || 0) + v[4];
-    return { v: usd(sum), sub: '오늘 0시부터', live: sum > 0, pie: Object.entries(byM).map(([m, n]) => ({ n, c: `var(--m-${m})` })),
+    return { v: usd(sum), sub: '오늘 0시부터', live: sum > 0,
       chart: () => hubCols(hs.map((x, i) => ({ f: x / max, c: i === hs.length - 1 ? 'cur' : '', t: `${i}시 ${usd(x)}` }))),
       // today's dearest sessions (their subagents' records count apart, as on 비교)
       list: n => { const day0 = new Date().setHours(0, 0, 0, 0);
@@ -7374,9 +7373,7 @@ const HUB = [
       chart: z => hubMeters(lim.sort((x, y) => y.b.percent - x.b.percent).slice(0, hubRows(z)).map(({ a, b }) => ({ l: `${(a.email || '').split('@')[0]} · ${b.name || ''}`, f: b.percent / 100, v: `${b.percent}%`, c: b.percent >= 90 ? 'ctx-bad' : b.percent >= 70 ? 'ctx-warn' : '' }))) }; } },
   { id: 'talk', name: '상호작용', who: 'fumi', staff: '기록원', room: '기록실', hi: '누가 누구와 일했는지 적어 뒀어요', hue: 30, wall: ['timeline', 'clock'], prop: 'boxes', val: () => {
     const on = families().fams.filter(f => f.members.some(hmRecent)), ws = f => f.members.filter(m => m !== f.coord);
-    const wAll = on.flatMap(ws), wc = k => wAll.filter(m => k.includes(status(m))).length;
-    return { v: `묶음 ${on.length}`, sub: `워커 ${wAll.length}명 · 최근 1시간`, live: on.length > 0,
-      pie: [[['run', 'bg'], 'var(--ok)'], [['wait'], 'var(--warn)'], [['stalled'], 'var(--bad)'], [['done', 'idle'], 'var(--done)']].map(([k, c]) => ({ n: wc(k), c })),
+    return { v: `묶음 ${on.length}`, sub: `워커 ${on.reduce((a, f) => a + ws(f).length, 0)}명 · 최근 1시간`, live: on.length > 0,
       // in words: who leads each team and how its workers stand
       chart: z => on.slice(0, hubRows(z)).map(f => { const c = k => ws(f).filter(m => k.includes(status(m))).length;
         return `<div class="hub-sum"><b>${esc(cut(f.coord ? nameOf(f.coord) : '묶음', 40))}</b><span>워커 ${ws(f).length}${[['실행', ['run', 'bg']], ['대기', ['wait']], ['응답 없음', ['stalled']], ['완료', ['done']]].map(([l, k]) => c(k) ? ` · ${l} ${c(k)}` : '').join('')}</span></div>`; }).join('') }; } },
@@ -7393,7 +7390,7 @@ const HUB = [
     if (d === undefined) return { v: '…', sub: '불러오는 중' };
     if (!d?.enabled) return { v: '—', sub: '설계 폴더 없음' };
     const top = [...d.docs].filter(x => x.sessions).sort((a, b) => b.sessions - a.sessions);
-    return { v: `${d.docs.length}개`, sub: `세션이 읽은 문서 ${top.length}`, pie: [{ n: top.length, c: 'var(--accent)' }, { n: d.docs.length - top.length, c: 'transparent' }],
+    return { v: `${d.docs.length}개`, sub: `세션이 읽은 문서 ${top.length}`,
       // the most read documents, each a link straight to it on 설계문서
       chart: z => top.slice(0, { S: 3, M: 4, L: 7 }[z] + (HUB_TALL.matches ? 3 : 0)).map(x => `<a class="hub-doc" href="#dz=${encodeURIComponent(x.server + '|' + x.key)}"><span>${esc(cut(x.title || x.key.split('/').pop(), 44))}<small>${esc(x.key.split('/').slice(-2, -1)[0] || '')}</small></span><em>세션 ${x.sessions}</em></a>`).join('') }; } },
 ];
