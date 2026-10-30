@@ -63,7 +63,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         # Every icon set in the catalog goes in as an alternate icon (the 앱 아이콘 choices, tools/make-icons).
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
-  # The home and lock screen widgets (결정 대기, 에이전트, 테스트): they read the server the app shares through a keychain group (Shared/AppGroup.swift).
+  # The home and lock screen widgets (결정 대기, 에이전트, 테스트, 사용량, 작업 계획, 프로젝트, 흐름 점검): they read the server the app shares through a keychain group (Shared/AppGroup.swift).
   AgentDashboard-Widgets:
     type: app-extension
     platform: iOS
