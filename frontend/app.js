@@ -72,13 +72,14 @@ $('#theme-edit').onclick = () => { $('#theme-panel').hidden = !$('#theme-panel')
 // the theme.
 function iconPanel() {
   const el = $('#icon-panel'), cur = appIcon(), ios = /iP(hone|ad|od)/.test(navigator.userAgent), app = window.adashApp;
-  const faces = Object.keys(CH_ART).filter(w => !chHidden.has(w)).map(w => ({ id: `face-${w}`, name: CH_INFO[w]?.[0] || w }));
+  // the iPhone app switches only to icons built into it: no faces there
+  const faces = app === 'ios' ? [] : Object.keys(CH_ART).filter(w => !chHidden.has(w)).map(w => ({ id: `face-${w}`, name: CH_INFO[w]?.[0] || w }));
   const label = id => (x => x ? `${x.concept} · ${x.colour}` : `캐릭터 · ${faces.find(f => f.id === id)?.name || id.slice(5)}`)(APP_ICONS.find(x => x.id === id));
   const btn = id => `<button class="ip-icon${id === cur ? ' on' : ''}" data-id="${id}" title="${esc(label(id))}" aria-label="${esc(label(id))}" aria-pressed="${id === cur}"><img src="${appIconSrc(id)}" alt="" loading="lazy"></button>`;
   el.innerHTML = `<div class="pop-h"><b>앱 아이콘</b><span class="st">이 기기에만 저장</span><button class="act" data-ip="close">닫기</button></div>
     <div class="ip-grid">${APP_ICONS.map(x => btn(x.id)).join('')}</div>
-    <div class="ip-sub">캐릭터 얼굴 <small>SD 픽셀</small></div>
-    <div class="ip-grid ip-faces">${faces.map(f => btn(f.id)).join('')}</div>
+    ${faces.length ? `<div class="ip-sub">캐릭터 얼굴 <small>SD 픽셀</small></div>
+    <div class="ip-grid ip-faces">${faces.map(f => btn(f.id)).join('')}</div>` : ''}
     <div class="ip-name">${esc(label(cur))}</div>
     <p class="ip-help">${app === 'macos' ? '맥 앱의 Dock 아이콘이 바로 바뀝니다. 앱을 닫아 둔 동안 Finder·Dock 에는 기본 아이콘이 보입니다.'
       : app === 'ios' ? '홈 화면 아이콘이 바로 바뀝니다(바뀌었다는 안내가 한 번 뜹니다). 캐릭터 얼굴은 앱에 들어 있지 않아 고를 수 없습니다.'

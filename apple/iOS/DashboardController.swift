@@ -45,10 +45,15 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     }
     var onServer: ((URL) -> Void)?
     private var loaded = false, waiting: String?
+    private var wantedIcon: String??  // the 앱 아이콘 choice not yet on the home screen (.some(nil): the default)
+    private var iconBusy = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Self.pageBackground
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.switchIcon() }
+        }
         let conf = WKWebViewConfiguration()
         relay.owner = self
         PageBridge.install(on: conf.userContentController, platform: "ios", handler: relay)
@@ -269,10 +274,24 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         if let i = parts.firstIndex(of: "app"), i > 0, parts[i - 1] == "icons", i + 1 < parts.count { name = parts[i + 1] }
         else if parts.suffix(2) == ["icons", "icon-512.png"] { name = nil }
         else { return }
+        wantedIcon = .some(name)
+        switchIcon()
+    }
+
+    // iOS turns a switch down while the app is not active or another is under way (the page asks on load, as the app
+    // comes up, and again once its DOM is in): one at a time, while active, and again on coming back until it holds.
+    private func switchIcon() {
         let app = UIApplication.shared
-        guard app.supportsAlternateIcons, app.alternateIconName != name else { return }
-        app.setAlternateIconName(name) { err in
-            if let err { log.error("icon \(name ?? "default", privacy: .public): \(err, privacy: .public)") }
+        guard let name = wantedIcon, !iconBusy, app.applicationState == .active else { return }
+        guard app.supportsAlternateIcons, app.alternateIconName != name else { wantedIcon = nil; return }
+        iconBusy = true
+        app.setAlternateIconName(name) { [weak self] err in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.iconBusy = false
+                if let err { log.error("icon \(name ?? "default", privacy: .public): \(err, privacy: .public)"); return }  // next time active
+                if self.wantedIcon == .some(name) { self.wantedIcon = nil } else { self.switchIcon() }  // chosen again meanwhile
+            }
         }
     }
 
