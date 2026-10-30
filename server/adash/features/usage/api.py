@@ -4,10 +4,11 @@ import json
 import os
 import threading
 from datetime import datetime, timezone
+from urllib.parse import parse_qs
 
-from adash.core.config import HERE
+from adash.features.usage.report import BY, LOG, load, tally
 
-LOG = os.path.join(HERE, "usage.jsonl")
+PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 _write = threading.Lock()
 ENV_KEYS = ("app", "form", "pointer", "dev")
 
@@ -42,3 +43,29 @@ def post_usage(h, url):
         with _write, open(LOG, "a", encoding="utf-8") as f:
             f.write("\n".join(rows) + "\n")
     return h.send_json({"ok": True, "n": len(rows)})
+
+
+def get_report(h, url):
+    # ?days=30&by=both|app|form&top=15&rare=1 — the tallies server/ausage prints, plus the latest events (recent).
+    q = {k: v[0] for k, v in parse_qs(url.query).items()}
+    try:
+        days, top, rare = int(q.get("days", 30)), int(q.get("top", 15)), int(q.get("rare", 1))
+        assert 0 <= days <= 3650 and 1 <= top <= 200 and 0 <= rare <= 100 and q.get("by", "both") in BY
+    except (ValueError, AssertionError):
+        return h.send_json({"error": "bad request"}, 400)
+    rows = load(days, q.get("by", "both"))
+    return h.send_json({"log": rows is not None, **tally(rows or [], top, rare, recent=40)})
+
+
+def get_page(h, url):
+    # The report as a page, opened on the server's own address (no build step, no dashboard needed).
+    with open(PAGE, "rb") as f:
+        body = f.read()
+    h.send_response(200)
+    h.send_header("Content-Type", "text/html; charset=utf-8")
+    h.send_header("Content-Length", str(len(body)))
+    h.send_header("Cache-Control", "no-cache")
+    h.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'")
+    h.send_header("X-Content-Type-Options", "nosniff")
+    h.end_headers()
+    h.wfile.write(body)

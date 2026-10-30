@@ -13,6 +13,8 @@ environment it runs in; the server appends them to usage.jsonl (adash/features/u
   --rare   a control used at most this many times in an environment counts as rarely used there (default 1)
   --json   the tallies as JSON instead of tables
 
+The same tallies, drawn as a page: /usage on the metrics server (http://127.0.0.1:8787/usage).
+
 Sections: environments (devices, clicks, screen time), screens (opens and share of screen time per environment, every
 screen listed even if never opened), most used controls per environment, and the rarely used ones: controls used in
 other environments but rarely or never in this one, and controls rarely used anywhere.
@@ -22,14 +24,10 @@ import json
 import os
 import sys
 import unicodedata
-from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-LOG = os.path.join(HERE, "usage.jsonl")
-# Every screen route() knows (frontend/app.js), so a screen nobody opens still shows up as 0.
-VIEWS = ["home", "agents", "session", "run", "driver", "compare", "talk", "tests", "worktrees", "trees", "decide",
-         "chars", "usage", "projects", "designs"]
+sys.path.insert(0, HERE)
+from adash.features.usage.report import BY, LOG, load, tally  # noqa: E402  (the server's package, next to this file)
 
 
 def width(s):
@@ -58,68 +56,17 @@ def hms(secs):
     return f"{h}h{m:02d}m" if h else f"{m}m"
 
 
-def load(days, by):
-    if not os.path.exists(LOG):
-        sys.exit(f"ausage: {LOG} 가 없습니다 — 페이지에서 사용 기록이 아직 오지 않았습니다")
-    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
-    rows = []
-    with open(LOG, encoding="utf-8") as f:
-        for line in f:
-            try:
-                r = json.loads(line)
-                if since and datetime.fromisoformat(r["ts"]) < since:
-                    continue
-            except (ValueError, KeyError):
-                continue
-            r["env"] = r["app"] if by == "app" else r["form"] if by == "form" else f"{r['app']}/{r['form']}"
-            rows.append(r)
-    return rows
-
-
-def tally(rows, top, rare):
-    envs = sorted({r["env"] for r in rows})
-    clicks = {e: Counter() for e in envs}
-    opens = {e: Counter() for e in envs}
-    stay = {e: Counter() for e in envs}
-    devs = defaultdict(set)
-    for r in rows:
-        e = r["env"]
-        if r.get("dev"):
-            devs[e].add(r["dev"])
-        if r["feat"] == "open":
-            opens[e][r["view"]] += 1
-        elif r["feat"] == "stay":
-            stay[e][r["view"]] += r.get("secs", 0)
-        else:
-            clicks[e][f"{r['view']} · {r['feat']}"] += 1
-    every = Counter()
-    for c in clicks.values():
-        every.update(c)
-    views = VIEWS + sorted({v for o in (*opens.values(), *stay.values()) for v in o} - set(VIEWS))
-    return {
-        "envs": [{"env": e, "devices": len(devs[e]), "clicks": sum(clicks[e].values()),
-                  "screen_secs": sum(stay[e].values())} for e in envs],
-        "screens": [{"view": v, **{e: {"opens": opens[e][v], "secs": stay[e][v],
-                                       "share": stay[e][v] / (sum(stay[e].values()) or 1)} for e in envs}}
-                    for v in views],
-        "top": {e: clicks[e].most_common(top) for e in envs},
-        # used somewhere else at least 3 times, here at most `rare`
-        "rare_here": {e: sorted(((f, clicks[e][f], every[f] - clicks[e][f]) for f in every
-                                 if clicks[e][f] <= rare and every[f] - clicks[e][f] >= 3), key=lambda x: -x[2])
-                      for e in envs},
-        "rare_everywhere": sorted((f, n) for f, n in every.items() if n <= rare),
-    }
-
-
 def main():
     ap = argparse.ArgumentParser(description="dashboard feature usage per environment")
     ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--by", choices=("app", "form", "both"), default="both")
+    ap.add_argument("--by", choices=BY, default="both")
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--rare", type=int, default=1)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     rows = load(a.days, a.by)
+    if rows is None:
+        sys.exit(f"ausage: {LOG} 가 없습니다 — 페이지에서 사용 기록이 아직 오지 않았습니다")
     if not rows:
         sys.exit("ausage: 그 기간에 기록이 없습니다")
     t = tally(rows, a.top, a.rare)
@@ -137,7 +84,7 @@ def main():
         total = next(x["clicks"] for x in t["envs"] if x["env"] == e) or 1
         table(["기능 (화면 · 컨트롤)", "횟수", "비율"], [[f, n, f"{n / total:.0%}"] for f, n in t["top"][e]] or [["(클릭 없음)", "", ""]])
     print(f"\n## 다른 환경에선 쓰는데 여기선 거의 안 쓰는 기능 (여기 ≤{a.rare}회, 다른 곳 ≥3회)\n")
-    rows = [[e, f, n, m] for e in envs for f, n, m in t["rare_here"][e][:a.top]]
+    rows = [[e, f, n, m] for e in envs for f, n, m in t["rare_here"][e]]
     table(["환경", "기능", "여기", "다른 곳"], rows or [["-", "(없음)", "", ""]], right_from=2)
     print(f"\n## 모든 환경에서 드문 기능 (합계 ≤{a.rare}회)\n")
     for f, n in t["rare_everywhere"]:

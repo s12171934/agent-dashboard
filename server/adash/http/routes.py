@@ -47,6 +47,8 @@ GET = {
     "/api/chars/jobs": chars.get_jobs,
     "/api/chars/file": chars.get_file,
     "/api/worktrees": worktrees.get_worktrees,
+    "/api/usage/report": usage.get_report,
+    "/usage": usage.get_page,
 }
 
 # The endpoint reads its action from the last path segment where one function serves several paths.
