@@ -2,13 +2,14 @@ import AppKit
 
 // Writes the apps' icons from the page's PWA icons (frontend/icons):
 // - macOS: the default icon in macOS's shape (MacIcon.swift), at every size the app icon set takes.
-// - iOS: the default as AppIcon and every concept × colour (icons/app/<id>/) as an alternate icon named <id>, so the
-//   page's 앱 아이콘 choice can switch the home screen icon. Full-bleed and opaque: iOS cuts the shape itself.
+// - iOS: the default as AppIcon and every concept × colour (icons/app/<id>/) as an alternate icon named <id>, and every
+//   character with drawn icon art (chars/<who>-icon-art.webp, scripts/char-icon-art.sh) as face-<who>, so the page's
+//   앱 아이콘 choice can switch the home screen icon. Full-bleed and opaque: iOS cuts the shape itself.
 // Run from the repository root:
 //   apple/build.sh icons   (build.sh also runs it when the icon sets are missing)
 let fm = FileManager.default
 func picture(_ dir: String) -> NSImage {
-    NSImage(contentsOfFile: dir + "/icon.svg") ?? NSImage(contentsOfFile: dir + "/icon-512.png")!
+    NSImage(contentsOfFile: dir + "/icon.svg") ?? NSImage(contentsOfFile: dir + "/icon-512.png") ?? NSImage(contentsOfFile: dir)!
 }
 func png(_ img: NSImage, _ px: Int, opaque: Bool, to path: String) {
     let cg = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -52,4 +53,7 @@ func iosSet(_ name: String, _ dir: String) {
 iosSet("AppIcon", "frontend/icons")
 for id in try! fm.contentsOfDirectory(atPath: "frontend/icons/app").sorted() where !id.hasPrefix(".") {
     iosSet(id, "frontend/icons/app/\(id)")
+}
+for f in try! fm.contentsOfDirectory(atPath: "frontend/chars").sorted() where f.hasSuffix("-icon-art.webp") {
+    iosSet("face-" + f.dropLast("-icon-art.webp".count), "frontend/chars/" + f)
 }
