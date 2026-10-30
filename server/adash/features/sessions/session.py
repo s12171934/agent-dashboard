@@ -76,6 +76,7 @@ class Session:
         self.plan_events = {}
         self.prompts = []  # [(ts, text)] instruction timeline, to bind each plan to the instruction it answers
         self._plans, self._plans_n = [], -1
+        self._usage, self._usage_key = None, None  # summary's turn-derived figures, see usage_figures
         self.last_prompt = None
         self.last_prompt_ts = None
         self.reads = DesignReads(path, kind)  # design-document reads, for the 「설계문서」 tab
@@ -470,8 +471,8 @@ class Session:
     # ---- views ----
     def summary(self):
         cur_task, task_ids = self.orca_tasks()
-        ctxs = [t["ctx"] for t in self.turns]
-        if self.kind == "claude" and ctxs and max(ctxs) > CLAUDE_CTX_WINDOW:
+        usage = self.usage_figures()
+        if self.kind == "claude" and usage["ctx_peak"] > CLAUDE_CTX_WINDOW:
             self.ctx_window = 1_000_000  # past 200k means a 1M-context model
             if self.model:
                 LONG_CTX_MODELS.add(self.model)
@@ -498,6 +499,26 @@ class Session:
         aliases = []
         if self.role != "worker" and self.own_handle:
             aliases = [h for h in self.self_handles + [self.pane_handle()] if h and h != self.own_handle]
+        return {
+            "role": self.role, "coord_handle": self.coord_handle, "task_id": cur_task, "task_ids": task_ids,
+            "own_handle": self.own_handle, "own_aliases": list(dict.fromkeys(aliases)), "coordinates": self.issues_orchestration, "awaits": sorted(self.awaits),
+            "id": self.id, "path": self.path, "kind": self.kind, "title": self.title or self.id[:8],
+            "cwd": self.cwd, "model": self.model, "parent": self.parent,
+            "started": self.started, "last_ts": self.last_ts, **self.run_state(),
+            "ctx_window": self.ctx_window, "compactions": len(self.compactions),
+            "skills": sum(self.skill_use.values()), "skill_kinds": len(self.skill_use),
+            "skill_use": dict(self.skill_use), "mcp_use": dict(self.mcp_use),
+            "last_action": self.last_action(), "plan": self.plan_summary(), "place": self.placement(), "made_terms": self.made_terms,
+            **usage,
+        }
+
+    def usage_figures(self):
+        """Cost, tokens, context and time slots: sums over every turn, rebuilt only when the transcript grew (the offset
+        moved) or the time slot did. A snapshot is built every few seconds over a thousand sessions, almost all idle."""
+        key = (self.offset, self.model, int(time.time() // SLOT_SECONDS))
+        if self._usage_key == key:
+            return self._usage
+        ctxs = [t["ctx"] for t in self.turns]
         cost = {"input": 0.0, "cache_write": 0.0, "cache_read": 0.0, "output": 0.0}
         priced = bool(self.turns)
         for t in self.turns:
@@ -507,21 +528,13 @@ class Session:
                 continue
             for k, v in zip(cost, c):
                 cost[k] += v
-        return {
-            "role": self.role, "coord_handle": self.coord_handle, "task_id": cur_task, "task_ids": task_ids,
-            "own_handle": self.own_handle, "own_aliases": list(dict.fromkeys(aliases)), "coordinates": self.issues_orchestration, "awaits": sorted(self.awaits),
+        self._usage = {
             "cost": round(sum(cost.values()), 4) if priced else None,
             "cost_parts": {k: round(v, 4) for k, v in cost.items()} if priced else None,
-            "id": self.id, "path": self.path, "kind": self.kind, "title": self.title or self.id[:8],
-            "cwd": self.cwd, "model": self.model, "parent": self.parent,
-            "started": self.started, "last_ts": self.last_ts, **self.run_state(),
             "turns": len(self.turns), "ctx_now": ctxs[-1] if ctxs else 0, "ctx_peak": max(ctxs) if ctxs else 0,
-            "ctx_avg": round(sum(ctxs) / len(ctxs)) if ctxs else 0, "ctx_window": self.ctx_window,
-            "compactions": len(self.compactions), "tool_calls": sum(len(t["tools"]) for t in self.turns),
-            "skills": sum(self.skill_use.values()), "skill_kinds": len(self.skill_use),
-            "skill_use": dict(self.skill_use), "mcp_use": dict(self.mcp_use), "use_tok": self.use_tokens(),
-            "last_action": self.last_action(), "plan": self.plan_summary(), "place": self.placement(), "made_terms": self.made_terms,
-            "slots": turn_slots(self.turns, self.model, int(time.time() // SLOT_SECONDS) - SLOT_KEEP),
+            "ctx_avg": round(sum(ctxs) / len(ctxs)) if ctxs else 0,
+            "tool_calls": sum(len(t["tools"]) for t in self.turns), "use_tok": self.use_tokens(),
+            "slots": turn_slots(self.turns, self.model, key[2] - SLOT_KEEP),
             "tokens": {
                 "input": sum(t["input"] for t in self.turns),
                 "cache_read": sum(t["cache_read"] for t in self.turns),
@@ -529,6 +542,8 @@ class Session:
                 "output": sum(t["output"] for t in self.turns),
             },
         }
+        self._usage_key = key
+        return self._usage
 
     def work_dir(self):
         """Orca's recorded worktree for a worker wins; otherwise the directory the agent was launched in."""

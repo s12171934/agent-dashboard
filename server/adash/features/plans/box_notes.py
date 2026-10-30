@@ -37,6 +37,7 @@ def round_in(*texts):
 
 
 def attach_box_notes():
+    changed = False
     for plan in list(ext_plans.values()):
         base = os.path.dirname(plan["path"])
         for t in plan.get("tickets") or []:
@@ -63,4 +64,7 @@ def attach_box_notes():
                 if any(s.get(k) != v for k, v in note.items()):
                     with lock:
                         s.update(note)
-                        bump()
+                    changed = True
+    if changed:  # one version for the pass: a re-read plan brings every box back without its notes
+        with lock:
+            bump()

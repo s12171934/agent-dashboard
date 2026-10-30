@@ -15,14 +15,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from adash.core.config import HERE
-from adash.core.files import save_json
+from adash.core.files import StaleWhileRefresh, save_json
 from adash.core.git import git_at
 from adash.core.orca import ORCA_ENV, orca
 from adash.core.util import short
 
 EVERY = 20
-_cache = {"at": 0, "value": None}
-_lock = threading.Lock()
 NOTES = os.path.join(HERE, "worktree-notes.json")  # {path: {"text", "at"}}
 NOTE_MAX = 4000
 _notes_lock = threading.Lock()
@@ -172,13 +170,12 @@ def set_note(path, text):
         return d.get(path)
 
 
+_listing = StaleWhileRefresh("worktrees", lambda: collect(), EVERY)  # collect takes seconds over many worktrees
+
+
 def worktrees(fresh=False):
     """The cached list with each worktree's note as it is now (notes are not cached: a save shows at once)."""
-    with _lock:
-        if fresh or not _cache["value"] or time.time() - _cache["at"] > EVERY:
-            _cache["value"] = collect()
-            _cache["at"] = time.time()
-        v = _cache["value"]
+    v = _listing.get(fresh)
     notes = _notes()
     return {**v, "repos": [{**rp, "worktrees": [{**w, "note": notes.get(w["path"])} for w in rp["worktrees"]]}
                            for rp in v["repos"]]}
@@ -235,6 +232,5 @@ def remove(rp, w, force):
         d = _notes()
         if d.pop(w["path"], None):
             save_json(NOTES, d)
-    with _lock:
-        _cache["at"] = 0  # the next read lists again
+    _listing.drop()  # the next read lists again, and waits for it
     return None

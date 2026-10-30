@@ -1,7 +1,12 @@
-"""JSON and text files read again only when their mtime moves, and atomic JSON writes."""
+"""JSON and text files read again only when their mtime moves, atomic JSON writes, and slow values served from cache
+while they are recomputed."""
 
 import json
 import os
+import threading
+import time
+
+from adash.core.state import report_failure
 
 
 def save_json(p, data):
@@ -51,3 +56,44 @@ def read_text_cached(p):
         except (OSError, ValueError):
             return cached[1] if cached else ""
     return cached[1]
+
+# A slow value (git over every worktree, the Orca message history) served from cache while it is recomputed.
+class StaleWhileRefresh:
+    """compute() is cached; once the value is older than `every` seconds the next read starts a recompute on a
+    background thread and still gets the old value, so a request never waits on it. Only the first read, or
+    get(fresh=True), waits."""
+
+    def __init__(self, name, compute, every):
+        self.name, self.compute, self.every = name, compute, every
+        self.value, self.at = None, 0.0
+        self._lock = threading.Lock()  # one compute at a time
+        self._running = False
+
+    def _refresh(self):
+        try:
+            v = self.compute()
+            self.value, self.at = v, time.time()
+        except Exception as e:
+            report_failure(self.name, e)
+        finally:
+            self._running = False
+
+    def get(self, fresh=False):
+        if fresh or self.value is None:
+            with self._lock:
+                if fresh or self.value is None:
+                    self.value, self.at = self.compute(), time.time()
+            return self.value
+        if time.time() - self.at > self.every and not self._running:
+            self._running = True
+            threading.Thread(target=lambda: self._locked(self._refresh), daemon=True).start()
+        return self.value
+
+    def drop(self):
+        """Forget the value: the next read computes it again and waits (after a change the old value would hide)."""
+        with self._lock:
+            self.value, self.at = None, 0.0
+
+    def _locked(self, f):
+        with self._lock:
+            f()

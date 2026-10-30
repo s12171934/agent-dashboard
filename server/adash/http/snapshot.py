@@ -1,10 +1,12 @@
 """The /api/state snapshot, built once per version, and the /events stream that announces new versions."""
 
+import collections
 import gzip
 import json
 import os
 import threading
 import time
+from urllib.parse import parse_qs
 
 from adash.core.state import health, lock, report_failure, sessions
 from adash.core.util import short
@@ -23,7 +25,7 @@ from adash.features.sessions.aliases import fold_handle_aliases
 from adash.features.sessions.idle import apply_prefs
 from adash.features.terminals.pending import pending_sessions
 from adash.features.terminals.targets import close_tree, focus_targets
-from adash.features.tests.tests import test_progress
+from adash.features.tests.tests import lite_test, test_progress
 import adash.core.config as core_config
 import adash.core.state as core_state
 import adash.features.designs.store as designs_store
@@ -31,13 +33,114 @@ import adash.features.plan_usage.usage as plan_usage_mod
 import adash.features.projects.store as projects_store
 import adash.features.terminals.targets as terminals_targets
 
-state_cache_lock = threading.Lock()  # one /api/state build at a time; the others wait and take its bytes
-state_cache = {"v": -1, "body": b"", "gz": b"", "at": 0.0, "glance": None}
+state_cache_lock = threading.Lock()  # one /api/state build at a time; the others wait and take its result
+# v: core version built · at: when · parts/sig: the build (parts_split) · cv: content version, the core version of
+# the last build that showed something new (what the page holds and sends back as ?base=) · full/gz: the whole body,
+# made on demand · deltas: base -> body, for this build · glance / decisions: the small views, made on demand
+state_cache = {"v": -1, "at": 0.0, "parts": None, "sig": None, "cv": 0, "full": None, "gz": None, "deltas": {},
+               "glance": None, "decisions": None}
 STATE_CACHE_SECONDS = 5  # health.now and the age-based states move without a version bump
+SIG_KEEP = 40  # content versions a page may still hold and get a delta from
+sig_history = collections.OrderedDict()  # content version -> signature, oldest first
+EVENTS_BUILD_GAP = 1.5  # /events builds at most this often to see whether the content moved
 
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
 # with the one it was built for and says so instead of rendering garbage.
 API_VERSION = 1
+
+# ---------- the snapshot in parts ----------
+# A part is either a whole value ("obj": its encoded bytes) or a list sent item by item ("list": [(key, bytes)]).
+# Each build is summed up as a signature (a hash per obj part, a hash per list item); two builds with the same
+# signature show the same thing, so the page is told about a new snapshot only when the signature moves, and a page
+# that holds an earlier one gets only what changed (parts_delta).
+
+# Lists sent item by item: their path in the snapshot -> the item's key. frontend/api.js keys them the same way
+# (PART_KEYS). A list with a repeated key is sent whole.
+KEYED = {
+    "sessions": lambda s: f'{s.get("kind")}:{s.get("id")}',
+    "ext_plans": lambda p: p.get("path"),
+    "tests.files": lambda f: f.get("key"),
+}
+# The page sorts these itself (newest last_ts first, as the full snapshot does), so their order is never sent.
+SELF_SORTED = {"sessions"}
+# Parts that move on every build without anything to redraw: left out of the signature, always in a delta.
+VOLATILE = ("version", "health")
+
+
+def parts_split(snap, encode):
+    """Snapshot dict -> {part name: ("obj", bytes) | ("list", [(key, bytes)])}. tests.files is its own part."""
+    parts = {}
+    for name, val in snap.items():
+        if name == "tests":
+            parts["tests"] = ("obj", encode({k: v for k, v in val.items() if k != "files"}))
+            name, val = "tests.files", val.get("files") or []
+        if name in KEYED:
+            items = [(KEYED[name](x), encode(x)) for x in val]
+            if len({k for k, _ in items}) == len(items):
+                parts[name] = ("list", items)
+                continue
+            parts[name] = ("obj", b"[" + b",".join(b for _, b in items) + b"]")
+        else:
+            parts[name] = ("obj", encode(val))
+    return parts
+
+
+def parts_signature(parts):
+    sig = {}
+    for name, (kind, val) in parts.items():
+        if name in VOLATILE:
+            continue
+        sig[name] = hash(val) if kind == "obj" else (hash(tuple(k for k, _ in val)), {k: hash(b) for k, b in val})
+    return sig
+
+
+def _list(items):
+    return b"[" + b",".join(b for _, b in items) + b"]"
+
+
+def _field(name, body):
+    return json.dumps(name).encode() + b":" + body
+
+
+def parts_full(parts):
+    """The whole snapshot as one JSON object, the shape /api/state always had."""
+    fields = []
+    for name, (kind, val) in parts.items():
+        if name == "tests.files":
+            continue
+        body = val if kind == "obj" else _list(val)
+        if name == "tests":
+            files = parts["tests.files"]
+            files = files[1] if files[0] == "obj" else _list(files[1])
+            body = b'{"files":' + files + (b"," + body[1:] if body != b"{}" else b"}")
+        fields.append(_field(name, body))
+    return b"{" + b",".join(fields) + b"}"
+
+
+def parts_delta(parts, old, new, base, encode):
+    """What a page holding the snapshot with signature `old` (content version `base`) needs to reach `parts`:
+    {"version", "api", "base", "health", "delta": {obj part: value, list part: {"upd": [items], "del": [keys],
+    "order": [keys] when the order or membership changed}}}. Parts that did not change are left out of "delta"."""
+    out = []
+    for name, (kind, val) in parts.items():
+        if name in VOLATILE:
+            continue
+        if kind == "obj" or not isinstance(old.get(name), tuple):
+            if old.get(name) != new[name]:
+                out.append(_field(name, val if kind == "obj" else _list(val)))
+            continue
+        (okeys, oitems), (nkeys, nitems) = old[name], new[name]
+        upd = [b for k, b in val if oitems.get(k) != nitems[k]]
+        gone = [k for k in oitems if k not in nitems]
+        if not upd and not gone and okeys == nkeys:
+            continue
+        body = b'{"upd":[' + b",".join(upd) + b'],"del":' + encode(gone)
+        if okeys != nkeys and name not in SELF_SORTED:
+            body += b',"order":' + encode([k for k, _ in val])
+        out.append(_field(name, body + b"}"))
+    head = [_field(n, parts[n][1]) for n in VOLATILE if n in parts]
+    return b"{" + b",".join(head + [_field("api", parts["api"][1]), _field("base", encode(base)),
+                                    b'"delta":{' + b",".join(out) + b"}"]) + b"}"
 
 
 def build_state(encode):
@@ -95,7 +198,7 @@ def build_state(encode):
             report_failure("flow_check", e)
             flow = {"contracts": None, "items": [], "ok": 0, "rules": FLOW_RULES, "error": short(repr(e), 200)}
         design = designs_store.design
-        body = encode({
+        snap = {
             "version": core_state.version, "api": API_VERSION,
             "sessions": sorted(summaries + pending, key=lambda s: s["last_ts"] or "", reverse=True),
             "orca": lite_orca(orca_state),
@@ -103,7 +206,7 @@ def build_state(encode):
                           for p in EXTERNAL_PLANS if p in ext_plans],
             "design": {"enabled": bool(DESIGN_DIRS or design["sources"]),
                        "version": f'{design["version"]}.{designs_store.design_rev}'},
-            "tests": test_progress,
+            "tests": {**test_progress, "files": [lite_test(f) for f in test_progress["files"]]},
             "reviews_at": review_state["updated"],
             "health": {"now": time.time(), "loops": health},
             "decisions": decisions,
@@ -111,8 +214,10 @@ def build_state(encode):
             "plan_usage": plan_usage_mod.plan_usage,
             # the vault root (--vault): the page links its notes by vault name and relative path, which a phone can open
             "vault": core_config.VAULT if os.path.isdir(core_config.VAULT) else None,
-        })
-    return v, body
+        }
+        # Encoded under the lock: tests, decisions and the Orca snapshot are the collectors' own dicts.
+        parts = parts_split(snap, encode)
+    return v, parts
 
 
 def get_root(h, url):
@@ -120,18 +225,59 @@ def get_root(h, url):
 
 
 def fresh_state(encode):
-    """-> (body, gzipped body) of the current snapshot. Every open page refetches on each version tick: build it once
-    per version and hand the same bytes to the rest (three tabs used to rebuild it three times, each under the lock)."""
+    """-> the state cache, built again when the core version moved (at most every EVENTS_BUILD_GAP: the version moves
+    every second while agents write, and the page fetching what /events just announced takes that build) or it is
+    older than STATE_CACHE_SECONDS. Every open page and the app read it on each change: it is built once and shared
+    (three tabs used to rebuild it three times, each under the lock)."""
     with state_cache_lock:
-        if not (state_cache["v"] == core_state.version and time.time() - state_cache["at"] < STATE_CACHE_SECONDS):
-            v, raw = build_state(encode)
-            state_cache.update(v=v, body=raw, gz=gzip.compress(raw, 5), at=time.time(), glance=None)
-        return state_cache["body"], state_cache["gz"]
+        age = time.time() - state_cache["at"]
+        if (state_cache["v"] != core_state.version and age >= EVENTS_BUILD_GAP) or age >= STATE_CACHE_SECONDS:
+            v, parts = build_state(encode)
+            sig = parts_signature(parts)
+            if sig != state_cache["sig"]:
+                state_cache["cv"] = v
+                sig_history[v] = sig
+                while len(sig_history) > SIG_KEEP:
+                    sig_history.popitem(last=False)
+                state_cache.update(glance=None, decisions=None)
+            parts["version"] = ("obj", encode(state_cache["cv"]))
+            state_cache.update(v=v, parts=parts, sig=sig, at=time.time(), full=None, gz=None, deltas={})
+        return state_cache
+
+
+def full_state(encode):
+    """-> (body, gzipped body) of the whole snapshot."""
+    st = fresh_state(encode)
+    with state_cache_lock:
+        if st["full"] is None:
+            st["full"] = parts_full(st["parts"])
+            st["gz"] = gzip.compress(st["full"], 5)
+        return st["full"], st["gz"]
 
 
 def get_state(h, url):
-    raw, gz = fresh_state(h.encode)
+    """The whole snapshot, or with ?base=<version the page holds> only what changed since (parts_delta).
+    A base the server no longer remembers (restarted, too old) gets the whole snapshot."""
+    try:
+        base = int((parse_qs(url.query).get("base") or [""])[0])
+    except ValueError:
+        base = None
+    st = fresh_state(h.encode)
+    with state_cache_lock:
+        old = sig_history.get(base) if base is not None else None
+        if old is not None:
+            body = st["deltas"].get(base)
+            if body is None:
+                body = st["deltas"][base] = parts_delta(st["parts"], old, st["sig"], base, h.encode)
+            return h.send_body(body)
+    raw, gz = full_state(h.encode)
     h.send_body(raw, gz=gz)  # sent outside the cache lock: a slow client holds up no one
+
+
+def parsed(st, name):
+    """One part of the cached build as Python values."""
+    kind, val = st["parts"][name]
+    return json.loads(val) if kind == "obj" else [json.loads(b) for _, b in val]
 
 
 # /api/glance: what the iPhone widgets show, a few KB instead of the snapshot's megabytes (a widget has little memory
@@ -172,15 +318,31 @@ def glance(state):
 
 
 def get_glance(h, url):
-    raw, _ = fresh_state(h.encode)
+    st = fresh_state(h.encode)
     with state_cache_lock:
-        if state_cache.get("glance") is None or state_cache["body"] is not raw:
-            state_cache["glance"] = h.encode(glance(json.loads(raw)))
-        body = state_cache["glance"]
+        if st["glance"] is None:
+            st["glance"] = h.encode(glance({"sessions": parsed(st, "sessions"), "decisions": parsed(st, "decisions"),
+                                            "tests": {"files": parsed(st, "tests.files")}}))
+        body = st["glance"]
+    h.send_json(body)
+
+
+def get_decisions(h, url):
+    """What the Mac app's 결정 대기 watcher reads on each change, a few KB instead of the snapshot: {"decisions", "sessions":
+    [{"path", "title", "decision"}] of the sessions holding a question}."""
+    st = fresh_state(h.encode)
+    with state_cache_lock:
+        if st["decisions"] is None:
+            st["decisions"] = h.encode({"decisions": parsed(st, "decisions"), "sessions": [
+                {k: s.get(k) for k in ("path", "title", "decision")} for s in parsed(st, "sessions") if s.get("decision")]})
+        body = st["decisions"]
     h.send_json(body)
 
 
 def get_events(h, url):
+    """data: <content version> whenever the snapshot shows something new. A core version bump alone (a collector pass,
+    the 15 s tick for the age-based states) is checked by building the snapshot (fresh_state paces it) and announced
+    only when the content moved."""
     h.send_response(200)
     h.send_header("Content-Type", "text/event-stream")
     h.send_header("Cache-Control", "no-cache")
@@ -193,8 +355,10 @@ def get_events(h, url):
             if PROJECTS_DIRS and projects_store.projects["version"] != seen_projects:
                 seen_projects = projects_store.projects["version"]
                 h.wfile.write(f"event: projects\ndata: {seen_projects}\n\n".encode())
-            if core_state.version != seen:
-                seen = core_state.version
+            if core_state.version != state_cache["v"]:
+                fresh_state(h.encode)
+            if state_cache["cv"] != seen:
+                seen = state_cache["cv"]
                 h.wfile.write(f"data: {seen}\n\n".encode())
             else:
                 h.wfile.write(b": ping\n\n")

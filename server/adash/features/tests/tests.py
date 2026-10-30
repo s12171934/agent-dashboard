@@ -94,13 +94,37 @@ def run_tc_cases(progress, run):
     return hit[1]
 
 
+CASE_BAD = ("failed", "timedOut", "interrupted")  # as the page's E2E_BAD
+
+
+def file_finished(f):
+    return f.get("updated_at") or datetime.fromtimestamp(f["mtime"], timezone.utc).isoformat()
+
+
+def file_run_id(f):
+    """A progress-file run's key in test_history."""
+    return f"file:{f['key']}:{f.get('started_at') or file_finished(f)}"
+
+
+def lite_test(f):
+    """A finished run without its case list for the snapshot (hundreds of cases a run, once half the snapshot): the
+    counts stand in, and the page reads the list from /api/tests/run when the toggle opens. A running run keeps its
+    cases for the chips and ▶."""
+    if f.get("phase") not in ("done", "failed") or not f.get("cases"):
+        return f
+    cases = f["cases"]
+    return {**{k: v for k, v in f.items() if k != "cases"}, "hist_id": file_run_id(f),
+            "case_counts": {"n": len(cases), "bad": sum(c.get("status") in CASE_BAD for c in cases),
+                            "ok": sum(c.get("status") == "passed" for c in cases)}}
+
+
 def archive_tests(files, run_tc):
     """Copy finished runs into test_history; True when something was added or pruned."""
     recs = {}
     for f in files:
         if f.get("phase") in ("done", "failed"):
-            fin = f.get("updated_at") or datetime.fromtimestamp(f["mtime"], timezone.utc).isoformat()
-            recs[f"file:{f['key']}:{f.get('started_at') or fin}"] = {
+            fin = file_finished(f)
+            recs[file_run_id(f)] = {
                 **{k: f.get(k) for k in TEST_FIELDS}, "src": "file", "key": f["key"], "finished_at": fin,
                 "failures": f["failures"], "cases": f["cases"]}
     for path, d in run_tc.items():

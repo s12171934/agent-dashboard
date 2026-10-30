@@ -5,9 +5,9 @@
 ## 레이어
 
 ```
-http/       요청을 받는 층: 호스트·출처 검사, CORS, JSON 응답, 경로 → 기능 엔드포인트(routes.py), /api/state 스냅숏과 /events, 아이폰 위젯용 요약 /api/glance
+http/       요청을 받는 층: 호스트·출처 검사, CORS, JSON 응답, 경로 → 기능 엔드포인트(routes.py), /api/state 스냅숏과 그 구획·증분(snapshot.py), /events, 아이폰 위젯용 요약 /api/glance, macOS 앱 결정 감시용 /api/decisions
 features/   기능별 폴더. 상태(store), 수집 루프(loop), 계산(service 등), 엔드포인트(api.py)
-core/       공용 기반: 경로 설정, 큰 lock 과 변경 번호(version), prefs.json, 로그, 파일 캐시, Orca CLI, git, Jira
+core/       공용 기반: 경로 설정, 큰 lock 과 변경 번호(version), prefs.json, 로그, 파일 캐시와 묵은 값을 주며 뒤에서 다시 읽는 캐시(files.py), Orca CLI, git, Jira
 main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 ```
 
@@ -29,7 +29,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `chars/` | 「새 캐릭터」: 올린 원본 그림과 브리프로 Orca 에이전트를 띄워 캐릭터를 그리고 R2 에 올리게 함, 작업 폴더의 파일로 진행 판정. 영구 삭제, 이름·생김새·역할 바꾸기, 시트 하나(종류·세트) 다시 그려 올리기(`redraw.py`, 시트 원본은 `~/.cache/agent-dashboard/char-sheets`) | `/api/chars/jobs`(+ `redraws`), `/api/chars/file`, `POST /api/chars/create·remove·unpublish·meta·redraw` |
 | `interactions/` | 에이전트 사이 메시지 (Orca 오케스트레이션 수신함) | `/api/interactions` |
 | `plans/` | 외부(드라이버) 계획 파일, 계획의 주인 세션, 추가 상자 사유 | (스냅숏에 실림) |
-| `tests/` | 긴 테스트 실행 진행과 끝난 기록 | `/api/tests` |
+| `tests/` | 긴 테스트 실행 진행과 끝난 기록 | `/api/tests`, `/api/tests/run` |
 | `decisions/` | 결정 카드와 메일함: 등록(ask), 터미널 선택기 입력(picker), 답(answer), 세션 붙잡기(guard), 정리(sweep) | `/api/decision/*` |
 | `projects/` | 프로젝트 진행 `progress.json` 검사·계산, 스텝 노트 | `/api/projects`, `/api/project`, `/api/project/note` |
 | `designs/` | 설계 문서 색인(index·roots·toc), 도구 호출에서 읽은 줄 추적(shell_reads·reads), 섹션별 읽기 기록(refs) | `/api/designs`, `/api/design`, `/api/design/file`, `/api/design/refs` |
@@ -42,7 +42,8 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 ## 상태를 다룰 때
 
 - 수집 스레드와 요청 스레드가 같은 dict 를 고친다. 읽기·쓰기는 `core.state.lock` 안에서 한다.
-- 화면에 보일 변화가 있으면 `core.state.bump()` 로 변경 번호를 올린다. 페이지는 `/events` 로 이 번호를 받아 `/api/state` 를 다시 읽는다.
+- 화면에 보일 변화가 있으면 `core.state.bump()` 로 변경 번호를 올린다. 서버는 그 번호가 움직이면 스냅숏을 다시 만든다. 내용이 실제로 바뀌었을 때만 `/events` 로 내용 버전을 알리고, 페이지는 `/api/state?base=` 로 바뀐 것만 받는다(`http/snapshot.py` 의 `parts_*`, 저장소 README 「실시간 갱신」). 한 번의 수집에서 여러 곳을 고쳐도 `bump()` 는 끝에 한 번만 부른다.
+- 스냅숏에 싣는 값은 화면 목록이 쓰는 것만이다. 펼쳐야 보이는 큰 목록(끝난 테스트의 케이스 등)은 따로 엔드포인트를 두고 펼칠 때 읽게 한다.
 - 모듈 전역을 통째로 바꾸는 값(`global x; x = …`)은 다른 모듈에서 `from … import x` 로 받으면 옛 값에 묶인다. 그런 값은 모듈째 import 해서 `모듈.x` 로 읽는다. 예: `core_state.version`, `designs_store.design`, `terminals_targets.focus_handles`. dict·list 를 제자리에서 고치는 값은 그냥 import 해도 된다.
 - 새 엔드포인트는 그 기능의 `api.py` 에 `def get_…(h, url)` / `def post_…(h, url)` 로 두고 `http/routes.py` 에 경로를 등록한다. `h` 는 요청 핸들러다(`h.send_json`, `h.send_body`, `h.encode`, `h.rfile`, `h.headers`).
 - `/api/*` 응답 모양을 깨는 변경은 `http/snapshot.py` 의 `API_VERSION` 과 `frontend/api.js` 의 것을 함께 올린다.
