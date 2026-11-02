@@ -31,9 +31,11 @@
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <!-- Not Background: that QoS is inherited by every `orca` call, and with dozens of agents running a
-       0.3s `orca orchestration run-list` took 9-23s at background QoS, past the 15s timeout (2026-10-14). -->
+       0.3s `orca orchestration run-list` took 9-23s at background QoS, past the 15s timeout (2026-10-14).
+       Not Standard either: its children run at utility priority (PRI 20), and at load 100+ the same calls took
+       5-16s from a Standard launchd job while 0.3-0.5s from an interactive shell (2026-11-02). -->
   <key>ProcessType</key>
-  <string>Standard</string>
+  <string>Interactive</string>
   <key>StandardOutPath</key>
   <string>@DIR@/server.log</string>
   <key>StandardErrorPath</key>
