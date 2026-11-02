@@ -57,7 +57,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | Orca Run·터미널 | `orca` CLI 호출 |
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
 | 테스트 진행 | `/private/tmp/agent-test-progress/*.json`, run-tc 진행 파일과 그 옆 `e2e-runs/<run>.tests.json`(케이스별 제목·결과) |
-| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문. 터미널 선택기와 같은 질문이다 (아래 「결정 버튼」) |
+| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문과 Bash 권한 요청. 터미널 선택기·권한 프롬프트와 같은 것이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
 | 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter, `server/qa-sheets.json`(`aqa` 가 기록하는 TC 시트 진행) (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
@@ -366,6 +366,21 @@ apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 �
 - 대기 카드는 `server/pending.json` 에도 보관해 서버를 다시 띄워도 남는다(훅은 질문을 한 번만 등록하므로, 예전에는 선택기가 열린 동안 재시작하면 카드가 사라졌다). 그사이 답했거나 취소된 질문은 평소처럼 트랜스크립트를 보고 치운다.
 - 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 터미널 선택기만 뜬다. 메일함 모드가 켜져 있어도 마찬가지다.
 - 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`).
+
+### Bash 권한 대기
+
+같은 `decision-hook` 을 `PermissionRequest` 훅(matcher `Bash`)으로도 등록하면, Bash 명령의 「Do you want to proceed?」 권한 프롬프트도 결정 대기 카드로 뜬다.
+
+```json
+{"hooks": {"PermissionRequest": [{"matcher": "Bash",
+  "hooks": [{"type": "command", "command": "<저장소>/server/decision-hook", "timeout": 10}]}]}}
+```
+
+- 카드에는 명령 전체와 설명, 「허용」·「거부」 두 버튼이 있다. 앱·위젯은 질문 줄(「Bash 실행 허용? <명령>」)로 보여 준다.
+- 「허용」은 프롬프트의 `Yes` 줄, 「거부」는 `No` 줄 번호를 눌러 준다(`항상 허용` 같은 다른 줄은 터미널에서 고른다). 누르기 전에 화면에 이 명령의 권한 프롬프트가 떠 있는지 확인하고, 없으면 닫힌 요청으로 보고 카드를 치운다.
+- 이 훅 입력에는 `tool_use_id` 가 없어서, 같은 세션에서 같은 명령의 Bash 호출에 결과가 생기면(터미널에서 답했거나 실행·거부됨) 카드를 치운다.
+- 메일함 모드여도 메일함에 넣지 않고 카드로 띄운다. 권한은 권장안으로 대신 진행할 수 있는 결정이 아니다.
+- 서브에이전트의 Bash 권한 요청은 메인 트랜스크립트에 호출이 없어 터미널에서 답해도 카드가 바로 닫히지 않는다. 대시보드에서 누르면 프롬프트가 없음을 보고 치운다.
 
 ### 결정 대기 화면 (`#decide`)
 

@@ -3,7 +3,8 @@
 // server through the session's Orca terminal; when it cannot (no Orca terminal, the picker not as expected) the card
 // says so and the question is answered in the terminal. An answer in the terminal closes the card. A lone
 // single-choice question sends on click, several questions or a multiSelect send together with 「답 보내기」, typed
-// text only on single-choice questions.
+// text only on single-choice questions. A Bash permission prompt (r.kind 'permission', from the same hook as a
+// PermissionRequest hook) is a card too: its command in a block and 허용 / 거부, which the server presses as Yes / No.
 // Cards live in #decisions, outside #view, which every refresh rebuilds. A card is built once per request id and
 // later refreshes only touch its meta and status lines, so picks, typed text, focus and an IME composition
 // survive (a periodic re-render wiping input is the bug the 8799 page hit first).
@@ -71,14 +72,15 @@ const decisions = (() => {
       ${r.context ? `<p class="dc-context">${esc(r.context)}</p>` : ''}
       ${r.questions.map((q, qi) => `<div class="dc-q" data-qi="${qi}">
         ${q.header ? `<span class="dc-tag">${esc(q.header)}</span>` : ''}
-        <h3>${esc(q.question)}</h3>
+        <h3>${esc(r.command ? r.title : q.question)}</h3>
+        ${r.command ? `<pre class="dc-cmd">${esc(r.command)}</pre>` : ''}
         ${q.multiSelect ? '<p class="dc-hint">여러 개 고를 수 있습니다</p>' : ''}
         <div class="dc-options">${q.options.map((o, i) => `<button class="dc-opt" data-i="${i}">
           <span class="dc-label">${q.multiSelect ? '<span class="dc-check">✓</span>' : ''}${esc(o.label)}</span>
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
-        ${q.multiSelect ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
+        ${q.multiSelect || r.kind === 'permission' ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
       </div>`).join('')}
-      <p class="dc-hint">터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.</p>
+      <p class="dc-hint">${r.kind === 'permission' ? '터미널에도 같은 권한 요청이 떠 있습니다. 여기서 고르면 터미널에서 Yes / No 를 대신 누릅니다.' : '터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.'}</p>
       ${needsSubmit(r) ? '<div class="dc-actions"><button class="dc-submit" disabled>답 보내기</button></div>' : ''}
       <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden title="대시보드에서만 치웁니다. 터미널의 선택기는 그대로입니다">카드 삭제</button></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}), sentAt: 0 };
@@ -203,7 +205,8 @@ const inbox = (() => {
     el.innerHTML = `<div class="dc-meta"></div><p class="ib-went"></p>
       ${r.questions.map((q, qi) => `<div class="dc-q" data-qi="${qi}">
         ${q.header ? `<span class="dc-tag">${esc(q.header)}</span>` : ''}
-        <h3>${esc(q.question)}</h3>
+        <h3>${esc(r.command ? r.title : q.question)}</h3>
+        ${r.command ? `<pre class="dc-cmd">${esc(r.command)}</pre>` : ''}
         <div class="dc-options">${q.options.map((o, i) => `<button class="dc-opt" data-i="${i}">
           <span class="dc-label">${q.multiSelect ? '<span class="dc-check">✓</span>' : ''}${esc(o.label)}${o.label === r.recommended?.[qi] ? '<span class="ib-rec">권장</span>' : ''}</span>
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>

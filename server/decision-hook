@@ -14,6 +14,12 @@ Claude reads the reason — go on with the recommended option and write down the
   ~/.claude/settings.json → hooks.PreToolUse: [{"matcher": "AskUserQuestion",
       "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
 
+As a PermissionRequest hook (matcher "Bash") it registers the Bash permission prompt the same way — a card with
+허용 / 거부 that the server presses into the prompt — and prints nothing, so the prompt opens as usual:
+
+  ~/.claude/settings.json → hooks.PermissionRequest: [{"matcher": "Bash",
+      "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
+
 Environment: DASH_URL (default http://127.0.0.1:8787). ORCA_TERMINAL_HANDLE, set by Orca in its terminals, tells the
 server which terminal to type into.
 """
@@ -29,11 +35,17 @@ def main():
     try:
         event = json.load(sys.stdin)
         body = {"session_id": event.get("session_id"), "tool_use_id": event.get("tool_use_id"), "cwd": event.get("cwd"),
-                "terminal": os.environ.get("ORCA_TERMINAL_HANDLE"), "questions": event["tool_input"]["questions"]}
+                "terminal": os.environ.get("ORCA_TERMINAL_HANDLE")}
+        if event.get("hook_event_name") == "PermissionRequest":
+            if event.get("tool_name") != "Bash":
+                return
+            body["permission"] = {k: event["tool_input"].get(k) for k in ("command", "description")}
+        else:
+            body["questions"] = event["tool_input"]["questions"]
         req = Request(URL + "/api/decision/ask", data=json.dumps(body).encode(),
                       headers={"Content-Type": "application/json"}, method="POST")
         with urlopen(req, timeout=3) as res:
-            reason = json.load(res).get("deny")
+            reason = json.load(res).get("deny")  # never for a permission
     except Exception:
         return  # no dashboard: the terminal picker alone
     if isinstance(reason, str) and reason:

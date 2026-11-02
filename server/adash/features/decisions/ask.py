@@ -21,7 +21,9 @@ def valid_questions(qs):
 
 def add_decision(body):
     """A question from the hook -> {"id"} for a card, or {"id", "inbox": true, "deny": reason} when 메일함 mode
-    filed it instead."""
+    filed it instead. A body with "permission" is a Bash permission prompt (add_permission)."""
+    if "permission" in body:
+        return add_permission(body)
     qs = body.get("questions")
     if not valid_questions(qs):
         raise ValueError("questions")
@@ -46,6 +48,37 @@ def add_decision(body):
             decision_store[rid] = {"card": card, "state": "pending", "terminal": term, "busy": False}
         publish_decisions()
     return {"id": rid, "inbox": True, "deny": deny_reason(card)} if away else {"id": rid}
+
+
+# Bash 권한 대기: decision-hook also runs as a PermissionRequest hook (matcher "Bash"). Claude Code asks it just
+# before it draws the "Do you want to proceed?" prompt, so the page shows the same prompt as a card with two choices.
+# 허용 / 거부 press the prompt's "Yes" / "No" row (type_permission). The event has no tool_use_id: the card is closed
+# by the session's Bash call with the same command getting a result (stale_decisions). Never filed in the 메일함 —
+# a permission is not something to go on without; the prompt just waits.
+PERMIT, REFUSE = "허용", "거부"
+
+
+def add_permission(body):
+    p = body["permission"]
+    cmd = p.get("command") if isinstance(p, dict) else None
+    if not isinstance(cmd, str) or not cmd.strip():
+        raise ValueError("permission")
+    desc = p.get("description") if isinstance(p.get("description"), str) else ""
+    rid = f"q{int(time.time() * 1000):x}{os.urandom(3).hex()}"
+    cwd = body.get("cwd") if isinstance(body.get("cwd"), str) else ""
+    term = body.get("terminal") if isinstance(body.get("terminal"), str) and HANDLE.fullmatch(body["terminal"]) else None
+    card = {"id": rid, "kind": "permission", "command": cmd[:4000], "title": "이 Bash 명령을 실행할까요?",
+            "context": short(desc, 200), "session_id": str(body.get("session_id") or "") or None, "tool_use_id": None,
+            "agent": os.path.basename(cwd.rstrip("/")) or "에이전트", "cwd": cwd, "created_at": time.time(),
+            # The question names the command so the apps and widgets, which show only questions, can tell cards apart.
+            "questions": [{"question": f"Bash 실행 허용? {short(cmd, 160)}", "header": "Bash 권한", "multiSelect": False,
+                           "preview": False,
+                           "options": [{"label": PERMIT, "description": "이번 한 번 실행합니다 (Yes)"},
+                                       {"label": REFUSE, "description": "실행하지 않습니다 (No)"}]}]}
+    with decision_lock:
+        decision_store[rid] = {"card": card, "state": "pending", "terminal": term, "busy": False}
+        publish_decisions()
+    return {"id": rid}
 
 
 def recommended(q):
