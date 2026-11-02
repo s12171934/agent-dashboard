@@ -18,6 +18,7 @@ from adash.core.state import bump, lock
 from adash.core.util import short
 from adash.features.orca_runs.store import orca_state
 from adash.features.review.config import JIRA_EVERY, PR_EVERY, QA_SETS, REVIEW_BASES, REVIEW_FIRST, WT_KEY
+from adash.features.review.gone import gone_rows, remember
 from adash.features.review.notes import note_review, project_notes, reopened_since, write_review_sha
 from adash.features.review.qa import QA_STAGES, driver_worktree_repos, qa_automations, qa_config, qa_ticket
 from adash.features.review.report import REPORT_TASK, report_analysis, report_launch, report_start, set_report
@@ -40,7 +41,9 @@ def qa_sheet(qs):
     return {**got, "url": qs.get("sheet")} if got or qs.get("sheet") else None
 
 
-def review_pass(jira, prs, stats):
+def review_pass(jira, prs, stats, gone_prs=None):
+    gone_prs = {} if gone_prs is None else gone_prs
+    seen = {}
     worktrees = orca("worktree", "list", timeout=20).get("worktrees") or []
     by_key = {}
     for w in worktrees:
@@ -111,6 +114,10 @@ def review_pass(jira, prs, stats):
                               "base_src": base_src, "pr": pr, "dirty": len(porcelain.splitlines()) if porcelain else 0,
                               **(stats.get(sk) or {})})
             repos.sort(key=lambda r: (r["repo"] not in REVIEW_FIRST, r["repo"]))
+            for r in repos:
+                if (r["pr"] or {}).get("url"):
+                    seen.setdefault(key, {})[r["pr"]["url"]] = {"repo": r["repo"], "branch": r["branch"]}
+            gone = gone_rows(key, {(r["pr"] or {}).get("url") for r in repos}, (qa or {}).get("prs"), gone_prs)
             n = notes.get(key) or {}
             fm = note_review(n["step"]) if n.get("step") else {}
             if not repos:
@@ -133,7 +140,7 @@ def review_pass(jira, prs, stats):
                             fm["review_sha"] = shas
                         except (OSError, ValueError) as e:
                             log(f"review: {key} review_sha 갱신 실패 {e!r}")
-            tickets.append({**c, "repos": repos, "review": review, "review_at": fm.get("review_at"),
+            tickets.append({**c, "repos": repos, "gone": gone, "review": review, "review_at": fm.get("review_at"),
                             "review_sha": fm.get("review_sha") or {}, "review_round": fm.get("review_round"),
                             "step": n.get("step"),
                             "step_status": fm.get("status"), "notes": n.get("notes") or [], "test": ticket_test(key),
@@ -150,6 +157,7 @@ def review_pass(jira, prs, stats):
                      "retired_at": retired_at(watch),
                      "finished": bool(children) and all(jira_stage(c) == "qa" for c in children),
                      "sheet": qa_sheet(qs), "stages": QA_STAGES})
+    remember(seen)
     autos = qa_automations([s["epic"] for s in sets])
     live = {x["handle"] for x in orca_state.get("terminals") or [] if x.get("connected")}
     for s in sets:

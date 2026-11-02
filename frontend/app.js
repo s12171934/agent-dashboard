@@ -2424,14 +2424,18 @@ function qaStatsHtml(s) {
       `<br><i class="sw" style="background:${c}"></i>${l} <b>${x[k].length}</b>${x[k].length ? ' · ' + esc(x[k].join(', ')) : ''}`).join(''));
   const leg = [['var(--c1)', '신규 기동', tot('neu')], ['var(--c2)', '재오픈 기동', tot('re')], ['var(--c3)', '커밋 완료', tot('fin')]]
     .map(([c, l, v]) => `<span><i style="background:${c}"></i>${l} <b>${v}</b></span>`).join('');
-  // Change size: worktrees still on disk only (cleaned tickets drop out), summed per repo.
+  // Change size, summed per repo: a worktree on disk by its diff against the base, a removed one (t.gone) by its PR's
+  // size, so cleaned tickets stay counted. A repo counts a ticket once however many rows it has there.
   const rp = {}, prs = new Set();
-  let wt = 0;
+  let wt = 0, gone = 0;
   for (const t of T) {
-    if (t.repos.length) wt++;
-    for (const r of t.repos) {
+    const rows = [...t.repos, ...(t.gone || [])];
+    if (t.repos.length) wt++; else if (rows.length) gone++;
+    const seen = new Set();
+    for (const r of rows) {
       const a = rp[r.repo] ||= { t: 0, files: 0, ins: 0, dels: 0 };
-      a.t++; a.files += r.files || 0; a.ins += r.ins || 0; a.dels += r.dels || 0;
+      if (!seen.has(r.repo)) { seen.add(r.repo); a.t++; }
+      a.files += r.files || 0; a.ins += r.ins || 0; a.dels += r.dels || 0;
       if (r.pr?.url) prs.add(r.pr.url);
     }
     (t.qa?.prs || []).forEach(u => prs.add(u));
@@ -2440,13 +2444,13 @@ function qaStatsHtml(s) {
   const sum = rows.reduce((a, [, x]) => ({ t: a.t + x.t, files: a.files + x.files, ins: a.ins + x.ins, dels: a.dels + x.dels }), { t: 0, files: 0, ins: 0, dels: 0 });
   const tr = (name, x, cls = '') => `<tr${cls}><td>${name}</td><td>${x.t}</td><td>${x.files}</td><td class="ins">+${x.ins}</td><td class="dels">−${x.dels}</td></tr>`;
   const code = rows.length ? `<table class="qs-tbl"><thead><tr><th>저장소</th><th>티켓</th><th>파일</th><th>추가</th><th>삭제</th></tr></thead><tbody>${rows.map(([k, x]) => tr(esc(k), x)).join('')}${rows.length > 1 ? tr('합계', sum, ' class="tot"') : ''}</tbody></table>`
-    : '<div class="st">워크트리가 남은 티켓이 없습니다.</div>';
+    : '<div class="st">워크트리나 PR 이 남은 티켓이 없습니다.</div>';
   return `<details class="qa-legend qa-stats" data-set="${esc(s.epic + '|' + s.server)}"${open ? ' open' : ''}><summary>QA 통계</summary>
     <div class="qs-tiles">${tiles}</div>
     ${qs.length ? `<div class="qs-h">일별 추이 <span class="st">최근 ${days.length}일 · 왼쪽 막대 = 기동한 회차, 오른쪽 = 커밋 완료</span></div>
     <div class="qs-chart">${cols}</div><div class="qs-leg">${leg}</div>` : ''}
-    <div class="qs-h">코드 변경 규모 <span class="st">워크트리가 남은 티켓 ${wt}개 · PR ${prs.size}개 · 베이스 대비</span></div>${code}
-    <div class="st">완료는 티켓의 마지막 회차 시각만 남아 앞 회차의 완료는 세지 않습니다. 정리된 티켓의 코드 변경은 빠집니다.</div></details>`;
+    <div class="qs-h">코드 변경 규모 <span class="st">워크트리가 남은 티켓 ${wt}개 (베이스 대비) · 정리된 티켓 ${gone}개 (PR 기준) · PR ${prs.size}개</span></div>${code}
+    <div class="st">완료는 티켓의 마지막 회차 시각만 남아 앞 회차의 완료는 세지 않습니다. 정리된 티켓은 PR 의 추가·삭제 줄로 셉니다.</div></details>`;
 }
 const qaStatsDays = {};
 // The closing report of an ended set: the figures (report.json, written once when the server saw the set retired) and
@@ -2549,6 +2553,18 @@ function wtRepo(t, r) {
     ${moved ? `<span class="rv-flag bad" title="리뷰 때 ${esc(rs)} → 지금 ${esc(r.head.slice(0, 9))}">리뷰 후 변경</span>` : ''}
   </div>`;
 }
+// A worktree that was removed: its own diff is gone, so the row reads its PR's size (a merged PR's is final).
+const PR_ST = { MERGED: '머지됨', CLOSED: '닫힘', OPEN: '열림' };
+function wtGone(r) {
+  const pr = `<a href="${esc(r.pr.url)}" target="_blank" rel="noopener">#${r.pr.number ?? '?'}</a>`;
+  const size = r.files != null ? `<span><b>${r.files}</b> 파일 <span class="rv-ins">+${r.ins}</span> <span class="rv-del">−${r.dels}</span></span>` : '<span class="st">PR 수치를 못 읽음</span>';
+  return `<div class="rv-repo gone">
+    <span class="rv-rn" title="워크트리가 삭제되어 PR 기준으로 보여줍니다">${esc(r.repo)}</span>
+    <span class="st">${esc(cut(r.branch || '', 44))}</span>
+    <span class="st" title="${r.merged_at ? '머지 ' + esc(clockAt(r.merged_at)) : ''}">PR ${pr}${r.base ? ' → ' + esc(r.base) : ''} · ${esc(PR_ST[r.pr.state] || r.pr.state || '?')}</span>
+    ${size}<span class="rv-flag">워크트리 삭제됨</span>
+  </div>`;
+}
 // A ticket's action buttons, by its stage — the 워크트리 tab's rows and the home 「QA 파이프라인」 both use them; clicks go
 // through wtClick.
 function wtActs(t, set) {
@@ -2584,7 +2600,7 @@ function wtTicket(t, set, ro) {
       ${ro ? '' : wtActs(t, set)}
     </div>
     ${qaTrack(t.qa)}
-    ${t.repos.map(r => wtRepo(t, r)).join('')}
+    ${t.repos.map(r => wtRepo(t, r)).join('')}${(t.gone || []).map(wtGone).join('')}
   </div>`;
 }
 async function renderWorktrees() {
