@@ -57,7 +57,7 @@ class Session:
         self.busy = False  # a turn is open: the model is generating or a tool is running
         self.bg = {}  # background task id -> (kind, started ts): run_in_background Bash, Monitor, async agents
         self.stop_calls = {}  # TaskStop tool call id -> task id
-        self.asks = {}  # AskUserQuestion call id -> [first question, epoch seconds, has a result]; see stale_decisions
+        self.asks = {}  # AskUserQuestion call id -> [first question, epoch seconds, has a result], Bash call id -> [command, …]; see stale_decisions
         self.inbox_picks = {}  # 메일함 item id -> the pick the agent wrote for it ("[메일함 <id>] ..."); see sweep_decisions
         self.bg_calls = {}  # tool call id -> tool name, for calls that may start a background task
         self.own_run_calls = set()  # tool call ids of this session's run-create/run-use
@@ -365,6 +365,8 @@ class Session:
                         q0 = qs[0].get("question") if isinstance(qs, list) and qs and isinstance(qs[0], dict) else None
                         if q0 and ts:
                             self.asks[block.get("id")] = [str(q0), epoch(ts), False]
+                    if block.get("name") == "Bash" and isinstance(cmd, str) and ts:
+                        self.asks[block.get("id")] = [cmd[:4000], epoch(ts), False]  # a Bash permission card's call (cut as the card is)
                     self.check_command(cmd)
                     self.note_call(block.get("id"), cmd)
                     cat, keys = self.count_tool(block.get("name"), block.get("input"))

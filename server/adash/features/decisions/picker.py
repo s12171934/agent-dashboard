@@ -165,3 +165,58 @@ def type_answers(handle, card, answers):
     if st["kind"] == "review":
         press("1")  # "1. Submit answers"
         until(sent, "답을 제출하지 못했습니다")
+
+
+# The Bash permission prompt as Claude Code draws it (checked against v2.1.316): a "Bash command" title, the
+# description, the command between dashed rules, "Do you want to proceed?", numbered rows ("❯ 1. Yes", "  2. Yes, and
+# always allow access to …" wrapping onto indented lines, …, "  4. No") and a footer "Esc to cancel · Tab to amend".
+# A digit key picks its row at once. A prompt that fits on one line may leave out "Do you want to proceed?".
+PERMIT_ORCA_S = 25  # Orca answers in about a second, but takes well over 10 s while the server's own polls crowd it
+PERMIT_ROWS = {"허용": lambda t: t == "Yes", "거부": lambda t: t == "No" or t.startswith("No,")}
+
+
+def permission_state(handle, card):
+    """The terminal's screen -> {"kind": "gone"} (no prompt), {"kind": "other"} (a prompt for something else), or
+    {"kind": "prompt", "rows": {n: text}}."""
+    t = orca("terminal", "read", "--terminal", handle, "--screen", timeout=PERMIT_ORCA_S)["terminal"]
+    if t.get("source") != "screen":
+        raise PickerError("터미널 화면을 읽지 못했습니다")
+    lines = t["tail"] if isinstance(t["tail"], list) else str(t["tail"]).splitlines()
+    foot = max((i for i, ln in enumerate(lines) if "Esc to cancel" in ln), default=None)
+    if foot is None:
+        return {"kind": "gone"}
+    head = max((i for i in range(foot) if "Do you want to proceed?" in lines[i]), default=None)
+    title = max((i for i in range(foot) if lines[i].strip() == "Bash command"), default=None)
+    if title is None:
+        return {"kind": "other"}
+    # The command's start, enough to tell it from another prompt; a long one may be cut off on the screen.
+    if compact(card["command"])[:40] not in compact("".join(lines[title:head or foot])):
+        return {"kind": "other"}
+    rows = {}
+    for ln in lines[(head if head is not None else title) + 1:foot]:
+        m = PICK_ROW.match(ln)
+        if m and int(m[2]) not in rows:
+            rows[int(m[2])] = m[4].strip()
+    return {"kind": "prompt", "rows": rows} if rows else {"kind": "other"}
+
+
+def type_permission(handle, card, label):
+    """Press the prompt's row for `label` (허용 → Yes, 거부 → No) in `handle`. PickerGone when no prompt is open,
+    PickerError, leaving the prompt open, when the prompt is not this card's or does not close."""
+    st = permission_state(handle, card)
+    if st["kind"] == "gone":
+        raise PickerGone("터미널에 이 명령의 권한 요청이 없습니다. 이미 닫힌 요청이라 카드를 치웠습니다")
+    if st["kind"] != "prompt":
+        raise PickerError("터미널에 이 명령의 권한 요청이 떠 있지 않습니다")
+    n = next((k for k, text in sorted(st["rows"].items()) if PERMIT_ROWS[label](text)), None)
+    if n is None or n > 9:
+        raise PickerError(f"권한 요청에 「{label}」에 맞는 선택지가 없습니다")
+    orca("terminal", "send", "--terminal", handle, "--text", str(n), timeout=PERMIT_ORCA_S)
+    end = time.time() + PICK_STEP_S
+    while True:
+        time.sleep(0.3)
+        # read twice: a frame caught mid-redraw has no footer either
+        if permission_state(handle, card)["kind"] != "prompt" and (time.sleep(0.3) or permission_state(handle, card)["kind"] != "prompt"):
+            return
+        if time.time() > end:
+            raise PickerError("권한 요청이 닫히지 않았습니다")

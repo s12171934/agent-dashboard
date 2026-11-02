@@ -9,7 +9,7 @@ import adash.features.sessions.scan as sessions_scan
 
 
 # A question answered in the terminal, cancelled there, or ended with its session is closed by the transcript: the
-# AskUserQuestion call the card came from (its tool_use_id; without one, the same session's call with the same first
+# AskUserQuestion call the card came from (for a Bash permission card, the Bash call with the card's command) (its tool_use_id; without one, the same session's call with the same first
 # question logged within ASK_MATCH_S of the card) already has a tool result. Such cards are cancelled here, as are ones past DECISION_KEEP_S.
 # So is a card no Claude session in the scan window owns (no session id, or a session the scan does not know) once
 # ORPHAN_S has passed: the page could not link it to a session, and such a question has been closed.
@@ -24,6 +24,8 @@ def stale_decisions(pending):
     for r in pending:
         s, qs = by_id.get(r.get("session_id")), r.get("questions")
         q0 = qs[0].get("question") if isinstance(qs, list) and qs and isinstance(qs[0], dict) else None
+        if r.get("kind") == "permission":
+            q0 = r.get("command")  # a Bash permission card: its Bash call, logged before the prompt opens
         if not s or not q0 or not isinstance(r.get("created_at"), (int, float)):
             continue
         if r.get("tool_use_id"):

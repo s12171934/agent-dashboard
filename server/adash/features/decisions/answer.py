@@ -9,7 +9,8 @@ from adash.core.config import HERE
 from adash.core.orca import orca
 from adash.core.state import report_failure
 from adash.core.util import short
-from adash.features.decisions.picker import PickerError, PickerGone, TYPED, check_answers, type_answers
+from adash.features.decisions.picker import (PERMIT_ROWS, PickerError, PickerGone, TYPED, check_answers, type_answers,
+    type_permission)
 from adash.features.decisions.store import (decision_lock, decision_store, inbox_store, publish_decisions,
     save_inbox, settle_decision)
 import adash.features.terminals.targets as terminals_targets
@@ -62,7 +63,11 @@ def answer_decision_once(rid, answers):
             return 409, {"error": "이미 답했거나 닫힌 질문입니다"}, d and d["card"], None
         if d["busy"]:
             return 409, {"error": "이 질문의 답을 터미널에 입력하는 중입니다"}, d["card"], None
-        answers = check_answers(d["card"], answers)
+        permit = d["card"].get("kind") == "permission"
+        if permit:
+            answers = answers if len(answers) == 1 and answers[0] in PERMIT_ROWS else "허용 또는 거부만 고를 수 있습니다"
+        else:
+            answers = check_answers(d["card"], answers)
         if isinstance(answers, str):
             return 400, {"error": answers}, d["card"], None
         handle = decision_terminal(d)
@@ -70,7 +75,10 @@ def answer_decision_once(rid, answers):
             return 409, {"error": "이 세션의 Orca 터미널을 찾지 못했습니다 — 터미널에서 답하세요"}, d["card"], None
         d["busy"] = True
     try:
-        type_answers(handle, d["card"], answers)
+        if permit:
+            type_permission(handle, d["card"], answers[0])
+        else:
+            type_answers(handle, d["card"], answers)
     except PickerGone as e:
         settle_decision(rid, "cancelled")
         return 410, {"error": str(e), "closed": True}, d["card"], handle
