@@ -12,8 +12,9 @@ from adash.features.designs.store import design_bases
 from adash.features.plans.owners import with_plan_terms
 from adash.features.sessions.archive import archived_session
 from adash.features.sessions.idle import apply_prefs
-from adash.features.terminals.pending import pending_detail
+from adash.features.terminals.pending import PREFIX, pending_detail
 from adash.features.vault.vault import vault_notes
+import adash.features.terminals.pending as terminals_pending
 import adash.features.vault.vault as vault_vault
 
 
@@ -78,7 +79,9 @@ def post_pref(h, url):
     with lock:
         for path in paths:
             s = sessions.get(path)
-            if not s:
+            # A pending agent (no transcript yet) keeps its person too: the session that claims its terminal takes it
+            # over (snapshot.carry_pending_chars), so the person does not change when the first prompt is sent.
+            if not s and not (action == "char" and path.startswith(PREFIX) and path in terminals_pending.pending):
                 continue
             if action == "char":
                 if who:

@@ -24,7 +24,7 @@ from adash.features.projects.store import PROJECTS_DIRS
 from adash.features.review.qa import qa_family
 from adash.features.review.store import review_state
 from adash.features.sessions.aliases import fold_handle_aliases
-from adash.features.sessions.idle import apply_prefs
+from adash.features.sessions.idle import apply_prefs, carry_pending_chars
 from adash.features.terminals.pending import pending_sessions
 from adash.features.terminals.targets import close_tree, focus_targets
 from adash.features.tests.tests import lite_test, test_progress
@@ -191,6 +191,7 @@ def build_state(encode):
         for sm in pending:
             sm["orca_focus"], sm["orca_close_tree"] = sm["id"], []
             focus[sm["id"]] = sm["id"]
+        carry_pending_chars(summaries, pending)
         # Rebound, never edited in place: orca_terminal reads them without waiting for this lock.
         terminals_targets.focus_handles = {h: sid for sid, h in focus.items()}
         terminals_targets.close_trees = trees
