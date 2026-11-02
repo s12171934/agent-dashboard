@@ -3644,7 +3644,8 @@ const chIn = l => { const k = l.filter(w => chPool[w] !== false); return k.lengt
 // switched on in the 「캐릭터」 tab) holds the fewest of (chLeast), and once kept it stays — a person switched off only
 // steers new sessions; it is picked again when its person is gone (deleted for good), or, unless picked by hand, when its person
 // is not in the list for its role (a session that became a coordinator takes a coordinator). Before chars.json is read nothing is kept (a person put up there would look
-// gone), and a session nothing is kept for yet (a pending terminal, a moment before the reply) shows the hash's pick.
+// gone), and a session nothing is kept for yet (a moment before the reply) shows the hash's pick. A pending terminal is
+// pinned the same way, and its session takes its person over (chPend, and the server's carry_pending_chars).
 // A person picked in a session's detail is kept the same way with pick.
 // adash.chpick: picks this device kept before; sent up once, and the server's wins.
 let chPick = {}, chReady = false;
@@ -3667,15 +3668,24 @@ const chSnap = s => s.char ? s : state?.all?.find(x => x.path === s.path) || s;
 const chFits = (who, boss) => (boss ? CH_BOSS : CH_CREW).includes(who);
 const chWho = s => { const t = chSnap(s), c = t.char; return CH_ART[c?.who] && (c.pick || chFits(c.who, isBoss(t))) ? c.who : chAuto(t); };
 const chSent = new Set();
+// A pending agent (orca-terminal:<handle>, no transcript yet) is pinned like a session; the server hands its person to
+// the session that claims the terminal. chPend (handle → who, the last pending picks seen) covers the snapshot where
+// the session shows up before the server has done so, so the person never changes at the first prompt.
+let chPend = {};
 function chPin(list) {
   if (!chReady) return;
   const want = {}, on = chOrca(list), cnt = chCount(list.filter(s => CH_ART[s.char?.who] && (s.char.pick || chFits(s.char.who, isBoss(s)))), on);
+  const pend = {};
   for (const s of list) {
-    if (!s.path || s.path.startsWith('orca-terminal:')) continue;
+    if (!s.path) continue;
     const c = s.char, old = chPick[s.id || s.path], boss = isBoss(s);
     let n = null;
     if (old && CH_ART[old] && !c?.pick) n = { who: old, boss, pick: true };
-    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) n = { who: chLeast(s, cnt), boss, pick: false };
+    else if (!c || !CH_ART[c.who] || !c.pick && !chFits(c.who, boss)) {
+      const was = !c && chPend[s.orca_focus];
+      n = { who: was && CH_ART[was] && chFits(was, boss) ? was : chLeast(s, cnt), boss, pick: false };
+    }
+    if (s.pending) pend[s.id] = (n || c)?.who;
     if (old) { delete chPick[s.id || s.path]; try { localStorage.setItem('adash.chpick', JSON.stringify(chPick)); } catch {} }
     if (!n || c && n.who === c.who && n.boss === c.boss && n.pick === c.pick) continue;
     s.char = n;
@@ -3685,6 +3695,7 @@ function chPin(list) {
     chSent.add(s.path + key);
     (want[key] ||= []).push(s.path);
   }
+  chPend = pend;
   for (const [key, ps] of Object.entries(want)) api.pref('char', ps, JSON.parse(key)).catch(() => {});
 }
 // Keep a person for one session by hand (who) or hand it back to the automatic pick (null), on this page at once.
