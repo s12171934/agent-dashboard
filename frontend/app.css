@@ -1079,6 +1079,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .rv-acts .act[disabled] { opacity: .5; cursor: not-allowed; }
 .rv-repo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 5px 0 0 6px; margin-top: 5px; border-top: 1px dashed var(--line); font-size: 12px; }
 .rv-rn { font-weight: 600; min-width: 150px; }
+.rv-repo.gone { opacity: .75; }
+.rv-repo.gone .rv-rn { font-weight: 500; }
 .rv-ins { color: var(--done); } .rv-del { color: var(--bad); }
 .rv-flag { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid; }
 .rv-flag.warn { color: var(--warn); } .rv-flag.bad { color: var(--bad); }

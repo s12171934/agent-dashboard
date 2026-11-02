@@ -339,7 +339,8 @@ const api = (() => {
     // QA sets for the 워크트리 tab, over the servers that are on: {sets[{server, local, epic, summary, project, error,
     // stray[], tickets[{key, summary, status, cat, assignee, review none|pending|done|changed|reopened, review_at,
     // review_round, review_sha{repo: sha}, step, step_status, notes[], test, repos[{repo, path, branch, name, comment, head, base,
-    // base_ref, base_src PR|설정|기본, pr, dirty, ahead, behind, files, ins, dels}]}]}], jira}. local: the server is this
+    // base_ref, base_src PR|설정|기본, pr, dirty, ahead, behind, files, ins, dels}], gone[{repo, branch, pr{number, url,
+    // state}, base, merged_at, files, ins, dels}] — removed worktrees by their PR's size}]}], jira}. local: the server is this
     // device's loopback, the only place 「VS Code 로 열기」 can work. state.reviews_at changes when any server's sets do.
     reviews: async () => {
       const parts = await fromAll('/api/reviews'), loop = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/;

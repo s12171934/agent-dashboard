@@ -8,11 +8,11 @@ from adash.features.review.store import review_kick, review_state
 
 
 def review_loop():
-    jira, prs, stats = {}, {}, {}
+    jira, prs, stats, gone_prs = {}, {}, {}, {}
     while True:
         if QA_SETS:
             try:
-                review_pass(jira, prs, stats)
+                review_pass(jira, prs, stats, gone_prs)
                 loop_ok("review")
             except Exception as e:
                 loop_failed("review", e)
