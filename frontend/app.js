@@ -2260,26 +2260,19 @@ const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv
 // goes to the set's server and works only when that server is this device's loopback (set.local); elsewhere (a phone,
 // another machine) the button is not drawn.
 let wtData = { at: undefined, sets: [], jira: '' }, wtMounted = false, wtBodyHtml = '';
-// f: review filter, j: Jira stage ('' all), q: search, qa: QA driver stage ('' all, a stage key, or 'blocked') — the home
-// 「QA 파이프라인」 sets it. f once held the Jira stage too ('j:<stage>'); a saved one moves to j.
-const wtf = (() => { const d = { f: 'all', j: '', q: '', qa: '' }; try { Object.assign(d, JSON.parse(localStorage.getItem('adash.wt') || '{}')); } catch {}
-  if (d.f.startsWith('j:')) [d.j, d.f] = [d.f.slice(2), 'all'];
+const WT_FILTERS = { all: ['전체보기', () => true], early: ['진행중 이전건만 보기', t => ['todo', 'prog', 'hold'].includes(jiraStage(t))] };
+// f: 'all' or 'early' (Jira 시작 전·진행 중·보류 only — the tickets not yet handed on as 개발 완료), q: search. A saved
+// filter from the old review chips / Jira and QA menus falls back to 'all'.
+const wtf = (() => { const d = { f: 'all', q: '' }; try { const o = JSON.parse(localStorage.getItem('adash.wt') || '{}'); if (typeof o.q === 'string') d.q = o.q; if (o.f in WT_FILTERS) d.f = o.f; } catch {}
   return d; })();
-const wtQaHit = t => !wtf.qa || (wtf.qa === 'blocked' ? !!t.qa?.blocked : t.qa?.stage === wtf.qa);
-// The tab's filters together; the home 「QA 파이프라인」 counts and lists only the tickets they let through.
 const wtHit = t => { const q = wtf.q.trim().toLowerCase();
-  return (wtf.f === 'all' || t.review === wtf.f) && (!wtf.j || jiraStage(t) === wtf.j) && wtQaHit(t)
-    && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q))); };
-// The filters in force, named for the home widget's note ([] when none).
-const wtFilterNames = () => [wtf.f !== 'all' && WT_FILTERS[wtf.f], wtf.j && 'Jira ' + WT_JIRA[wtf.j],
-  wtf.qa && (wtf.qa === 'blocked' ? 'QA 막힘' : 'QA ' + qaName(wtf.qa)), wtf.q.trim() && `「${wtf.q.trim()}」`].filter(Boolean);
+  return WT_FILTERS[wtf.f][1](t) && (!q || [t.key, t.summary, ...t.repos.map(r => r.branch)].some(x => x && x.toLowerCase().includes(q))); };
 const WT_REVIEW = { changed: ['fail', '리뷰 후 변경'], reopened: ['fail', '재오픈 후 리뷰 대기'], pending: ['wait', '리뷰 대기'], done: ['done', '리뷰 완료'], none: ['pending', '워크트리 없음'] };
 const WT_ORDER = ['changed', 'reopened', 'pending', 'done', 'none'];
 // Ended QA sets (qa-driver retire) leave the top for a folded 「종료된 QA」 card at the bottom, read-only; the ones opened
 // are remembered. The set just ended from this page is scrolled to and marked once it comes back retired.
 const wtArch = (() => { try { return new Set(JSON.parse(localStorage.getItem('adash.wtarch') || '[]')); } catch { return new Set(); } })();
 let wtJustRetired = null;
-const WT_FILTERS = { all: '전체', reopened: '재오픈', pending: '리뷰 대기', done: '리뷰 완료', none: '워크트리 없음' };
 // Jira status → stage. 보류(Holding), 개발 완료 and QA 준비 완료 share Jira's 'indeterminate' category with 진행 중, so they
 // go by name; an unknown name falls back to its category.
 const WT_JIRA = { todo: '시작 전', prog: '진행 중', hold: '보류', dev: '개발 완료', ready: 'QA 준비 완료', qa: 'QA 완료' };
@@ -2600,12 +2593,8 @@ async function renderWorktrees() {
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
         <div class="seg" id="wt-f"></div>
-        <select id="wt-j" class="field" title="Jira 상태"></select>
-        <select id="wt-qa" class="field" title="QA 드라이버 단계"></select>
         <input type="search" id="wt-q" class="field" placeholder="키·제목·브랜치 검색" value="${esc(wtf.q)}">
       </div><div id="wt-body"></div>`;
-    $('#wt-qa').onchange = e => { wtf.qa = e.target.value; save(); renderWorktrees(); };
-    $('#wt-j').onchange = e => { wtf.j = e.target.value; save(); renderWorktrees(); };
     $('#wt-f').onclick = e => { const b = e.target.closest('button'); if (b) { wtf.f = b.dataset.k; save(); renderWorktrees(); } };
     $('#wt-q').oninput = e => { wtf.q = e.target.value; save(); renderWorktrees(); };
     $('#wt-body').onclick = wtClick;
@@ -2613,17 +2602,9 @@ async function renderWorktrees() {
     wtBodyHtml = '';
   }
   if (!(wtf.f in WT_FILTERS)) wtf.f = 'all';
-  if (wtf.j && !(wtf.j in WT_JIRA)) wtf.j = '';
-  if (wtf.qa && wtf.qa !== 'blocked' && !WT_QA.includes(wtf.qa)) wtf.qa = '';
-  // Counts over the running sets' tickets. A review chip with none is left out (unless picked); Jira stages and QA stages
-  // go in menus with their counts.
-  const tks = wtData.sets.filter(s => !s.retired).flatMap(s => s.tickets), cnt = fn => tks.filter(fn).length;
-  const opts = (sel, xs) => xs.map(([k, l, n]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(l)} ${n}</option>`).join('');
-  const setOpts = (id, h) => { const el = $(id); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } };
-  $('#wt-f').innerHTML = Object.entries(WT_FILTERS).map(([k, l]) => [k, l, k === 'all' ? tks.length : cnt(t => t.review === k)])
-    .filter(([k, , n]) => k === 'all' || n || k === wtf.f).map(([k, l, n]) => `<button data-k="${k}" class="${k === wtf.f ? 'on' : ''}">${l} ${n}</button>`).join('');
-  setOpts('#wt-j', opts(wtf.j, [['', 'Jira 전체', tks.length], ...Object.entries(WT_JIRA).map(([k, l]) => [k, 'Jira ' + l, cnt(t => jiraStage(t) === k)]).filter(([k, , n]) => n || k === wtf.j)]));
-  setOpts('#wt-qa', opts(wtf.qa, [['', 'QA 단계 전체', tks.length], ...qaStages().filter(x => WT_QA.includes(x.key)).map(x => [x.key, 'QA ' + x.label, cnt(t => t.qa?.stage === x.key)]), ['blocked', 'QA 막힘', cnt(t => t.qa?.blocked)]]));
+  // Counts over the running sets' tickets.
+  const tks = wtData.sets.filter(s => !s.retired).flatMap(s => s.tickets);
+  $('#wt-f').innerHTML = Object.entries(WT_FILTERS).map(([k, [l, fn]]) => `<button data-k="${k}" class="${k === wtf.f ? 'on' : ''}">${l} ${tks.filter(fn).length}</button>`).join('');
   const num = k => +k.split('-').pop();
   const setHtml = (s, ro) => {
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
