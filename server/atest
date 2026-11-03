@@ -215,7 +215,17 @@ def cmd_run(opts, argv):
     print(f"atest: {kind} 진행을 {run.path} 에 기록 (로그 {log})", file=sys.stderr, flush=True)
 
     stop, lock, pos = threading.Event(), threading.Lock(), [0]
-    child = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=False)
+    try:
+        child = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=False)
+    except OSError as e:  # the command never started — close the run instead of leaving it "running" forever
+        code = 126 if isinstance(e, PermissionError) else 127
+        msg = f"명령 시작 실패: {e.strerror or e} ({argv[0]})"
+        with open(log, "w") as lf:
+            lf.write(msg + "\n")
+        run.d.update(phase="failed", verdict="error", exit=code, detail=msg, judged=True)
+        run.save()
+        print(f"atest: {msg}", file=sys.stderr, flush=True)
+        sys.exit(code)
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda s, _f: child.send_signal(s))
     threads = [threading.Thread(target=tail_events, args=(events, run, stop, pos), daemon=True)] if events else []
