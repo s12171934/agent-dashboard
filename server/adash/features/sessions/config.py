@@ -17,6 +17,7 @@ LONG_CTX_MODELS = set()
 # Run state comes from turn boundaries in the transcript, not from how recent the last line is.
 STALL_SECONDS = 15 * 60   # a turn left open this long without any record is reported as stalled
 WAIT_SECONDS = 30 * 60    # a finished turn counts as "waiting for input" for this long, then idle
+SELF_CLOSE_SECONDS = 60  # a call that closed its own terminal and got no result this long after: the session ended
 HOOK_STATUS = os.path.join(HOME, "Library/Application Support/orca/agent-hooks/last-status.json")
 hooks = {}  # provider session id -> Orca hook status (Orca-managed Claude panes only)
 LOG_LIMIT = 600
