@@ -12,10 +12,10 @@ from adash.features.decisions.store import INBOX_PICK
 from adash.features.designs.refs import DesignReads, note_design_stats
 from adash.features.orca_runs.store import orca_state
 from adash.features.sessions.config import (CHAT_CHARS, CHAT_LIMIT, CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS,
-    STALL_SECONDS, WAIT_SECONDS, hooks)
+    SELF_CLOSE_SECONDS, STALL_SECONDS, WAIT_SECONDS, hooks)
 from adash.features.sessions.patterns import (APLAN_CMD, APLAN_SET, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS,
     BG_NOTE, BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD,
-    RELAY, RELAY_BACK, RUN_CREATE, RUN_ID, TERM_CREATE, classify_tool, tool_hint)
+    RELAY, RELAY_BACK, RUN_CREATE, RUN_ID, TERM_CREATE, closes_own_terminal, classify_tool, tool_hint)
 from adash.features.sessions.places import place_of
 from adash.features.sessions.plans import build_plans
 from adash.features.sessions.pricing import price_for
@@ -55,6 +55,7 @@ class Session:
         self.awaits = set()  # terminals this session handed a message to and has had no answer from (see RELAY)
         self.error = None  # last turn ended on an API error (usage limit etc.) and nothing has run since
         self.busy = False  # a turn is open: the model is generating or a tool is running
+        self.self_close = None  # call id of a pending `orca terminal close` of its own terminal (ends the agent with it)
         self.bg = {}  # background task id -> (kind, started ts): run_in_background Bash, Monitor, async agents
         self.stop_calls = {}  # TaskStop tool call id -> task id
         self.asks = {}  # AskUserQuestion call id -> [first question, epoch seconds, has a result], Bash call id -> [command, …]; see stale_decisions
@@ -164,6 +165,9 @@ class Session:
                 self.own_handle = own.most_common(1)[0][0]
 
     def note_call(self, call_id, cmd):
+        # Only the latest call counts: anything recorded after a self-close means the agent outlived it.
+        own = {h for h in [self.own_handle, *self.self_handles] if h}  # self_handles: Runs it bound without --from
+        self.self_close = call_id if closes_own_terminal(cmd, own) else None
         if isinstance(cmd, str) and (RELAY_BACK.search(cmd) or APLAN_SET.search(cmd)):
             self.awaits.clear()  # the answer read, or a new plan: a new piece of work
         if isinstance(cmd, str) and RELAY.search(cmd):
@@ -197,6 +201,8 @@ class Session:
         return dict(out)
 
     def note_result(self, call_id, text, ts=None):
+        if call_id == self.self_close:
+            self.self_close = None  # the close returned: the agent is still there
         if call_id in self.stop_calls:
             self.bg.pop(self.stop_calls.pop(call_id), None)
         tool = self.bg_calls.pop(call_id, None)
@@ -382,6 +388,8 @@ class Session:
             content = msg.get("content")
             if not rec.get("isMeta"):
                 self.busy = True  # a prompt or a tool result: the model is up next
+                if isinstance(content, str):
+                    self.self_close = None  # a new prompt: the session is alive
                 if "[Request interrupted by user" in json.dumps(content, ensure_ascii=False)[:400]:
                     self.busy = False
             if isinstance(content, str):
@@ -596,6 +604,10 @@ class Session:
         if self.error and not self.busy:
             # An API error (usage limit etc.) ends the turn without a hook update, so it outranks the hook.
             state, why = "stalled", "API 오류로 멈춤: " + self.error
+        elif self.busy and self.self_close and age is not None and age >= SELF_CLOSE_SECONDS:
+            # It closed its own terminal as its last act (a brief's "보고 뒤 종료"): the process died inside that call,
+            # so the turn never closes in the transcript. Not stalled — finished.
+            state, why = "idle", "자기 터미널을 닫고 종료"
         elif hook and age is not None and hook["at"] >= time.time() - age - 1:
             if hook["state"] == "working" and hook.get("mode") == "monitoring":
                 # Orca's Stop hook: the turn ended but background tasks still run.

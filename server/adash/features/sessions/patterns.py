@@ -69,6 +69,24 @@ APLAN_SET = re.compile(r"\baplan set\b")
 # A real `terminal create` call, however orca is invoked (orca, a full path, or a shell variable like $O),
 # including inside $(...); a mention in text or a --help call does not count.
 TERM_CREATE = re.compile(r"(?:^|[;&|\n(]\s*|\$\(\s*)(?:\S*/orca|orca|\$\{?\w+\}?) terminal create\b(?![^;&|\n]*--help)")
+# A real `terminal close` call, however orca is invoked; group 1 = the rest of that shell segment.
+TERM_CLOSE = re.compile(r"(?:^|[;&|\n(]\s*)(?:\S*/orca|orca|\$\{?\w+\}?) terminal close\b([^;&|\n]*)")
+CLOSE_TARGET = re.compile(r"--terminal[ =]+[\"']?(\$\{?ORCA_TERMINAL_HANDLE\b|term_[0-9a-f-]{36})")
+
+
+def closes_own_terminal(cmd, own_handles=()):
+    """True when the command closes the terminal it runs in: `terminal close` with no --terminal, with
+    $ORCA_TERMINAL_HANDLE, or with one of the session's own handles. The close kills the agent mid-call."""
+    for m in TERM_CLOSE.finditer(cmd if isinstance(cmd, str) else ""):
+        rest = m.group(1)
+        if "--help" in rest:
+            continue
+        t = CLOSE_TARGET.search(rest)
+        if "--terminal" not in rest or (t and (t.group(1).startswith("$") or t.group(1) in own_handles)):
+            return True
+    return False
+
+
 TERM_HANDLE_STR = re.compile(r'"handle\\*"\s*:\s*\\*"(term_[0-9a-f-]{36})')
 OWN_RUN_CMD = re.compile(r"orchestration (?:run-create|run-use)(?![\w-])")
 RUN_CREATE = re.compile(r"orchestration run-create(?![\w-])(?![^\n|;&]*--help)")
