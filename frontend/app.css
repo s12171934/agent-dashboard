@@ -1156,6 +1156,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .qa-ana-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 8px; }
 .qa-ana-h .rv-acts { margin-left: auto; }
 .qa-ana { font-size: 13px; padding: 4px 2px 8px; }
+/* the report borrows .dz-doc for its typography only: not a scroll box of its own (that trapped the wheel), the tab scrolls */
+.qa-ana { overflow: visible; overscroll-behavior: auto; min-width: 0; }
 .qa-ana > h1:first-child { display: none; }
 .qa-ana table { border-collapse: collapse; font-size: 12px; }
 .qa-ana th, .qa-ana td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
