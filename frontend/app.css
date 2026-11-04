@@ -1092,6 +1092,9 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .rv-web-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
 .rv-web-f { display: block; width: 100%; height: min(72vh, 760px); border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .rv-web-f[hidden] { display: none; }
+/* a row whose web VS Code panel is open but that dropped out of the list (morphHeld): kept until the panel closes */
+.rv-tk.rv-held > .rv-head { opacity: .55; }
+.rv-tk.rv-held > .rv-head::after { content: '목록에서 빠짐 · 접으면 사라짐'; font-size: 11px; color: var(--muted); margin-left: auto; }
 /* 워크트리 (#trees): every local worktree */
 .tr-path { font-size: 11.5px; overflow-wrap: anywhere; }
 .tr-note { margin-top: 6px; padding: 6px 10px; border-left: 3px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }

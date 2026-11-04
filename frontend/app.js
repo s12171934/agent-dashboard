@@ -376,6 +376,45 @@ function morph(el, html) {
   t.innerHTML = html;
   morphKids(el, t.content);
 }
+// Puts html into el like innerHTML, except that the nodes holding one of keep (open web VS Code panels) never leave the
+// document: without moveBefore (WebKit) an iframe whose node is detached, even for a moment, loads again from scratch.
+// Such a node stays where it is and is patched from its counterpart in html, matched by key (HELD_KEYS); the nodes around
+// it are built fresh and put before or after it as html orders them. A held node with no counterpart (its row filtered
+// out or gone) stays where it was, marked .rv-held, until its panel closes.
+const HELD_KEYS = ['wtTk', 'tr', 'heldList'];  // ticket row, worktree row, the list around them
+const heldKey = n => n.nodeType === 1 ? HELD_KEYS.map(k => n.dataset[k] && k + ':' + n.dataset[k]).find(Boolean) : undefined;
+function morphHeld(el, html, keep) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  heldKids(el, t.content, keep);
+}
+function heldKids(l, b, keep) {
+  const old = [...l.childNodes], pins = old.filter(n => keep.some(p => n.contains(p))), target = [...b.childNodes];
+  for (const p of pins) {
+    if (keep.includes(p)) { target.push(p); continue; }  // a panel itself: last in its row, as it was put there
+    const k = heldKey(p), i = k ? target.findIndex(n => heldKey(n) === k) : -1;
+    if (i < 0) {  // the mark goes on the row, also when what dropped out is the list around it
+      for (const r of [p, ...p.querySelectorAll('[data-wt-tk], [data-tr]')]) if (keep.some(x => r.contains(x))) r.classList.add('rv-held');
+      target.splice(Math.min(old.indexOf(p), target.length), 0, p);
+      continue;
+    }
+    const q = target[i];
+    for (const n of new Set([...p.getAttributeNames(), ...q.getAttributeNames()])) {
+      const v = q.getAttribute(n);
+      if (p.getAttribute(n) !== v) v === null ? p.removeAttribute(n) : p.setAttribute(n, v);
+    }
+    heldKids(p, q, keep);
+    target[i] = p;
+  }
+  for (const n of old) if (!pins.includes(n)) n.remove();
+  // Only the new nodes move, in front of each held node in turn; held nodes keep their order among themselves.
+  let i = 0;
+  for (const p of pins) {
+    for (; i < target.length && target[i] !== p; i++) if (!pins.includes(target[i])) l.insertBefore(target[i], p);
+    i++;
+  }
+  for (; i < target.length; i++) if (!pins.includes(target[i])) l.appendChild(target[i]);
+}
 function morphKids(l, b) {
   const ln = l.childNodes, bn = [...b.childNodes];
   for (let i = 0; i < bn.length; i++) {
@@ -2630,7 +2669,7 @@ async function renderWorktrees() {
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
       ${qaSheetHtml(s)}${qaStatsHtml(s)}${ro ? '' : qaAutoHtml(s) + qaLegacyHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
-      <div class="rv-list">${ts.map(t => wtTicket(t, s, ro)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
+      <div class="rv-list" data-held-list="${esc(s.epic + '|' + s.server + (ro ? '|ro' : ''))}">${ts.map(t => wtTicket(t, s, ro)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   };
   const live = wtData.sets.filter(s => !s.retired), ended = wtData.sets.filter(s => s.retired)
     .sort((a, b) => (b.retired_at || '').localeCompare(a.retired_at || ''));
@@ -2647,10 +2686,10 @@ async function renderWorktrees() {
   // Unchanged markup is left alone: a web VS Code open under a ticket survives a redraw only where moveBefore exists.
   const html = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
   if (html === wtBodyHtml && $('#wt-body').childElementCount) return;
-  if (WEB_HOLD && wtWeb.size && $('#wt-body').childElementCount) return;
   wtBodyHtml = html;
-  wtWebStash();
-  $('#wt-body').innerHTML = html;
+  const held = WEB_HOLD ? [...wtWeb.values()].filter(el => $('#wt-body').contains(el)) : [];
+  if (held.length) morphHeld($('#wt-body'), html, held);
+  else { wtWebStash(); $('#wt-body').innerHTML = html; }
   wtWebPlace($('#wt-body'));
   qaAnaRender($('#wt-body'));
   $('#wt-body').querySelectorAll('.qa-arch').forEach(d => d.ontoggle = () => { d.open ? wtArch.add(d.dataset.arch) : wtArch.delete(d.dataset.arch);
@@ -2726,7 +2765,8 @@ async function qaSetClick(b) {
 // by the server) in a panel at the bottom of the ticket row — a tab per repo, the desktop window one button away. The
 // panels live outside the rendered markup (wtWeb) and go back under their row after each redraw: moveBefore keeps the
 // iframe loaded where the browser has it, plain append reloads it. Without moveBefore (Safari, the macOS app's WebKit)
-// a list with a panel open is not redrawn at all until the panel closes: every redraw would reload VS Code (WEB_HOLD).
+// a list with a panel open is patched around it instead (morphHeld): the panel's row never leaves the page, the rows
+// around it are rebuilt and moved, and a row that drops out of the list stays (.rv-held) until its panel closes.
 const wtWeb = new Map();  // ticket key → panel
 const WEB_HOLD = !('moveBefore' in Element.prototype);
 let wtWebPark;
@@ -2764,7 +2804,7 @@ const wtWebLabel = (key, on) => document.querySelectorAll(`button[data-wt-web="$
 const wtWebClose = key => {
   if (!wtWeb.has(key)) return;
   wtWeb.get(key).remove(); wtWeb.delete(key); wtWebLabel(key, false);
-  if (WEB_HOLD) renderWorktrees();  // the redraws held while it was open
+  if (WEB_HOLD && route().v === 'worktrees') { wtBodyHtml = ''; renderWorktrees(); }  // drop its row if it was held (.rv-held)
 };
 async function wtWebToggle(b) {
   const key = b.dataset.wtWeb, srv = b.dataset.srv, label = on => wtWebLabel(key, on);
@@ -2883,19 +2923,23 @@ async function renderTrees() {
   const body = trData.servers.map(sv => {
     const repos = sv.repos.map(rp => { const ws = rp.worktrees.filter(hit); all += rp.worktrees.length; shown += ws.length;
       return ws.length || rp.error ? `<div class="sec-h"><h2>${esc(rp.name)}</h2><span title="${esc(rp.path)}">${ws.length}${ws.length !== rp.worktrees.length ? ' / ' + rp.worktrees.length : ''}개 · ${esc(rp.path)}</span></div>
-        ${rp.error ? `<div class="rv-err">${esc(rp.error)}</div>` : ''}<div class="rv-list">${ws.map(w => trRow(w, sv)).join('')}</div>` : ''; }).join('');
+        ${rp.error ? `<div class="rv-err">${esc(rp.error)}</div>` : ''}<div class="rv-list" data-held-list="${esc(sv.server + '|' + rp.path)}">${ws.map(w => trRow(w, sv)).join('')}</div>` : ''; }).join('');
     return (multi ? `<div class="sec-h"><h2>${esc(sv.name)}</h2><span class="badge srv">서버</span></div>` : '')
       + (sv.error ? `<div class="rv-err">${esc(sv.name)}: ${esc(sv.error)}</div>` : '') + repos;
   }).join('') || '';
   $('#tr-sum').textContent = `${shown}${shown !== all ? ' / ' + all : ''}개 · ${ago(new Date(trAt).toISOString())} 읽음`;
   const html = body + (shown ? '' : '<div class="empty">조건에 맞는 워크트리가 없습니다.</div>');
   if (html === trBodyHtml || (trEdit && $('#tr-body .tr-edit textarea'))) return;  // an open note editor keeps its text
-  if (WEB_HOLD && trWeb.size && $('#tr-body').childElementCount) return;
-  for (const el of trWeb.values()) if (el.isConnected) wtWebMove(wtWebPark || (wtWebPark = Object.assign(document.body.appendChild(document.createElement('div')), { hidden: true })), el);
-  $('#tr-body').innerHTML = trBodyHtml = html;
+  trBodyHtml = html;
+  const held = WEB_HOLD ? [...trWeb.values()].filter(el => $('#tr-body').contains(el)) : [];  // see morphHeld
+  if (held.length) morphHeld($('#tr-body'), html, held);
+  else {
+    for (const el of trWeb.values()) if (el.isConnected) wtWebMove(wtWebPark || (wtWebPark = Object.assign(document.body.appendChild(document.createElement('div')), { hidden: true })), el);
+    $('#tr-body').innerHTML = html;
+  }
   for (const [k, el] of trWeb) {
     const row = $('#tr-body').querySelector(`[data-tr="${CSS.escape(k)}"]`);
-    if (row) wtWebMove(row, el);
+    if (row && el.parentNode !== row) wtWebMove(row, el);
   }
 }
 function trNoteEdit(k) {
