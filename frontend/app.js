@@ -6467,6 +6467,9 @@ document.addEventListener('click', e => { if (chatHeld) { chatHeld = false; e.st
 const PJ_ST = { done: '완료', failed: '실패', active: '진행 중', pending: '예정', scheduling: '일정 미정', empty: '작업 없음' };
 const PJ_C = { done: 'var(--done)', failed: 'var(--bad)', active: 'var(--run)', pending: 'var(--muted)', scheduling: 'var(--idle)', empty: 'var(--idle)' };
 const pjFin = st => st.status === 'done' || st.status === 'failed';
+// A stage's status as a class name. 'empty' would also pick up the design system's empty-state block (.empty: padding
+// 40px, centred), which pushed a stage with no steps off its line: it is drawn as 'blank'.
+const pjCls = s => s === 'empty' ? 'blank' : s;
 // A note in Obsidian (obsLink): its absolute path comes from the project's progress.json path (absolute).
 const pjObsidian = obsLink;
 const pjAbs = (p, rel) => p.path.replace(/[^/]*$/, '') + rel;
@@ -6541,7 +6544,7 @@ function pjRow(p) {
   const line = p.stages.map((st, i) => {
     const link = pjFin(st) && p.stages[i + 1] && pjFin(p.stages[i + 1]);  // green only between two finished stages
     const tip = `${st.no}. ${st.name} — ${PJ_ST[st.status]}${st.total ? ` · ${st.counts.done}/${st.total}` : ''}${pjFin(st) && st.end ? ` · 완료 ${st.end}` : ''}`;
-    return `<span class="pj-st ${st.status}${link ? ' link' : ''}${p.current?.no === st.no ? ' cur' : ''}${pjStageOf(p) === st.no ? ' sel' : ''}" data-st="${st.no}" title="${esc(tip)}">${pjNode(st)}<span>${esc(st.name)}</span></span>`;
+    return `<span class="pj-st ${pjCls(st.status)}${link ? ' link' : ''}${p.current?.no === st.no ? ' cur' : ''}${pjStageOf(p) === st.no ? ' sel' : ''}" data-st="${st.no}" title="${esc(tip)}">${pjNode(st)}<span>${esc(st.name)}</span></span>`;
   }).join('');
   return `<details class="box pj-row${p.status === 'done' ? ' fin' : ''}" data-pj="${esc(k)}"${pjOpen === k ? ' open' : ''}><summary>
       <span class="pj-head"><b>${esc(p.name)}</b>${srvBadge(p)}${pjChip(p.status)}
@@ -6586,12 +6589,12 @@ async function pjDetail(box, key) {
     <div class="prog pj-prog"><div style="width: ${pct}%; background: var(--done)"></div></div>
     <div class="pj-split${split ? ' on' : ''}">
       <div class="pj-stages">${p.stages.map(st => `<section class="pj-stage${pjStageOf(p) === st.no ? ' sel' : ''}" data-st-sec="${st.no}">
-        <h4><span class="pj-st ${st.status}${p.current?.no === st.no ? ' cur' : ''}">${pjNode(st)}</span>${esc(st.name)} ${pjChip(st.status)}
+        <h4><span class="pj-st ${pjCls(st.status)}${p.current?.no === st.no ? ' cur' : ''}">${pjNode(st)}</span>${esc(st.name)} ${pjChip(st.status)}
           <span class="st">${st.total ? `${st.counts.done}/${st.total}` : ''}${st.start ? ` · ${pjPeriod(st.start, st.end)}` : ''}</span></h4>
         ${st.steps.length ? `<ul class="pj-steps">${st.steps.map(sp => `<li><button type="button" class="pj-step${split && pjNote.path === sp.path ? ' on' : ''}" data-pj-step="${esc(sp.path)}">
             <i class="pj-sdot ${sp.status}"></i><span class="pj-stitle">${esc(sp.title)}</span><span class="st pj-long">${sp.date ? pjPeriod(sp.date, sp.endDate) : PJ_ST.scheduling}</span><span class="st pj-short">${sp.date ? pjPeriod(sp.date.slice(5), sp.endDate?.slice(5)).replace(' ~ ', '~') : '미정'}</span></button>
             <a class="act pj-obs" href="${pjObsidian(pjAbs(p, sp.path))}" aria-label="${esc(sp.title)} — Obsidian 에서 열기" data-tip="Obsidian 에서 열기">Obsidian</a></li>`).join('')}</ul>`
-          : '<div class="st pj-none">스텝 없음</div>'}
+          : '<div class="st pj-none"><i class="pj-sdot"></i>이 단계 폴더에 스텝 문서가 없습니다</div>'}
       </section>`).join('')}</div>
       <div class="pj-note" data-pj-note></div>
     </div>`;
@@ -6799,7 +6802,7 @@ function pjTimeline(box, d, vert) {
   const stageName = (t, c, side, st) => {
     const name = st.name.length > 8 ? st.name.slice(0, 7) + "…" : st.name;
     const [x, y] = vert ? P(t + R + 13, c) : P(t, c + side * (R + 13) + (side > 0 ? 4 : 0));
-    return `<text class="pj-sname ${st.status}" x="${x}" y="${y}" text-anchor="middle">${esc(name)}</text>`;
+    return `<text class="pj-sname ${pjCls(st.status)}" x="${x}" y="${y}" text-anchor="middle">${esc(name)}</text>`;
   };
   const node = (p, t, c, st) => {
     const [x, y] = P(t, c), active = st.status === "active";
