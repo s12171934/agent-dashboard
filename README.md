@@ -477,7 +477,11 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 
 ## 워크플로 캔버스 (`#canvas`)
 
-설정 메뉴의 「워크플로 캔버스」는 `40_Tools/workflow-canvas` 서버(기본 `http://127.0.0.1:4318/`)를 iframe 으로 그대로 띄운다. 캔버스는 루프백에만 묶이므로 캔버스 서버가 떠 있는 Mac 에서 연 화면에서만 보인다. 위 주소칸에서 다른 주소로 바꿀 수 있고 기기마다 기억한다(`localStorage` 의 `adash.canvas`). 「새 창」은 같은 주소를 따로 연다.
+설정 메뉴의 「워크플로 캔버스」는 `40_Tools/workflow-canvas` 를 iframe 으로 띄운다. 주소는 페이지가 정하지 않고 메트릭 서버의 `GET /api/canvas` 가 묻는 기기에 맞춰 준다(`{url, up, error}`).
+
+- 그 Mac 의 루프백에서 연 화면 → `http://127.0.0.1:4318/` (캔버스는 127.0.0.1 에만 묶인다, 포트는 `WORKFLOW_CANVAS_PORT`).
+- tailnet 기기 → `tailscale serve status` 에서 캔버스 포트로 중계하는 https 주소. 한 번 등록해 둔다: `tailscale serve --bg --https=4318 http://127.0.0.1:4318`. 등록이 없으면 화면에 이 명령을 안내한다. 캔버스는 `*.ts.net` 호스트로 온 요청도 받는다(workflow-canvas `allowedHost`).
+- 메트릭 서버가 여럿이면 위의 전환 버튼으로 어느 Mac 의 캔버스를 볼지 고르고, 기기마다 기억한다(`adash.canvas`).
 
 ## 녹화 영상 — tailnet 기기에서 보는 녹화 (`#media`)
 

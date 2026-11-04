@@ -1,5 +1,6 @@
 """Every endpoint, by path. Each one is a function (handler, parsed url) in its feature's api.py."""
 
+from adash.features.canvas import api as canvas
 from adash.features.chars import api as chars
 from adash.features.decisions import api as decisions
 from adash.features.designs import api as designs
@@ -42,6 +43,7 @@ GET = {
     "/api/project/note": projects.get_project_note,
     "/api/vault/recent": vault.get_recent,
     "/api/media": media.get_list,
+    "/api/canvas": canvas.get_info,
     "/api/media/file": media.get_file,
     "/api/designs": designs.get_designs,
     "/api/design": designs.get_design,
