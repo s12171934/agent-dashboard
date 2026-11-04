@@ -547,6 +547,14 @@ const api = (() => {
       }));
       return { videos: parts.flatMap(p => p.videos), missing: parts.flatMap(p => p.missing), old };
     },
+    // workflow-canvas as each server's Mac offers it to this device (/api/canvas): [{server, name, url, up, error}];
+    // url is the loopback on that Mac and its tailscale serve https address elsewhere, null when it cannot be reached.
+    canvas: () => Promise.all(enabled().map(async srv => {
+      try {
+        const d = await getJson(srv, '/api/canvas');
+        return { server: srv.id, name: srv.name, url: d?.url || null, up: !!d?.up, error: d ? d.error : '이 서버에는 캔버스 API 가 없습니다 (서버를 새로 띄우세요)' };
+      } catch { return { server: srv.id, name: srv.name, url: null, up: false, error: '연결할 수 없습니다' }; }
+    })),
     // The address of a published recording, for <video> (the server answers byte ranges, so it seeks).
     mediaFile: (server, path) => (byId(server)?.url || '') + '/api/media/file?path=' + encodeURIComponent(path),
     // The address of a picture or PDF in a design folder (for <img>, <iframe>).

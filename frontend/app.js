@@ -7031,29 +7031,33 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
   document.head.append(s);
 });
 // ---------- 워크플로 캔버스 (#canvas) ----------
-// workflow-canvas (40_Tools/workflow-canvas, 127.0.0.1:4318 by default) shown as it is in an iframe. The canvas binds
-// to the loopback only, so it opens on the Mac that runs it; the address can be changed (adash.canvas) for a canvas
-// served elsewhere. Built once (cvMounted): live updates must not rebuild the iframe and reload the canvas.
-let cvMounted = false;
-let cvUrl = 'http://127.0.0.1:4318/';
-try { cvUrl = localStorage.getItem('adash.canvas') || cvUrl; } catch {}
-function renderCanvas() {
-  if (cvMounted) return;
+// workflow-canvas (40_Tools/workflow-canvas) in an iframe, at the address each metrics server gives for this device
+// (api.canvas → /api/canvas): its loopback on that Mac, the tailscale serve https address on the tailnet. With several
+// servers a switch picks the Mac (adash.canvas: its server id). Built once (cvMounted): live updates must not rebuild
+// the iframe and reload the canvas.
+let cvMounted = false, cvSel = null;
+try { cvSel = localStorage.getItem('adash.canvas'); } catch {}
+async function renderCanvas(reload) {
+  if (cvMounted && !reload) return;
   cvMounted = true;
-  $('#view').innerHTML = `<div class="sec-h"><h2>워크플로 캔버스</h2><span><code>workflow-canvas</code> 를 그대로 띄웁니다. 캔버스 서버가 떠 있는 맥에서만 열립니다.</span></div>
-    <div class="controls"><input id="cv-url" class="field cv-url" value="${esc(cvUrl)}" spellcheck="false" aria-label="캔버스 주소">
-      <button class="act big" id="cv-go">열기</button><a class="act big" id="cv-tab" href="${esc(cvUrl)}" target="_blank" rel="noopener">새 창</a></div>
-    <iframe class="cv-f" id="cv-f" src="${esc(cvUrl)}" title="워크플로 캔버스"></iframe>`;
-  const go = () => {
-    const v = $('#cv-url').value.trim();
-    if (!/^https?:\/\//.test(v)) { toast('http:// 또는 https:// 로 시작하는 주소를 넣어 주세요'); return; }
-    cvUrl = v;
-    try { localStorage.setItem('adash.canvas', v); } catch {}
-    $('#cv-tab').href = v;
-    $('#cv-f').src = v;
-  };
-  $('#cv-go').onclick = go;
-  $('#cv-url').onkeydown = e => { if (e.key === 'Enter') go(); };
+  $('#view').innerHTML = `<div class="sec-h"><h2>워크플로 캔버스</h2><span>메트릭 서버가 알려 주는 주소로 <code>workflow-canvas</code> 를 띄웁니다. 다른 기기에서는 그 맥의 <code>tailscale serve</code> 주소로 열립니다.</span></div>
+    <div class="controls" id="cv-ctl"><span class="st">주소를 묻는 중…</span></div><div id="cv-body"></div>`;
+  const list = await api.canvas();
+  if (route().v !== 'canvas') return;
+  const cur = list.find(c => c.server === cvSel && c.url) || list.find(c => c.url) || list[0];
+  if (!cur) { $('#cv-ctl').innerHTML = ''; $('#cv-body').innerHTML = '<div class="empty">켜진 메트릭 서버가 없습니다.</div>'; return; }
+  $('#cv-ctl').innerHTML = `${list.length > 1 ? `<span class="seg" id="cv-seg">${list.map(c => `<button data-k="${esc(c.server)}" class="${c === cur ? 'on' : ''}">${esc(c.name)}</button>`).join('')}</span>` : ''}
+    ${cur.url ? `<code class="st">${esc(cur.url)}</code><a class="act big" href="${esc(cur.url)}" target="_blank" rel="noopener">새 창</a>` : ''}
+    <button class="act big" id="cv-reload">새로 고침</button>`;
+  $('#cv-body').innerHTML = !cur.url ? `<div class="empty">${esc(cur.name)}: ${esc(cur.error || '캔버스 주소가 없습니다')}</div>`
+    : `${cur.up ? '' : `<div class="st" style="margin-bottom:8px">${esc(cur.name)} 의 캔버스 서버가 응답하지 않습니다 (<code>local.workflow-canvas</code>).</div>`}
+       <iframe class="cv-f" src="${esc(cur.url)}" title="워크플로 캔버스 — ${esc(cur.name)}"></iframe>`;
+  $('#cv-reload').onclick = () => renderCanvas(true);
+  document.querySelectorAll('#cv-seg button').forEach(b => b.onclick = () => {
+    cvSel = b.dataset.k;
+    try { localStorage.setItem('adash.canvas', cvSel); } catch {}
+    renderCanvas(true);
+  });
 }
 // ---------- 녹화 영상 (#media) ----------
 // Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) that its server/media.json
