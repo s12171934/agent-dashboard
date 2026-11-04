@@ -2188,22 +2188,36 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 /* a long press opens the chat: no text selection or callout under the finger */
 @media (pointer: coarse) { .card[data-path], .ch[data-path] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
 
-/* 녹화 영상 (#media): the published recordings on the left, the player and its timeline beside them */
-.md-wrap { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 14px; align-items: start; }
+/* 녹화 영상 (#media): the recording list, then the player and its timeline side by side (a split view). The player
+   stays put while the timeline scrolls on its own; when the space is narrow the timeline goes under the player, which
+   stays pinned to the top of the screen. */
+.md-wrap { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.md-wrap.md-folded { grid-template-columns: minmax(0, 1fr); }
+.md-wrap.md-folded .md-list { display: none; }
 .md-list { display: grid; gap: 6px; }
 .md-item { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
 .md-item b { font-weight: 600; overflow-wrap: anywhere; }
 .md-item.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
-.md-main { min-width: 0; }
-.md-video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: var(--radius); }
-.md-title { margin: 10px 0 6px; font-size: 15px; }
+.md-main { min-width: 0; container-type: inline-size; }
+.md-duo { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; align-items: start; }
+.md-stage { position: sticky; top: 12px; min-width: 0; }
+.md-video { display: block; width: 100%; max-height: 72vh; background: #000; border-radius: var(--radius); }
+.md-title { margin: 10px 0 0; font-size: 15px; }
+.md-side { min-width: 0; max-height: calc(100vh - 210px); overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.md-side-h { position: sticky; top: 0; z-index: 1; padding: 8px 6px 6px; background: var(--panel); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .md-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
-.md-tl li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 3px 6px; border-radius: 6px; }
-.md-tl li.md-now { background: var(--panel2); }
+.md-tl li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+.md-tl li:hover { background: var(--panel2); }
+.md-tl li.md-now { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
 .md-t { font: inherit; font-variant-numeric: tabular-nums; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
-.md-t:hover { text-decoration: underline; }
 .md-k { color: var(--muted); font-size: 12px; }
 .md-k.k-오류, .md-k.k-위반 { color: var(--bad); }
 .md-k.k-말 { color: var(--run); }
 .md-x { overflow-wrap: anywhere; }
 @media (max-width: 700px) { .md-wrap { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 640px) {
+  .md-duo { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .md-stage { top: 0; z-index: 2; padding: 6px 0; background: var(--bg); }
+  .md-title { margin-top: 6px; font-size: 14px; }
+  .md-side { max-height: none; overflow: visible; }
+}
