@@ -6,6 +6,7 @@ from adash.features.designs import api as designs
 from adash.features.flow import api as flow
 from adash.features.history import api as history
 from adash.features.interactions import api as interactions
+from adash.features.media import api as media
 from adash.features.orca_runs import api as orca_runs
 from adash.features.projects import api as projects
 from adash.features.review import api as review
@@ -40,6 +41,8 @@ GET = {
     "/api/project": projects.get_project,
     "/api/project/note": projects.get_project_note,
     "/api/vault/recent": vault.get_recent,
+    "/api/media": media.get_list,
+    "/api/media/file": media.get_file,
     "/api/designs": designs.get_designs,
     "/api/design": designs.get_design,
     "/api/design/file": designs.get_design_file,

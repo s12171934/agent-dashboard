@@ -64,6 +64,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`(그 .git 아래 워크트리를 가진 서브모듈 git 디렉터리도)·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 `server/worktree-notes.json` 에 쓴다 |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
+| 녹화 영상 | `server/media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
 
 - **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다. 워커 계획 바(조율자 상세·사무실 이름표)에는 아예 그리지 않고 범례에 「취소 N」 글자만 남긴다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
 
@@ -474,6 +475,14 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 - 서브에이전트는 부모 세션 ID 로 태그를 다므로 부모 세션 쪽에 나온다.
 - `GET /api/vault/recent?limit=N`(기본 10, 최대 50) — 에이전트 태그가 붙은 노트 전체에서 최근 수정 순 N개: `{"on", "notes": [{"path", "abs", "title", "mtime", "agent", "session"(이 서버가 아는 세션이면 로그 경로, 아니면 null), "session_title"}]}`. 홈의 「최근 볼트 문서」가 쓴다.
 
+## 녹화 영상 — tailnet 기기에서 보는 녹화 (`#media`)
+
+`ego-record`·`aside-record` 스킬은 녹화를 그 Mac 의 `~/Movies/ego-record`·`~/Movies/aside-record` 에 남긴다. 타임라인 노트도 `file://` 링크로 가리켜서 그 Mac 에서만 열린다. 「녹화 영상」 화면(설정 메뉴의 ▶)은 그중 **공개한 것만** 서버를 거쳐 보여 준다. 그래서 tailnet 기기·iPhone 앱에서도 재생된다.
+
+- **공개 목록:** 서버 Mac 의 `server/media.json` — `{"published": ["ego-record/<파일 이름>.mp4", "aside-record/<파일 이름>.mp4"]}`. 두 폴더 바로 아래의 `.mp4` 중 여기 적은 것만 내보낸다. 목록에 없는 파일, 다른 경로, 링크로 폴더를 벗어나는 파일은 404 다. 파일을 고치면 다음 요청부터 바로 반영되고, 서버를 다시 띄울 필요는 없다.
+- **화면:** 왼쪽은 공개한 녹화 목록, 오른쪽은 플레이어다. ego-record 녹화는 옆의 `.timeline.txt`(`MM:SS 종류 내용`)를 타임라인으로 펼친다. 시각을 누르면 그 장면으로 가고, 재생 중인 줄은 강조된다. 고른 녹화는 기기마다 기억한다.
+- **전송:** `/api/media/file` 이 HTTP Range(206)로 보낸다. iOS 는 Range 가 없으면 영상을 재생하지도, 넘기지도 못한다.
+
 ## 프로젝트 진행 API
 
 `--projects-dir` 를 주면 그 폴더 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 읽는다(조회 전용, 파일을 쓰지 않는다). 파일 형식은 `exports/project-progress.schema.json` 이고, 파일에는 원천 사실만 있으므로 아래 파생값은 모두 서버가 계산한다. 2초마다 mtime 을 보고 바뀐 파일만 다시 읽는다.
@@ -669,4 +678,4 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 `server/` 아래에 쌓인다. 저장소 루트에 있던 것(구조 분리 전)은 `server/` 로 옮기면 그대로 이어진다.
 
-`prefs.json` · `settled.json` · `inbox.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `design-refs.json` · `server.log` · `.token`
+`prefs.json` · `settled.json` · `inbox.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `design-refs.json` · `media.json` · `server.log` · `.token`

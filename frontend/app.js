@@ -272,7 +272,7 @@ function route() {
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
   if (h.startsWith('dr=')) return { v: 'driver', id: h.slice(3) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage', 'media'].includes(h) ? h : 'home' };
 }
 // 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
 // and the screen stays as it was. Opened, it remembers the screen it came from (decFrom), and goes back there once
@@ -450,6 +450,7 @@ async function renderView(navigated) {
   if (r.v !== 'trees') { trMounted = false; trEdit = null; }
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
+  if (r.v !== 'media') mdMounted = false;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
@@ -468,6 +469,7 @@ async function renderView(navigated) {
   else if (r.v === 'chars') renderChars();
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'designs') await renderDesigns();
+  else if (r.v === 'media') await renderMedia();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
   else if (r.v === 'driver') renderDriver(r.id);
   else if (r.v === 'session') {
@@ -7026,6 +7028,69 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
   s.onerror = () => { delete dzLibs[name]; fail(new Error(name + ' 을 불러오지 못했습니다')); };
   document.head.append(s);
 });
+// ---------- 녹화 영상 (#media) ----------
+// Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) that its server/media.json
+// publishes: a player, and the recording's timeline (ego-record's .timeline.txt) whose times seek the player. Their
+// notes' file:// links open only on that Mac; this is how a device on the tailnet watches them. The view is built once
+// (mdMounted): live updates must not rebuild the <video> and stop it.
+let mdMounted = false, mdData = null;
+let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
+try { mdSel = localStorage.getItem('adash.media'); } catch {}
+const mdKey = v => v.server + '\n' + v.path;
+const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+const mdSize = n => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
+async function renderMedia(reload) {
+  if (mdMounted && !reload) return;
+  if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 <code>server/media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
+    <div class="controls"><button class="act big" id="md-reload">새로 고침</button><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
+  mdMounted = true;
+  $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
+  try { mdData = await api.media(); } catch { mdData = null; }
+  if (route().v !== 'media') return;
+  const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1;
+  $('#md-sum').textContent = `${vs.length}개${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
+  if (!vs.length) {
+    $('#md-body').innerHTML = `<div class="empty">공개한 녹화가 없습니다. 영상이 있는 맥의 <code>server/media.json</code> 에 <code>{"published": ["ego-record/&lt;파일 이름&gt;.mp4"]}</code> 처럼 적으면 여기에 나옵니다.</div>`
+      + (mdData?.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
+    return;
+  }
+  const cur = vs.find(v => mdKey(v) === mdSel) || vs[0];
+  $('#md-body').innerHTML = `<div class="md-wrap"><div class="md-list" role="list">${vs.map(v => `<button class="md-item${v === cur ? ' on' : ''}" role="listitem" data-k="${esc(mdKey(v))}">
+      <b>${esc(v.name)}</b><span class="st">${esc(v.started || '')} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}</span></button>`).join('')}</div>
+    <div class="md-main" id="md-main"></div></div>`
+    + (mdData.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
+  $('#md-body').querySelector('.md-list').onclick = e => {
+    const b = e.target.closest('.md-item');
+    if (!b) return;
+    mdSel = b.dataset.k;
+    try { localStorage.setItem('adash.media', mdSel); } catch {}
+    $('#md-body').querySelectorAll('.md-item').forEach(x => x.classList.toggle('on', x === b));
+    mdPlay(vs.find(v => mdKey(v) === mdSel));
+  };
+  mdPlay(cur);
+}
+function mdPlay(v) {
+  const box = $('#md-main');
+  box.innerHTML = `<video class="md-video" controls playsinline preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
+    <h3 class="md-title">${esc(v.name)}</h3>
+    ${v.timeline.length ? `<ol class="md-tl">${v.timeline.map(r => `<li data-t="${r.t}"><button class="md-t" data-t="${r.t}">${mdClock(r.t)}</button><span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span><span class="md-x">${esc(r.text)}</span></li>`).join('')}</ol>`
+      : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)이 없습니다.</div>'}`;
+  const video = box.querySelector('video'), rows = [...box.querySelectorAll('.md-tl li')];
+  box.querySelector('.md-tl')?.addEventListener('click', e => {
+    const b = e.target.closest('.md-t');
+    if (!b) return;
+    video.currentTime = +b.dataset.t;
+    video.play().catch(() => {});
+    video.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+  // the line now playing: the last one whose time has passed
+  video.ontimeupdate = () => {
+    let at = -1;
+    rows.forEach((li, i) => { if (+li.dataset.t <= video.currentTime + 0.25) at = i; });
+    rows.forEach((li, i) => li.classList.toggle('md-now', i === at));
+  };
+}
+
 let dz = { pane: true, q: '', last: null, lastIn: {}, fold: {} };  // adash.design: the toggles, the last document (overall and per project), the sidebar boxes left open or closed
 try { Object.assign(dz, JSON.parse(localStorage.getItem('adash.design') || '{}')); } catch {}
 const dzSave = () => { try { localStorage.setItem('adash.design', JSON.stringify(dz)); } catch {} };
