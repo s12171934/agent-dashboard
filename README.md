@@ -475,6 +475,10 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 - 서브에이전트는 부모 세션 ID 로 태그를 다므로 부모 세션 쪽에 나온다.
 - `GET /api/vault/recent?limit=N`(기본 10, 최대 50) — 에이전트 태그가 붙은 노트 전체에서 최근 수정 순 N개: `{"on", "notes": [{"path", "abs", "title", "mtime", "agent", "session"(이 서버가 아는 세션이면 로그 경로, 아니면 null), "session_title"}]}`. 홈의 「최근 볼트 문서」가 쓴다.
 
+## 워크플로 캔버스 (`#canvas`)
+
+설정 메뉴의 「워크플로 캔버스」는 `40_Tools/workflow-canvas` 서버(기본 `http://127.0.0.1:4318/`)를 iframe 으로 그대로 띄운다. 캔버스는 루프백에만 묶이므로 캔버스 서버가 떠 있는 Mac 에서 연 화면에서만 보인다. 위 주소칸에서 다른 주소로 바꿀 수 있고 기기마다 기억한다(`localStorage` 의 `adash.canvas`). 「새 창」은 같은 주소를 따로 연다.
+
 ## 녹화 영상 — tailnet 기기에서 보는 녹화 (`#media`)
 
 `ego-record`·`aside-record` 스킬은 녹화를 그 Mac 의 `~/Movies/ego-record`·`~/Movies/aside-record` 에 남긴다. 타임라인 노트도 `file://` 링크로 가리켜서 그 Mac 에서만 열린다. 「녹화 영상」 화면(설정 메뉴의 ▶)은 그중 **공개한 것만** 서버를 거쳐 보여 준다. 그래서 tailnet 기기·iPhone 앱에서도 재생된다.

@@ -272,7 +272,7 @@ function route() {
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
   if (h.startsWith('dr=')) return { v: 'driver', id: h.slice(3) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage', 'media'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage', 'media', 'canvas'].includes(h) ? h : 'home' };
 }
 // 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
 // and the screen stays as it was. Opened, it remembers the screen it came from (decFrom), and goes back there once
@@ -451,6 +451,7 @@ async function renderView(navigated) {
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
   if (r.v !== 'media') mdMounted = false;
+  if (r.v !== 'canvas') cvMounted = false;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
@@ -470,6 +471,7 @@ async function renderView(navigated) {
   else if (r.v === 'projects') await renderProjects();
   else if (r.v === 'designs') await renderDesigns();
   else if (r.v === 'media') await renderMedia();
+  else if (r.v === 'canvas') renderCanvas();
   else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
   else if (r.v === 'driver') renderDriver(r.id);
   else if (r.v === 'session') {
@@ -7028,6 +7030,31 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
   s.onerror = () => { delete dzLibs[name]; fail(new Error(name + ' 을 불러오지 못했습니다')); };
   document.head.append(s);
 });
+// ---------- 워크플로 캔버스 (#canvas) ----------
+// workflow-canvas (40_Tools/workflow-canvas, 127.0.0.1:4318 by default) shown as it is in an iframe. The canvas binds
+// to the loopback only, so it opens on the Mac that runs it; the address can be changed (adash.canvas) for a canvas
+// served elsewhere. Built once (cvMounted): live updates must not rebuild the iframe and reload the canvas.
+let cvMounted = false;
+let cvUrl = 'http://127.0.0.1:4318/';
+try { cvUrl = localStorage.getItem('adash.canvas') || cvUrl; } catch {}
+function renderCanvas() {
+  if (cvMounted) return;
+  cvMounted = true;
+  $('#view').innerHTML = `<div class="sec-h"><h2>워크플로 캔버스</h2><span><code>workflow-canvas</code> 를 그대로 띄웁니다. 캔버스 서버가 떠 있는 맥에서만 열립니다.</span></div>
+    <div class="controls"><input id="cv-url" class="field cv-url" value="${esc(cvUrl)}" spellcheck="false" aria-label="캔버스 주소">
+      <button class="act big" id="cv-go">열기</button><a class="act big" id="cv-tab" href="${esc(cvUrl)}" target="_blank" rel="noopener">새 창</a></div>
+    <iframe class="cv-f" id="cv-f" src="${esc(cvUrl)}" title="워크플로 캔버스"></iframe>`;
+  const go = () => {
+    const v = $('#cv-url').value.trim();
+    if (!/^https?:\/\//.test(v)) { toast('http:// 또는 https:// 로 시작하는 주소를 넣어 주세요'); return; }
+    cvUrl = v;
+    try { localStorage.setItem('adash.canvas', v); } catch {}
+    $('#cv-tab').href = v;
+    $('#cv-f').src = v;
+  };
+  $('#cv-go').onclick = go;
+  $('#cv-url').onkeydown = e => { if (e.key === 'Enter') go(); };
+}
 // ---------- 녹화 영상 (#media) ----------
 // Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) that its server/media.json
 // publishes: a player, and the recording's timeline (ego-record's .timeline.txt) whose times seek the player. Their
