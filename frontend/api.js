@@ -534,6 +534,21 @@ const api = (() => {
       for (const r of d?.refs || []) if (r.path) refOwner[r.path] = server;
       return d && { ...d, server };
     },
+    // Recordings each server publishes (its server/media.json): {videos[{server, path, root, name, started, size, mtime,
+    // timeline[{t (seconds), kind, text}]}], missing[{server, path}] (listed but not found), old (a server without it)}.
+    media: async () => {
+      let old = false;
+      const parts = await Promise.all(enabled().map(async srv => {
+        try {
+          const d = await getJson(srv, '/api/media');
+          if (!d) { old = true; return { videos: [], missing: [] }; }
+          return { videos: tag(d.videos, srv.id), missing: (d.missing || []).map(path => ({ server: srv.id, path })) };
+        } catch { return { videos: [], missing: [] }; }
+      }));
+      return { videos: parts.flatMap(p => p.videos), missing: parts.flatMap(p => p.missing), old };
+    },
+    // The address of a published recording, for <video> (the server answers byte ranges, so it seeks).
+    mediaFile: (server, path) => (byId(server)?.url || '') + '/api/media/file?path=' + encodeURIComponent(path),
     // The address of a picture or PDF in a design folder (for <img>, <iframe>).
     designFile: (server, key) => (byId(server)?.url || '') + '/api/design/file?path=' + encodeURIComponent(key),
     // Characters made from an uploaded picture (an Orca agent draws and publishes them): every server's jobs, newest

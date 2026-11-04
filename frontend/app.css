@@ -2185,3 +2185,23 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 }
 /* a long press opens the chat: no text selection or callout under the finger */
 @media (pointer: coarse) { .card[data-path], .ch[data-path] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
+
+/* 녹화 영상 (#media): the published recordings on the left, the player and its timeline beside them */
+.md-wrap { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.md-list { display: grid; gap: 6px; }
+.md-item { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.md-item b { font-weight: 600; overflow-wrap: anywhere; }
+.md-item.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.md-main { min-width: 0; }
+.md-video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: var(--radius); }
+.md-title { margin: 10px 0 6px; font-size: 15px; }
+.md-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.md-tl li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 3px 6px; border-radius: 6px; }
+.md-tl li.md-now { background: var(--panel2); }
+.md-t { font: inherit; font-variant-numeric: tabular-nums; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+.md-t:hover { text-decoration: underline; }
+.md-k { color: var(--muted); font-size: 12px; }
+.md-k.k-오류, .md-k.k-위반 { color: var(--bad); }
+.md-k.k-말 { color: var(--run); }
+.md-x { overflow-wrap: anywhere; }
+@media (max-width: 700px) { .md-wrap { grid-template-columns: minmax(0, 1fr); } }
