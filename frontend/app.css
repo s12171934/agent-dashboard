@@ -675,7 +675,7 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-st.active .pj-dot { border: 0; color: var(--run);
   background: radial-gradient(color-mix(in srgb, var(--run) 12%, var(--panel)) 0 58%, transparent 61%),
     conic-gradient(var(--run) calc(var(--pct) * 1%), color-mix(in srgb, var(--run) 32%, var(--panel)) 0); }
-.pj-st.empty .pj-dot { border-style: dashed; }
+.pj-st.blank .pj-dot { border-style: dashed; }
 .pj-st.cur .pj-dot { outline: 2px solid var(--run); outline-offset: 2px; }
 .pj-st.cur .pj-dot::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid var(--run); animation: pulse 1.6s infinite; }
 
@@ -711,7 +711,8 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
 .pj-stitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-step .st { white-space: nowrap; }
 .pj-step .pj-short { display: none; }
-.pj-none { padding-left: 30px; }
+.pj-none { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-left: 30px; padding: 4px 8px; }
+.pj-none .pj-sdot { border-style: dashed; }
 /* A phone, and iPhone Duo's inner screen either way up (the fold layout), keeps scrolling short. Nodes keep their
    size; it is the labels that do not fit. Folded, a project is a compact card: name, figures and a line of bare
    stage nodes that shares the width (a finished project drops the line). Open, the line gets its labels back, runs
@@ -720,6 +721,7 @@ details.pj-row[open] > summary { border-bottom: 1px solid var(--surface-edge); }
    them). The figures the summary already shows are not repeated. */
 @media (max-width: 700px), (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
   .pj-steps { padding-left: 4px; }
+  .pj-none { margin-left: 4px; min-height: 30px; padding: 3px 6px; gap: 6px; font-size: 11px; }
   details.pj-row > summary { padding: 10px 12px; gap: 6px; }
   .pj-head { gap: 2px 6px; }
   .pj-head .chip { font-size: 11px; padding: 1px 7px; }
