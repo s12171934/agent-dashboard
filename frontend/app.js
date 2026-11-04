@@ -7060,18 +7060,29 @@ function renderCanvas() {
 // publishes: a player, and the recording's timeline (ego-record's .timeline.txt) whose times seek the player. Their
 // notes' file:// links open only on that Mac; this is how a device on the tailnet watches them. The view is built once
 // (mdMounted): live updates must not rebuild the <video> and stop it.
+// Split view: the player stays put (sticky) while the timeline beside it scrolls on its own and follows the playing
+// line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
 let mdMounted = false, mdData = null;
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
-try { mdSel = localStorage.getItem('adash.media'); } catch {}
+let md = { fold: false, follow: true };  // adash.media.view: the recording list folded away, the timeline following playback
+try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
+// the last wheel or touch drag anywhere: a reader scrolling by hand (scroll events cannot tell it from our own)
+let mdHandAt = 0;
+for (const ev of ['wheel', 'touchmove']) addEventListener(ev, () => { if (route().v === 'media') mdHandAt = Date.now(); }, { passive: true });
+const mdSave = () => { try { localStorage.setItem('adash.media.view', JSON.stringify(md)); } catch {} };
 const mdKey = v => v.server + '\n' + v.path;
 const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 const mdSize = n => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
 async function renderMedia(reload) {
   if (mdMounted && !reload) return;
   if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 <code>server/media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
-    <div class="controls"><button class="act big" id="md-reload">새로 고침</button><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
+    <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
+      <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label>
+      <label class="st"><input type="checkbox" id="md-follow"${md.follow ? ' checked' : ''}> 재생 위치 따라가기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
   mdMounted = true;
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
+  $('#md-fold').onchange = e => { md.fold = e.target.checked; mdSave(); $('#md-body .md-wrap')?.classList.toggle('md-folded', md.fold); };
+  $('#md-follow').onchange = e => { md.follow = e.target.checked; mdSave(); };
   try { mdData = await api.media(); } catch { mdData = null; }
   if (route().v !== 'media') return;
   const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1;
@@ -7082,7 +7093,7 @@ async function renderMedia(reload) {
     return;
   }
   const cur = vs.find(v => mdKey(v) === mdSel) || vs[0];
-  $('#md-body').innerHTML = `<div class="md-wrap"><div class="md-list" role="list">${vs.map(v => `<button class="md-item${v === cur ? ' on' : ''}" role="listitem" data-k="${esc(mdKey(v))}">
+  $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" role="list">${vs.map(v => `<button class="md-item${v === cur ? ' on' : ''}" role="listitem" data-k="${esc(mdKey(v))}">
       <b>${esc(v.name)}</b><span class="st">${esc(v.started || '')} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}</span></button>`).join('')}</div>
     <div class="md-main" id="md-main"></div></div>`
     + (mdData.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
@@ -7098,23 +7109,46 @@ async function renderMedia(reload) {
 }
 function mdPlay(v) {
   const box = $('#md-main');
-  box.innerHTML = `<video class="md-video" controls playsinline preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
-    <h3 class="md-title">${esc(v.name)}</h3>
-    ${v.timeline.length ? `<ol class="md-tl">${v.timeline.map(r => `<li data-t="${r.t}"><button class="md-t" data-t="${r.t}">${mdClock(r.t)}</button><span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span><span class="md-x">${esc(r.text)}</span></li>`).join('')}</ol>`
-      : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)이 없습니다.</div>'}`;
-  const video = box.querySelector('video'), rows = [...box.querySelectorAll('.md-tl li')];
+  box.innerHTML = `<div class="md-duo"><div class="md-stage">
+      <video class="md-video" controls playsinline preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
+      <h3 class="md-title">${esc(v.name)}</h3></div>
+    <div class="md-side">${v.timeline.length ? `<div class="md-side-h st">타임라인 ${v.timeline.length}줄 · 줄을 누르면 그 장면으로</div>
+      <ol class="md-tl">${v.timeline.map(r => `<li data-t="${r.t}"><button class="md-t" data-t="${r.t}">${mdClock(r.t)}</button><span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span><span class="md-x">${esc(r.text)}</span></li>`).join('')}</ol>`
+      : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)이 없습니다.</div>'}</div></div>`;
+  const video = box.querySelector('video'), side = box.querySelector('.md-side'), rows = [...box.querySelectorAll('.md-tl li')];
+  // a whole line seeks (a bigger target than its time on a phone), and the player keeps playing from there
   box.querySelector('.md-tl')?.addEventListener('click', e => {
-    const b = e.target.closest('.md-t');
-    if (!b) return;
-    video.currentTime = +b.dataset.t;
+    const li = e.target.closest('li[data-t]');
+    if (!li || getSelection()?.toString()) return;  // selecting a line's text to copy it is not a seek
+    video.currentTime = +li.dataset.t;
     video.play().catch(() => {});
-    video.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
+  // Following: the playing line is scrolled into the timeline's own box, never the page (on a phone the box is the
+  // page, so it is scrolled only when the line has left the screen below the pinned player). A scroll by hand (mdHandAt)
+  // pauses following for a few seconds so the reader is not pulled back while looking ahead.
+  let at = -1;
+  const own = () => getComputedStyle(side).overflowY === 'auto';
+  const follow = li => {
+    if (!md.follow || Date.now() - mdHandAt < 4000 || !li) return;
+    if (own()) {
+      const top = li.offsetTop - side.offsetTop, h = side.clientHeight;
+      if (top < side.scrollTop + 30 || top > side.scrollTop + h - 60) { side.scrollTo({ top: Math.max(0, top - h / 3), behavior: 'smooth' }); }
+    } else {
+      // pin: where the pinned player ends once pinned (its height, not where it sits now: before the page has scrolled
+      // it is still in the flow, lower down); 90px at the bottom is the floating bar
+      const r = li.getBoundingClientRect(), pin = box.querySelector('.md-stage').offsetHeight;
+      if (r.top < pin || r.bottom > innerHeight - 90) window.scrollTo({ top: scrollY + r.top - pin - (innerHeight - pin) / 3, behavior: 'smooth' });
+    }
+  };
   // the line now playing: the last one whose time has passed
   video.ontimeupdate = () => {
-    let at = -1;
-    rows.forEach((li, i) => { if (+li.dataset.t <= video.currentTime + 0.25) at = i; });
-    rows.forEach((li, i) => li.classList.toggle('md-now', i === at));
+    let now = -1;
+    rows.forEach((li, i) => { if (+li.dataset.t <= video.currentTime + 0.25) now = i; });
+    if (now === at) return;
+    rows[at]?.classList.remove('md-now');
+    rows[now]?.classList.add('md-now');
+    at = now;
+    if (!video.paused || video.seeking) follow(rows[now]);
   };
 }
 
