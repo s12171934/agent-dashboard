@@ -2895,6 +2895,7 @@ function trRow(w, sv) {
     <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
       ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}
       ${w.comment ? `<span class="st" title="Orca 코멘트">Orca: ${esc(cut(w.comment, 80))}</span>` : ''}</div>
+    ${w.submodules?.length ? `<div class="tr-subs"><span class="st">서브모듈</span>${w.submodules.map(m => `<span class="tr-sub${m.branch ? '' : ' det'}" title="${esc(m.path + '\n' + (m.branch ? '브랜치 ' + m.branch : '분리 HEAD (브랜치 아님)') + ' · ' + (m.head || ''))}">${esc(m.path.split('/').pop())} <b>${esc(m.branch ? cut(m.branch, 50) : m.head || '?')}</b></span>`).join('')}</div>` : ''}
     ${trEdit === k ? `<div class="tr-edit"><textarea class="field" rows="3" maxlength="4000" placeholder="메모 (비우고 저장하면 지웁니다) · ⌘/Ctrl+Enter 저장, Esc 취소">${esc(w.note?.text || '')}</textarea>
       <span class="rv-acts"><button class="act big" data-tr-note-cancel>취소</button><button class="act big accent" data-tr-note-save="${esc(w.path)}" data-srv="${esc(sv.server)}">저장</button></span></div>`
       : w.note ? `<div class="tr-note" title="${esc(new Date(w.note.at * 1000).toLocaleString('ko-KR'))}">${esc(w.note.text)}<span class="st"> · ${ago(new Date(w.note.at * 1000).toISOString())}</span></div>` : ''}
@@ -2905,7 +2906,7 @@ async function renderTrees() {
   if (!trMounted) {
     $('#view').innerHTML = `<div class="sec-h"><h2>워크트리</h2><span>Orca 에 등록된 저장소마다 git 이 아는 모든 워크트리입니다 (Orca 가 만들지 않은 것도). VS Code 는 이 맥에서 연 화면에서만 열립니다.</span></div>
       <div class="controls">
-        <input type="search" id="tr-q" class="field" placeholder="이름·브랜치·경로 검색" value="${esc(trf.q)}">
+        <input type="search" id="tr-q" class="field" placeholder="이름·브랜치(서브모듈 포함)·경로 검색" value="${esc(trf.q)}">
         <label class="st"><input type="checkbox" id="tr-dirty"${trf.dirty ? ' checked' : ''}> 미커밋 있는 것만</label>
         <button class="act big" id="tr-reload">새로 고침</button><span class="st" id="tr-sum"></span>
       </div><div id="tr-body"><div class="empty">불러오는 중…</div></div>`;
@@ -2922,7 +2923,7 @@ async function renderTrees() {
   }
   if (!trData) return;
   const q = trf.q.trim().toLowerCase(), multi = trData.servers.length > 1;
-  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment, w.note?.text].some(x => (x || '').toLowerCase().includes(q)));
+  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment, w.note?.text, ...(w.submodules || []).flatMap(m => [m.path, m.branch])].some(x => (x || '').toLowerCase().includes(q)));
   let shown = 0, all = 0;
   const body = trData.servers.map(sv => {
     const repos = sv.repos.map(rp => { const ws = rp.worktrees.filter(hit); all += rp.worktrees.length; shown += ws.length;

@@ -46,15 +46,35 @@ def _porcelain(text):
     return rows
 
 
+# one line per checked-out submodule, nested ones too: its path in the worktree, its branch (empty when detached), HEAD
+_SUBS = 'printf "%s\\t%s\\t%s\\n" "$displaypath" "$(git symbolic-ref -q --short HEAD)" "$(git rev-parse --short=9 HEAD)"'
+
+
+def _submodules(path):
+    """The worktree's checked-out submodules (recursively), [{path, branch, head}]: a detached one has branch None.
+    Uninitialised submodules are not listed."""
+    if not os.path.isfile(os.path.join(path, ".gitmodules")):
+        return []
+    out = git_at(path, "submodule", "foreach", "--recursive", "--quiet", _SUBS, timeout=20) or ""
+    rows = []
+    for ln in out.splitlines():
+        p, _, rest = ln.partition("\t")
+        branch, _, head = rest.partition("\t")
+        if p:
+            rows.append({"path": p, "branch": branch or None, "head": head or None})
+    return rows
+
+
 def _status(w):
-    """Changed files and the last commit's time, for a worktree that is on disk."""
+    """Changed files, the last commit's time and the submodules' branches, for a worktree that is on disk."""
     if not os.path.isdir(w["path"]) or w["bare"]:
-        return {**w, "missing": not w["bare"], "dirty": None, "committed": None, "subject": None}
+        return {**w, "missing": not w["bare"], "dirty": None, "committed": None, "subject": None, "submodules": []}
     st = git_at(w["path"], "status", "--porcelain", "--untracked-files=normal")
     last = git_at(w["path"], "log", "-1", "--format=%ct%x09%s") or ""
     ts, _, subject = last.partition("\t")
     return {**w, "missing": False, "dirty": None if st is None else len([x for x in st.splitlines() if x]),
-            "committed": int(ts) if ts.isdigit() else None, "subject": short(subject, 120) or None}
+            "committed": int(ts) if ts.isdigit() else None, "subject": short(subject, 120) or None,
+            "submodules": _submodules(w["path"])}
 
 
 def nested_gitdirs(gd):
