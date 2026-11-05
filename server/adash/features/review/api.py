@@ -13,7 +13,7 @@ from adash.core.orca import orca
 from adash.core.state import bump, lock
 from adash.core.util import short
 from adash.features.review import vscode_web
-from adash.features.review.config import QA_SETS, VSCODE_CLI, WT_KEY
+from adash.features.review.config import EDITORS, QA_SETS, WT_KEY, editor_cmd, editor_of
 from adash.features.review.loop import review_ticket
 from adash.features.review.notes import write_review
 from adash.features.review.qa import QA_STAGES, qa_auto_cache, qa_cli
@@ -108,7 +108,7 @@ def post_qa(h, url):
 
 
 def post_review(h, url):
-    """{"key"} -> open: one VS Code window holding every worktree of the ticket. Only for a request addressed to
+    """{"key", "editor"?} -> open: a window of the desktop editor (EDITORS, VS Code by default) per worktree of the ticket. Only for a request addressed to
     this Mac's loopback (the page open on this Mac): it starts an app here, and a tailnet device reaches the server
     through `tailscale serve`, whose requests carry the ts.net Host and X-Forwarded-For. mark {"key", "done"}:
     record or clear the review in the ticket's vault step note, with each worktree's HEAD now. On a driver ticket
@@ -161,14 +161,14 @@ def post_review(h, url):
                                       for rp in t["repos"]]})
     if action == "open":
         if not vscode_web.local(h):
-            return h.send_json({"error": "VS Code 열기는 이 맥에서 연 화면에서만 됩니다"}, 403)
+            return h.send_json({"error": "에디터 열기는 이 맥에서 연 화면에서만 됩니다"}, 403)
         # Each worktree as itself, one window per repo: a generated .code-workspace held the folders under a
         # /tmp file and renamed them, so the window read as somewhere other than the worktree.
+        ed = editor_of(body)
         for rp in t["repos"]:
-            cmd = [VSCODE_CLI, "-n", rp["path"]] if os.path.exists(VSCODE_CLI) else ["open", "-n", "-a", "Visual Studio Code", rp["path"]]
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            r = subprocess.run(editor_cmd(ed, rp["path"], new=True), capture_output=True, text=True, timeout=15)
             if r.returncode:
-                return h.send_json({"error": f'VS Code 로 {rp["repo"]} 를 열지 못함: ' + short(r.stderr, 200)}, 502)
+                return h.send_json({"error": f'{EDITORS[ed]} 로 {rp["repo"]} 를 열지 못함: ' + short(r.stderr, 200)}, 502)
         return h.send_json({"ok": True, "opened": [rp["path"] for rp in t["repos"]]})
     if not t["step"]:
         return h.send_json({"error": "볼트에 이 티켓의 스텝 노트가 없습니다"}, 409)

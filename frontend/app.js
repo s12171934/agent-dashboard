@@ -94,6 +94,28 @@ function iconPanel() {
 // A popover closes once its action is done (a pick, a switch, an add) or on a click outside (ds-dock.js); it stays open
 // for what is shown in it (a test result, an error) and for steps of a form.
 $('#icon-btn').onclick = () => { if ($('#icon-panel').hidden) iconPanel(); else $('#icon-panel').hidden = true; };
+// 「에디터」 panel: the desktop editor every 「… 로 열기」 opens on the server's Mac (sent as body.editor; the server's
+// EDITORS, VS Code when absent). This device only, like the app icon. The web panel stays VS Code (serve-web).
+const EDITORS = { vscode: 'VS Code', zed: 'Zed' };
+let editor = 'vscode';
+try { if (localStorage.getItem('adash.editor') in EDITORS) editor = localStorage.getItem('adash.editor'); } catch {}
+const editorName = () => EDITORS[editor];
+function editorPanel() {
+  const el = $('#editor-panel');
+  el.innerHTML = `<div class="pop-h"><b>에디터</b><span class="st">이 기기에만 저장</span><button class="act" data-ep="close">닫기</button></div>
+    <span class="seg">${Object.entries(EDITORS).map(([k, n]) => `<button data-ed="${k}" class="${k === editor ? 'on' : ''}" aria-pressed="${k === editor}">${n}</button>`).join('')}</span>
+    <p class="ip-help">QA·워크트리 탭의 「… 로 열기」가 이 맥에서 여는 데스크톱 에디터입니다. 펼쳐 보는 웹 편집기는 그대로 VS Code 입니다.</p>`;
+  el.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => {
+    editor = b.dataset.ed; try { localStorage.setItem('adash.editor', editor); } catch {}
+    el.hidden = true; toast(`${editorName()} 로 엽니다`);
+    trBodyHtml = ''; wtBodyHtml = '';  // the lists redraw with the new name; open web panels get it here
+    document.querySelectorAll('[data-wt-open]').forEach(x => { x.textContent = `데스크톱 ${editorName()} 로 열기`; });
+    document.querySelectorAll('[data-tr-open]').forEach(x => { x.textContent = `${editorName()} 로 열기`; });
+  });
+  el.querySelector('[data-ep=close]').onclick = () => { el.hidden = true; };
+  el.hidden = false;
+}
+$('#editor-btn').onclick = () => { if ($('#editor-panel').hidden) editorPanel(); else $('#editor-panel').hidden = true; };
 // 「Orca 에 열린 것만」: only agents whose connected Orca terminal the server found (session.orca_focus), the same set
 // that gets the 「Orca 에서 열기」 button. Combines with 「실행 중만」 (both must hold).
 let onlyOrca = false;
@@ -2822,7 +2844,7 @@ async function wtWebToggle(b) {
   el.innerHTML = `<div class="rv-web-h">
       ${rs.length > 1 ? `<div class="seg">${rs.map((r, i) => `<button type="button" data-wt-web-tab="${i}" class="${i ? '' : 'on'}" title="${esc(r.path)}">${esc(r.repo)}</button>`).join('')}</div>` : `<b title="${esc(rs[0].path)}">${esc(rs[0].repo)}</b>`}
       <span class="st">웹 VS Code · 읽기 전용</span>
-      <span class="rv-acts"><button class="act big" data-wt-open="${esc(key)}" data-srv="${esc(srv)}" title="저장소마다 데스크톱 VS Code 창을 엽니다">데스크톱 VS Code 로 열기</button></span>
+      <span class="rv-acts"><button class="act big" data-wt-open="${esc(key)}" data-srv="${esc(srv)}" title="저장소마다 데스크톱 ${editorName()} 창을 엽니다 (에디터는 설정의 「에디터」)">데스크톱 ${editorName()} 로 열기</button></span>
     </div>
     ${rs.map((r, i) => `<iframe class="rv-web-f" ${i ? 'data-src' : 'src'}="${esc(wtWebUrl(r.url))}" title="${esc(r.repo)} — 웹 VS Code"${i ? ' hidden' : ''}></iframe>`).join('')}`;
   wtWeb.set(key, el);
@@ -2849,7 +2871,7 @@ async function wtClick(e) {
   if (b.dataset.wtShip && !await uiConfirm(`${b.dataset.wtShip} 을(를) PR 로 올리고 머지합니다.\nOrca 워커가 머지 뒤 Jira 「개발 완료」 전이, 스텝 노트 기록, 워크트리·브랜치 정리까지 합니다. 진행할까요?`)) return;
   const txt = b.textContent;
   b.disabled = true; b.textContent = b.dataset.wtOpen ? '여는 중…' : b.dataset.wtShip ? '시작 중…' : '기록 중…';
-  const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen)
+  const { status: st, body } = b.dataset.wtOpen ? await api.reviewOpen(b.dataset.srv, b.dataset.wtOpen, editor)
     : b.dataset.wtShip ? await api.reviewShip(b.dataset.srv, b.dataset.wtShip) : await api.reviewMark(b.dataset.srv, b.dataset.wtMark, b.dataset.done === '1');
   if (st !== 200 && st !== 202) uiAlert(body.error || `실패 (${st})`);
   else {
@@ -2891,7 +2913,7 @@ function trRow(w, sv) {
         <button class="act big" data-tr-note="${esc(w.path)}" data-srv="${esc(sv.server)}" title="이 워크트리에 메모를 남깁니다 (메트릭 서버에 저장)">${w.note ? '메모 수정' : '메모'}</button>
         <button class="act big" data-tr-web="${esc(w.path)}" data-srv="${esc(sv.server)}" aria-expanded="${trWeb.has(k)}"${off || ' title="이 행 아래에 웹 VS Code(읽기 전용)를 펼칩니다"'}>${trWeb.has(k) ? '웹 접기' : '웹으로 보기'}</button>
         ${w.main || w.bare ? '' : `<button class="act big danger" data-tr-rm="${esc(w.path)}" data-srv="${esc(sv.server)}"${!sv.local ? ' disabled title="이 맥에서 연 화면(127.0.0.1)에서만 지울 수 있습니다"' : ` title="${w.missing || w.prunable ? 'git 의 워크트리 기록을 정리합니다 (git worktree prune)' : w.orca ? 'Orca 로 워크트리를 지웁니다. 머지된 것이 확인되는 브랜치는 Orca 가 함께 지웁니다' : '워크트리 폴더를 지웁니다 (git worktree remove). 브랜치는 남습니다'}"`}>삭제</button>`}
-        <button class="act big accent" data-tr-open="${esc(w.path)}" data-srv="${esc(sv.server)}"${off || ' title="데스크톱 VS Code 창으로 엽니다. 이미 열린 창이면 앞으로 가져옵니다"'}>VS Code 로 열기</button></span></div>
+        <button class="act big accent" data-tr-open="${esc(w.path)}" data-srv="${esc(sv.server)}"${off || ' title="데스크톱 ${editorName()} 창으로 엽니다. 이미 열린 창이면 앞으로 가져옵니다 (에디터는 설정의 「에디터」)"'}>${editorName()} 로 열기</button></span></div>
     <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
       ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}
       ${w.comment ? `<span class="st" title="Orca 코멘트">Orca: ${esc(cut(w.comment, 80))}</span>` : ''}</div>
@@ -3011,9 +3033,9 @@ async function trClick(e) {
   if (b.dataset.trOpen) {
     const txt = b.textContent;
     b.disabled = true; b.textContent = '여는 중…';
-    const { status: st, body } = await api.worktreeOpen(srv, b.dataset.trOpen);
+    const { status: st, body } = await api.worktreeOpen(srv, b.dataset.trOpen, editor);
     b.disabled = false; b.textContent = txt;
-    return st === 200 ? toast('VS Code 로 열었습니다') : uiAlert(body.error || `실패 (${st})`);
+    return st === 200 ? toast(`${editorName()} 로 열었습니다`) : uiAlert(body.error || `실패 (${st})`);
   }
   const path = b.dataset.trWeb, k = trKey(srv, path);
   const label = on => { b.textContent = on ? '웹 접기' : '웹으로 보기'; b.setAttribute('aria-expanded', on); };

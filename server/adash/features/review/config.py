@@ -1,5 +1,6 @@
 """Review settings from prefs.json (QA sets, bases, Jira)."""
 
+import os
 import re
 
 from adash.core.prefs import prefs
@@ -22,3 +23,24 @@ REVIEW_FIRST = prefs.get("review_first") or []
 REVIEW_EVERY, JIRA_EVERY, PR_EVERY = 30, 300, 600
 VSCODE_CLI = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
 WT_KEY = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?![0-9])")
+ZED_CLI = "/Applications/Zed.app/Contents/MacOS/cli"
+# Desktop editors the page can pick for 「… 로 열기」 (its 「에디터」 setting, sent as "editor"): id -> shown name.
+EDITORS = {"vscode": "VS Code", "zed": "Zed"}
+
+
+def editor_cmd(editor, path, new=False):
+    """The command that opens path in the desktop editor (EDITORS id; anything else is VS Code): its CLI when the app
+    is in /Applications, else `open -a`. new: a window of its own even when one already holds a parent folder."""
+    if editor == "zed":
+        if os.path.exists(ZED_CLI):
+            return [ZED_CLI] + (["-n"] if new else []) + [path]
+        return ["open", "-a", "Zed", path]
+    if os.path.exists(VSCODE_CLI):
+        return [VSCODE_CLI] + (["-n"] if new else []) + [path]
+    return ["open"] + (["-n"] if new else []) + ["-a", "Visual Studio Code", path]
+
+
+def editor_of(body):
+    """The editor a request asks for: body["editor"] when it is one of EDITORS, else VS Code."""
+    e = body.get("editor") if isinstance(body, dict) else None
+    return e if e in EDITORS else "vscode"

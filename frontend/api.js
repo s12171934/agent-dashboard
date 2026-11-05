@@ -347,9 +347,9 @@ const api = (() => {
       return { sets: parts.flatMap(([s, d]) => (d.sets || []).map(x => ({ ...x, server: s.id, local: loop.test(s.url) }))),
                jira: parts.map(([, d]) => d.jira).find(Boolean) || '' };
     },
-    // Open every worktree of a ticket in one VS Code window on that server's Mac, or record / clear its review in the
+    // Open each worktree of a ticket in a window of the desktop editor (vscode | zed) on that server's Mac, or record / clear its review in the
     // vault step note. Resolve to {status, body}: 403 open from anywhere but that Mac's loopback, 409 no worktree / note.
-    reviewOpen: (server, key) => post(byId(server), '/api/review/open', { key }),
+    reviewOpen: (server, key, editor) => post(byId(server), '/api/review/open', { key, editor }),
     // The ticket's worktrees in that server's web VS Code (read-only, started on first use): body.repos[{repo, path,
     // url}], url absolute (the server's address + its secret path). Same loopback-only terms as reviewOpen.
     reviewWeb: async (server, key) => {
@@ -369,9 +369,9 @@ const api = (() => {
         } catch (e) { return { server: srv.id, name: srv.name, local: false, error: e instanceof TypeError ? '연결할 수 없습니다' : String(e.message || e), repos: [] }; }
       })) };
     },
-    // One listed worktree in a desktop VS Code window on that server's Mac, or {url} (absolute) of the web VS Code on
+    // One listed worktree in a desktop editor (vscode | zed) window on that server's Mac, or {url} (absolute) of the web VS Code on
     // it. Same loopback-only terms as reviewOpen.
-    worktreeOpen: (server, path) => post(byId(server), '/api/worktrees/open', { path }),
+    worktreeOpen: (server, path, editor) => post(byId(server), '/api/worktrees/open', { path, editor }),
     // The note on a listed worktree, kept by that server (blank text removes it): body.note {text, at} | null.
     worktreeNote: (server, path, text) => post(byId(server), '/api/worktrees/note', { path, text }),
     // Remove a listed linked worktree on that server's Mac (loopback only). 409 without force when it has uncommitted
