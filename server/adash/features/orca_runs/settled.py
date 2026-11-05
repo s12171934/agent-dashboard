@@ -3,13 +3,13 @@
 import json
 import os
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 
 
 # Settled dispatches outlive the tracked-run window: once a Run ages out, its workers leave orca_state,
 # and a finished worker would fall back to its transcript (idle, or stalled when release cut the last turn).
 # {"tasks": {task id: dispatch status}, "runs": [run ids already swept]}, persisted across restarts.
-SETTLED_PATH = os.path.join(HERE, "settled.json")
+SETTLED_PATH = os.path.join(DATA, "settled.json")
 try:
     with open(SETTLED_PATH) as _f:
         settled_store = json.load(_f)

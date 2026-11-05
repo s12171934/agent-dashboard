@@ -6,7 +6,7 @@ import re
 import threading
 import time
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.prefs import prefs, save_prefs
 from adash.core.state import bump, lock
 
@@ -28,7 +28,7 @@ decision_store = {}  # id -> {"card": the public card, "state": pending|answered
 # Open cards outlive restarts too (pending.json, {id: {"card", "terminal"}}): the hook registers a question once,
 # so a restart while its picker is open used to drop the card for good. sweep_decisions closes the ones answered
 # or cancelled in the meantime, as it does any card.
-PENDING_PATH = os.path.join(HERE, "pending.json")
+PENDING_PATH = os.path.join(DATA, "pending.json")
 try:
     with open(PENDING_PATH) as _f:
         decision_store = {d["card"]["id"]: {"card": d["card"], "state": "pending", "terminal": d.get("terminal"),
@@ -47,7 +47,7 @@ except (OSError, ValueError, KeyError, TypeError):
 # While a session has an item it is held: the scan keeps it listed however old (scan_loop), a supervised worker's
 # terminal is retained (retain_worker), and session-guard keeps agents from closing it (guard_command). A person
 # may still close it from the page. An item whose session the scan does not know is dropped, like an orphan card.
-INBOX_PATH = os.path.join(HERE, "inbox.json")
+INBOX_PATH = os.path.join(DATA, "inbox.json")
 INBOX_KEEP = 200  # newest items kept ...
 INBOX_KEEP_S = 14 * 86400  # ... and read ones only this long
 INBOX_PICK = re.compile(r"\[메일함 (q[0-9a-f]{8,40})\][ \t]*([^\n]{1,300})")

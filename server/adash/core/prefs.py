@@ -3,13 +3,13 @@
 import json
 import os
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 
 
 # User choices made in the UI, shared by every device: {"idle": {path: last_ts when marked}, "chars": {path: {"who",
 # "boss", "pick"}}} (the person drawn for a session: picked by hand, or the first one the page drew, kept so every view
 # and device draws the same).
-PREFS_PATH = os.path.join(HERE, "prefs.json")
+PREFS_PATH = os.path.join(DATA, "prefs.json")
 try:
     with open(PREFS_PATH) as _f:
         prefs = json.load(_f)

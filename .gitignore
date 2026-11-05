@@ -1,4 +1,7 @@
-# secrets and per-machine state (server/ writes these next to server.py)
+# secrets and per-machine state: the server's data folder (server/data, or server/ before `adata migrate`)
+server/data/
+adata-backup-*.tar.gz
+adash-data-*.tar.gz
 .token
 prefs.json
 settled.json

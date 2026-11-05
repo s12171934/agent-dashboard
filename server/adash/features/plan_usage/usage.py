@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.state import bump, lock, loop_failed, loop_ok
 from adash.core.util import short
 
@@ -35,7 +35,7 @@ USAGE_BACKOFF = 900
 USAGE_BACKOFF_MAX = 3600
 REAL_HOME = pwd.getpwuid(os.getuid()).pw_dir  # an Aside shell remaps $HOME
 ORCA = os.path.join(REAL_HOME, "Library/Application Support/orca")
-CACHE = os.path.join(HERE, "plan-usage.json")
+CACHE = os.path.join(DATA, "plan-usage.json")
 BUCKET_NAMES = {"session": "5시간 세션", "weekly_all": "주간 전체", "weekly_scoped": "주간"}
 CLAUDE_PLANS = {"claude_team": "Team", "claude_enterprise": "Enterprise", "claude_max": "Max", "claude_pro": "Pro"}
 plan_usage = {"available": False, "accounts": []}  # rebound whole, so readers need no lock

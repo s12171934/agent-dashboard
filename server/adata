@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""adata — move the dashboard server's data (prefs.json, histories, decisions...) to another folder or machine.
+
+    adata path                         the data folder in use ($ADASH_DATA, else server/data, else server/)
+    adata ls                           its files: kind (state · cache · local), size, last change
+    adata export [-o FILE] [--with-cache]
+                                       pack the state files (and caches) into a tar.gz with a manifest
+    adata import FILE [--force]        unpack into the data folder; files it replaces go to a backup tar.gz first
+    adata migrate [--to DIR]           move every file from the old place (server/) into server/data (or DIR)
+    adata check                        absolute paths in prefs.json that do not exist on this machine
+
+The file list (and which files are state, cache or local-only) is DATA_FILES in adash/core/config.py.
+`local` files (server.log, vscode-web/, .token) never travel. Caches are keyed by this machine's paths and are
+rebuilt on their own, so export leaves them out unless --with-cache.
+
+import and migrate rewrite files the running server holds in memory and saves back (prefs.json above all), so
+they stop the launchd agent first and start it again afterwards (DASH_LABEL, default local.agent-dashboard).
+A server started by hand on the port (8787) makes them refuse; stop it, or pass --force to write anyway.
+
+Moving to another machine:
+    old$ server/adata export -o ~/adash-data.tar.gz
+    new$ server/adata import ~/adash-data.tar.gz     # then: server/adata check
+"""
+
+import argparse
+import io
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tarfile
+import time
+from datetime import datetime
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+from adash.core.config import DATA, DATA_FILES  # noqa: E402  (the server's package, next to this file)
+
+LABEL = os.environ.get("DASH_LABEL", "local.agent-dashboard")
+PLIST = os.path.expanduser(f"~/Library/LaunchAgents/{LABEL}.plist")
+DOMAIN = f"gui/{os.getuid()}"
+PORT = int(os.environ.get("DASH_PORT", "8787"))
+MANIFEST = "adata-manifest.json"
+
+
+def die(msg):
+    print(f"adata: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def size_of(p):
+    if os.path.isdir(p):
+        return sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs
+                   if not os.path.islink(os.path.join(r, f)))
+    return os.path.getsize(p)
+
+
+def human(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+
+
+def present(folder, kinds=("state", "cache", "local")):
+    """-> [(name, kind)] of the known data files that exist in folder."""
+    return [(n, k) for n, k in DATA_FILES.items() if k in kinds and os.path.lexists(os.path.join(folder, n))]
+
+
+# ---- the launchd agent: stopped while files under it change ----
+
+def agent_loaded():
+    return subprocess.run(["launchctl", "print", f"{DOMAIN}/{LABEL}"], capture_output=True).returncode == 0
+
+
+def port_busy():
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", PORT)) == 0
+
+
+class Stopped:
+    """Stops the launchd agent for the block and starts it again; refuses if something else holds the port."""
+
+    def __init__(self, force):
+        self.force, self.was = force, False
+
+    def __enter__(self):
+        self.was = agent_loaded()
+        if self.was:
+            subprocess.run(["launchctl", "bootout", f"{DOMAIN}/{LABEL}"], capture_output=True)
+            for _ in range(50):
+                if not port_busy():
+                    break
+                time.sleep(0.1)
+            print(f"stopped {LABEL}")
+        if port_busy() and not self.force:
+            die(f"port {PORT} is still served (a server started by hand?) — stop it first, or pass --force")
+        return self
+
+    def __exit__(self, *exc):
+        if self.was and os.path.exists(PLIST):
+            subprocess.run(["launchctl", "bootstrap", DOMAIN, PLIST], check=False)
+            print(f"started {LABEL}")
+        elif not self.was:
+            print("the launchd agent was not running; start the server to load the data")
+
+
+# ---- commands ----
+
+def cmd_path(_):
+    print(DATA)
+
+
+def cmd_ls(_):
+    rows = []
+    for name, kind in DATA_FILES.items():
+        p = os.path.join(DATA, name)
+        if os.path.lexists(p):
+            rows.append((kind, name, human(size_of(p)), datetime.fromtimestamp(os.path.getmtime(p)).strftime("%m-%d %H:%M")))
+    print(DATA)
+    w = max([len(r[1]) for r in rows] + [4])
+    for kind, name, sz, at in rows:
+        print(f"  {kind:<5}  {name:<{w}}  {sz:>8}  {at}")
+    unknown = sorted(set(os.listdir(DATA)) - set(DATA_FILES)) if DATA != HERE else []
+    if unknown:
+        print("not in DATA_FILES (left alone): " + ", ".join(unknown))
+
+
+def cmd_export(a):
+    kinds = ("state", "cache") if a.with_cache else ("state",)
+    files = present(DATA, kinds)
+    if not files:
+        die(f"nothing to export in {DATA}")
+    out = os.path.abspath(os.path.expanduser(a.output or f"adash-data-{socket.gethostname().split('.')[0]}-"
+                                             f"{datetime.now():%Y%m%d-%H%M}.tar.gz"))
+    manifest = {"from": socket.gethostname(), "data": DATA, "home": os.path.expanduser("~"),
+                "at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "files": {n: k for n, k in files}}
+    with tarfile.open(out, "w:gz") as tar:
+        raw = json.dumps(manifest, ensure_ascii=False, indent=1).encode()
+        info = tarfile.TarInfo(MANIFEST)
+        info.size, info.mtime = len(raw), int(time.time())
+        tar.addfile(info, io.BytesIO(raw))
+        for name, _ in files:
+            tar.add(os.path.join(DATA, name), arcname=name)
+    os.chmod(out, 0o600)  # prefs.json holds Jira settings and the like
+    for name, kind in files:
+        print(f"  {kind:<5}  {name}")
+    print(f"{out} ({human(os.path.getsize(out))})")
+
+
+def safe_members(tar):
+    """-> the archive's members that are known data files, refusing anything that would land outside the folder."""
+    keep = []
+    for m in tar.getmembers():
+        top = m.name.split("/", 1)[0]
+        if m.name == MANIFEST:
+            continue
+        if top not in DATA_FILES or DATA_FILES[top] == "local" or m.name.startswith("/") or ".." in m.name.split("/"):
+            print(f"  skip   {m.name}")
+            continue
+        if not (m.isfile() or m.isdir()):
+            print(f"  skip   {m.name} (not a regular file)")
+            continue
+        keep.append(m)
+    return keep
+
+
+def backup(folder, names, why):
+    names = [n for n in names if os.path.lexists(os.path.join(folder, n))]
+    if not names:
+        return None
+    path = os.path.join(folder, f"adata-backup-{why}-{datetime.now():%Y%m%d-%H%M%S}.tar.gz")
+    with tarfile.open(path, "w:gz") as tar:
+        for n in names:
+            tar.add(os.path.join(folder, n), arcname=n)
+    os.chmod(path, 0o600)
+    return path
+
+
+def cmd_import(a):
+    src = os.path.abspath(os.path.expanduser(a.file))
+    if not os.path.isfile(src):
+        die(f"no such file: {src}")
+    with tarfile.open(src, "r:gz") as tar:
+        try:
+            manifest = json.load(tar.extractfile(MANIFEST))
+        except KeyError:
+            die(f"{src} has no {MANIFEST} — not made by `adata export`")
+        members = safe_members(tar)
+        tops = sorted({m.name.split("/", 1)[0] for m in members})
+        print(f"from {manifest.get('from')} ({manifest.get('at')}) → {DATA}")
+        os.makedirs(DATA, exist_ok=True)
+        with Stopped(a.force):
+            saved = backup(DATA, tops, "import")
+            if saved:
+                print(f"replaced files backed up: {saved}")
+            for t in tops:  # a folder entry replaces the folder, not merges into it
+                p = os.path.join(DATA, t)
+                if os.path.isdir(p) and not os.path.islink(p):
+                    shutil.rmtree(p)
+            for m in members:
+                tar.extract(m, DATA, filter="data") if hasattr(tarfile, "data_filter") else tar.extract(m, DATA)
+            for t in tops:
+                print(f"  in     {t}")
+    if manifest.get("home") and manifest["home"] != os.path.expanduser("~"):
+        print(f"the old machine's home was {manifest['home']} — run `adata check` for paths in prefs.json to fix")
+
+
+def patch_plist(dest):
+    """Point the installed agent's log and ADASH_DATA at dest (launchd/install.sh writes the same on a reinstall)."""
+    if not os.path.exists(PLIST):
+        return
+    for args in (["-replace", "StandardOutPath", "-string", os.path.join(dest, "server.log")],
+                 ["-replace", "StandardErrorPath", "-string", os.path.join(dest, "server.log")],
+                 ["-replace", "EnvironmentVariables.ADASH_DATA", "-string", dest]):
+        subprocess.run(["plutil", *args, PLIST], check=True)
+    print(f"updated {PLIST}")
+
+
+def cmd_migrate(a):
+    src = DATA
+    dest = os.path.abspath(os.path.expanduser(a.to or os.path.join(HERE, "data")))
+    if src == dest:
+        print(f"already in {dest}")
+        return
+    files = present(src)
+    if not files:
+        die(f"nothing to move in {src}")
+    clash = [n for n, _ in files if os.path.lexists(os.path.join(dest, n))]
+    if clash and not a.force:
+        die(f"{dest} already holds {', '.join(clash)} — pass --force to replace them")
+    with Stopped(a.force):
+        os.makedirs(dest, exist_ok=True)
+        os.chmod(dest, 0o700)
+        for name, kind in files:
+            target = os.path.join(dest, name)
+            if os.path.isdir(target) and not os.path.islink(target):
+                shutil.rmtree(target)
+            shutil.move(os.path.join(src, name), target)
+            print(f"  {kind:<5}  {name}")
+        patch_plist(dest)
+    print(f"{src} → {dest}")
+    if dest != os.path.join(HERE, "data"):
+        print(f"outside server/data: export ADASH_DATA={dest} for the CLIs (aqa, ausage, adata) too")
+
+
+def cmd_check(_):
+    p = os.path.join(DATA, "prefs.json")
+    try:
+        with open(p) as f:
+            prefs = json.load(f)
+    except (OSError, ValueError) as e:
+        die(f"cannot read {p}: {e}")
+    missing = []
+
+    def walk(v, where):
+        if isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, f"{where}.{k}" if where else k)
+        elif isinstance(v, list):
+            for i, x in enumerate(v):
+                walk(x, f"{where}[{i}]")
+        elif isinstance(v, str) and (v.startswith("/") or v.startswith("~/")) and "\n" not in v and len(v) < 1024:
+            if not os.path.exists(os.path.expanduser(v)):
+                missing.append((where, v))
+
+    walk(prefs, "")
+    for where, v in missing:
+        print(f"  {where}: {v}")
+    print(f"{len(missing)} path(s) in prefs.json not found on this machine" if missing else "every path in prefs.json exists")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="adata", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("path").set_defaults(fn=cmd_path)
+    sub.add_parser("ls").set_defaults(fn=cmd_ls)
+    e = sub.add_parser("export")
+    e.add_argument("-o", "--output")
+    e.add_argument("--with-cache", action="store_true")
+    e.set_defaults(fn=cmd_export)
+    i = sub.add_parser("import")
+    i.add_argument("file")
+    i.add_argument("--force", action="store_true")
+    i.set_defaults(fn=cmd_import)
+    m = sub.add_parser("migrate")
+    m.add_argument("--to")
+    m.add_argument("--force", action="store_true")
+    m.set_defaults(fn=cmd_migrate)
+    sub.add_parser("check").set_defaults(fn=cmd_check)
+    a = ap.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

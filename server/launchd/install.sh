@@ -10,6 +10,8 @@
 #   DASH_PYTHON  python3 to run server.py (default: python3 on PATH)
 #   DASH_PROJECTS_DIRS  folders of project folders (progress.json), colon-separated like PATH since paths may hold
 #                spaces (default: none, project progress off), passed as --projects-dir
+#   DASH_DATA    the server's data folder (prefs.json, histories, server.log), passed as ADASH_DATA
+#                (default: server/data if it exists, else server/ — see `server/adata`)
 # A server started by hand on the same port must be stopped first, or the agent cannot bind.
 set -eu
 LABEL="${DASH_LABEL:-local.agent-dashboard}"
@@ -20,6 +22,15 @@ PROJECTS_DIRS="${DASH_PROJECTS_DIRS:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIR="$(dirname "$HERE")"
 DST="$HOME/Library/LaunchAgents/$LABEL.plist"
+DATA="${DASH_DATA:-}"
+if [ -n "$DATA" ]; then
+  mkdir -p "$DATA"
+  DATA="$(cd "$DATA" && pwd)"
+elif [ -d "$DIR/data" ]; then
+  DATA="$DIR/data"
+else
+  DATA="$DIR"
+fi
 DOMAIN="gui/$(id -u)"
 
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
@@ -43,7 +54,7 @@ for d in $PROJECTS_DIRS; do
 done
 IFS="$old_ifs"
 # a generated copy, not a link: launchd does not follow edits to a linked plist reliably
-sed -e "s|@LABEL@|$LABEL|" -e "s|@PYTHON@|$PYTHON|" -e "s|@DIR@|$DIR|g" "$HERE/agent-dashboard.plist.in" \
+sed -e "s|@LABEL@|$LABEL|" -e "s|@PYTHON@|$PYTHON|" -e "s|@DIR@|$DIR|g" -e "s|@DATA@|$DATA|g" "$HERE/agent-dashboard.plist.in" \
   | awk -v hosts="$host_args" '{ if ($0 == "@HOSTS@") printf "%s", hosts; else print }' > "$DST"
 plutil -lint "$DST" >/dev/null
 launchctl bootstrap "$DOMAIN" "$DST"

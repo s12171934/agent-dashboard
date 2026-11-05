@@ -2,7 +2,7 @@
 
 A worktree's diff stat is read from its checkout, so once the worktree is removed that number is gone and would be
 stale anyway. Its PR outlives it, and a merged PR's additions/deletions are the change's final size. The PRs seen on
-a ticket's worktree rows are remembered in server/review-gone.json ({key: {pr url: {repo, branch}}}); a driver
+a ticket's worktree rows are remembered in review-gone.json (the data folder) ({key: {pr url: {repo, branch}}}); a driver
 ticket's delivered/ file lists its PRs too. Whatever of those no live row of the ticket carries is listed as gone.
 """
 
@@ -11,12 +11,12 @@ import os
 import subprocess
 import time
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.files import read_json_cached, save_json
 from adash.core.log import log
 from adash.features.review.config import PR_EVERY
 
-GONE_PATH = os.path.join(HERE, "review-gone.json")
+GONE_PATH = os.path.join(DATA, "review-gone.json")
 
 
 def remember(seen):
