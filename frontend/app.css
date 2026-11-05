@@ -1099,6 +1099,11 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 /* 워크트리 (#trees): every local worktree */
 .tr-path { font-size: 11.5px; overflow-wrap: anywhere; }
 .tr-note { margin-top: 6px; padding: 6px 10px; border-left: 3px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tr-subs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; font-size: 11.5px; }
+.tr-sub { padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; overflow-wrap: anywhere; }
+.tr-sub b { font-weight: 600; }
+.tr-sub.det { color: var(--muted); }
+.tr-sub.det b { font-weight: 400; font-family: ui-monospace, monospace; }
 .tr-edit { display: grid; gap: 6px; margin-top: 6px; }
 .tr-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 12.5px; }
 /* Jira stage chips: 개발 완료 is outlined, QA 준비 완료 filled — the one the QA reviewer acts on */

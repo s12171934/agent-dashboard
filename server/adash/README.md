@@ -40,7 +40,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `canvas/` | 「워크플로 캔버스」: 묻는 기기에 맞는 workflow-canvas 주소 — 루프백이면 `http://127.0.0.1:4318/`, tailnet 이면 `tailscale serve status` 에서 캔버스 포트로 중계하는 https 주소 | `/api/canvas` |
 | `flow/` | 정상 흐름 계약과 흐름 이탈 판정 | `POST /api/flow/ok` |
 | `usage/` | 페이지의 기능 사용 기록(`frontend/usage.js`)을 환경과 함께 데이터 폴더의 `usage.jsonl` 에 덧붙임. 집계(`report.py`)는 `/usage` 페이지(`page.html`)와 `server/ausage` 가 같이 쓴다 | `POST /api/usage`, `/api/usage/report`, `/usage` |
-| `worktrees/` | 「워크트리」 탭: Orca 저장소마다 `git worktree list` 로 모든 워크트리(Orca 가 만들지 않은 것 포함, 각 저장소 .git 아래 서브모듈의 워크트리도 「서브모듈 · 상위 폴더」 저장소로)와 미커밋·마지막 커밋, 데스크톱·웹 VS Code 로 열기(루프백만), 워크트리별 메모(데이터 폴더의 `worktree-notes.json`), 삭제(Orca 것은 `orca worktree rm`, 나머지는 `git worktree remove`, 메인 금지·루프백만; 잃는 것 — 미커밋·잠금·안의 서브모듈 워크트리·원격에 없는 서브모듈 커밋 — 이 없으면 서브모듈이 있어도 강제로 한 번에, 있으면 사유를 보이고 다시 물음) | `/api/worktrees`, `POST /api/worktrees/open·web·note·remove` |
+| `worktrees/` | 「워크트리」 탭: Orca 저장소마다 `git worktree list` 로 모든 워크트리(Orca 가 만들지 않은 것 포함, 각 저장소 .git 아래 서브모듈의 워크트리도 「서브모듈 · 상위 폴더」 저장소로)와 미커밋·마지막 커밋·서브모듈마다 브랜치(분리 HEAD 면 커밋), 데스크톱·웹 VS Code 로 열기(루프백만), 워크트리별 메모(데이터 폴더의 `worktree-notes.json`), 삭제(Orca 것은 `orca worktree rm`, 나머지는 `git worktree remove`, 메인 금지·루프백만; 잃는 것 — 미커밋·잠금·안의 서브모듈 워크트리·원격에 없는 서브모듈 커밋 — 이 없으면 서브모듈이 있어도 강제로 한 번에, 있으면 사유를 보이고 다시 물음) | `/api/worktrees`, `POST /api/worktrees/open·web·note·remove` |
 
 ## 상태를 다룰 때
 
