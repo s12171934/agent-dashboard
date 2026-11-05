@@ -146,6 +146,22 @@ def parts_delta(parts, old, new, base, encode):
                                     b'"delta":{' + b",".join(out) + b"}"]) + b"}"
 
 
+WENT_ON_SECONDS = 5 * 60  # transcript records this long after a dispatch settled: the session lives on past it
+
+
+def _epoch(ts):
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00").replace(" ", "T")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
+def went_on(last_ts, completed_at):
+    """True when the transcript's last record is well after the dispatch completed (closing words come within seconds)."""
+    last, done = _epoch(last_ts), _epoch(completed_at)
+    return last is not None and done is not None and last - done > WENT_ON_SECONDS
+
+
 def build_state(encode):
     """-> (version, encoded /api/state body)."""
     with lock:
@@ -162,13 +178,19 @@ def build_state(encode):
         settled = {**settled_store["tasks"],
                    **{w.get("taskId"): w.get("dispatchStatus") for w in orca_state.get("workers", [])
                       if w.get("dispatchStatus") in ("completed", "failed", "cancelled")}}
+        completed_at = {t["id"]: t.get("completed_at") for ts in (orca_state.get("tasks") or {}).values()
+                        for t in ts if t.get("completed_at")}
+        open_terms = {t["handle"] for t in orca_state.get("terminals", []) if t.get("connected")}
         summaries = []
         waiting = {}  # Claude session id -> its oldest pending question (decisions lists oldest first)
         for r in decisions["pending"]:
             waiting.setdefault(r.get("session_id") or None, r)
         for sess in by_id.values():
             sm = sess.summary()
-            if sm["task_id"] in settled:
+            # ...unless its terminal is still open and the session went on well past it: a terminal kept after
+            # the dispatch (user takeover, retained) is used on, and its own transcript and hook say what it is doing now.
+            if sm["task_id"] in settled and not (sm.get("own_handle") in open_terms and
+                                                 went_on(sm.get("last_ts"), completed_at.get(sm["task_id"]))):
                 sm.update(state="done", live=False, state_reason="Orca: dispatch " + settled[sm["task_id"]])
             sm["decision"] = waiting.get(sm["id"]) if sm["kind"] == "claude" else None
             summaries.append(sm)

@@ -386,7 +386,10 @@ class Session:
                     self.add_log(ts, "assistant", short(block["text"]), full=block["text"])
         elif typ == "user":
             content = msg.get("content")
-            if not rec.get("isMeta"):
+            # A compaction's summary is written as a user record but opens no turn: idle compaction
+            # ("Compacted while idle") writes it to a session waiting for input, and nothing follows it.
+            # Mid-turn auto-compaction keeps the turn open as it was.
+            if not rec.get("isMeta") and not rec.get("isCompactSummary"):
                 self.busy = True  # a prompt or a tool result: the model is up next
                 if isinstance(content, str):
                     self.self_close = None  # a new prompt: the session is alive
