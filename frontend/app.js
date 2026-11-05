@@ -2897,6 +2897,10 @@ async function trLoad(fresh) {
   trBusy = true;
   try { trData = await api.worktrees(fresh); trAt = Date.now(); } finally { trBusy = false; }
 }
+// A submodule as a two-part chip: its folder name on the left, then its branch (branch icon, accent) or, when detached,
+// the commit it sits on (muted, monospace).
+const TR_BR_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9-6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM3.5 5v6M12.5 8c0 2.5-3 2.5-6 3.5-1.5.5-3 1-3 1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+const trSub = m => `<span class="tr-sub${m.branch ? '' : ' det'}" title="${esc(`서브모듈 ${m.path}\n${m.branch ? '브랜치 ' + m.branch : '분리 HEAD (브랜치 아님)'} · ${m.head || ''}`)}"><span class="tr-sub-n">${esc(m.path.split('/').pop())}</span><span class="tr-sub-b">${m.branch ? TR_BR_ICON + esc(cut(m.branch, 50)) : '분리 ' + esc(m.head || '?')}</span></span>`;
 function trRow(w, sv) {
   const k = trKey(sv.server, w.path), live = state.sessions.filter(s => OPEN(status(s)) && s.place?.path === w.path).length;
   const flags = [w.main && '<span class="badge">메인</span>', w.orca && '<span class="badge">Orca</span>',
@@ -2917,7 +2921,7 @@ function trRow(w, sv) {
     <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
       ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}
       ${w.comment ? `<span class="st" title="Orca 코멘트">Orca: ${esc(cut(w.comment, 80))}</span>` : ''}</div>
-    ${w.submodules?.length ? `<div class="tr-subs"><span class="st">서브모듈</span>${w.submodules.map(m => `<span class="tr-sub${m.branch ? '' : ' det'}" title="${esc(m.path + '\n' + (m.branch ? '브랜치 ' + m.branch : '분리 HEAD (브랜치 아님)') + ' · ' + (m.head || ''))}">${esc(m.path.split('/').pop())} <b>${esc(m.branch ? cut(m.branch, 50) : m.head || '?')}</b></span>`).join('')}</div>` : ''}
+    ${w.submodules?.length ? `<div class="tr-subs"><span class="st">서브모듈 ${w.submodules.length}</span>${w.submodules.map(trSub).join('')}</div>` : ''}
     ${trEdit === k ? `<div class="tr-edit"><textarea class="field" rows="3" maxlength="4000" placeholder="메모 (비우고 저장하면 지웁니다) · ⌘/Ctrl+Enter 저장, Esc 취소">${esc(w.note?.text || '')}</textarea>
       <span class="rv-acts"><button class="act big" data-tr-note-cancel>취소</button><button class="act big accent" data-tr-note-save="${esc(w.path)}" data-srv="${esc(sv.server)}">저장</button></span></div>`
       : w.note ? `<div class="tr-note" title="${esc(new Date(w.note.at * 1000).toLocaleString('ko-KR'))}">${esc(w.note.text)}<span class="st"> · ${ago(new Date(w.note.at * 1000).toISOString())}</span></div>` : ''}
