@@ -7060,7 +7060,7 @@ async function renderCanvas(reload) {
   });
 }
 // ---------- 녹화 영상 (#media) ----------
-// Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) that its server/media.json
+// Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) that its data folder media.json
 // publishes: a player, and the recording's timeline (ego-record's .timeline.txt) whose times seek the player. Their
 // notes' file:// links open only on that Mac; this is how a device on the tailnet watches them. The view is built once
 // (mdMounted): live updates must not rebuild the <video> and stop it.
@@ -7079,7 +7079,7 @@ const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Mat
 const mdSize = n => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
 async function renderMedia(reload) {
   if (mdMounted && !reload) return;
-  if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 <code>server/media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
+  if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 서버 데이터 폴더 <code>media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
     <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
       <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label>
       <label class="st"><input type="checkbox" id="md-follow"${md.follow ? ' checked' : ''}> 재생 위치 따라가기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
@@ -7092,7 +7092,7 @@ async function renderMedia(reload) {
   const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1;
   $('#md-sum').textContent = `${vs.length}개${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
   if (!vs.length) {
-    $('#md-body').innerHTML = `<div class="empty">공개한 녹화가 없습니다. 영상이 있는 맥의 <code>server/media.json</code> 에 <code>{"published": ["ego-record/&lt;파일 이름&gt;.mp4"]}</code> 처럼 적으면 여기에 나옵니다.</div>`
+    $('#md-body').innerHTML = `<div class="empty">공개한 녹화가 없습니다. 영상이 있는 맥의 서버 데이터 폴더 <code>media.json</code> 에 <code>{"published": ["ego-record/&lt;파일 이름&gt;.mp4"]}</code> 처럼 적으면 여기에 나옵니다.</div>`
       + (mdData?.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
     return;
   }

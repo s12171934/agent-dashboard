@@ -3,7 +3,7 @@
 
 The sheet is read by an agent through the Google Drive connector (the dashboard server has no Google login):
 download_file_content on the sheet's file id with no export type gives the first tab — the 「Test Summary」 tab —
-as base64 CSV, and that string is passed here as is. Writes server/qa-sheets.json; the review pass attaches it to
+as base64 CSV, and that string is passed here as is. Writes qa-sheets.json in the server's data folder; the review pass attaches it to
 the set whose epic it names (`sheet` in /api/reviews).
 
   aqa sheet <EPIC> <base64 CSV | ->     record the Summary tab (- reads the string from stdin)
@@ -19,7 +19,10 @@ import sys
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-STORE = os.path.join(HERE, "qa-sheets.json")
+sys.path.insert(0, HERE)
+from adash.core.config import DATA  # noqa: E402  (the server's data folder: $ADASH_DATA, server/data or server/)
+
+STORE = os.path.join(DATA, "qa-sheets.json")
 # Summary tab label → field; each row holds two label/value pairs (A:B and C:D).
 LABELS = {"버전": "version", "단말": "device", "작성자": "author", "테스터": "tester", "테스트 일자": "period",
           "배포 내역": "release", "총 TC": "total", "Pass": "pass", "Fail": "fail", "Blocked": "blocked",

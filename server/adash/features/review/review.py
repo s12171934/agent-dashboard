@@ -8,7 +8,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.files import read_json_cached
 from adash.core.git import git_at
 from adash.core.jira import jira_epic
@@ -36,8 +36,8 @@ def retired_at(watch):
 
 
 def qa_sheet(qs):
-    """The set's TC sheet progress as `aqa sheet` last recorded it (server/qa-sheets.json), with the sheet's link."""
-    got = read_json_cached(os.path.join(HERE, "qa-sheets.json")).get(qs.get("epic"))
+    """The set's TC sheet progress as `aqa sheet` last recorded it (qa-sheets.json in the data folder), with the sheet's link."""
+    got = read_json_cached(os.path.join(DATA, "qa-sheets.json")).get(qs.get("epic"))
     return {**got, "url": qs.get("sheet")} if got or qs.get("sheet") else None
 
 

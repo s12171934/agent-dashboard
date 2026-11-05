@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ausage — which dashboard screens and controls get used in which environment, from server/usage.jsonl.
+"""ausage — which dashboard screens and controls get used in which environment, from usage.jsonl in the server data folder.
 
 The page's usage hook (frontend/usage.js) posts every control it sees clicked and every screen it shows, with the
 environment it runs in; the server appends them to usage.jsonl (adash/features/usage). This tallies them.

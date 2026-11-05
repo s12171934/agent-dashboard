@@ -89,7 +89,7 @@ async function load() {
     if (!res.ok) throw new Error(d.error || res.status);
   } catch (e) { $('#meta').innerHTML = `<span class="err">불러오지 못했습니다: ${esc(e.message || e)}</span>`; return; }
   $('#meta').textContent = `${opt.days === '0' ? '전체 기간' : `최근 ${opt.days}일`} · 기록 ${d.rows}건 · ${new Date().toLocaleTimeString()} 기준`;
-  if (!d.log) return $('#out').innerHTML = `<p class="empty">아직 기록이 없습니다. 대시보드를 열고 쓰면 30초 안에, 또는 탭을 숨길 때 <code>server/usage.jsonl</code> 에 쌓입니다.</p>`;
+  if (!d.log) return $('#out').innerHTML = `<p class="empty">아직 기록이 없습니다. 대시보드를 열고 쓰면 30초 안에, 또는 탭을 숨길 때 서버 데이터 폴더의 <code>usage.jsonl</code> 에 쌓입니다.</p>`;
   if (!d.rows) return $('#out').innerHTML = `<p class="empty">이 기간에는 기록이 없습니다.</p>`;
   const envs = d.envs.map(x => x.env);
   const maxShare = Math.max(...d.screens.flatMap(s => envs.map(e => s[e].share)), 0.01);

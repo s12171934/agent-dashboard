@@ -4,7 +4,7 @@ submodule's own worktrees (a submodule checked out inside a worktree, with a wor
 Orca knows, so the git dirs under each repo's .git are walked for them and each such submodule shows as a repo of its
 own. Orca's name and comment ride along where Orca has the path. Read on request, cached for a short while.
 
-Each worktree can carry a note written on the page, kept by path in server/worktree-notes.json (the dashboard's own:
+Each worktree can carry a note written on the page, kept by path in worktree-notes.json (the data folder) (the dashboard's own:
 Orca's comment field is left to the tools that write it, and worktrees outside Orca have none)."""
 
 import json
@@ -14,14 +14,14 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.files import StaleWhileRefresh, save_json
 from adash.core.git import git_at
 from adash.core.orca import ORCA_ENV, orca
 from adash.core.util import short
 
 EVERY = 20
-NOTES = os.path.join(HERE, "worktree-notes.json")  # {path: {"text", "at"}}
+NOTES = os.path.join(DATA, "worktree-notes.json")  # {path: {"text", "at"}}
 NOTE_MAX = 4000
 _notes_lock = threading.Lock()
 

@@ -1,13 +1,13 @@
-"""Tallies of server/usage.jsonl per environment: shared by GET /api/usage/report (the /usage page) and server/ausage."""
+"""Tallies of usage.jsonl (in the data folder) per environment: shared by GET /api/usage/report (the /usage page) and server/ausage."""
 
 import json
 import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 
-LOG = os.path.join(HERE, "usage.jsonl")
+LOG = os.path.join(DATA, "usage.jsonl")
 # Every screen route() knows (frontend/app.js), so a screen nobody opens still shows up as 0.
 VIEWS = ["home", "agents", "session", "run", "driver", "compare", "talk", "tests", "worktrees", "trees", "decide",
          "chars", "usage", "projects", "designs"]

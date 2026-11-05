@@ -6,7 +6,7 @@ import re
 import time
 from datetime import datetime, timezone
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.files import e2e_cache, read_json_cached, save_json
 from adash.core.prefs import prefs
 from adash.core.state import bump, lock
@@ -34,7 +34,7 @@ RUN_TC_PROGRESS = prefs.get("run_tc_progress") or []  # run-tc progress files, l
 test_progress = {"files": [], "run_tc": {}, "history_n": 0, "history_at": None}
 # Finished runs outlive their sources (a progress file drops out after TEST_KEEP_S, /private/tmp empties on reboot):
 # each one is copied here once, keyed by source + run, and served by /api/tests for the 「테스트」 tab.
-TEST_HISTORY_PATH = os.path.join(HERE, "test-history.json")
+TEST_HISTORY_PATH = os.path.join(DATA, "test-history.json")
 TEST_HISTORY_DAYS, TEST_HISTORY_MAX = 30, 2000
 CASES_MAX = 500
 TC_RE = re.compile(r"^\s*(TC-[\w.-]+)\s*[:·—-]?\s*")

@@ -19,7 +19,7 @@ def _short(v, n):
 
 def post_usage(h, url):
     # {"env": {app, form, pointer, dev}, "events": [{"t": ms epoch, "v": view, "f": feature, "m": form then?,
-    # "d": seconds on screen?}]} — appended one line per event to server/usage.jsonl. Names only, never values (the
+    # "d": seconds on screen?}]} — appended one line per event to usage.jsonl in the data folder. Names only, never values (the
     # page strips ids and paths before sending). An event's m overrides env.form: a Duo unfolds mid-batch.
     try:
         body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))

@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.files import save_json
 from adash.core.state import lock, loop_failed, loop_ok, sessions
 from adash.features.sessions.config import CLAUDE_GLOB, CODEX_GLOBS
@@ -16,7 +16,7 @@ from adash.features.sessions.usage import HISTORY_DAYS, SLOT_KEEP, SLOT_SECONDS,
 # ---- usage history: sessions older than --hours, for the compare tab's 7-day time chart ----
 # Only the usage per 5-minute slot is kept (no logs, plans or tools), so a week of transcripts stays cheap.
 # Parsed once per file version and cached on disk; live sessions (the `sessions` dict) are left to scan_loop.
-HISTORY_PATH = os.path.join(HERE, "history-cache.json")
+HISTORY_PATH = os.path.join(DATA, "history-cache.json")
 HISTORY_EVERY = 300
 history = {"files": {}, "updated": 0, "scanning": False}  # path -> {"v": [mtime, size], "s": lite session}
 try:

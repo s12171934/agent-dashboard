@@ -4,7 +4,7 @@ import json
 import os
 import threading
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 
 
 # ---- design documents: a viewer for the design folders and the sections each session read ----
@@ -26,7 +26,7 @@ DESIGN_KINDS = {".md": "md", ".svg": "image", ".png": "image", ".jpg": "image", 
 DESIGN_TYPES = {".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                 ".gif": "image/gif", ".webp": "image/webp", ".pdf": "application/pdf"}
 DESIGN_FILE_MAX = 32 << 20
-DESIGN_REFS_PATH = os.path.join(HERE, "design-refs.json")
+DESIGN_REFS_PATH = os.path.join(DATA, "design-refs.json")
 design = {"version": 0, "sources": [], "docs": {}}  # rebound whole by scan_designs, so readers need no lock
 design_bases = set()  # folder names that mark a design path ("feature-designs"); read by the session parser
 design_ticket_refs = {}  # external plan path -> {package: [section badge]}, rebuilt with the index

@@ -60,11 +60,11 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문과 Bash 권한 요청. 터미널 선택기·권한 프롬프트와 같은 것이다 (아래 「결정 버튼」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
-| 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter, `server/qa-sheets.json`(`aqa` 가 기록하는 TC 시트 진행) (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
-| 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`(그 .git 아래 워크트리를 가진 서브모듈 git 디렉터리도)·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 `server/worktree-notes.json` 에 쓴다 |
+| 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter, 데이터 폴더의 `qa-sheets.json`(`aqa` 가 기록하는 TC 시트 진행) (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
+| 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`(그 .git 아래 워크트리를 가진 서브모듈 git 디렉터리도)·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 데이터 폴더의 `worktree-notes.json` 에 쓴다 |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
-| 녹화 영상 | `server/media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
+| 녹화 영상 | 데이터 폴더의 `media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
 
 - **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다. 워커 계획 바(조율자 상세·사무실 이름표)에는 아예 그리지 않고 범례에 「취소 N」 글자만 남긴다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
 
@@ -95,7 +95,7 @@ tailscale serve --bg 8787                                                  # 다
 
 - **수집 (`frontend/usage.js`):** 문서 전체에 캡처 단계 클릭 훅 하나를 걸어, 눌린 컨트롤을 이름으로 적는다 — 안정적인 `id`, 없으면 첫 `data-*` 속성(값은 고정 키처럼 보일 때만), 없으면 라벨. 앞에 가장 가까운 `id` 조상을 붙인다(예: `#tests-span > [k=7]`). 숫자는 `#` 으로 바꾸고, 입력한 글자·경로·세션 id 는 보내지 않는다. `<select>` 는 고른 값(고정 키일 때), 검색 칸은 「(입력)」만 적는다. 화면은 열 때 `open`, 떠날 때(다른 화면·탭 숨김) 보인 초를 `stay` 로 적는다.
 - **환경:** `app`(`macos`·`ios` 는 네이티브 셸, 설치한 PWA 는 `pwa`, 나머지 `web`), `form`(`phone` ≤500px · `narrow` ≤700px — iPhone Duo 펼침 · `tablet` ≤1100px · `desktop`, 반쯤 접힌 자세면 `-book`/`-laptop`), `pointer`(`coarse`·`fine`), 기기마다 무작위 id(`localStorage adash.dev`).
-- **전송:** 30초마다, 그리고 페이지가 숨겨지거나 닫힐 때 묶어서 켜진 첫 메트릭 서버의 `POST /api/usage` 로 보낸다(keepalive). 서버는 이벤트마다 한 줄씩 `server/usage.jsonl` 에 덧붙인다(git 에 넣지 않음). 기기에서 끄려면 `localStorage.setItem('adash.usage', 'off')`.
+- **전송:** 30초마다, 그리고 페이지가 숨겨지거나 닫힐 때 묶어서 켜진 첫 메트릭 서버의 `POST /api/usage` 로 보낸다(keepalive). 서버는 이벤트마다 한 줄씩 데이터 폴더의 `usage.jsonl` 에 덧붙인다(git 에 넣지 않음). 기기에서 끄려면 `localStorage.setItem('adash.usage', 'off')`.
 - **확인 페이지:** 메트릭 서버 주소의 `/usage` (이 Mac 에서 `http://127.0.0.1:8787/usage`, 다른 기기는 `tailscale serve` 의 https 주소 + `/usage`). 아래 리포트와 같은 표에 최근 기록 40건을 더해 보여 주고 10초마다 새로 읽는다. 기간·환경 묶음·「드묾」 기준을 고를 수 있다. 데이터는 `GET /api/usage/report?days=&by=&top=&rare=`.
 - **분석:** `server/ausage` 가 환경 요약(기기·클릭·화면 시간), 화면별 연 횟수·화면 시간 비율(한 번도 안 연 화면도 `-` 로), 환경별 많이 쓰는 기능, 「다른 환경에선 쓰는데 여기선 거의 안 쓰는 기능」, 「모든 환경에서 드문 기능」을 표로 낸다.
 
@@ -122,11 +122,12 @@ server/launchd/install.sh uninstall                                             
 | `DASH_ORIGINS` | 없음 (공백으로 구분, `--origin` 으로 넘김) |
 | `DASH_PYTHON` | `PATH` 의 `python3` |
 | `DASH_PROJECTS_DIRS` | 없음 (`:` 로 구분 — 경로에 공백이 있을 수 있어서. 각각 `--projects-dir` 로 넘김) |
+| `DASH_DATA` | `server/data` 가 있으면 그것, 없으면 `server/` (`ADASH_DATA` 로 넘김 — 아래 「로컬 상태 파일」) |
 
 예: `DASH_PROJECTS_DIRS="$HOME/notes/projects" DASH_ORIGINS="…" server/launchd/install.sh`
 
 - 같은 포트로 손으로 띄운 서버가 있으면 먼저 내려야 한다.
-- 로그는 `server/server.log` 에 쌓인다.
+- 로그는 데이터 폴더의 `server.log` 에 쌓인다.
 
 ## 프론트 배포 (Cloudflare Pages)
 
@@ -364,7 +365,7 @@ apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 �
 - 대시보드에서 답할 때 터미널에 선택기가 아예 없으면(이미 답했거나 취소했는데 트랜스크립트가 아직 따라오지 못한 것) 닫힌 질문으로 보고 카드를 치운다. 다른 질문의 선택기가 떠 있으면 화면을 잘못 읽었을 수도 있어서 카드를 남기고 아래처럼 알린다.
 - 카드가 「— 터미널에서 답하세요」라고 알리는 경우: Orca 밖 세션이라 터미널을 못 찾을 때, 선택기가 화면에 없거나 터미널에서 이미 답하기 시작했을 때, 키 입력이 예상대로 반영되지 않았을 때. 줄바꿈이 든 직접 입력처럼 키로 넣을 수 없는 답도 거절한다. 이렇게 오류가 난 카드에는 「카드 삭제」가 나타나 대시보드에서 치울 수 있다(터미널의 선택기는 그대로).
 - 키 입력 흉내라서 Claude Code 선택기의 화면 모양·키 조작이 바뀌면 깨질 수 있다(v2.1 에서 확인). 그때도 터미널 선택기는 그대로 쓸 수 있다.
-- 대기 카드는 `server/pending.json` 에도 보관해 서버를 다시 띄워도 남는다(훅은 질문을 한 번만 등록하므로, 예전에는 선택기가 열린 동안 재시작하면 카드가 사라졌다). 그사이 답했거나 취소된 질문은 평소처럼 트랜스크립트를 보고 치운다.
+- 대기 카드는 데이터 폴더의 `pending.json` 에도 보관해 서버를 다시 띄워도 남는다(훅은 질문을 한 번만 등록하므로, 예전에는 선택기가 열린 동안 재시작하면 카드가 사라졌다). 그사이 답했거나 취소된 질문은 평소처럼 트랜스크립트를 보고 치운다.
 - 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 터미널 선택기만 뜬다. 메일함 모드가 켜져 있어도 마찬가지다.
 - 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`).
 
@@ -391,7 +392,7 @@ apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 �
 
 결정 대기 화면 위의 「메일함 모드」 버튼(또는 바의 메일 아이콘, 켜져 있으면 강조색으로 채워진다)으로 켜고 끈다. 전역 스위치 하나이고, 서버가 `prefs.json` 의 `decision_inbox` 에 보관하므로 모든 기기가 같은 상태를 보고 서버를 다시 띄워도 유지된다. 여러 서버를 켜 둔 페이지에서는 켜진 서버 모두에 같이 적용되고, 모두 켜져야 「켜짐」으로 보인다.
 
-- 켜져 있으면 훅이 질문을 등록할 때 서버가 카드를 띄우지 않고 메일함(`server/inbox.json`)에 쌓은 뒤 `{"deny": 사유}` 로 답한다. 훅은 이것을 PreToolUse `permissionDecision: "deny"` 로 내보내므로 터미널 선택기는 뜨지 않고, 에이전트는 사유를 답 대신 읽는다.
+- 켜져 있으면 훅이 질문을 등록할 때 서버가 카드를 띄우지 않고 메일함(데이터 폴더의 `inbox.json`)에 쌓은 뒤 `{"deny": 사유}` 로 답한다. 훅은 이것을 PreToolUse `permissionDecision: "deny"` 로 내보내므로 터미널 선택기는 뜨지 않고, 에이전트는 사유를 답 대신 읽는다.
 - 사유: 사용자가 자리를 비워 질문을 메일함에 남겼으니 AskUserQuestion 을 다시 부르지 말고 각 질문의 권장 선택지(라벨에 `(Recommended)`·`(권장)`·`(추천)` 이 붙은 것, 없으면 첫 번째)나 가장 합리적인 판단으로 진행하라, 그리고 고른 답을 `[메일함 <항목 id>] 1) 답 / 2) 답` 형식의 한 줄로 남겨라. 서버가 고른 권장 선택지도 함께 적어 준다.
 - **에이전트가 진행한 선택을 아는 법:** 서버는 세션 트랜스크립트의 assistant 글에서 `[메일함 <id>] …` 줄을 찾아 그 항목의 「에이전트가 진행한 선택」으로 보여 준다. 그 줄이 아직 없으면(또는 에이전트가 규약을 따르지 않으면) 서버가 질문을 받을 때 정해 둔 권장 선택지를 「권장안으로 진행」으로 보여 준다 — 추정이라는 뜻이다.
 - 메일함 항목에서 다른 답을 고르고 「세션에 바꾸라고 알리기」를 누르면, 서버가 그 세션의 Orca 터미널에 `[대시보드 메일함 <id>] 앞서 X (으)로 진행했지만 사용자는 「질문」에 Y 를 골랐습니다. 반영하세요.` 한 줄을 보내고 Enter 를 누른다(`orca terminal send --enter`). 고르지 않은 질문은 메시지에서 빠진다. 에이전트가 진행한 답(남긴 줄이 없으면 권장안)과 같은 답이면 보내지 않고 「확인」을 누르라고 알린다. 터미널은 결정 버튼과 같은 방법으로 찾고, 못 찾으면 카드에 「세션에 직접 알려 주세요」라고 알린다. 보내고 나면 그 항목은 메일함에서 지워진다(세션 붙잡기도 풀린다). 보내지 못한 항목에는 「메일함에서 삭제」가 나타난다.
@@ -487,7 +488,7 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 
 `ego-record`·`aside-record` 스킬은 녹화를 그 Mac 의 `~/Movies/ego-record`·`~/Movies/aside-record` 에 남긴다. 타임라인 노트도 `file://` 링크로 가리켜서 그 Mac 에서만 열린다. 「녹화 영상」 화면(설정 메뉴의 ▶)은 그중 **공개한 것만** 서버를 거쳐 보여 준다. 그래서 tailnet 기기·iPhone 앱에서도 재생된다.
 
-- **공개 목록:** 서버 Mac 의 `server/media.json` — `{"published": ["ego-record/<파일 이름>.mp4", "aside-record/<파일 이름>.mp4"]}`. 두 폴더 바로 아래의 `.mp4` 중 여기 적은 것만 내보낸다. 목록에 없는 파일, 다른 경로, 링크로 폴더를 벗어나는 파일은 404 다. 파일을 고치면 다음 요청부터 바로 반영되고, 서버를 다시 띄울 필요는 없다.
+- **공개 목록:** 서버 Mac 의 데이터 폴더의 `media.json` — `{"published": ["ego-record/<파일 이름>.mp4", "aside-record/<파일 이름>.mp4"]}`. 두 폴더 바로 아래의 `.mp4` 중 여기 적은 것만 내보낸다. 목록에 없는 파일, 다른 경로, 링크로 폴더를 벗어나는 파일은 404 다. 파일을 고치면 다음 요청부터 바로 반영되고, 서버를 다시 띄울 필요는 없다.
 - **화면 (분할):** 왼쪽은 공개한 녹화 목록, 가운데는 플레이어, 오른쪽은 타임라인이다. ego-record 녹화는 옆의 `.timeline.txt`(`MM:SS 종류 내용`)를 타임라인으로 펼친다. 플레이어는 제자리에 고정되고 타임라인만 따로 스크롤된다. 그래서 영상을 보면서 줄을 넘기고 누를 수 있다. 줄 어디를 눌러도 그 장면으로 가서 이어 재생한다.
     - **재생 위치 따라가기**(기본 켬): 재생 중인 줄이 강조되고, 타임라인이 그 줄을 따라 스크롤된다. 휠·터치로 직접 스크롤하면 4초 동안 멈춘다.
     - **목록 접기:** 녹화 목록을 숨겨 영상과 타임라인을 넓힌다.
@@ -575,7 +576,7 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
   - 섹션 고정: 출력에 `##` 제목이 든 셸 읽기 278회 중 85회(31%)는 줄번호만으로 정했다면 다른 섹션에 붙었을 것을 제목으로 바로잡았다(Read 는 44회 중 18회).
   - 설계 경로가 든 셸 호출 7,627회(Claude) · 2,076회(Codex) 중 참조를 남긴 것은 5,070회 · 1,444회. 나머지는 대부분 읽기가 아닌 명령(`ls`·`wc`·`git`·쓰기)이고, 따라가지 못한 것은 765회(풀지 못한 변수 193 · `python3`/`node` 스크립트 208 · `sed` 편집 스크립트 120 · 파이프 뒤 필터 45 · 반복문 30 · `git show` 15 · 그 밖), 목차 조회로 뺀 것은 1,047회다.
   - 티켓: 참조를 남긴 세션 962개 중 152개에 티켓이 붙었고, 제목에 패키지 이름이 있는 80개는 모두 그 티켓과 같았다. 서브에이전트 로그 26개도 따로 잡혔다.
-- 기록 `{session, ticket, doc, section, kind, cover, lines, hits, tool, exact, commit, ts, call}` 은 `server/design-refs.json` 에 남는다(세션이 `--hours` 밖으로 나가도). `ticket` 은 외부 계획의 티켓 세션 행(`task_id`)과 세션 브리프의 태스크 ID 로 붙이고, 서브에이전트는 부모의 것을 쓴다. `commit` 은 그 티켓 계획의 `design_root` 아래 문서일 때 `design_commit` 이다.
+- 기록 `{session, ticket, doc, section, kind, cover, lines, hits, tool, exact, commit, ts, call}` 은 데이터 폴더의 `design-refs.json` 에 남는다(세션이 `--hours` 밖으로 나가도). `ticket` 은 외부 계획의 티켓 세션 행(`task_id`)과 세션 브리프의 태스크 ID 로 붙이고, 서브에이전트는 부모의 것을 쓴다. `commit` 은 그 티켓 계획의 `design_root` 아래 문서일 때 `design_commit` 이다.
 
 | 엔드포인트 | 응답 |
 | --- | --- |
@@ -601,7 +602,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 - 「QA 단계」 선택으로 QA 드라이버 단계(또는 막힘)의 티켓만 거른다. 홈의 「QA 파이프라인」 「외 n건」이 이 값을 정해 연다.
 - **묶음:** `qa_sets` 의 `{"epic", "project"}`(선택: `"sheet"` TC 시트 링크) 하나가 묶음이다. 티켓 = Jira `parent = <epic>` 의 이슈(5분마다, `jira_site`·`jira_email` + 환경 변수 `ATLASSIAN_API_TOKEN`. launchd 는 `~/.zshrc` 를 읽지 않으므로 없으면 대화형 zsh 에 한 번 물어 얻는다).
-- **TC 진행:** 묶음에 `sheet`(TC 스프레드시트 링크)를 두면 묶음 머리에 시트 「Test Summary」 탭의 수행률·Pass율·결과별 건수와 막대가 나온다. 서버에는 Google 로그인이 없어서, 에이전트가 Google Drive 커넥터로 `download_file_content`(파일 ID, export 형식 없이 = 첫 탭 CSV 를 base64 로)를 부르고 그 문자열을 그대로 `server/aqa sheet <EPIC> '<content>'` 에 넘긴다. `aqa` 가 `server/qa-sheets.json` 에 쓰면 다음 리뷰 회차(30초)에 화면에 붙는다. 지금은 그 에픽의 QA 드라이버 자동화 프롬프트가 드라이버 실행 뒤에 이 일을 하므로, precheck 가 회차를 건너뛰는 동안에는 갱신되지 않는다(「갱신 n분 전」, 3시간이 넘으면 주의 표시).
+- **TC 진행:** 묶음에 `sheet`(TC 스프레드시트 링크)를 두면 묶음 머리에 시트 「Test Summary」 탭의 수행률·Pass율·결과별 건수와 막대가 나온다. 서버에는 Google 로그인이 없어서, 에이전트가 Google Drive 커넥터로 `download_file_content`(파일 ID, export 형식 없이 = 첫 탭 CSV 를 base64 로)를 부르고 그 문자열을 그대로 `server/aqa sheet <EPIC> '<content>'` 에 넘긴다. `aqa` 가 데이터 폴더의 `qa-sheets.json` 에 쓰면 다음 리뷰 회차(30초)에 화면에 붙는다. 지금은 그 에픽의 QA 드라이버 자동화 프롬프트가 드라이버 실행 뒤에 이 일을 하므로, precheck 가 회차를 건너뛰는 동안에는 갱신되지 않는다(「갱신 n분 전」, 3시간이 넘으면 주의 표시).
 - **티켓에 붙는 것:** 폴더 이름에 그 키가 든 Orca 워크트리(메인·보관 제외), 파일 이름에 키가 든 스텝 노트(`<project>/progress.json` 의 step 경로)와 같은 프로젝트 폴더의 다른 노트, 키가 든 최근 테스트 실행, 그 워크트리에서 도는 에이전트.
 - **저장소 줄:** 브랜치, 비교 베이스, 베이스보다 앞선 커밋 수·바뀐 파일 수·추가/삭제 줄, 뒤처진 커밋 수, 미커밋 파일 수. 베이스는 ① 그 브랜치 PR 의 base(`gh pr list --head`, 10분마다) ② `review_bases` 의 저장소별 값 ③ `main` 순이고, 로컬의 `origin/<베이스>`(없으면 `<베이스>`)와 비교한다. fetch 는 하지 않는다. git 수치는 30초마다, HEAD·베이스가 그대로면 캐시를 쓴다.
 - **VS Code 로 보기:** 티켓 줄 아래에 웹 VS Code 를 아코디언으로 펼친다(다시 누르면 접힘). 저장소마다 탭이 하나이고, 탭을 처음 열 때 로드한다. 파일은 읽기 전용이다(터미널은 열 수 있다). 작업 공간 신뢰는 끈다: 폴더마다 신뢰를 묻지 않고 Source Control(git)이 바로 보인다. 이 설정은 application 범위라 서버의 Machine 설정으로는 먹지 않아서, 중계가 workbench 첫 페이지의 `configurationDefaults` 에 `security.workspace.trust.enabled: false` 를 넣는다. 서버가 처음 열 때 `code serve-web` 을 사용자 임시 폴더의 unix 소켓으로 하나 띄우고(`--without-connection-token`, 데이터는 `server/vscode-web/`), `/vscode/<비밀값>/` 아래 요청을 그 소켓으로 중계한다. serve-web 은 프레임에 넣는 것을 막고(`X-Frame-Options`, `frame-ancestors`) 토큰을 SameSite=Lax 쿠키로 들고 다녀서 다른 출처의 페이지에 그대로 넣을 수 없기 때문이다. 중계는 그 헤더를 빼고, 비밀값은 serve-web 의 `--server-base-path` 라 모든 자산·웹소켓 주소에 실린다. 중계도 「VS Code 로 열기」와 같이 루프백에서만 된다. 화면 언어는 영어로 고정한다(한국어 브라우저에는 버전이 맞지 않는 언어팩이 붙어 문구가 틀렸다). 닫은 창의 확장 호스트는 5분 뒤 정리된다. 목록이 다시 그려져도 펼친 패널은 `moveBefore` 로 옮겨 다시 로드되지 않는다(없는 브라우저는 데이터가 바뀔 때 다시 로드). 색 테마는 대시보드의 라이트·다크를 따른다: 페이지가 주소에 `?theme=light|dark` 를 붙이면 중계가 같은 `configurationDefaults` 에 Default Light/Dark Modern 을 넣고, 대시보드 테마가 바뀌면 펼친 패널을 새 테마로 다시 연다(열려 있던 편집기는 VS Code 가 복원). iframe 의 `color-scheme` 은 안쪽 `prefers-color-scheme` 으로 전해지지 않아 VS Code 의 자동 감지로는 따라가지 않는다. VS Code 안에서 직접 고른 테마가 있으면 그것이 이긴다.
@@ -626,7 +627,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 | --- | --- |
 | `POST /api/qa/automation` | `{"epic", "id", "action": "enable"\|"disable"\|"run"}` — 그 묶음이 나열한 자동화만. 502 Orca 실패 |
 | `POST /api/qa/ticket` | 티켓: `{"epic", "key", "action": "approve"\|"merge"\|"cleanup_check"\|"cleanup"\|"restart"\|"close"\|"ignore"\|"unignore"}`. 묶음: `{"epic", "action": "close_finished", "keys": [...]}` · `"retire_check"\|"retire"` · `"adopt_check"` · `{"action": "adopt", "set": {KEY: 값}, "automation"}`. → `{"ok", "code", "output"}`. `code` 3 = 정리·종료가 멈출 상황, 그 밖의 실패는 502 |
-| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "watch", "driver", "coord_worktree", "retired", "finished", "adopted", "stages", "automations": [{"id", "name", "enabled", "rrule", "driver", "next", "last", "runs": [{"status", "at", "error", "trigger"}]}], "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "qa": null\|{"stage", "stage_no", "blocked", "blocked_reason", "ignored", "round", "coordinator", "workers", "worktree", "at", "prs", "handoffs", "done", "driver", "handles", "links": {워커 터미널: 그 회차 코디네이터 터미널}, "live", "rounds": [회차마다 시작 시각]}, "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}], "gone": [{"repo", "branch", "pr": {"number", "url", "state"}, "base", "merged_at", "files", "ins", "dels"}]}]}], "updated", "jira"}`. `gone` = 지워진 워크트리의 PR — 워크트리 행에서 본 PR(`server/review-gone.json` 에 기억)과 드라이버 `delivered/` 의 PR 중 살아 있는 행에 없는 것, `gh pr view` 수치 |
+| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "watch", "driver", "coord_worktree", "retired", "finished", "adopted", "stages", "automations": [{"id", "name", "enabled", "rrule", "driver", "next", "last", "runs": [{"status", "at", "error", "trigger"}]}], "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "qa": null\|{"stage", "stage_no", "blocked", "blocked_reason", "ignored", "round", "coordinator", "workers", "worktree", "at", "prs", "handoffs", "done", "driver", "handles", "links": {워커 터미널: 그 회차 코디네이터 터미널}, "live", "rounds": [회차마다 시작 시각]}, "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}], "gone": [{"repo", "branch", "pr": {"number", "url", "state"}, "base", "merged_at", "files", "ins", "dels"}]}]}], "updated", "jira"}`. `gone` = 지워진 워크트리의 PR — 워크트리 행에서 본 PR(데이터 폴더의 `review-gone.json` 에 기억)과 드라이버 `delivered/` 의 PR 중 살아 있는 행에 없는 것, `gh pr view` 수치 |
 | `POST /api/review/open` | `{"key"}` → 위 「VS Code 로 열기」. 403 루프백 밖, 409 워크트리 없음 |
 | `POST /api/review/web` | `{"key"}` → 위 「VS Code 로 보기」: serve-web 을 띄우고 `{"repos": [{"repo", "path", "url"}]}` (url 은 이 서버 기준 경로). 403 루프백 밖, 502 serve-web 실패 |
 | `GET·POST /vscode/<비밀값>/…` | 웹 VS Code 중계 (루프백만) |
@@ -636,7 +637,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 ## 설정 (`prefs.json`)
 
-`server/prefs.json` 은 화면 설정(유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
+데이터 폴더의 `prefs.json` 은 화면 설정(유휴 표시 등)과 아래 경로 설정을 담는다. git 추적 대상이 아니다.
 
 | 키 | 뜻 |
 | --- | --- |
@@ -688,6 +689,26 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 ## 로컬 상태 파일 (git 무시)
 
-`server/` 아래에 쌓인다. 저장소 루트에 있던 것(구조 분리 전)은 `server/` 로 옮기면 그대로 이어진다.
+서버가 쓰는 파일은 모두 **데이터 폴더** 한 곳에 쌓인다. 데이터 폴더는 `ADASH_DATA` 환경변수 → `server/data`(있으면) → `server/`(데이터 폴더 도입 전 위치) 순으로 정해진다. 서버·`aqa`·`ausage`·`adata` 가 같은 규칙(`adash/core/config.py` 의 `DATA`)을 쓴다. 파일 목록과 종류는 같은 파일의 `DATA_FILES` 가 정본이다.
 
-`prefs.json` · `settled.json` · `inbox.json` · `plan-history.json` · `test-history.json` · `history-cache.json` · `design-refs.json` · `media.json` · `server.log` · `.token`
+| 종류 | 파일 | 옮길 때 |
+|---|---|---|
+| state | `prefs.json` · `settled.json` · `pending.json` · `inbox.json` · `decision.log` · `plan-history.json` · `test-history.json` · `design-refs.json` · `media.json` · `qa-sheets.json` · `review-gone.json` · `worktree-notes.json` · `usage.jsonl` · `pricing.json` | 가져간다 |
+| cache | `history-cache.json` · `plan-usage.json` | 이 기기의 경로가 키라서 기본은 두고 간다(새 기기에서 다시 만들어진다) |
+| local | `server.log` · `vscode-web/` · `.token` | 가져가지 않는다 |
+
+### 옮기기 (`server/adata`)
+
+```sh
+server/adata path                       # 지금 쓰는 데이터 폴더
+server/adata ls                         # 파일별 종류·크기·변경 시각
+server/adata migrate                    # server/ 에 흩어진 파일을 server/data 로 (--to DIR 로 다른 곳)
+server/adata export -o ~/adash.tar.gz   # state 파일 + manifest 를 tar.gz 로 (--with-cache 로 캐시 포함)
+server/adata import ~/adash.tar.gz      # 데이터 폴더에 풀기. 덮어쓰는 파일은 먼저 adata-backup-*.tar.gz 로
+server/adata check                      # prefs.json 의 절대 경로 중 이 기기에 없는 것
+```
+
+- `import`·`migrate` 는 실행 중인 서버가 메모리의 `prefs.json` 등을 다시 저장해 덮어쓰지 않도록 launchd 에이전트(`DASH_LABEL`)를 내렸다가 다시 올린다. 손으로 띄운 서버가 포트(`DASH_PORT`, 기본 8787)를 잡고 있으면 거절한다(`--force` 로 무시).
+- `migrate` 는 설치된 plist 의 로그 경로와 `ADASH_DATA` 도 새 폴더로 바꾼다. `server/data` 밖으로 옮겼다면 CLI 를 쓰는 셸에도 `ADASH_DATA` 를 둔다.
+- 다른 기기로: 옛 기기에서 `export` → 파일 복사 → 새 기기에서 `import` → `check` 로 `prefs.json` 의 경로(`design_dirs`, `run_tc_progress` 등)를 고친다. export 파일은 Jira 설정 등이 들어 있어 0600 으로 만든다.
+- 대시보드가 읽기만 하는 다른 기기 로컬 데이터(`~/.agent-plans/`, `/private/tmp/agent-test-progress/`, 각 에이전트의 트랜스크립트)는 데이터 폴더 밖이라 옮기지 않는다.

@@ -22,10 +22,10 @@ import threading
 import time
 from urllib.parse import parse_qs
 
-from adash.core.config import HERE
+from adash.core.config import DATA as DATA_DIR
 from adash.features.review.config import VSCODE_CLI
 
-DATA = os.path.join(HERE, "vscode-web")  # serve-web's server download, extensions and settings; the secret
+DATA = os.path.join(DATA_DIR, "vscode-web")  # serve-web's server download, extensions and settings; the secret
 # gettempdir: per user, 0700. Named after DATA, whose secret the serve-web on it runs under (a second checkout's server
 # must not reuse it).
 SOCK = os.path.join(tempfile.gettempdir(), f"adash-vscode-web-{hashlib.sha1(DATA.encode()).hexdigest()[:10]}.sock")

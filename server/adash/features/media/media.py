@@ -2,7 +2,7 @@
 
 The ego-record and aside-record skills write <case> <YYYYmmdd-HHMMSS>.mp4 (ego-record also a .timeline.txt beside it)
 into fixed folders under ~/Movies, and their timeline notes point at them with file:// links, which open only on this
-Mac. A device on the tailnet sees a video only when it is listed in server/media.json — {"published": ["ego-record/<file
+Mac. A device on the tailnet sees a video only when it is listed in media.json (the data folder) — {"published": ["ego-record/<file
 name>.mp4", ...]} — and sits directly in one of ROOTS. Nothing else on disk is reachable through this feature.
 """
 
@@ -15,7 +15,7 @@ import adash.core.config as core_config
 
 MOVIES = os.path.join(core_config.HOME, "Movies")
 ROOTS = {"ego-record": os.path.join(MOVIES, "ego-record"), "aside-record": os.path.join(MOVIES, "aside-record")}
-PUBLISHED = os.path.join(core_config.HERE, "media.json")
+PUBLISHED = os.path.join(core_config.DATA, "media.json")
 STAMP = re.compile(r"\s(\d{8}-\d{6})(?:-\d+)?$")  # the first frame's time ends the name; a repeat adds -2, -3
 LINE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})\s+(\S+)\s+(.*)$")  # MM:SS or H:MM:SS, kind, text
 

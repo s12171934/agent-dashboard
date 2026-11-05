@@ -3,7 +3,7 @@
 import json
 import os
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 
 
 # USD per 1M tokens: input, 5m cache write, 1h cache write, cache read, output.
@@ -28,7 +28,7 @@ LONG_CONTEXT = {
     "gpt-6-astra": (272_000, (20, 25, 25, 2.00, 75)),
 }
 try:
-    with open(os.path.join(HERE, "pricing.json")) as _f:
+    with open(os.path.join(DATA, "pricing.json")) as _f:
         PRICING.update({k: tuple(v) for k, v in json.load(_f).items()})
 except (OSError, ValueError):
     pass

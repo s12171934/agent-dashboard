@@ -6,7 +6,7 @@ import os
 import re
 import time
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.files import read_json_cached, save_json
 from adash.core.state import bump, lock, loop_failed, loop_ok
 from adash.core.util import short
@@ -17,7 +17,7 @@ from adash.features.tests.tests import collect_tests
 
 SUPERSEDED_RUN = re.compile(r"-(run_[0-9a-f]+)\.superseded\.json$")
 # path -> {"coordinator_session", "driver_history", "owner"}, persisted across restarts (owner: see plan_owners)
-PLAN_HISTORY_PATH = os.path.join(HERE, "plan-history.json")
+PLAN_HISTORY_PATH = os.path.join(DATA, "plan-history.json")
 try:
     with open(PLAN_HISTORY_PATH) as _f:
         plan_history = json.load(_f)

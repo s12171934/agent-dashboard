@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from adash.core.config import HERE
+from adash.core.config import DATA
 from adash.core.orca import orca
 from adash.core.state import report_failure
 from adash.core.util import short
@@ -25,7 +25,7 @@ def decision_terminal(d):
     return next((h for h, s in terminals_targets.focus_handles.items() if s == sid), None)
 
 
-DECISION_LOG = os.path.join(HERE, "decision.log")
+DECISION_LOG = os.path.join(DATA, "decision.log")
 
 
 def log_decision_failure(rid, card, handle, error):
