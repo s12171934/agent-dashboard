@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""amedia — the recordings published to the dashboard's 「녹화 영상」 page (media.json in the data folder).
+
+    amedia ls                  every published entry, marked ok or missing (the file is no longer there)
+    amedia add FILE ...        publish recordings: a path to an .mp4 directly in ~/Movies/ego-record or
+                               ~/Movies/aside-record, or its "<root>/<file name>.mp4" entry. Already published is fine.
+    amedia rm ENTRY ...        unpublish (path or entry); the video itself stays on disk
+    amedia prune               unpublish every entry whose file is gone
+
+The ego-record and aside-record recorders call `amedia add` when a recording is encoded and kept (not on [폐기]),
+unless ADASH_MEDIA_AUTO=0. The server reads media.json on every request, so a change shows without a restart.
+Writes take a lock and replace the file whole, so recordings that end together do not lose each other's entry.
+"""
+
+import fcntl
+import json
+import os
+import sys
+import unicodedata
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+from adash.features.media.media import PUBLISHED, ROOTS, published, resolve  # noqa: E402
+
+nfc = lambda s: unicodedata.normalize("NFC", s)  # noqa: E731  macOS gives Hangul names decomposed
+
+
+def entry(arg):
+    """A path or "<root>/<name>.mp4" -> the media.json entry, or None when it is not a recording in one of ROOTS."""
+    if arg.startswith(("/", "~", "./", "../")) or os.path.exists(arg):
+        full = os.path.realpath(os.path.expanduser(arg))
+        for root, base in ROOTS.items():
+            if os.path.dirname(full) == os.path.realpath(base):
+                rel = root + "/" + os.path.basename(full)
+                break
+        else:
+            return None
+    else:
+        rel = arg
+    root, _, name = rel.partition("/")
+    if root not in ROOTS or not name.endswith(".mp4") or "/" in name or name.startswith("."):
+        return None
+    return nfc(rel)
+
+
+def save(change):
+    """Run change(list of entries) -> new list under a lock and write media.json atomically; -> the new list."""
+    os.makedirs(os.path.dirname(PUBLISHED), exist_ok=True)
+    with open(PUBLISHED + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        names = change(published())
+        tmp = PUBLISHED + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"published": names}, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, PUBLISHED)
+    return names
+
+
+def main(argv):
+    cmd, args = (argv[0], argv[1:]) if argv else ("", [])
+    if cmd == "ls" and not args:
+        for n in published():
+            print(("ok      " if resolve(n) else "missing ") + n)
+        return 0
+    if cmd in ("add", "rm") and args:
+        want, bad = [], []
+        for a in args:
+            (want if entry(a) else bad).append(entry(a) or a)
+        for a in bad:
+            print(f"amedia: 녹화 폴더({', '.join(ROOTS)}) 바로 아래의 .mp4 가 아니다: {a}", file=sys.stderr)
+        if cmd == "add":
+            gone = [w for w in want if not os.path.isfile(os.path.join(ROOTS[w.split('/')[0]], w.split('/', 1)[1]))]
+            for w in gone:
+                print(f"amedia: 파일이 없다: {w}", file=sys.stderr)
+            want = [w for w in want if w not in gone]
+            bad += gone
+            save(lambda cur: cur + [w for w in dict.fromkeys(want) if w not in {nfc(c) for c in cur}])
+            for w in want:
+                print("공개: " + w)
+        else:
+            drop = set(want)
+            save(lambda cur: [c for c in cur if nfc(c) not in drop])
+            for w in want:
+                print("내림: " + w)
+        return 1 if bad else 0
+    if cmd == "prune" and not args:
+        gone = [n for n in published() if not resolve(n)]
+        if gone:
+            save(lambda cur: [c for c in cur if resolve(c)])
+        for n in gone:
+            print("내림(파일 없음): " + n)
+        return 0
+    print(__doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
