@@ -55,12 +55,40 @@ struct Offline: View {
     }
 }
 
+// Every widget's frame; a glance kept from before a failed fetch gets its age in the corner (not on the lock screen,
+// where there is no room: its numbers stay as they were).
+struct GlanceFrame: ViewModifier {
+    @Environment(\.widgetFamily) private var family
+    let entry: GlanceEntry
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottomTrailing) {
+                if let stale = entry.stale, ![.accessoryCircular, .accessoryRectangular, .accessoryInline].contains(family) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "wifi.slash")
+                        Text("\(stale, style: .relative) 전")
+                    }
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(.thinMaterial, in: Capsule())
+                }
+            }
+            .containerBackground(.fill.tertiary, for: .widget)
+    }
+}
+
+extension View {
+    func glanceFrame(_ entry: GlanceEntry) -> some View { modifier(GlanceFrame(entry: entry)) }
+}
+
 // MARK: 결정 대기
 
 struct DecisionsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "decisions", provider: GlanceProvider()) { e in
-            DecisionsView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            DecisionsView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("결정 대기")
         .description("에이전트가 기다리는 결정. 선택지를 눌러 바로 답합니다.")
@@ -177,7 +205,7 @@ private struct DecisionRow: View {
 struct AgentsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "agents", provider: GlanceProvider()) { e in
-            AgentsView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            AgentsView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("에이전트")
         .description("실행 중·입력 대기·응답 없음인 에이전트 수와 가장 최근의 몇 개.")
@@ -266,7 +294,7 @@ private struct AgentRow: View {
 struct TestsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "tests", provider: GlanceProvider()) { e in
-            TestsView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            TestsView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("테스트")
         .description("긴 테스트 실행의 진행과 결과.")

@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from urllib.parse import parse_qs
 
+from adash.core.log import log
 from adash.core.state import health, lock, report_failure, sessions
 from adash.core.util import short
 from adash.features.decisions.store import decisions
@@ -450,7 +451,24 @@ def glance(state):
     }
 
 
+def glance_failure(url):
+    """-> the server.log line for the failure an iPhone widget reports on its next fetch (?failed_at=<epoch>&reason=), or
+    None. A failed fetch never reaches the server, so this is the only trace of what the phone met."""
+    q = parse_qs(url.query)
+    at, reason = (q.get("failed_at") or [""])[0], (q.get("reason") or [""])[0]
+    if not at:
+        return None
+    try:
+        when = time.strftime("%m-%d %H:%M:%S", time.localtime(int(at)))
+    except (ValueError, OverflowError, OSError):
+        when = short(at, 20)
+    return f"widget glance failed at {when}: {short(reason, 200) or '?'}"
+
+
 def get_glance(h, url):
+    line = glance_failure(url)
+    if line:
+        log(line)
     st = fresh_state(h.encode)
     with state_cache_lock:
         if st["glance"] is None:

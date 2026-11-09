@@ -9,11 +9,17 @@ import WidgetKit
 @main
 struct AgentDashboardApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
             DashboardView().ignoresSafeArea()
                 .onOpenURL { AppDelegate.dashboard.openLink($0) }  // a widget tap
+        }
+        // Coming to the front: the widgets read again, so one left at an old glance or an error after the phone was
+        // offline catches up without waiting for WidgetKit's next turn.
+        .onChange(of: phase) { _, now in
+            if now == .active { WidgetCenter.shared.reloadAllTimelines() }
         }
     }
 }
@@ -45,5 +51,4 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         dash.onServer = { [weak self] in self?.watcher.use($0) }
         watcher.start()
         return true
-    }
-}
+    }}
