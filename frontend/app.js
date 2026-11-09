@@ -7480,6 +7480,8 @@ function dzPane(doc, sec, toc) {
 
 document.addEventListener('click', e => {
   if (route().v !== 'designs') return;
+  const pic = e.target.closest('.dz-doc img');
+  if (pic && !pic.closest('a')) { dzZoom(pic, e); return; }  // a picture opens large (one inside a link stays a link)
   if (e.target.closest('[data-dz-fab]')) { dzMenu($('#dz-fab-menu').hidden); return; }
   const pb = e.target.closest('[data-dz-panel]');
   if (pb) { dzMenu(false); dzPanelSet(pb.dataset.dzPanel); return; }
@@ -7503,6 +7505,32 @@ document.addEventListener('click', e => {
   history.replaceState(null, '', dzHash(server, key, sec));
   render();
 });
+// A picture in a document, large over the page: it fits the screen first; pressing it shows it at its own size (at
+// least twice the fitted size, so a small picture still grows; scrolled to where it was pressed) and pressing again fits it back. 닫기, Esc or anywhere around the picture closes.
+function dzZoom(img) {
+  let d = $('#dz-zoom');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog class="dz-zoom" id="dz-zoom" aria-label="그림 크게 보기">
+      <button type="button" class="tgl dz-zx">닫기</button><div class="dz-zb"><img alt=""></div></dialog>`);
+    d = $('#dz-zoom');
+    d.addEventListener('click', e => {
+      const z = e.target.closest('.dz-zb img');
+      if (!z) { d.close(); return; }
+      const box = d.querySelector('.dz-zb'), r = z.getBoundingClientRect();
+      const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+      if (!d.classList.toggle('full')) { z.style.width = ''; return; }
+      z.style.width = Math.round(Math.max(z.naturalWidth, r.width * 2)) + 'px';  // its own size, at least twice the fitted
+      box.scrollLeft = z.offsetWidth * fx - box.clientWidth / 2;
+      box.scrollTop = z.offsetHeight * fy - box.clientHeight / 2;
+    });
+    d.addEventListener('close', () => { d.querySelector('img').removeAttribute('src'); });
+  }
+  const z = d.querySelector('img');
+  d.classList.remove('full'); z.style.width = '';
+  z.src = img.currentSrc || img.src; z.alt = img.alt;
+  d.showModal();
+  d.querySelector('.dz-zx').focus({ focusVisible: false });
+}
 // the button's popover: 「문서 선택」 · 「읽은 세션」
 function dzMenu(open) {
   const m = $('#dz-fab-menu');
