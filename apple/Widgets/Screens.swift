@@ -12,7 +12,7 @@ private func dollars(_ v: Double) -> String { v >= 100 ? String(format: "$%.0f",
 struct HomeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "home", provider: GlanceProvider()) { e in
-            HomeView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            HomeView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("홈")
         .description("내 차례(결정·보고 확인·QA 막힘·반출 승인)와 화면마다 페이지 홈과 같은 숫자 하나.")
@@ -164,7 +164,7 @@ struct HomeView: View {
 struct QAWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "qa", provider: GlanceProvider()) { e in
-            QAView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            QAView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("QA")
         .description("QA 드라이버가 처리 중인 티켓: 막힘, 반출 승인 대기, 작업 중, 대기.")
@@ -271,7 +271,7 @@ private struct QATicketRow: View {
 struct TalkWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "talk", provider: GlanceProvider()) { e in
-            TalkView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            TalkView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("상호작용")
         .description("에이전트끼리 주고받은 최근 메시지: 질문, 에스컬레이션, 완료 보고, 지시.")
@@ -342,7 +342,7 @@ private struct MessageRow: View {
 struct DesignsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "designs", provider: GlanceProvider()) { e in
-            DesignsView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            DesignsView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("설계문서")
         .description("최근에 고친 설계문서와 에이전트가 가장 많이 읽은 문서.")
@@ -402,7 +402,7 @@ private struct DocRow: View {
 struct TreesWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "trees", provider: GlanceProvider()) { e in
-            TreesView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            TreesView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("워크트리")
         .description("저장소마다 워크트리 수와 커밋하지 않은 변경이 남은 워크트리.")
@@ -461,7 +461,7 @@ struct TreesView: View {
 struct CostWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "cost", provider: GlanceProvider()) { e in
-            CostView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            CostView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("오늘 비용")
         .description("오늘 쓴 토큰 비용의 시간대별 막대와 가장 많이 쓴 에이전트.")

@@ -26,7 +26,7 @@ struct Empty: View {
 struct UsageWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "usage", provider: GlanceProvider()) { e in
-            UsageView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            UsageView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("사용량")
         .description("구독 계정별 5시간·주간 한도를 얼마나 썼는지와 언제 풀리는지.")
@@ -135,7 +135,7 @@ private struct AccountLimits: View {
 struct PlansWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "plans", provider: GlanceProvider()) { e in
-            PlansView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            PlansView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("작업 계획")
         .description("살아 있는 에이전트가 적어 둔 단계와 지금 하는 단계.")
@@ -218,7 +218,7 @@ private struct PlanRow: View {
 struct ProjectsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "projects", provider: GlanceProvider()) { e in
-            ProjectsView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            ProjectsView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("프로젝트")
         .description("프로젝트 화면의 진행 중인 프로젝트: 진행률과 지금 단계.")
@@ -308,7 +308,7 @@ private struct ProjectRow: View {
 struct FlowWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "flow", provider: GlanceProvider()) { e in
-            FlowView(entry: e).containerBackground(.fill.tertiary, for: .widget)
+            FlowView(entry: e).glanceFrame(e)
         }
         .configurationDisplayName("흐름 점검")
         .description("정체·계획 미이행·순서 어긋남처럼 흐름 점검이 찾은 어긋남.")

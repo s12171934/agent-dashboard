@@ -91,11 +91,18 @@ struct Glance: Decodable {
     var designs: Designs? = nil
     var trees: Trees? = nil
 
-    static func fetch() async throws -> Data {
-        var req = URLRequest(url: AppGroup.serverURL.appending(path: "api/glance"))
+    // `failed`: the last failure this extension saw, sent along so the server's log shows what the phone met
+    static func fetch(failed: GlanceFailure? = nil) async throws -> Data {
+        var url = AppGroup.serverURL.appending(path: "api/glance")
+        if let failed {
+            url.append(queryItems: [URLQueryItem(name: "failed_at", value: String(Int(failed.at.timeIntervalSince1970))),
+                                    URLQueryItem(name: "reason", value: failed.reason)])
+        }
+        var req = URLRequest(url: url)
         req.timeoutInterval = 10
         let (data, res) = try await URLSession.shared.data(for: req)
-        guard (res as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        let status = (res as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else { throw GlanceFailure.Status(code: status) }
         return data
     }
 
@@ -163,33 +170,104 @@ struct GlanceEntry: TimelineEntry {
     let date: Date
     let glance: Glance?
     let error: String?
+    // set when the glance shown is the last one read before a failed fetch: when it was read
+    var stale: Date? = nil
+}
+
+// Why a fetch failed, in the widget's words; also what the next fetch reports to the server.
+struct GlanceFailure: Codable {
+    struct Status: Error { let code: Int }
+    let at: Date
+    let reason: String
+
+    init(_ error: Error) {
+        at = .now
+        switch error {
+        case let e as Status: reason = "HTTP \(e.code)"
+        case is DecodingError: reason = "decode: \(error)".prefix(200).description
+        case let e as URLError: reason = "URLError \(e.code.rawValue)"
+        default: reason = String(describing: error).prefix(200).description
+        }
+    }
+
+    // what the widget says when it has nothing to show
+    static func message(_ error: Error) -> String {
+        switch error {
+        case let e as Status: return "대시보드 서버 오류 (HTTP \(e.code))"
+        case is DecodingError: return "서버 응답을 읽지 못함 — 앱과 서버 버전 확인"
+        case let e as URLError:
+            switch e.code {
+            case .timedOut: return "대시보드 서버 응답 없음 (10초)"
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:
+                return "iPhone 네트워크 연결 없음"
+            default: return "대시보드 서버에 연결할 수 없음"
+            }
+        default: return "대시보드 서버에 연결할 수 없음"
+        }
+    }
 }
 
 // One glance for every widget: WidgetKit asks each widget for its timeline on its own, so a fetch each would show
 // numbers from different moments side by side. The extension keeps the last fetch for a short while and every widget
 // takes it; when a fetch brings something new, every widget is asked to redraw from it.
+// A failed fetch (the phone just woke, the VPN is reconnecting, Wi-Fi handing over to cellular) is tried once more;
+// still failing, the widgets keep showing the last glance read, marked with its age, rather than an error. The last
+// glance is kept on disk too: WidgetKit ends the extension's process between refreshes.
 actor GlanceCache {
     static let shared = GlanceCache()
     static let fresh: TimeInterval = 45
+    static let keep: TimeInterval = 6 * 3600  // an older glance is no longer worth showing
     private var data: Data?, glance: Glance?, at = Date.distantPast
+    private var restored = false
+    private var failed: GlanceFailure?
     private var running: Task<Data, Error>?
 
-    func load() async throws -> Glance {
-        if let glance, Date.now.timeIntervalSince(at) < Self.fresh { return glance }
-        // widgets asking together wait on one request
-        let task = running ?? Task { try await Glance.fetch() }
-        running = task
-        defer { running = nil }
-        let new = try await task.value
-        let g = try JSONDecoder().decode(Glance.self, from: new)
-        let changed = data != nil && data != new
-        (data, glance, at) = (new, g, .now)
-        if changed { Task { @MainActor in WidgetCenter.shared.reloadAllTimelines() } }  // the others take it from here
-        return g
+    private static let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appending(path: "glance.json")
+
+    // -> the glance, and when it was read if it is an old one shown after a failure
+    func load() async throws -> (Glance, Date?) {
+        restore()
+        if let glance, Date.now.timeIntervalSince(at) < Self.fresh { return (glance, nil) }
+        do {
+            // widgets asking together wait on one request
+            let report = failed
+            let task = running ?? Task {
+                // a network blip, not the server: once more after a moment (not after a timeout: WidgetKit gives the
+                // extension only so long)
+                do { return try await Glance.fetch(failed: report) } catch let e as URLError where e.code != .timedOut {
+                    try await Task.sleep(for: .seconds(2))
+                    return try await Glance.fetch(failed: report)
+                }
+            }
+            running = task
+            defer { running = nil }
+            let new = try await task.value
+            let g = try JSONDecoder().decode(Glance.self, from: new)
+            let changed = data != nil && data != new
+            (data, glance, at, failed) = (new, g, .now, nil)
+            try? new.write(to: Self.file, options: .atomic)
+            if changed { Task { @MainActor in WidgetCenter.shared.reloadAllTimelines() } }  // the others take it from here
+            return (g, nil)
+        } catch {
+            failed = GlanceFailure(error)
+            if let glance, Date.now.timeIntervalSince(at) < Self.keep { return (glance, at) }
+            throw error
+        }
+    }
+
+    // the glance the last process read, if this one has none yet
+    private func restore() {
+        guard !restored else { return }
+        restored = true
+        guard glance == nil, let d = try? Data(contentsOf: Self.file), let g = try? JSONDecoder().decode(Glance.self, from: d),
+              let mtime = (try? FileManager.default.attributesOfItem(atPath: Self.file.path()))?[.modificationDate] as? Date
+        else { return }
+        (data, glance, at) = (d, g, mtime)
     }
 
     // after an answer from a widget: the next read fetches
-    func drop() { at = .distantPast }
+    func drop() { at = min(at, .now.addingTimeInterval(-Self.fresh)) }
 }
 
 // Every widget refreshes at the same five-minute marks (two when the server is not reachable), so they fetch together.
@@ -198,7 +276,7 @@ private func nextMark(every: TimeInterval) -> Date {
 }
 
 // Every widget reads the same glance (GlanceCache); WidgetKit asks again at the next mark, and the app asks it to
-// whenever the 결정 대기 list changes while it runs.
+// whenever the 결정 대기 list changes while it runs or it comes to the front.
 struct GlanceProvider: TimelineProvider {
     func placeholder(in context: Context) -> GlanceEntry { GlanceEntry(date: .now, glance: .sample, error: nil) }
 
@@ -210,13 +288,18 @@ struct GlanceProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<GlanceEntry>) -> Void) {
         Task {
             let e = await entry()
-            completion(Timeline(entries: [e], policy: .after(nextMark(every: e.glance == nil ? 120 : 300))))
+            let ok = e.glance != nil && e.stale == nil
+            completion(Timeline(entries: [e], policy: .after(nextMark(every: ok ? 300 : 120))))
         }
     }
 
     private func entry() async -> GlanceEntry {
-        do { return GlanceEntry(date: .now, glance: try await GlanceCache.shared.load(), error: nil) }
-        catch { return GlanceEntry(date: .now, glance: nil, error: "대시보드 서버에 연결할 수 없음") }
+        do {
+            let (g, stale) = try await GlanceCache.shared.load()
+            return GlanceEntry(date: .now, glance: g, error: nil, stale: stale)
+        } catch {
+            return GlanceEntry(date: .now, glance: nil, error: GlanceFailure.message(error))
+        }
     }
 }
 
