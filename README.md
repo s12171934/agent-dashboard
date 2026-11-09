@@ -21,7 +21,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `launchd/` | 로컬 Mac |
+| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `adata`, `amedia`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `apple/` | macOS·iPhone 앱(배포된 페이지를 감싼 네이티브 셸)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
 | `bin/` | 공개 CLI 진입점 — `atest`(→ `server/atest`). 다른 저장소(스킬 등)는 이 경로로 부른다 | 로컬 Mac |
@@ -489,6 +489,15 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 `ego-record`·`aside-record` 스킬은 녹화를 그 Mac 의 `~/Movies/ego-record`·`~/Movies/aside-record` 에 남긴다. 타임라인 노트도 `file://` 링크로 가리켜서 그 Mac 에서만 열린다. 「녹화 영상」 화면(설정 메뉴의 ▶)은 그중 **공개한 것만** 서버를 거쳐 보여 준다. 그래서 tailnet 기기·iPhone 앱에서도 재생된다.
 
 - **공개 목록:** 서버 Mac 의 데이터 폴더의 `media.json` — `{"published": ["ego-record/<파일 이름>.mp4", "aside-record/<파일 이름>.mp4"]}`. 두 폴더 바로 아래의 `.mp4` 중 여기 적은 것만 내보낸다. 목록에 없는 파일, 다른 경로, 링크로 폴더를 벗어나는 파일은 404 다. 파일을 고치면 다음 요청부터 바로 반영되고, 서버를 다시 띄울 필요는 없다.
+- **자동 공개:** 두 스킬의 러너는 녹화를 mp4 로 묶어 남기면 `server/amedia add` 로 이 목록에 올린다. 고정 탭·고정 페이지를 벗어나 `[폐기]` 판정을 받은 녹화는 올리지 않는다. 끄려면 러너를 `ADASH_MEDIA_AUTO=0` 으로 부른다. `amedia` 는 `$AMEDIA`·PATH 에서 찾고, 없으면 그 스킬이 든 볼트의 `40_Tools/agent-dashboard/bin/amedia` 를 쓴다. 이 Mac 에서 녹화한 것만 올라간다(다른 기기의 녹화를 받아 오는 길은 없다).
+- **목록 손보기 (`server/amedia`):** 잠금을 잡고 파일을 통째로 바꿔 쓰므로 동시에 끝난 녹화끼리 항목을 잃지 않는다.
+
+```bash
+server/amedia ls                 # 공개한 항목과 상태(ok · missing = 파일이 없음)
+server/amedia add <mp4 경로>…    # 공개 (경로 또는 "ego-record/<파일 이름>.mp4")
+server/amedia rm <항목>…         # 공개만 내린다. 영상 파일은 그대로
+server/amedia prune              # 파일이 사라진 항목을 모두 내린다
+```
 - **화면 (분할):** 왼쪽은 공개한 녹화 목록, 가운데는 플레이어, 오른쪽은 타임라인이다. ego-record 녹화는 옆의 `.timeline.txt`(`MM:SS 종류 내용`)를 타임라인으로 펼친다. 플레이어는 제자리에 고정되고 타임라인만 따로 스크롤된다. 그래서 영상을 보면서 줄을 넘기고 누를 수 있다. 줄 어디를 눌러도 그 장면으로 가서 이어 재생한다.
     - **재생 위치 따라가기**(기본 켬): 재생 중인 줄이 강조되고, 타임라인이 그 줄을 따라 스크롤된다. 휠·터치로 직접 스크롤하면 4초 동안 멈춘다.
     - **목록 접기:** 녹화 목록을 숨겨 영상과 타임라인을 넓힌다.
@@ -689,7 +698,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 ## 로컬 상태 파일 (git 무시)
 
-서버가 쓰는 파일은 모두 **데이터 폴더** 한 곳에 쌓인다. 데이터 폴더는 `ADASH_DATA` 환경변수 → `server/data`(있으면) → `server/`(데이터 폴더 도입 전 위치) 순으로 정해진다. 서버·`aqa`·`ausage`·`adata` 가 같은 규칙(`adash/core/config.py` 의 `DATA`)을 쓴다. 파일 목록과 종류는 같은 파일의 `DATA_FILES` 가 정본이다.
+서버가 쓰는 파일은 모두 **데이터 폴더** 한 곳에 쌓인다. 데이터 폴더는 `ADASH_DATA` 환경변수 → `server/data`(있으면) → `server/`(데이터 폴더 도입 전 위치) 순으로 정해진다. 서버·`aqa`·`ausage`·`adata`·`amedia` 가 같은 규칙(`adash/core/config.py` 의 `DATA`)을 쓴다. 파일 목록과 종류는 같은 파일의 `DATA_FILES` 가 정본이다.
 
 | 종류 | 파일 | 옮길 때 |
 |---|---|---|
