@@ -664,8 +664,21 @@ function renderHealth() {
 // The bar's tab carries the fullest window of an account in use, coloured once it nears its limit.
 const PROVIDERS = { claude: 'Claude', codex: 'Codex' };
 const usageTone = p => p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--accent)';
+// Opening 플랜 사용량 acknowledges what it shows: the badge then stays off until a window reaches a higher band
+// (70 → 90 → 100) or a new period of it starts (its reset moved by more than an hour), per browser.
+const usageTier = p => p >= 100 ? 100 : p >= 90 ? 90 : p >= 70 ? 70 : 0;
+let usageAck = {};
+try { usageAck = JSON.parse(localStorage.getItem('adash.usageack') || '{}'); } catch {}
+const usageWins = () => (state.plan_usage || []).filter(a => !a.stale && !a.note)
+  .flatMap(a => (a.limits || []).map(b => ({ id: `${a.server}|${a.key}|${b.name}`, p: b.percent ?? -1, r: b.resets_at || 0 })));
+const usageUnseen = w => { const k = usageAck[w.id]; return usageTier(w.p) > (k && Math.abs(k.r - w.r) < 3600 ? k.t : 0); };
+function usageSeen() {
+  for (const w of usageWins()) usageAck[w.id] = { t: usageTier(w.p), r: w.r };
+  try { localStorage.setItem('adash.usageack', JSON.stringify(usageAck)); } catch {}
+  usageBadge();
+}
 function usageBadge() {
-  const live = (state.plan_usage || []).filter(a => !a.stale && !a.note), top = Math.max(-1, ...live.flatMap(a => (a.limits || []).map(b => b.percent ?? -1)));
+  const top = Math.max(-1, ...usageWins().filter(usageUnseen).map(w => w.p));
   const el = $('#k-usage');
   el.hidden = top < 70;
   el.textContent = top + '%';
@@ -694,6 +707,7 @@ function renderUsage() {
     ${extra(a)}</section>`;
   $('#view').innerHTML = `<div class="sec-h"><h2>플랜 사용량</h2><span>구독 계정마다 사용량 API 를 5분에 한 번 읽습니다. 토큰이 없거나 만료된 계정은 마지막 값을 흐리게 보여 줍니다.</span></div>
     ${list.length ? `<div class="pu-grid">${list.map(card).join('')}</div>` : '<div class="empty">사용량을 읽는 메트릭 서버가 없습니다.</div>'}`;
+  usageSeen();
 }
 
 // ---------- agents (cards) ----------
