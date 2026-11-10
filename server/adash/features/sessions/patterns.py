@@ -6,10 +6,12 @@ import re
 from adash.core.util import short
 
 
-BRIEF_COORD = re.compile(r"Your coordinator's terminal handle is:\s*(term_[0-9a-f-]{36})")
+# An Orca terminal handle: a dashed UUID, or (Orca 1.4 reissuing a released worker's terminal) 32 bare hex digits.
+TERM = r"term_(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{32})(?![0-9a-f-])"
+BRIEF_COORD = re.compile(r"Your coordinator's terminal handle is:\s*(" + TERM + ")")
 BRIEF_TASK = re.compile(r"Your task ID is:\s*(task_[0-9a-f]{12})")
 COORD_CMD = re.compile(r"(?:^|[;&|\n(\"'/]\s*)orca orchestration (?:run-create|run-use|dispatch|worker-start)(?![\w-])")  # not dispatch-show etc.
-HANDLE = re.compile(r"term_[0-9a-f-]{36}")
+HANDLE = re.compile(TERM)
 # A message handed to another terminal (RELAY) leaves the turn with the agent there until an answer comes back; a
 # blocking ask or a `check --wait` is that answer, read within the same turn (RELAY_BACK).
 RELAY = re.compile(r"\borca (?:terminal send|orchestration (?:send|dispatch|task-create|worker-start))(?![\w-])")
@@ -71,7 +73,7 @@ APLAN_SET = re.compile(r"\baplan set\b")
 TERM_CREATE = re.compile(r"(?:^|[;&|\n(]\s*|\$\(\s*)(?:\S*/orca|orca|\$\{?\w+\}?) terminal create\b(?![^;&|\n]*--help)")
 # A real `terminal close` call, however orca is invoked; group 1 = the rest of that shell segment.
 TERM_CLOSE = re.compile(r"(?:^|[;&|\n(]\s*)(?:\S*/orca|orca|\$\{?\w+\}?) terminal close\b([^;&|\n]*)")
-CLOSE_TARGET = re.compile(r"--terminal[ =]+[\"']?(\$\{?ORCA_TERMINAL_HANDLE\b|term_[0-9a-f-]{36})")
+CLOSE_TARGET = re.compile(r"--terminal[ =]+[\"']?(\$\{?ORCA_TERMINAL_HANDLE\b|" + TERM + ")")
 
 
 def closes_own_terminal(cmd, own_handles=()):
@@ -87,11 +89,11 @@ def closes_own_terminal(cmd, own_handles=()):
     return False
 
 
-TERM_HANDLE_STR = re.compile(r'"handle\\*"\s*:\s*\\*"(term_[0-9a-f-]{36})')
+TERM_HANDLE_STR = re.compile(r'"handle\\*"\s*:\s*\\*"(' + TERM + ')')
 OWN_RUN_CMD = re.compile(r"orchestration (?:run-create|run-use)(?![\w-])")
 RUN_CREATE = re.compile(r"orchestration run-create(?![\w-])(?![^\n|;&]*--help)")
 RUN_ID = re.compile(r"\brun_[0-9a-f]{12}\b")
-COORD_HANDLE_STR = re.compile(r'coordinator_handle\\*"\s*:\s*\\*"(term_[0-9a-f-]{36})')
+COORD_HANDLE_STR = re.compile(r'coordinator_handle\\*"\s*:\s*\\*"(' + TERM + ')')
 
 
 def tool_hint(name, inp):
