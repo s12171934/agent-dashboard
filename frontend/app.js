@@ -7105,8 +7105,21 @@ let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () =>
 // half folded (<html data-posture>, ds fold.js — on iPhone Duo the app passes the hinge, WebKit has no viewport segments)
 addEventListener('ds-posture', () => { if (route().v === 'media') mdPosture(); });
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => mdFsChange());
-addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.md-full')) mdFull(false); });
+addEventListener('keydown', e => {
+  if (!document.querySelector('.md-full') || e.target.closest?.('input:not(.md-seek), textarea, [contenteditable]')) return;
+  if (e.key === 'Escape') mdFull(false);
+  else if (mdKeys(e.key)) e.preventDefault();
+});
+let mdKeys = () => false;  // the full-screen player's keys (mdPlay): space, ←, →
 const mdSave = () => { try { localStorage.setItem('adash.media.view', JSON.stringify(md)); } catch {} };
+// the full-screen controls' icons (a streaming player's: circular arrows with the seconds inside them)
+const MD_ICON = {
+  play: '<svg viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="5.5" y="4" width="4.5" height="16" rx="1"/><rect x="14" y="4" width="4.5" height="16" rx="1"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 3.5v4h4"/></svg>',
+  fwd: '<svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M20 3.5v4h-4"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
 const mdKey = v => v.server + '\n' + v.path;
 const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 const mdSize = n => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
@@ -7148,6 +7161,12 @@ function mdPlay(v) {
   const box = $('#md-main');
   box.innerHTML = `<div class="md-duo"><div class="md-stage">
       <video class="md-video" controls playsinline controlslist="nofullscreen" preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
+      <div class="md-ov"><div class="md-ov-top"><b class="md-ov-title">${esc(v.name)}</b><button class="md-ov-x" aria-label="전체 화면 닫기">${MD_ICON.x}</button></div>
+        <div class="md-ov-mid"><button class="md-ov-skip" data-skip="-10" aria-label="10초 뒤로">${MD_ICON.back}<b>10</b></button>
+          <button class="md-ov-pp" aria-label="재생">${MD_ICON.play}</button>
+          <button class="md-ov-skip" data-skip="10" aria-label="10초 앞으로">${MD_ICON.fwd}<b>10</b></button></div>
+        <div class="md-ov-bot"><div class="md-ov-track"><input type="range" class="md-seek" min="0" max="1000" step="1" value="0" aria-label="재생 위치"></div>
+          <div class="md-ov-info"><span class="md-ov-time">00:00 / 00:00</span><span class="md-ov-scene"></span></div></div></div>
       <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3><button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
     <div class="md-side">${v.timeline.length ? `<div class="md-side-h st">타임라인 ${v.timeline.length}줄 · 줄을 누르면 그 장면으로</div>
       <ol class="md-tl">${v.timeline.map(r => `<li data-t="${r.t}"><button class="md-t" data-t="${r.t}">${mdClock(r.t)}</button><span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span><span class="md-x">${esc(r.text)}</span></li>`).join('')}</ol>`
@@ -7189,6 +7208,8 @@ function mdPlay(v) {
   const root = document.documentElement, fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
   const setFull = on => {
     duo.classList.toggle('md-full', on);
+    video.controls = !on;  // its own controls: their full screen would take the whole screen, both halves of a fold too
+    ovShow(on);
     document.documentElement.classList.toggle('md-lock', on);
     fsBtn.textContent = on ? '전체 화면 닫기' : '타임라인과 함께 전체 화면';
     fsBtn.setAttribute('aria-pressed', on);
@@ -7210,7 +7231,6 @@ function mdPlay(v) {
     if (half && !duo.classList.contains('md-full')) { auto = true; setFull(true); }
     else if (!half && auto) { auto = false; mdFull(false); }
   };
-  mdPosture();
   video.addEventListener('webkitbeginfullscreen', () => setTimeout(() => { video.webkitExitFullscreen?.(); mdFull(true); }));
   mdFsChange = () => {
     const el = fsEl();
@@ -7218,14 +7238,67 @@ function mdPlay(v) {
     else if (!el && duo.classList.contains('md-full') && mdFsWas) setFull(false);  // left by Back or Esc
     mdFsWas = !!el;
   };
+  // The streaming-style controls over the video in full screen (.md-ov): a tap shows them or, shown while playing,
+  // hides them; while playing they fade 3 s after the last touch. The bar marks each timeline line's time.
+  const ov = box.querySelector('.md-ov'), pp = ov.querySelector('.md-ov-pp'), seek = ov.querySelector('.md-seek');
+  const otime = ov.querySelector('.md-ov-time'), scene = ov.querySelector('.md-ov-scene');
+  let ovT = 0, dragging = false;
+  function ovShow(on) {
+    clearTimeout(ovT);
+    ov.classList.toggle('on', on);
+    if (on && !video.paused) ovT = setTimeout(() => ov.classList.remove('on'), 3000);
+  }
+  const paint = () => {
+    const d = video.duration || 0, p = d ? video.currentTime / d : 0;
+    if (!dragging) seek.value = Math.round(p * 1000);
+    seek.style.setProperty('--p', (dragging ? seek.value / 10 : p * 100) + '%');
+    otime.textContent = `${mdClock(Math.floor(video.currentTime))} / ${mdClock(Math.floor(d))}`;
+  };
+  const ppIcon = () => { pp.innerHTML = video.paused ? MD_ICON.play : MD_ICON.pause; pp.setAttribute('aria-label', video.paused ? '재생' : '일시 정지'); };
+  const toggle = () => { video.paused ? video.play().catch(() => {}) : video.pause(); };
+  const skip = n => { video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + n)); };
+  video.addEventListener('loadedmetadata', () => {
+    const d = video.duration;
+    if (d) seek.parentElement.insertAdjacentHTML('beforeend', v.timeline.filter(r => r.t > 0 && r.t < d).map(r => `<i class="md-tick" style="left:${(r.t / d * 100).toFixed(2)}%"></i>`).join(''));
+    paint();
+  });
+  video.addEventListener('play', () => { ppIcon(); if (ov.classList.contains('on')) ovShow(true); });
+  video.addEventListener('pause', () => { ppIcon(); if (duo.classList.contains('md-full')) ovShow(true); });
+  // a tap on the picture (not on a control): show the controls, or hide them when they are up and it plays
+  box.querySelector('.md-stage').addEventListener('click', e => {
+    if (!duo.classList.contains('md-full') || e.target.closest('.md-ov button, .md-ov input')) return;
+    ovShow(!ov.classList.contains('on') || video.paused);
+  });
+  ov.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b === pp) toggle();
+    else if (b.dataset.skip) skip(+b.dataset.skip);
+    else if (b.classList.contains('md-ov-x')) { auto = false; mdFull(false); return; }
+    ovShow(true);
+  });
+  seek.addEventListener('pointerdown', () => { dragging = true; clearTimeout(ovT); });
+  seek.addEventListener('input', () => { dragging = true; seek.style.setProperty('--p', seek.value / 10 + '%'); if (video.duration) video.currentTime = seek.value / 1000 * video.duration; });
+  seek.addEventListener('change', () => { dragging = false; ovShow(true); });
+  mdKeys = k => {
+    if (k === ' ' || k === 'k') toggle();
+    else if (k === 'ArrowLeft') skip(-10);
+    else if (k === 'ArrowRight') skip(10);
+    else return false;
+    ovShow(true);
+    return true;
+  };
+  mdPosture();  // half folded already: open the pair now (after the controls above exist)
   // the line now playing: the last one whose time has passed
   video.ontimeupdate = () => {
+    paint();
     let now = -1;
     rows.forEach((li, i) => { if (+li.dataset.t <= video.currentTime + 0.25) now = i; });
     if (now === at) return;
     rows[at]?.classList.remove('md-now');
     rows[now]?.classList.add('md-now');
     at = now;
+    scene.textContent = now >= 0 ? v.timeline[now].text : '';
     if (!video.paused || video.seeking) follow(rows[now]);
   };
 }
