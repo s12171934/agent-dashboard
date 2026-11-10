@@ -24,11 +24,13 @@
 // dock-boot.js's applyDock, before the first paint), 설정 with it; a phone keeps its bar.
 // A desktop (<html data-dock="sidebar">, dock-boot.js) shows the bar as a sidebar down the left edge: every screen (the
 // <a> tabs, data-more ones too, with the separator before them as a group heading) is a named row there, with 설정
-// at its foot; the rest stays in the 설정 menu as before, whose 바 위치 offers 사이드바 beside the four edges.
+// at its foot; the rest stays in the 설정 menu as before, whose 바 위치 offers 사이드바 beside the four edges. A
+// desktop's floating bar (another place picked there) keeps every screen on it too, the ones past the named five as icons.
 // Half folded (<html data-posture>, fold.js), the sheet is always open and fills the screen's second half, the page
 // keeping to the first as on the cover screen; following a tab leaves it open.
 const SIDES = [['sidebar', '▤ 사이드바'], ['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
 const SIDEBAR = () => document.documentElement.dataset.dock === 'sidebar';
+const ALL_SCREENS = () => SIDEBAR() || dockDesk();  // a desktop: every screen on the bar, a sidebar or not
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const HALF = () => !!document.documentElement.dataset.posture;  // half folded (fold.js): the sheet stays open on the second half
 const ITEMS = 'adash.dock.items.v3';  // v3: the bar keeps five tabs and 설정 sits beside it (v2: the App Store bar's defaults)
@@ -104,10 +106,11 @@ class DsDock extends HTMLElement {
     this.sheet();
     this.picks();
     this.place();
-    // into the sidebar and out of it (a window resized across a desktop's size, another place picked): the tabs move
-    let side = SIDEBAR();
-    new MutationObserver(() => { if (side !== SIDEBAR()) { side = SIDEBAR(); this.place(); } })
-      .observe(document.documentElement, { attributes: true, attributeFilter: ['data-dock'] });
+    // into the sidebar and out of it, or past a desktop's size (a window resized, another place picked): the tabs move
+    let side = [SIDEBAR(), ALL_SCREENS()].join();
+    const moved = () => { const k = [SIDEBAR(), ALL_SCREENS()].join(); if (k !== side) { side = k; this.place(); } };
+    new MutationObserver(moved).observe(document.documentElement, { attributes: true, attributeFilter: ['data-dock'] });
+    addEventListener('resize', moved);
     const half = () => { this.place(); this.open(HALF()); };
     addEventListener('ds-posture', half);
     if (HALF()) half();
@@ -118,11 +121,11 @@ class DsDock extends HTMLElement {
     const p = prefs()[keyOf(e)];
     return p ? p === 'more' : e.hasAttribute('data-more');
   }
-  // in the sidebar: every screen (a tab), and a separator that heads screens
+  // on a desktop's bar (the sidebar or not): every screen (a tab), and a separator that heads screens
   inSide(i) {
     const tab = e => e?.matches('a[href]');
     const [el] = this.more[i];
-    return SIDEBAR() && (tab(el) || el.matches('.dock-sep') && tab(this.more[i + 1]?.[0]));
+    return ALL_SCREENS() && (tab(el) || el.matches('.dock-sep') && tab(this.more[i + 1]?.[0]));
   }
   // data-fab items beside 설정, menu items in its menu, the rest on the bar; half folded, all on the bar (its sheet)
   place() {
