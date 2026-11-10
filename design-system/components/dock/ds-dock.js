@@ -68,7 +68,7 @@ class DsDock extends HTMLElement {
     const menu = this.menu = document.createElement('div');
     menu.className = 'dock-menu dock-pop';
     menu.hidden = true;
-    menu.innerHTML = `<div class="dock-more"></div><div class="dock-side"><span class="st">바 위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div></div>
+    menu.innerHTML = `<div class="dock-more"></div><b class="dock-cap">바</b><div class="dock-side"><span class="st">위치</span><div class="seg">${SIDES.map(([k, l]) => `<button data-dock="${k}">${l}</button>`).join('')}</div></div>
       <label class="st dock-size">크기 <input type="range" min="28" max="56" step="2"></label>
       <details class="dock-items"><summary class="st">바에 둘 항목</summary><div class="dock-pick"></div>
         <button class="dock-reset">기본값으로</button></details>
