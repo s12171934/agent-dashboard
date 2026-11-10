@@ -22,9 +22,13 @@
 // id, href or data-tip). A separator left with nothing visible beside it on the bar hides itself ([data-empty]).
 // 「바 숨기기」 folds the bar to one button that brings it back (adash.dock.hidden, <html data-dock-hidden> set by
 // dock-boot.js's applyDock, before the first paint), 설정 with it; a phone keeps its bar.
+// A desktop (<html data-dock="sidebar">, dock-boot.js) shows the bar as a sidebar down the left edge: every screen (the
+// <a> tabs, data-more ones too, with the separator before them as a group heading) is a named row there, with 설정
+// at its foot; the rest stays in the 설정 menu as before, whose 바 위치 offers 사이드바 beside the four edges.
 // Half folded (<html data-posture>, fold.js), the sheet is always open and fills the screen's second half, the page
 // keeping to the first as on the cover screen; following a tab leaves it open.
-const SIDES = [['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
+const SIDES = [['sidebar', '▤ 사이드바'], ['top', '↑ 위'], ['bottom', '↓ 아래'], ['left', '← 왼쪽'], ['right', '→ 오른쪽']];
+const SIDEBAR = () => document.documentElement.dataset.dock === 'sidebar';
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const HALF = () => !!document.documentElement.dataset.posture;  // half folded (fold.js): the sheet stays open on the second half
 const ITEMS = 'adash.dock.items.v3';  // v3: the bar keeps five tabs and 설정 sits beside it (v2: the App Store bar's defaults)
@@ -68,14 +72,19 @@ class DsDock extends HTMLElement {
         <button class="dock-reset">기본값으로</button></details>
       <button class="dock-hide"><ds-icon name="eye-off"></ds-icon>바 숨기기</button>`;
     document.body.append(menu);
-    const mark = () => menu.querySelectorAll('[data-dock]').forEach(b => b.classList.toggle('on', b.dataset.dock === dockPos()));
+    const mark = () => menu.querySelectorAll('[data-dock]').forEach(b => {
+      b.classList.toggle('on', b.dataset.dock === (dockSidebar() ? 'sidebar' : dockPos()));
+      if (b.dataset.dock === 'sidebar') b.hidden = !dockDesk();  // only a desktop has room for it
+    });
     btn.onclick = e => { e.stopPropagation(); mark(); menu.querySelector('.dock-side').hidden = dockLocked(); menu.hidden = !menu.hidden; };
     menu.onclick = e => {
       if (e.target.closest('a')) { menu.hidden = true; return; }  // a tab moved here: going to it closes the menu
       if (e.target.closest('.dock-hide')) { menu.hidden = true; this.collapse(true); return; }
       if (e.target.closest('.dock-reset')) { save(ITEMS, '{}'); this.place(); this.picks(); return; }
       const b = e.target.closest('[data-dock]'); if (!b) return;
-      save('adash.dock', b.dataset.dock); applyDock(b.dataset.dock); mark();
+      if (b.dataset.dock === 'sidebar') save('adash.dock.sidebar', '');
+      else { save('adash.dock.sidebar', 'off'); save('adash.dock', b.dataset.dock); }
+      applyDock(dockPos()); mark();
     };
     const size = menu.querySelector('.dock-size input');
     size.value = dockSize();
@@ -95,6 +104,10 @@ class DsDock extends HTMLElement {
     this.sheet();
     this.picks();
     this.place();
+    // into the sidebar and out of it (a window resized across a desktop's size, another place picked): the tabs move
+    let side = SIDEBAR();
+    new MutationObserver(() => { if (side !== SIDEBAR()) { side = SIDEBAR(); this.place(); } })
+      .observe(document.documentElement, { attributes: true, attributeFilter: ['data-dock'] });
     const half = () => { this.place(); this.open(HALF()); };
     addEventListener('ds-posture', half);
     if (HALF()) half();
@@ -105,12 +118,18 @@ class DsDock extends HTMLElement {
     const p = prefs()[keyOf(e)];
     return p ? p === 'more' : e.hasAttribute('data-more');
   }
+  // in the sidebar: every screen (a tab), and a separator that heads screens
+  inSide(i) {
+    const tab = e => e?.matches('a[href]');
+    const [el] = this.more[i];
+    return SIDEBAR() && (tab(el) || el.matches('.dock-sep') && tab(this.more[i + 1]?.[0]));
+  }
   // data-fab items beside 설정, menu items in its menu, the rest on the bar; half folded, all on the bar (its sheet)
   place() {
     const box = this.menu.querySelector('.dock-more');
-    for (const [el, mark] of this.more) {
+    for (const [i, [el, mark]] of this.more.entries()) {
       if (!HALF() && el.hasAttribute('data-fab')) this.fab.append(el);
-      else if (HALF() || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
+      else if (HALF() || this.inSide(i) || !this.inMore(el)) { if (el.parentElement !== this) mark.after(el); } else box.append(el);  // append keeps bar order
     }
     this.seps();
   }
