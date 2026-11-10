@@ -51,6 +51,8 @@ class Session:
         self.coord_handle = None  # worker: its parent coordinator's terminal
         self.own_handle = None  # this session's own Orca terminal, when the log reveals it
         self.task_id = None
+        self.prior_tasks = []  # worker: tasks of earlier briefs in this session (task_id is the latest)
+        self.prior_handles = []  # worker: own handles of earlier briefs (Orca can reissue the pane's handle)
         self.issues_orchestration = False
         self.awaits = set()  # terminals this session handed a message to and has had no answer from (see RELAY)
         self.error = None  # last turn ended on an API error (usage limit etc.) and nothing has run since
@@ -153,16 +155,23 @@ class Session:
         return t
 
     def check_brief(self, text):
-        """The first user message of an Orca worker carries its coordinator handle and task id."""
-        if self.role == "worker" or len(self.turns) > 2:  # the brief opens the session
+        """The first user message of an Orca worker carries its coordinator handle and task id. A settled
+        worker's session can be handed a new task with a new brief, often under a terminal handle Orca reissued
+        for the same pane: that brief moves the session onto the new task and handle (the old ones are kept)."""
+        if self.role != "worker" and len(self.turns) > 2:  # the first brief opens the session
             return
         c, t = BRIEF_COORD.search(text), BRIEF_TASK.search(text)
-        if c and t:
-            self.role, self.coord_handle, self.task_id = "worker", c.group(1), t.group(1)
-            # The brief's CLI examples carry the worker's own handle (--terminal/--from).
-            own = collections.Counter(h for h in HANDLE.findall(text) if h != self.coord_handle)
-            if own:
-                self.own_handle = own.most_common(1)[0][0]
+        if not (c and t) or t.group(1) == self.task_id:
+            return
+        if self.task_id:
+            self.prior_tasks.append(self.task_id)
+        if self.own_handle and self.own_handle not in self.prior_handles:
+            self.prior_handles.append(self.own_handle)
+        self.role, self.coord_handle, self.task_id = "worker", c.group(1), t.group(1)
+        # The brief's CLI examples carry the worker's own handle (--terminal/--from).
+        own = collections.Counter(h for h in HANDLE.findall(text) if h != self.coord_handle)
+        if own:
+            self.own_handle = own.most_common(1)[0][0]
 
     def note_call(self, call_id, cmd):
         # Only the latest call counts: anything recorded after a self-close means the agent outlived it.
@@ -574,11 +583,13 @@ class Session:
     def orca_tasks(self):
         """(current task, every task) for a worker. A settled worker's terminal can be re-engaged for a
         new task (e.g. the 구현 worker goes on to 판정); the brief only names the first one, so Orca's
-        dispatch list for this terminal decides which task the session is on now."""
-        ids = [self.task_id] if self.task_id else []
+        dispatch list for this terminal decides which task the session is on now. A later brief in the
+        session (check_brief) already names its task, and the terminal may have had other handles before."""
+        ids = [*self.prior_tasks, self.task_id] if self.task_id else []
         cur = self.task_id
-        if self.own_handle:
-            ds = [w for w in orca_state.get("workers") or [] if w.get("agentTerminalHandle") == self.own_handle and w.get("taskId")]
+        handles = {h for h in [self.own_handle, *self.prior_handles] if h}
+        if handles:
+            ds = [w for w in orca_state.get("workers") or [] if w.get("agentTerminalHandle") in handles and w.get("taskId")]
             for w in ds:
                 if w["taskId"] not in ids:
                     ids.append(w["taskId"])
@@ -587,7 +598,7 @@ class Session:
                 cur = open_[-1]
             elif len(ids) > 1:  # all settled: the latest task it took is the one it is "on"
                 created = {t["id"]: t.get("created_at") or "" for ts in (orca_state.get("tasks") or {}).values() for t in ts}
-                cur = max(ids, key=lambda i: created.get(i, ""))
+                cur = max(ids, key=lambda i: (created.get(i) or "", ids.index(i)))  # ties: the later one taken
         return cur, ids
 
     def pane_handle(self):
