@@ -99,6 +99,6 @@ enum DockBridge {
          "plus": "plus", "pulse": "waveform.path.ecg", "terminal": "terminal", "gauge": "gauge.with.needle",
          "mail": "envelope", "smile": "face.smiling", "image": "photo", "server": "server.rack",
          "palette": "paintpalette", "shapes": "square.on.circle", "grid": "square.grid.2x2",
-         "theme": "circle.lefthalf.filled", "settings": "gearshape"][icon] ?? "circle"
+         "theme": "circle.lefthalf.filled", "settings": "gearshape", "play": "play.rectangle", "monitor": "display"][icon] ?? "circle"
     }
 }

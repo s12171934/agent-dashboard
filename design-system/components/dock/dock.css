@@ -14,8 +14,9 @@ ds-dock > a, .dock-btn { position: relative; transition: background .15s, color 
 /* the bar is the one surface; icons on it are flat, the current tab and lit filters get an accent tint */
 ds-dock > a:hover, .dock-btn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
 ds-dock > a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
-/* names show on hover (or keyboard focus) as a label (a small --surface-strong) beside the bar, on the side away from the screen edge */
-ds-dock:not([open]) [data-tip]::after { content: attr(data-tip); position: absolute; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .12s, transform .12s;
+/* names show on hover (or keyboard focus) as a label (a small --surface-strong) beside the bar, on the side away from the screen edge
+   (the sidebar names its rows instead) */
+:root:not([data-dock="sidebar"]) ds-dock:not([open]) [data-tip]::after { content: attr(data-tip); position: absolute; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .12s, transform .12s;
   padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text);
   background: var(--surface-sheen), var(--surface-strong); border: 1px solid var(--surface-edge);
   -webkit-backdrop-filter: var(--surface-blur); backdrop-filter: var(--surface-blur); box-shadow: var(--surface-hi), var(--surface-shadow); }
@@ -186,3 +187,28 @@ ds-dock[open] .dock-sep::after { content: attr(data-label); }
 :root[data-posture="book"] .dock-pop { left: calc(var(--seg-w) / 2); right: auto; top: auto; bottom: var(--dock-bottom); transform: translateX(-50%); }
 :root[data-posture="laptop"] .dock-pop { left: 50%; right: auto; top: auto; bottom: calc(50% + var(--pane-gap) / 2 + 10px); transform: translateX(-50%);
   max-height: calc(50% - var(--pane-gap) / 2 - 20px - env(safe-area-inset-top)); overflow-y: auto; }
+
+/* the sidebar (<html data-dock="sidebar">: a desktop, dock-boot.js): the bar down the whole left edge, --dock-side-w
+   wide, every screen a named row (data-tip; its badge at the row's end), the separator before the screens beyond the
+   first ones a group heading (data-label). 설정 and the data-fab items sit at its foot, the 설정 menu and the bar's
+   popovers open beside it. The page keeps --dock-side-w clear on its left (app.css). */
+:root[data-dock="sidebar"] { --dock-side-w: 216px; }
+:root[data-dock="sidebar"] ds-dock { left: 0; top: 0; bottom: 0; width: var(--dock-side-w); transform: none; flex-direction: column; align-items: stretch;
+  gap: 2px; padding: calc(14px + env(safe-area-inset-top)) 10px calc(var(--dock-sz) + 40px) calc(10px + env(safe-area-inset-left));
+  border-width: 0 1px 0 0; border-radius: 0; box-shadow: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+:root[data-dock="sidebar"] ds-dock > :is(a, .dock-btn) { width: auto; height: 36px; min-width: 0; flex-direction: row; justify-content: flex-start; gap: 10px;
+  padding: 0 10px; border-radius: 10px; color: var(--text); font-size: 13.5px; font-weight: 600; }
+:root[data-dock="sidebar"] ds-dock > :is(a, .dock-btn) svg { width: 18px; height: 18px; color: var(--muted); }
+:root[data-dock="sidebar"] ds-dock > a.on svg { color: var(--accent); }
+:root[data-dock="sidebar"] ds-dock > [data-name]::before { content: none; }
+:root[data-dock="sidebar"] ds-dock [data-tip]::after, :root[data-dock="sidebar"]:has(.dock-menu:not([hidden])) ds-dock [data-tip]::after { display: block; position: static; order: 1; flex: 1; min-width: 0; transform: none;
+  content: attr(data-tip); overflow: hidden; text-overflow: ellipsis; text-align: left; font-size: inherit; font-weight: inherit; color: inherit; }
+:root[data-dock="sidebar"] ds-dock .dn { position: static; order: 2; box-shadow: none; }
+:root[data-dock="sidebar"] ds-dock .srv-dot { position: static; order: 2; }
+:root[data-dock="sidebar"] ds-dock > .dock-sep { width: auto; height: auto; margin: 12px 10px 4px; background: none; font-style: normal;
+  font-size: 11.5px; font-weight: 600; color: var(--muted); }
+:root[data-dock="sidebar"] ds-dock > .dock-sep::after { content: attr(data-label); }
+:root[data-dock="sidebar"] .dock-fab { left: calc(10px + env(safe-area-inset-left)); right: auto; top: auto; bottom: 12px; flex-direction: row; border-radius: 99px; }
+:root[data-dock="sidebar"] .dock-fab > :not(.dock-cfg) { order: 0; }
+:root[data-dock="sidebar"] .dock-menu.dock-pop { left: calc(var(--dock-side-w) + 10px); right: auto; top: auto; bottom: 12px; transform: none; }
+:root[data-dock="sidebar"] .dock-pop { left: calc(var(--dock-side-w) + 16px); top: 50%; transform: translateY(-50%); }

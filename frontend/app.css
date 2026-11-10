@@ -635,6 +635,8 @@ ds-dock[open] .srv-dot { position: static; order: 2; box-shadow: none; }
 :root[data-dock="top"] body { padding-top: calc(env(safe-area-inset-top) + var(--dock-pick, 38px) + 30px); }
 :root[data-dock="left"] :is(main, #dec-alert, #decisions, #decide-head, #inbox) { padding-left: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-left)); }
 :root[data-dock="right"] :is(main, #dec-alert, #decisions, #decide-head, #inbox) { padding-right: calc(var(--dock-pick, 38px) + 38px + env(safe-area-inset-right)); }
+/* a desktop's sidebar (ds-dock, dock.css) is not over the page but beside it: the whole page keeps right of it */
+:root[data-dock="sidebar"] body { padding-left: var(--dock-side-w); }
 
 /* projects (#projects): progress.json from the servers' --projects-dir. Stage colours are state tokens: --done
    finished, --run in progress, --bad failed, --idle not started. */
