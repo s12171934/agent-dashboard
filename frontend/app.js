@@ -7061,13 +7061,17 @@ const dzLib = name => dzLibs[name] ||= new Promise((ok, fail) => {
 // workflow-canvas (40_Tools/workflow-canvas) in an iframe, at the address each metrics server gives for this device
 // (api.canvas → /api/canvas): its loopback on that Mac, the tailscale serve https address on the tailnet. With several
 // servers a switch picks the Mac (adash.canvas: its server id). Built once (cvMounted): live updates must not rebuild
-// the iframe and reload the canvas.
+// the iframe and reload the canvas. The frame opens it with ?readonly: view only, locked (workflow-canvas hides its edit,
+// save, run and delete controls); 새 창 opens the plain address for editing on the canvas itself.
 let cvMounted = false, cvSel = null;
 try { cvSel = localStorage.getItem('adash.canvas'); } catch {}
+function cvReadonly(url) {
+  try { const u = new URL(url); u.searchParams.set('readonly', '1'); return u.href; } catch { return url; }
+}
 async function renderCanvas(reload) {
   if (cvMounted && !reload) return;
   cvMounted = true;
-  $('#view').innerHTML = `<div class="sec-h"><h2>워크플로 캔버스</h2><span>메트릭 서버가 알려 주는 주소로 <code>workflow-canvas</code> 를 띄웁니다. 다른 기기에서는 그 맥의 <code>tailscale serve</code> 주소로 열립니다.</span></div>
+  $('#view').innerHTML = `<div class="sec-h"><h2>워크플로 캔버스</h2><span>메트릭 서버가 알려 주는 주소로 <code>workflow-canvas</code> 를 보기 전용으로 띄웁니다 (편집은 새 창에서). 다른 기기에서는 그 맥의 <code>tailscale serve</code> 주소로 열립니다.</span></div>
     <div class="controls" id="cv-ctl"><span class="st">주소를 묻는 중…</span></div><div id="cv-body"></div>`;
   const list = await api.canvas();
   if (route().v !== 'canvas') return;
@@ -7078,7 +7082,7 @@ async function renderCanvas(reload) {
     <button class="act big" id="cv-reload">새로 고침</button>`;
   $('#cv-body').innerHTML = !cur.url ? `<div class="empty">${esc(cur.name)}: ${esc(cur.error || '캔버스 주소가 없습니다')}</div>`
     : `${cur.up ? '' : `<div class="st" style="margin-bottom:8px">${esc(cur.name)} 의 캔버스 서버가 응답하지 않습니다 (<code>local.workflow-canvas</code>).</div>`}
-       <iframe class="cv-f" src="${esc(cur.url)}" title="워크플로 캔버스 — ${esc(cur.name)}"></iframe>`;
+       <iframe class="cv-f" src="${esc(cvReadonly(cur.url))}" title="워크플로 캔버스 — ${esc(cur.name)}"></iframe>`;
   $('#cv-reload').onclick = () => renderCanvas(true);
   document.querySelectorAll('#cv-seg button').forEach(b => b.onclick = () => {
     cvSel = b.dataset.k;
