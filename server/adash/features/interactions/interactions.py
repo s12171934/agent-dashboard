@@ -142,9 +142,7 @@ def canvas_msgs():
 
 def interactions(limit, heartbeats):
     """-> {"messages": [...], "fetched": n}. limit counts the messages kept after the heartbeat filter."""
-    # --full: since Orca 1.4 the default rows are a concise view (from/to, a 200-character body, payload ids only,
-    # no time or thread), which left every message without its ends and its time
-    raw = orca("orchestration", "inbox", "--full", "--limit", str(limit if heartbeats else limit * 3)).get("messages") or []
+    raw = orca("orchestration", "inbox", "--limit", str(limit if heartbeats else limit * 3)).get("messages") or []
     with lock:
         by_dispatch = {w.get("dispatchId"): w.get("agentTerminalHandle") for w in orca_state.get("workers", [])
                        if w.get("dispatchId") and w.get("agentTerminalHandle")}

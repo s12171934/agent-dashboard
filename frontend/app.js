@@ -5844,7 +5844,7 @@ const TALK_TYPES = { question: ['질문', 'var(--warn)'], escalation: ['에스�
 // reported back through the canvas API (its execution log, .executions/<launch>/events.jsonl).
 const viaBadge = m => m.via === 'terminal' ? `<span class="talk-via" title="orca terminal send 로 입력창에 넣은 메시지 (qa-driver tell 기록)">터미널</span>`
   : m.via === 'canvas' ? `<span class="talk-via" title="workflow-canvas 실행 로그 (${esc(m.launch || '')})">워크플로</span>` : '';
-const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status', 'dispatch']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'chat', hours: 24, pair: null, sel: null, room: '', inRoom: false, pos: {}, open: new Set(), data: null, key: null, at: 0, busy: false, err: null };
+const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status', 'dispatch']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'chat', hours: 24, pair: null, sel: null, room: '', inRoom: false, pos: {}, open: new Set(), fold: new Set(), data: null, key: null, at: 0, busy: false, err: null };
 let talkMounted = false;
 
 // One end of a message -> {name, path, note}. A session that owns the terminal wins; otherwise the Orca terminal
@@ -5861,6 +5861,50 @@ function talkEnd(term, kind, raw, m) {
   if (kind === 'dispatch') return { key, name: IX.tasks[m.task_id]?.display_name || t?.title || '워커 ' + raw.slice(9, 21), note: '세션 추적 범위 밖', ch: { id: key, role: 'worker' } };
   return { key, name: t?.title || (term ? '터미널 ' + term.slice(5, 13) : raw), note: t ? 'Orca 터미널' : '종료된 터미널', ch: { id: key } };
 }
+
+// Which coordinator a conversation sits under: the top family of the coordinator tree (families) that holds either
+// end's terminal — the coordinator itself, its workers, sub-coordinators and their workers, script drivers — else the
+// end that is a coordinator outside session tracking (a Run's coordinator). -> {key, name, ch, path} or null.
+function talkGroupOf() {
+  const by = new Map();
+  const walk = (f, root) => {
+    [f.coord, ...f.members, ...f.workers].forEach(m => { if (m?.own_handle && !by.has(m.own_handle)) by.set(m.own_handle, root); });
+    [f.handle, ...(f.extra || []), ...(f.drivers || []).map(d => d.handle)].forEach(h => { if (h && !by.has(h)) by.set(h, root); });
+    f.subs.forEach(x => walk(x, root));
+  };
+  families().fams.forEach(f => walk(f, f));
+  const ofEnd = e => {
+    const f = by.get(e.key);
+    if (f) {
+      const c = f.coord, t = termOwner(f.handle);
+      return { key: 'f:' + (c?.path || f.handle), name: c ? nameOf(c) : t.title || '코디네이터 ' + String(f.handle || '').slice(5, 13), ch: c || { id: f.handle, role: 'coordinator' }, path: c?.path };
+    }
+    return e.coord ? { key: 'c:' + e.key, name: e.name, ch: e.ch, path: e.path } : null;
+  };
+  const pick = (a, b) => ofEnd(a) || ofEnd(b);
+  pick.end = ofEnd;
+  return pick;
+}
+// Rows (rooms or threads) under their coordinator's heading, newest group first; rows under no coordinator come last.
+// A heading folds its group (talk.fold, kept across repaints).
+function talkGrouped(rows, endsOf, rowHtml) {
+  const gOf = talkGroupOf(), groups = new Map(), loose = [];
+  rows.forEach(r => { const g = gOf(...endsOf(r)); if (!g) return loose.push(r); (groups.get(g.key) || groups.set(g.key, { ...g, rows: [] }).get(g.key)).rows.push(r); });
+  if (!groups.size) return rows.map(rowHtml).join('');
+  const head = (g, n, last) => {
+    const shut = talk.fold.has(g.key);
+    return `<button class="talk-gh${shut ? ' shut' : ''}" data-gk="${esc(g.key)}" aria-expanded="${!shut}" title="${shut ? '펼치기' : '접기'}">${g.ch ? chFace(g.ch, 22) : ''}<span class="badge coord">코디네이터</span>
+      <b>${esc(cutW(g.name, 40))}</b><small class="st">${n} · 마지막 ${ago(last)}</small><span class="talk-gh-c">${shut ? '▸' : '▾'}</span></button>`;
+  };
+  const lastOf = r => r.last || '';
+  const out = [...groups.values()].sort((x, y) => lastOf(y.rows[0]).localeCompare(lastOf(x.rows[0])))
+    .map(g => `<div class="talk-grp">${head(g, `${g.rows.length}개`, lastOf(g.rows[0]))}${talk.fold.has(g.key) ? '' : `<div class="talk-grp-b">${g.rows.map(rowHtml).join('')}</div>`}</div>`);
+  if (loose.length) out.push(`<div class="talk-grp loose"><div class="talk-gh-x st">코디네이터 밖 · ${loose.length}개</div><div class="talk-grp-b">${loose.map(rowHtml).join('')}</div></div>`);
+  return out.join('');
+}
+const talkFoldWire = box => box.querySelectorAll('.talk-gh').forEach(b => b.onclick = e => {
+  e.stopPropagation(); const k = b.dataset.gk; talk.fold.has(k) ? talk.fold.delete(k) : talk.fold.add(k); drawTalk();
+});
 
 async function loadTalk(force) {
   const key = talk.limit + '|' + talk.types.has('heartbeat');
@@ -5881,15 +5925,16 @@ function setTalkView(v) {
 // Graph: one node per session (or terminal) that sent or received, one arrow per direction between two of them.
 // Positions come from a small force layout and are kept across refreshes, so the picture holds still while
 // new messages arrive; a node can be dragged where it reads best.
-function talkLayout(nodes, edges, W, H) {
-  const P = talk.pos, fresh = nodes.filter(n => !P[n.key]);
+// X0, Y0: the corner of the cell the nodes are kept in (a coordinator group's own cell, see drawTalkGraph).
+function talkLayout(nodes, edges, W, H, X0 = 0, Y0 = 0) {
+  const P = talk.pos, PX = Math.min(60, W / 4), fresh = nodes.filter(n => !P[n.key]);
   if (!fresh.length && nodes.every(n => !P[n.key].dirty)) return;
   const hash = k => [...k].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const nb = {};
   edges.forEach(e => { (nb[e.a] ||= []).push(e.b); (nb[e.b] ||= []).push(e.a); });
   fresh.forEach(n => {  // start next to a placed neighbour, else on a circle
     const k = (nb[n.key] || []).find(x => P[x]), h = hash(n.key), ang = (h % 360) * Math.PI / 180;
-    P[n.key] = k ? { x: P[k].x + Math.cos(ang) * 60, y: P[k].y + Math.sin(ang) * 60 } : { x: W / 2 + Math.cos(ang) * W * .35, y: H / 2 + Math.sin(ang) * H * .35 };
+    P[n.key] = k ? { x: P[k].x + Math.cos(ang) * 60, y: P[k].y + Math.sin(ang) * 60 } : { x: X0 + W / 2 + Math.cos(ang) * W * .35, y: Y0 + H / 2 + Math.sin(ang) * H * .35 };
   });
   const iters = fresh.length === nodes.length ? 420 : 160, K = Math.sqrt(W * H / Math.max(1, nodes.length)) * .55;
   for (let it = 0; it < iters; it++) {
@@ -5909,9 +5954,9 @@ function talkLayout(nodes, edges, W, H) {
     nodes.forEach(n => {
       const p = P[n.key], f = F[n.key];
       if (p.pin) return;
-      f.x += (W / 2 - p.x) * .012; f.y += (H / 2 - p.y) * .012;  // gravity keeps separate groups on screen
+      f.x += (X0 + W / 2 - p.x) * .012; f.y += (Y0 + H / 2 - p.y) * .012;  // gravity keeps separate groups on screen
       const m = Math.hypot(f.x, f.y) || 1, step = Math.min(m, 18 * t + 1);
-      p.x = Math.max(60, Math.min(W - 60, p.x + f.x / m * step)); p.y = Math.max(30, Math.min(H - 40, p.y + f.y / m * step));
+      p.x = Math.max(X0 + PX, Math.min(X0 + W - PX, p.x + f.x / m * step)); p.y = Math.max(Y0 + 30, Math.min(Y0 + H - 40, p.y + f.y / m * step));
     });
   }
   nodes.forEach(n => delete P[n.key].dirty);
@@ -5929,8 +5974,26 @@ function drawTalkGraph(msgs) {
   });
   const NL = Object.values(nodes), EL = Object.values(edges), box = $('#talk-list');
   if (!NL.length) { box.innerHTML = `<div class="empty">${talk.data ? '조건에 맞는 메시지가 없습니다.' : '불러오는 중…'}</div>`; return; }
-  const W = Math.max(720, box.clientWidth - 2), H = Math.max(520, Math.round(Math.sqrt(NL.length) * 110));
-  talkLayout(NL, EL, W, H);
+  // A node's coordinator group: its own, else the one most of its conversations sit under (a workflow canvas, say)
+  const gOf = talkGroupOf(), votes = {};
+  msgs.forEach(m => { const g = gOf(m.f, m.t); if (g) [m.f.key, m.t.key].forEach(k => { const v = (votes[k] ||= {}); (v[g.key] ||= { g, n: 0 }).n++; }); });
+  NL.forEach(n => { n.g = gOf.end(n) || Object.values(votes[n.key] || {}).sort((x, y) => y.n - x.n)[0]?.g || null; });
+  // Each coordinator group gets a cell of its own, laid out alone and packed in rows, so groups never overlap;
+  // nodes under no coordinator share the last cell. A conversation between two groups is an edge across cells.
+  const W = Math.max(720, box.clientWidth - 2), parts = new Map();
+  NL.forEach(n => { const k = n.g?.key || ''; (parts.get(k) || parts.set(k, []).get(k)).push(n); });
+  const cells = [...parts.entries()].sort((x, y) => (x[0] === '') - (y[0] === '') || y[1].length - x[1].length).map(([k, ns]) => {
+    const side = Math.round(Math.max(240, Math.sqrt(ns.length) * 115));
+    return { k, ns, w: Math.min(W, side * (ns.length > 12 ? 1.4 : 1)), h: side };
+  });
+  let cx = 0, cy = 0, rowH = 0;
+  cells.forEach(c => { if (cx && cx + c.w > W) { cx = 0; cy += rowH + 16; rowH = 0; } c.x = cx; c.y = cy; cx += c.w + 16; rowH = Math.max(rowH, c.h); });
+  cells.forEach(c => {
+    const cell = `${c.x},${c.y},${c.w},${c.h}`, inside = new Set(c.ns.map(n => n.key));
+    c.ns.forEach(n => { const p = talk.pos[n.key]; if (p && p.cell !== cell) delete talk.pos[n.key]; });  // moved to another cell: place afresh
+    talkLayout(c.ns, EL.filter(e => inside.has(e.a) && inside.has(e.b)), c.w, c.h, c.x, c.y);
+    c.ns.forEach(n => { talk.pos[n.key].cell = cell; });
+  });
   const P = talk.pos, r = n => 7 + Math.min(16, Math.sqrt(n.sent + n.recv) * 1.6);
   const sel = talk.sel && nodes[talk.sel] ? talk.sel : null;
   const near = sel ? new Set([sel, ...EL.filter(e => e.a === sel || e.b === sel).flatMap(e => [e.a, e.b])]) : null;
@@ -5954,7 +6017,12 @@ function drawTalkGraph(msgs) {
       ${n.model ? `<circle r="3.5" fill="var(--m-${modelKey(n.model)})"/>` : ''}
       <text y="${R + 13}" text-anchor="middle" class="tg-l">${esc(cutW(n.name, 26))}</text><title>${esc(tip)}</title></g>`;
   }).join('');
-  const xs = NL.map(n => P[n.key].x), ys = NL.map(n => P[n.key].y);
+  const GB = {};
+  NL.forEach(n => { if (!n.g) return; const p = P[n.key], R = r(n) + 14, b = GB[n.g.key] ||= { g: n.g, x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, n: 0 };
+    b.x0 = Math.min(b.x0, p.x - R - 30); b.x1 = Math.max(b.x1, p.x + R + 30); b.y0 = Math.min(b.y0, p.y - R - 14); b.y1 = Math.max(b.y1, p.y + R + 16); b.n++; });
+  const grpSvg = Object.values(GB).filter(b => b.n > 1).map(b => `<g class="tg-grp"><rect x="${b.x0}" y="${b.y0}" width="${b.x1 - b.x0}" height="${b.y1 - b.y0}" rx="14"/>
+    <text x="${b.x0 + 10}" y="${b.y0 + 14}">★ ${esc(cutW(b.g.name, 34))}</text><title>${esc(b.g.name)} 아래 대화 · 노드 ${b.n}</title></g>`).join('');
+  const xs = NL.flatMap(n => [P[n.key].x, ...(GB[n.g?.key]?.n > 1 ? [GB[n.g.key].x0 + 90, GB[n.g.key].x1 - 90] : [])]), ys = NL.flatMap(n => [P[n.key].y, ...(GB[n.g?.key]?.n > 1 ? [GB[n.g.key].y0 + 30, GB[n.g.key].y1 - 40] : [])]);
   const vx = Math.max(0, Math.min(...xs) - 90), vy = Math.max(0, Math.min(...ys) - 30), vw = Math.max(...xs) + 90 - vx, vh = Math.max(...ys) + 40 - vy;
   const markers = Object.entries(TALK_TYPES).map(([k, [, c]]) => `<marker id="tg-${k}" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="${c}"/></marker>`).join('');
   const info = sel ? (() => {
@@ -5962,8 +6030,8 @@ function drawTalkGraph(msgs) {
     return `<div class="tg-info"><b>${n.path ? `<a href="#s=${encodeURIComponent(n.path)}">${esc(n.name)}</a>` : esc(n.name)}</b> <span class="st">보냄 ${n.sent} · 받음 ${n.recv} · 상대 ${new Set([...outE.map(e => e.b), ...inE.map(e => e.a)]).size}</span>
       <button class="act" id="tg-list">이 세션 메시지를 리스트로</button> <button class="act" id="tg-clear">강조 해제</button></div>`;
   })() : '';
-  box.innerHTML = `<div class="gwrap tg-wrap">${info}<svg id="tg-svg" width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}"><defs>${markers}</defs>${edgeSvg}${nodeSvg}</svg>
-    <div class="st">원 = 세션(테두리 보라 = 코디네이터, 점선 = 세션 추적 범위 밖) · 원 크기 = 주고받은 메시지 수 · 화살표 = 보낸 쪽 → 받는 쪽, 굵기 = 건수, 색 = 가장 많은 종류. 노드를 끌어 옮길 수 있고, 화살표를 누르면 그 둘의 대화방이 채팅으로 열립니다.</div></div>`;
+  box.innerHTML = `<div class="gwrap tg-wrap">${info}<svg id="tg-svg" width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}"><defs>${markers}</defs>${grpSvg}${edgeSvg}${nodeSvg}</svg>
+    <div class="st">점선 상자 = 한 코디네이터 아래의 대화 · 원 = 세션(테두리 보라 = 코디네이터, 점선 = 세션 추적 범위 밖) · 원 크기 = 주고받은 메시지 수 · 화살표 = 보낸 쪽 → 받는 쪽, 굵기 = 건수, 색 = 가장 많은 종류. 노드를 끌어 옮길 수 있고, 화살표를 누르면 그 둘의 대화방이 채팅으로 열립니다.</div></div>`;
   if (sel) {
     $('#tg-list').onclick = () => { talk.who = sel; talk.sel = null; $('#talk-who').value = sel; setTalkView('list'); };
     $('#tg-clear').onclick = () => { talk.sel = null; drawTalk(); };
@@ -6006,12 +6074,12 @@ function drawTalkChat(msgs) {
   const face = (e, px) => chFace(e.ch, px), nm = e => esc(cutW(e.name, 30));
   const link = e => e.path ? `<a href="#s=${encodeURIComponent(e.path)}">${nm(e)}</a>` : `<span title="${esc(e.note || '')}">${nm(e)}</span>`;
   const pair = r => `<span class="tc-pair">${face(r.a, 30)}${face(r.b, 30)}</span>`;
-  const list = RL.slice(0, 300).map(r => {
+  const list = talkGrouped(RL.slice(0, 300), r => [r.a, r.b], r => {
     const l = r.msgs.reduce((x, y) => y.created_at > x.created_at ? y : x), c = TALK_TYPES[l.type]?.[1] || 'var(--muted)';
     return `<button class="tc-room${r === room ? ' on' : ''}" data-room="${esc(r.k)}">${pair(r)}
       <span class="tc-rt"><b>${nm(r.a)} · ${nm(r.b)}</b><small><i style="background:${c}"></i>${esc(chName(chWho(l.f.ch)))}: ${esc(cut(l.subject || l.question || l.body || '', 60))}</small></span>
       <span class="tc-rm"><small>${ago(r.last)}</small>${r.unread ? `<em title="안 읽음">${r.unread}</em>` : `<small>${r.msgs.length}</small>`}</span></button>`;
-  }).join('');
+  });
   const byId = Object.fromEntries(room.msgs.map(m => [m.id, m]));
   let day = '', prev = null;
   const log = room.msgs.slice(-300).map(m => {
@@ -6045,6 +6113,7 @@ function drawTalkChat(msgs) {
   nl.scrollTop = stick ? nl.scrollHeight : top;
   if (listTop) box.querySelector('.tc-list').scrollTop = listTop;
   box.querySelectorAll('.tc-room').forEach(b => b.onclick = () => { talk.room = b.dataset.room; talk.inRoom = true; drawTalk(); });
+  talkFoldWire(box);
   box.querySelector('.tc-back').onclick = () => { talk.inRoom = false; drawTalk(); };
   nl.querySelectorAll('.tc-t').forEach(el => el.onclick = e => {
     if (e.target.closest('a') || getSelection().toString()) return;
@@ -6126,9 +6195,10 @@ function drawTalk() {
       ${text ? `<div class="talk-b">${esc(isOpen ? text : cut(text.replace(/\s+/g, ' '), 220))}${isOpen && m.cut ? '<span class="st"> … (잘림)</span>' : ''}</div>` : ''}
       ${isOpen && m.files.length ? `<div class="st talk-f">수정한 파일 ${m.files.length}: ${m.files.map(f => esc(f.split('/').pop())).join(', ')}</div>` : ''}</div>`;
   };
-  $('#talk-list').innerHTML = rows.length ? rows.slice(0, 600).map(r => `<div class="talk-g">${one(r.head)}${r.replies.map(m => one(m, true)).join('')}</div>`).join('')
+  $('#talk-list').innerHTML = rows.length ? talkGrouped(rows.slice(0, 600), r => [r.head.f, r.head.t], r => `<div class="talk-g">${one(r.head)}${r.replies.map(m => one(m, true)).join('')}</div>`)
     + (rows.length > 600 ? `<div class="empty">최근 600개만 표시 (필터로 좁혀 보세요)</div>` : '')
     : `<div class="empty">${talk.data ? '조건에 맞는 메시지가 없습니다.' : '불러오는 중…'}</div>`;
+  talkFoldWire($('#talk-list'));
   $('#talk-list').querySelectorAll('.talk-m').forEach(el => el.onclick = e => {
     if (e.target.closest('a') || getSelection().toString()) return;
     const id = el.dataset.mid; talk.open.has(id) ? talk.open.delete(id) : talk.open.add(id); drawTalk();
