@@ -953,7 +953,7 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-box[open] > summary { margin-bottom: 6px; }
 .dz-projbox[open] #dz-projs { max-height: 30vh; overflow: auto; }
 /* the document list scrolls inside its box so the project box above stays in view (~150px: the two summaries and the filter) */
-#dz-list { position: relative; max-height: calc(100dvh - var(--dz-top, 120px) - 96px - 150px); overflow: auto; overscroll-behavior: contain; }
+#dz-list { position: relative; max-height: calc(var(--dz-h, calc(100dvh - var(--dz-top, 120px) - 96px)) - 150px); overflow: auto; overscroll-behavior: contain; }
 .dz-ul { list-style: none; margin: 0 0 6px; padding: 0; }
 .dz-toc { list-style: none; margin: 2px 0 6px 10px; padding: 0 0 0 6px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 .dz-t { display: flex; gap: 6px; align-items: center; width: 100%; padding: 3px 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; min-height: 26px; }
@@ -991,6 +991,10 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz-doc pre code { background: none; padding: 0; }
 .dz-doc pre.mermaid { background: none; text-align: center; }
 .dz-doc table { display: block; overflow-x: auto; margin: 8px 0; }
+/* a cell keeps a few characters of width, so a short first column does not fold one character per line in a narrow
+   column; the first column and the heads (short labels) break between words only */
+.dz-doc :is(td, th) { min-width: 4.5em; }
+.dz-doc :is(th, td:first-child) { word-break: keep-all; }
 .dz-doc img { max-width: 100%; height: auto; border-radius: 6px; background: var(--panel2); }
 .dz-doc hr { border: 0; border-top: 1px solid var(--line); }
 .dz-doc .dz-raw { white-space: pre-wrap; }
@@ -1043,11 +1047,9 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
   .dz-fab { display: block; position: fixed; z-index: 38; }
 }
 /* A phone reads the document edge to edge: the head and the document drop the page gutter and their side edges, so
-   the text keeps 16px from the screen instead of gutter + border + padding (25px). Table cells keep a few characters
-   of width so a short first column does not fold one character per line. */
+   the text keeps 16px from the screen instead of gutter + border + padding (25px). */
 @media (max-width: 700px) {
   .dz-main > .box { margin-inline: calc(-1 * var(--gutter)); border-radius: 0; border-inline: 0; padding: 14px 16px; }
-  .dz-doc :is(td, th) { min-width: 4.5em; word-break: keep-all; }
   .dz-doc ul, .dz-doc ol { padding-left: 18px; }
 }
 .dz-wt { color: var(--muted); font-size: 11px; font-weight: 400; }
