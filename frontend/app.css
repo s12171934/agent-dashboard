@@ -941,8 +941,9 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .dz.empty-doc, .dz.no-pane { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); }
 .dz-ph { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 /* The page itself stays put; only the document scrolls (the sidebar and the readers scroll on their own). --dz-top is
-   where the grid starts, measured by the page; 96px is the view's room for the dock. A phone scrolls the page. */
-.dz { height: calc(100dvh - var(--dz-top, 120px) - 96px); align-items: stretch; }
+   where the grid starts and --dz-h the height down to the bar's room, both measured by the page (dzFit); the calc is
+   the fallback before that. A phone scrolls the page. */
+.dz { height: var(--dz-h, calc(100dvh - var(--dz-top, 120px) - 96px)); align-items: stretch; }
 .dz-side, .dz-pane { min-height: 0; overflow: auto; }
 .dz-main { grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
 .dz-doc { min-height: 0; overflow: auto; overscroll-behavior: contain; }
@@ -1030,8 +1031,8 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
   .dz-doc h2 { scroll-margin-top: 90px; }
   .dz-side, .dz-pane { position: static; max-height: none; overflow: visible; }
   /* a phone keeps only the document on the page, and only the page scrolls: no box scrolls on its own, tables and code
-     wrap. The project list, the documents and the readers open in a modal from .dz-fab (dzPanelSet). */
-  .dz { margin-bottom: 64px; }
+     wrap. The project list, the documents and the readers open in a modal from .dz-fab (dzPanelSet), which floats
+     beside the bar, so main's bottom padding is room enough below the document. */
   .dz-doc { overflow: visible; }
   .dz-doc table { display: table; width: 100%; }
   .dz-doc :is(td, th) { overflow-wrap: anywhere; }
@@ -2222,6 +2223,8 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-item b { font-weight: 600; overflow-wrap: anywhere; }
 .md-item.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
 .md-q { flex: 1 1 220px; min-width: 0; max-width: 360px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; }
+.md-kind { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 999px; vertical-align: 1px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.md-kind.k-learn { color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); }
 .md-entry { display: grid; gap: 4px; min-width: 0; }
 .md-hits { display: grid; gap: 2px; padding-left: 8px; border-left: 2px solid var(--line); margin-left: 6px; }
 .md-hit { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; align-items: baseline; text-align: left; padding: 3px 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
