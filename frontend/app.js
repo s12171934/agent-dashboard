@@ -7101,7 +7101,9 @@ try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(
 let mdHandAt = 0;
 for (const ev of ['wheel', 'touchmove']) addEventListener(ev, () => { if (route().v === 'media') mdHandAt = Date.now(); }, { passive: true });
 // full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
-let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false;
+let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () => {};
+// half folded (<html data-posture>, ds fold.js — on iPhone Duo the app passes the hinge, WebKit has no viewport segments)
+addEventListener('ds-posture', () => { if (route().v === 'media') mdPosture(); });
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => mdFsChange());
 addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.md-full')) mdFull(false); });
 const mdSave = () => { try { localStorage.setItem('adash.media.view', JSON.stringify(md)); } catch {} };
@@ -7180,7 +7182,9 @@ function mdPlay(v) {
   // split at the hinge on a half-folded foldable (CSS viewport segments). The page (<html>), not the pair, is what goes
   // full screen: Chrome fits a full-screen element into one segment of a half-folded screen. iPhone has no element
   // full screen: the class alone then covers the page. Chrome on Android may still put the video alone in full screen when the phone turns while
-  // playing; that is swapped for the pair when the browser allows it.
+  // playing; that is swapped for the pair when the browser allows it. iPhone's own player (its controls' full-screen
+  // button) is turned back into the pair at once. Half folding (data-posture) opens the pair by itself, as it opens the
+  // dock's sheet in the other half, and unfolding closes it again unless it was opened by hand.
   const duo = box.querySelector('.md-duo'), fsBtn = box.querySelector('.md-fs');
   const root = document.documentElement, fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
   const setFull = on => {
@@ -7198,7 +7202,16 @@ function mdPlay(v) {
       else if (fsEl()) await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
     } catch {}
   };
-  fsBtn.onclick = () => mdFull(!duo.classList.contains('md-full'));
+  let auto = false;  // opened by half folding: unfolding closes it
+  fsBtn.onclick = () => { auto = false; mdFull(!duo.classList.contains('md-full')); };
+  mdPosture = () => {
+    if (!duo.isConnected) return;
+    const half = !!root.dataset.posture;
+    if (half && !duo.classList.contains('md-full')) { auto = true; setFull(true); }
+    else if (!half && auto) { auto = false; mdFull(false); }
+  };
+  mdPosture();
+  video.addEventListener('webkitbeginfullscreen', () => setTimeout(() => { video.webkitExitFullscreen?.(); mdFull(true); }));
   mdFsChange = () => {
     const el = fsEl();
     if (el === video) root.requestFullscreen?.().then(() => setFull(true), () => {});
