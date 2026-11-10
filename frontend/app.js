@@ -7099,7 +7099,7 @@ async function renderCanvas(reload) {
 // line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
 let mdMounted = false, mdData = null;
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
-let md = { fold: false, follow: true, side: 'tl', q: '' };  // adash.media.view: the recording list folded away, the timeline following playback, the side list (timeline or captions), the search
+let md = { fold: false, follow: true, side: 'tl', q: '', kind: '' };  // adash.media.view: the recording list folded away, the timeline following playback, the side list (timeline or captions), the search, the kind shown ('' all)
 try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
 // the last wheel or touch drag anywhere: a reader scrolling by hand (scroll events cannot tell it from our own)
 let mdHandAt = 0;
@@ -7120,10 +7120,13 @@ let mdSide = () => {}, mdSeek = () => {};  // the shown recording's side list re
 // more from them. A query is words; a recording matches when each word is somewhere in its name, start time, folder,
 // timeline or captions (the explainer's narration), case and Hangul composition aside. Its hits are the timeline and
 // caption lines holding any word, by time.
+// What a recording is for, as its server says (its folder decides it when it is written: the record skills' runs are QA,
+// the explainer's videos are for learning). A server from before kinds says nothing; it then shows under 전체 only.
+const MD_KINDS = { qa: 'QA', learn: '학습' };
 const mdNorm = s => String(s || '').normalize('NFC').toLowerCase();
 const mdTerms = () => [...new Set(mdNorm(md.q).split(/\s+/).filter(Boolean))];
 function mdFind(v, terms) {
-  const head = mdNorm([v.name, v.started, v.root].join(' '));
+  const head = mdNorm([v.name, v.started, v.root, MD_KINDS[v.kind]].join(' '));
   const lines = [...v.timeline.map(r => ({ ...r, side: 'tl', s: mdNorm(r.kind + ' ' + r.text) })),
     ...(v.captions || []).map(r => ({ ...r, side: 'cap', s: mdNorm(r.text) }))];
   if (!terms.every(w => head.includes(w) || lines.some(l => l.s.includes(w)))) return null;
@@ -7160,6 +7163,7 @@ async function renderMedia(reload) {
   if (mdMounted && !reload) return;
   if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 서버 데이터 폴더 <code>media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
     <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
+      <span class="seg" id="md-kind"></span>
       <input type="search" id="md-q" class="md-q" placeholder="검색 — 이름·날짜·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
       <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label>
       <label class="st"><input type="checkbox" id="md-follow"${md.follow ? ' checked' : ''}> 재생 위치 따라가기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
@@ -7167,6 +7171,7 @@ async function renderMedia(reload) {
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
   $('#md-fold').onchange = e => { md.fold = e.target.checked; mdSave(); $('#md-body .md-wrap')?.classList.toggle('md-folded', md.fold); };
   $('#md-follow').onchange = e => { md.follow = e.target.checked; mdSave(); };
+  $('#md-kind').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; md.kind = b.dataset.k; mdSave(); mdDrawList(); };
   $('#md-q').oninput = e => { md.q = e.target.value; mdSave(); mdDrawList(); mdSide(); };
   try { mdData = await api.media(); } catch { mdData = null; }
   if (route().v !== 'media') return;
@@ -7203,18 +7208,20 @@ const MD_HITS = 5;
 function mdDrawList() {
   const box = $('#md-body .md-list');
   if (!box) return;
-  const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1, terms = mdTerms();
+  const all = mdData?.videos || [], multi = new Set(all.map(v => v.server)).size > 1, terms = mdTerms();
+  $('#md-kind').innerHTML = [['', '전체'], ...Object.entries(MD_KINDS)].map(([k, l]) => `<button data-k="${k}"${k === md.kind ? ' class="on"' : ''} aria-pressed="${k === md.kind}">${l} ${k ? all.filter(v => v.kind === k).length : all.length}</button>`).join('');
+  const vs = md.kind ? all.filter(v => v.kind === md.kind) : all;
   const found = vs.map(v => ({ v, f: terms.length ? mdFind(v, terms) : null })).filter(x => !terms.length || x.f);
   const n = found.reduce((a, x) => a + (x.f?.lines.length || 0), 0);
   $('#md-sum').textContent = `${terms.length ? `${vs.length}개 중 ${found.length}개 일치 · ${n}줄` : vs.length + '개'}${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
   box.innerHTML = found.length ? found.map(({ v, f }) => {
     const k = esc(mdKey(v)), lines = f?.lines || [];
     return `<div class="md-entry" role="listitem"><button class="md-item${mdKey(v) === mdSel ? ' on' : ''}" data-k="${k}">
-      <b>${mdMark(v.name, terms)}</b><span class="st">${mdMark(v.started || '', terms)} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}${v.captions?.length ? ' · 자막' : ''}</span></button>
+      <b>${MD_KINDS[v.kind] ? `<span class="md-kind k-${v.kind}">${MD_KINDS[v.kind]}</span> ` : ''}${mdMark(v.name, terms)}</b><span class="st">${mdMark(v.started || '', terms)} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}${v.captions?.length ? ' · 자막' : ''}</span></button>
       ${lines.length ? `<div class="md-hits">${lines.slice(0, MD_HITS).map(l => `<button class="md-hit" data-k="${k}" data-t="${l.t}" data-side="${l.side}">
         <span class="md-t">${mdClock(Math.floor(l.t))}</span><span class="md-x">${l.side === 'cap' ? '' : `<span class="md-k">${esc(l.kind)}</span> `}${mdMark(l.text, terms)}</span></button>`).join('')}
         ${lines.length > MD_HITS ? `<span class="st md-more">외 ${lines.length - MD_HITS}줄 — 열면 옆 목록에 표시됩니다</span>` : ''}</div>` : ''}</div>`;
-  }).join('') : `<div class="empty">「${esc(md.q.trim())}」와 일치하는 녹화가 없습니다.</div>`;
+  }).join('') : `<div class="empty">${terms.length ? `「${esc(md.q.trim())}」와 일치하는 ` : ''}${md.kind ? MD_KINDS[md.kind] + ' ' : ''}녹화가 없습니다.</div>`;
 }
 function mdPlay(v, startAt) {
   const box = $('#md-main');
@@ -7470,10 +7477,16 @@ async function renderDesigns() {
   if (on && list.scrollHeight > list.clientHeight) list.scrollTop = on.offsetTop - 40;
 }
 
-// On a wide screen the grid fills the window below the header and controls (see .dz in app.css).
+// On a wide screen the grid fills the window below the header and controls, down to the bar's room (main's bottom
+// padding), so the page itself does not scroll (see .dz in app.css). Measured from innerHeight, not 100dvh: an iOS app
+// held sideways (iPhone Duo) can lay the page out shorter or taller than dvh says, and the grid then stopped short of
+// the bar or ran under it.
 function dzFit() {
   const g = $('.dz');
-  if (g) g.style.setProperty('--dz-top', Math.round(g.getBoundingClientRect().top + scrollY) + 'px');
+  if (!g) return;
+  const top = Math.round(g.getBoundingClientRect().top + scrollY), pad = parseFloat(getComputedStyle($('main')).paddingBottom) || 0;
+  g.style.setProperty('--dz-top', top + 'px');
+  g.style.setProperty('--dz-h', Math.max(320, Math.floor(innerHeight - top - pad)) + 'px');
 }
 addEventListener('resize', () => { if (route().v === 'designs') { dzFit(); dzPanelSet(dzPanel); } });
 

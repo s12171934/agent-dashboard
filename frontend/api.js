@@ -534,7 +534,7 @@ const api = (() => {
       for (const r of d?.refs || []) if (r.path) refOwner[r.path] = server;
       return d && { ...d, server };
     },
-    // Recordings each server publishes (its data folder media.json): {videos[{server, path, root, name, started, size, mtime,
+    // Recordings each server publishes (its data folder media.json): {videos[{server, path, root, kind ('qa'|'learn'), name, started, size, mtime,
     // timeline[{t (seconds), kind, text}], captions[{t, text}] (the .srt narration)}], missing[{server, path}] (listed but not found), old (a server without it)}.
     media: async () => {
       let old = false;

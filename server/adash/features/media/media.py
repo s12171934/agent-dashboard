@@ -18,6 +18,12 @@ import adash.core.config as core_config
 MOVIES = os.path.join(core_config.HOME, "Movies")
 ROOTS = {"ego-record": os.path.join(MOVIES, "ego-record"), "aside-record": os.path.join(MOVIES, "aside-record"),
          "explainer-video": os.path.join(MOVIES, "explainer-video")}
+# What each folder's videos are for, fixed by the skill that writes there, so a recording has its kind from the moment
+# it is written: the record skills' runs are QA (a browser agent's work measured on screen), the explainer's masters
+# are for learning. A new root must say which it is, or the server does not start.
+KINDS = {"qa": "QA", "learn": "학습"}
+KIND = {"ego-record": "qa", "aside-record": "qa", "explainer-video": "learn"}
+assert set(KIND) == set(ROOTS) and set(KIND.values()) <= set(KINDS), "media: every root needs a kind"
 PUBLISHED = os.path.join(core_config.DATA, "media.json")
 STAMP = re.compile(r"\s(\d{8}-\d{6})(?:-\d+)?$")  # the first frame's time ends the name; a repeat adds -2, -3
 LINE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})\s+(\S+)\s+(.*)$")  # MM:SS or H:MM:SS, kind, text
@@ -107,7 +113,7 @@ def captions(full):
 
 
 def media_list():
-    """{videos: [{path, root, name, started, size, mtime, timeline, captions}]}; names in media.json that no longer resolve
+    """{videos: [{path, root, kind (KIND), name, started, size, mtime, timeline, captions}]}; names in media.json that no longer resolve
     are listed under missing so the page can say so."""
     videos, missing = [], []
     for rel in published():
@@ -120,6 +126,6 @@ def media_list():
         st = os.stat(full)
         videos.append({"path": rel, "root": rel.split("/")[0], "name": stem[:m.start()] if m else stem,
                        "started": m and f"{m[1][:4]}-{m[1][4:6]}-{m[1][6:8]} {m[1][9:11]}:{m[1][11:13]}:{m[1][13:]}",
-                       "size": st.st_size, "mtime": st.st_mtime, "timeline": timeline(full),
+                       "size": st.st_size, "mtime": st.st_mtime, "kind": KIND[rel.split("/")[0]], "timeline": timeline(full),
                        "captions": captions(full)})
     return {"videos": videos, "missing": missing}

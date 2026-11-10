@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """amedia — the recordings published to the dashboard's 「녹화 영상」 page (media.json in the data folder).
 
-    amedia ls                  every published entry, marked ok or missing (the file is no longer there)
+    amedia ls                  every published entry, marked ok or missing (the file is no longer there), and its kind
+                               (QA or 학습, from its folder: KIND in adash/features/media/media.py)
     amedia add FILE ...        publish recordings: a path to an .mp4 directly in ~/Movies/ego-record,
                                ~/Movies/aside-record or ~/Movies/explainer-video, or its "<root>/<file name>.mp4" entry. Already published is fine.
     amedia rm ENTRY ...        unpublish (path or entry); the video itself stays on disk
@@ -21,7 +22,7 @@ import unicodedata
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
-from adash.features.media.media import PUBLISHED, ROOTS, published, resolve  # noqa: E402
+from adash.features.media.media import KIND, KINDS, PUBLISHED, ROOTS, published, resolve  # noqa: E402
 
 nfc = lambda s: unicodedata.normalize("NFC", s)  # noqa: E731  macOS gives Hangul names decomposed
 
@@ -62,7 +63,7 @@ def main(argv):
     cmd, args = (argv[0], argv[1:]) if argv else ("", [])
     if cmd == "ls" and not args:
         for n in published():
-            print(("ok      " if resolve(n) else "missing ") + n)
+            print(("ok      " if resolve(n) else "missing ") + KINDS.get(KIND.get(n.split("/")[0]), "?").ljust(4) + n)
         return 0
     if cmd in ("add", "rm") and args:
         want, bad = [], []
