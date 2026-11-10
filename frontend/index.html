@@ -46,7 +46,6 @@
   <a href="#media" data-more data-v="media" data-tip="녹화 영상" aria-label="녹화 영상: 각 맥이 공개한 녹화와 타임라인"><ds-icon name="play"></ds-icon></a>
   <a href="#canvas" data-more data-v="canvas" data-tip="워크플로 캔버스" aria-label="워크플로 캔버스: workflow-canvas 를 대시보드 안에서 봄"><ds-icon name="monitor"></ds-icon></a>
   <a href="#trees" data-more data-v="trees" data-tip="워크트리" aria-label="워크트리: 이 맥의 모든 git 워크트리와 에디터로 열기"><ds-icon name="branch"></ds-icon></a>
-  <a href="ds/stories.html" data-more data-tip="디자인 시스템" aria-label="디자인 시스템: 컴포넌트를 상황별로 보고 점검"><ds-icon name="shapes"></ds-icon></a>
   <button class="dock-btn" id="launch-btn" data-fab data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
   <i class="dock-sep" data-more data-label="보기"></i>
   <label class="dock-btn" data-more data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
@@ -67,6 +66,8 @@
   <i class="dock-sep" data-more data-label="연결"></i>
   <button class="dock-btn" id="srv-btn" data-more data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
   <button class="dock-btn" id="editor-btn" data-more data-tip="에디터" aria-label="에디터: 「… 로 열기」가 여는 데스크톱 에디터(VS Code 또는 Zed)를 고름"><ds-icon name="code"></ds-icon></button>
+  <i class="dock-sep" data-more data-label="개발"></i>
+  <a href="ds/stories.html" data-more data-tip="디자인 시스템" aria-label="디자인 시스템: 컴포넌트를 상황별로 보고 점검"><ds-icon name="shapes"></ds-icon></a>
 </ds-dock>
 <ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
 <div id="stat-panel" class="popover dock-pop" hidden>
@@ -83,7 +84,7 @@
   </div>
   <div class="health" id="health" hidden></div>
 </div>
-<div id="server-panel" class="popover dock-pop" hidden></div>
+<div id="server-panel" class="popover dock-pop" data-sticky hidden></div>
 <div id="icon-panel" class="popover dock-pop" hidden></div>
 <div id="editor-panel" class="popover dock-pop" hidden></div>
 <div id="launch-panel" class="popover dock-pop" hidden></div>

@@ -6197,11 +6197,12 @@ function serverPanel() {
     </ul>`;
   const msg = $('#sp-msg'), say = (text, cls = '') => { msg.className = 'sp-msg ' + cls; msg.textContent = text; };
   const verdict = r => !r.ok ? [r.error, 'bad'] : r.api !== api.API_VERSION ? [`연결은 되지만 서버 API v${r.api} 가 페이지 v${api.API_VERSION} 와 다릅니다`, 'bad'] : ['연결됩니다', 'ok'];
-  // Every change goes through setServers, which reconnects; the snapshot is refetched at once.
-  const apply = list => { api.setServers(list); pump(true); el.hidden = true; };
+  // Every change goes through setServers, which reconnects; the snapshot is refetched at once. The panel stays open
+  // (data-sticky: only 닫기 or its button closes it) and redraws with the new list.
+  const apply = list => { api.setServers(list); pump(true); serverPanel(); };
   el.querySelectorAll('#sp-view button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === srvView);
-    b.onclick = () => { srvView = b.dataset.k; try { localStorage.setItem('adash.srvview', srvView); } catch {} el.hidden = true; render(); };
+    b.onclick = () => { srvView = b.dataset.k; try { localStorage.setItem('adash.srvview', srvView); } catch {} render(); serverPanel(); };
   });
   el.querySelectorAll('.sp-srv').forEach(row => {
     const id = row.dataset.id, cur = () => api.servers().map(x => ({ ...x }));
