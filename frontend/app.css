@@ -2237,46 +2237,80 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
   .md-title { font-size: 14px; }
   .md-side { max-height: none; overflow: visible; }
 }
-/* 타임라인과 함께 전체 화면: the pair covers the screen; wide → side by side, tall → video on top. The timeline scrolls in
-   its own box again (the narrow-screen rule above lets it flow with the page). */
+/* 타임라인과 함께 전체 화면, as a streaming app plays: the video runs edge to edge on black under its own controls
+   (.md-ov: title and close on top, back 10 s · play · forward 10 s in the middle, the bar with the timeline's scenes
+   marked below; a tap shows them, and while playing they fade after a while), the timeline a dark panel beside it.
+   Wide → side by side, tall → video on top; half folded, the video fills one half and the timeline the other. The
+   player's own controls (and their full screen, which would take both halves) are off meanwhile. */
 html.md-lock, html.md-lock body { overflow: hidden; }
-.md-duo.md-full { position: fixed; inset: 0; z-index: 1000; margin: 0; gap: 8px; background: var(--bg); box-sizing: border-box;
-  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 34%); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
-.md-duo.md-full .md-stage { position: static; padding: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; background: none; }
-.md-duo.md-full .md-video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
-.md-duo.md-full .md-bar { margin-top: 6px; }
-.md-duo.md-full .md-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.md-duo.md-full .md-side { max-height: none; min-height: 0; overflow-y: auto; }
+.md-duo.md-full { position: fixed; inset: 0; z-index: 1000; margin: 0; gap: 0; box-sizing: border-box; background: #000; color-scheme: dark;
+  --bg: #000; --panel: #141414; --panel2: #262626; --line: #2a2a2a; --text: #e8e8e8; --muted: #a3a3a3; color: var(--text);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+.md-duo.md-full .md-stage { position: relative; top: auto; z-index: auto; padding: 0; min-height: 0; background: #000; overflow: hidden; }
+.md-duo.md-full .md-video { width: 100%; height: 100%; max-height: none; object-fit: contain; border-radius: 0; }
+.md-duo.md-full .md-bar { display: none; }
+.md-duo.md-full .md-side { max-height: none; min-height: 0; overflow-y: auto; border-radius: 0; border-width: 0 0 0 1px;
+  padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 6px; }
+.md-duo.md-full .md-side-h { top: calc(-1 * max(6px, env(safe-area-inset-top))); }
+.md-duo.md-full .md-tl { font-size: 14px; }
+.md-duo.md-full .md-tl li { padding: 8px; }
 @media (orientation: portrait) {
   .md-duo.md-full { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .md-duo.md-full .md-video { height: auto; max-height: 50vh; }
+  .md-duo.md-full .md-stage { padding-top: env(safe-area-inset-top); }
+  .md-duo.md-full .md-video { height: auto; max-height: 50vh; aspect-ratio: 16 / 9; }
+  .md-duo.md-full .md-side { border-width: 1px 0 0; padding-top: 0; padding-left: max(6px, env(safe-area-inset-left)); }
+  .md-duo.md-full .md-side-h { top: 0; }
 }
+/* the controls over the video */
+.md-ov { display: none; position: absolute; inset: 0; z-index: 1; grid-template-rows: auto minmax(0, 1fr) auto; color: #fff;
+  padding: max(10px, env(safe-area-inset-top)) 16px max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: linear-gradient(rgba(0,0,0,.65), transparent 26%, transparent 62%, rgba(0,0,0,.8));
+  opacity: 0; pointer-events: none; transition: opacity .25s; -webkit-tap-highlight-color: transparent; }
+.md-duo.md-full .md-ov { display: grid; }
+.md-ov.on { opacity: 1; pointer-events: auto; }
+.md-duo.md-full .md-stage:has(.md-ov:not(.on)) { cursor: none; }
+.md-ov button { display: grid; place-items: center; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; font: inherit; }
+.md-ov svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.md-ov-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.md-ov-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000; }
+.md-ov-x { width: 34px; height: 34px; padding: 5px !important; flex: none; }
+.md-ov-mid { display: flex; align-items: center; justify-content: center; gap: clamp(24px, 9%, 64px); }
+.md-ov-skip { position: relative; width: 44px; height: 44px; }
+.md-ov-skip b { position: absolute; inset: 0; display: grid; place-items: center; padding-top: 3px; font-size: 11px; font-weight: 700; }
+.md-ov-pp { width: 64px; height: 64px; }
+.md-ov-pp svg { fill: currentColor; stroke: none; }
+.md-ov-bot { display: grid; gap: 6px; }
+.md-ov-track { position: relative; height: 18px; display: grid; align-items: center; }
+.md-seek { --p: 0%; -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0; background: none; cursor: pointer; }
+.md-seek::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) var(--p), rgba(255,255,255,.3) var(--p)); }
+.md-seek::-moz-range-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) var(--p), rgba(255,255,255,.3) var(--p)); }
+.md-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border: 0; border-radius: 50%; background: var(--accent); }
+.md-seek::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: var(--accent); }
+.md-tick { position: absolute; top: 50%; width: 3px; height: 4px; margin-left: -1px; transform: translateY(-50%); background: rgba(0,0,0,.75); pointer-events: none; }
+.md-ov-info { display: flex; gap: 12px; align-items: baseline; font-size: 13px; text-shadow: 0 1px 3px #000; min-width: 0; }
+.md-ov-time { font-variant-numeric: tabular-nums; flex: none; }
+.md-ov-scene { min-width: 0; color: rgba(255,255,255,.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Half folded as the design system reports it (<html data-posture>, fold.js; the iPhone app passes its hinge there):
-   the halves the page and the dock's sheet use, the video in the first. Viewport segments below, where the browser
-   has them, place the hinge exactly. */
-:root[data-posture="laptop"] .md-duo.md-full { padding-block: 0; row-gap: var(--pane-gap);
+   the halves the page and the dock's sheet use, the video filling the first. Viewport segments below, where the
+   browser has them, place the hinge exactly. The gap over the hinge stays black. */
+:root[data-posture="laptop"] .md-duo.md-full { row-gap: var(--pane-gap);
   grid-template-columns: minmax(0, 1fr); grid-template-rows: calc(50% - var(--pane-gap) / 2) minmax(0, 1fr); }
-:root[data-posture="laptop"] .md-duo.md-full .md-stage { padding-top: max(6px, env(safe-area-inset-top)); }
-:root[data-posture="laptop"] .md-duo.md-full .md-side { margin-bottom: max(6px, env(safe-area-inset-bottom)); }
-:root[data-posture="book"] .md-duo.md-full { padding-inline: 0; column-gap: var(--pane-gap);
+:root[data-posture="book"] .md-duo.md-full { column-gap: var(--pane-gap);
   grid-template-rows: minmax(0, 1fr); grid-template-columns: var(--seg-w) minmax(0, 1fr); }
-:root[data-posture="book"] .md-duo.md-full .md-stage { padding-left: max(8px, env(safe-area-inset-left)); }
-:root[data-posture="book"] .md-duo.md-full .md-side { margin-right: max(8px, env(safe-area-inset-right)); }
-:root[data-posture] .md-duo.md-full .md-video { height: 100%; max-height: none; }
-/* A half-folded foldable reports two viewport segments: the video takes one half, the timeline the other, and the hinge
-   between them is left empty. Fold held like a laptop (top/bottom), or like a book (left/right). */
+:root[data-posture] .md-duo.md-full .md-stage { padding-top: 0; }
+:root[data-posture] .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
+:root[data-posture] .md-duo.md-full .md-side { border-width: 0; padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 6px; }
+:root[data-posture] .md-duo.md-full .md-side-h { top: calc(-1 * max(6px, env(safe-area-inset-top))); }
 @media (vertical-viewport-segments: 2) {
-  .md-duo.md-full { padding-top: 0; padding-bottom: 0; row-gap: calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0));
+  .md-duo.md-full { row-gap: calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0));
     grid-template-columns: minmax(0, 1fr); grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr); }
-  .md-duo.md-full .md-stage { padding-top: max(6px, env(safe-area-inset-top)); }
-  .md-duo.md-full .md-video { height: 100%; max-height: none; }
-  .md-duo.md-full .md-side { margin-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .md-duo.md-full .md-stage { padding-top: 0; }
+  .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
+  .md-duo.md-full .md-side { border-width: 0; }
 }
 @media (horizontal-viewport-segments: 2) {
-  .md-duo.md-full { padding-left: 0; padding-right: 0; column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
+  .md-duo.md-full { column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
     grid-template-rows: minmax(0, 1fr); grid-template-columns: env(viewport-segment-width 0 0) minmax(0, 1fr); }
-  .md-duo.md-full .md-stage { padding-left: max(6px, env(safe-area-inset-left)); }
-  .md-duo.md-full .md-video { height: 100%; max-height: none; }
-  .md-duo.md-full .md-side { margin-right: max(6px, env(safe-area-inset-right)); }
+  .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
+  .md-duo.md-full .md-side { border-width: 0; }
 }
