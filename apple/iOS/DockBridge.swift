@@ -22,7 +22,7 @@ enum DockBridge {
       const keyOf = e => e.dataset.key || e.id || e.querySelector('input')?.id || e.getAttribute('href') || e.dataset.tip;
       const isItem = e => !e.hidden && !e.matches('.dock-cfg, .dock-show, .dock-launch, .dock-head') && (e.matches('ds-theme-toggle') || e.dataset.tip);
       const all = () => [...(dock()?.children || []), ...(document.querySelector('.dock-fab')?.children || []),
-        ...(document.querySelector('.dock-menu')?.querySelectorAll('[data-tip], ds-theme-toggle, .dock-sep') || [])];
+        ...(document.querySelector('.dock-menu')?.querySelectorAll('[data-tip]:not(ds-theme-toggle *), ds-theme-toggle, .dock-sep') || [])];  // the toggle's button is the toggle's row, not a second one
       const items = () => all().map(e => {
         if (e.matches('.dock-sep')) return e.dataset.label ? { sep: e.dataset.label } : null;
         if (!isItem(e)) return null;

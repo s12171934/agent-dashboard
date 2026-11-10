@@ -193,7 +193,9 @@ new MutationObserver(records => {
 }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
 // A click outside them closes the open one. The bar and 설정 are not outside (their buttons toggle their popover
 // themselves), nor is a <dialog> (a popover's confirm). Capture phase: a popover that redraws on the click still holds the target.
+// A .dock-pop[data-sticky] (a form filled in steps) stays through outside clicks: only its own close, its button or
+// another popover opening closes it.
 document.addEventListener('click', e => {
   if (e.target.closest?.('.dock-pop, ds-dock, .dock-fab, dialog')) return;
-  document.querySelectorAll('.dock-pop').forEach(o => { if (!o.hidden) o.hidden = true; });
+  document.querySelectorAll('.dock-pop:not([data-sticky])').forEach(o => { if (!o.hidden) o.hidden = true; });
 }, true);
