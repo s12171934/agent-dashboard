@@ -7087,7 +7087,7 @@ async function renderCanvas(reload) {
   });
 }
 // ---------- 녹화 영상 (#media) ----------
-// Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) that its data folder media.json
+// Recordings the record skills left on a server's Mac (~/Movies/ego-record, aside-record) and the explainer videos (~/Movies/explainer-video) that its data folder media.json
 // publishes: a player, and the recording's timeline (ego-record's .timeline.txt) whose times seek the player. Their
 // notes' file:// links open only on that Mac; this is how a device on the tailnet watches them. The view is built once
 // (mdMounted): live updates must not rebuild the <video> and stop it.

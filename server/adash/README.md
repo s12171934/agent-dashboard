@@ -36,7 +36,7 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 | `review/` | QA 묶음 리뷰(Jira·워크트리·PR), QA 드라이버, 반출 | `/api/reviews`, `POST /api/review/*`, `POST /api/qa/*` |
 | `plan_usage/` | 구독 계정별 플랜 사용량(「사용량」 탭): Claude 는 호스트 로그인(키체인 → `~/.claude/.credentials.json`)과 Orca 계정(키체인 `Orca Claude Code Managed Credentials`), Codex 는 `~/.codex`·Orca codex-accounts 의 토큰으로 각 사용량 API 를 계정마다 5분에 한 번(재시작해도 유지, 429·401 이면 늘려서) 읽는다. 토큰은 갱신하지 않고 읽기만 한다. 마지막 값은 데이터 폴더의 `plan-usage.json` | (스냅숏에 실림) |
 | `vault/` | 볼트 노트와 그것을 만든 세션 | `/api/vault/recent` |
-| `media/` | 「녹화 영상」: 데이터 폴더의 `media.json` 에 공개한 `~/Movies/ego-record`·`aside-record` 의 녹화와 `.timeline.txt` 타임라인, 영상은 Range 전송. 목록은 `server/amedia` 가 쓴다(녹화 러너가 자동 공개) | `/api/media`, `/api/media/file` |
+| `media/` | 「녹화 영상」: 데이터 폴더의 `media.json` 에 공개한 `~/Movies/ego-record`·`aside-record` 의 녹화, `explainer-video` 의 설명 영상과 `.timeline.txt` 타임라인, 영상은 Range 전송. 목록은 `server/amedia` 가 쓴다(녹화 러너·설명 영상 스킬이 자동 공개) | `/api/media`, `/api/media/file` |
 | `canvas/` | 「워크플로 캔버스」: 묻는 기기에 맞는 workflow-canvas 주소 — 루프백이면 `http://127.0.0.1:4318/`, tailnet 이면 `tailscale serve status` 에서 캔버스 포트로 중계하는 https 주소 | `/api/canvas` |
 | `flow/` | 정상 흐름 계약과 흐름 이탈 판정 | `POST /api/flow/ok` |
 | `usage/` | 페이지의 기능 사용 기록(`frontend/usage.js`)을 환경과 함께 데이터 폴더의 `usage.jsonl` 에 덧붙임. 집계(`report.py`)는 `/usage` 페이지(`page.html`)와 `server/ausage` 가 같이 쓴다 | `POST /api/usage`, `/api/usage/report`, `/usage` |
