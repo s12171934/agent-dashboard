@@ -2215,7 +2215,9 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-duo { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; align-items: start; }
 .md-stage { position: sticky; top: 12px; min-width: 0; }
 .md-video { display: block; width: 100%; max-height: 72vh; background: #000; border-radius: var(--radius); }
-.md-title { margin: 10px 0 0; font-size: 15px; }
+.md-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.md-title { margin: 0; font-size: 15px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.md-fs { flex: none; }
 .md-side { min-width: 0; max-height: calc(100vh - 210px); overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .md-side-h { position: sticky; top: 0; z-index: 1; padding: 8px 6px 6px; background: var(--panel); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .md-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
@@ -2231,6 +2233,38 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 @container (max-width: 640px) {
   .md-duo { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .md-stage { top: 0; z-index: 2; padding: 6px 0; background: var(--bg); }
-  .md-title { margin-top: 6px; font-size: 14px; }
+  .md-bar { margin-top: 6px; }
+  .md-title { font-size: 14px; }
   .md-side { max-height: none; overflow: visible; }
+}
+/* 타임라인과 함께 전체 화면: the pair covers the screen; wide → side by side, tall → video on top. The timeline scrolls in
+   its own box again (the narrow-screen rule above lets it flow with the page). */
+html.md-lock, html.md-lock body { overflow: hidden; }
+.md-duo.md-full { position: fixed; inset: 0; z-index: 1000; margin: 0; gap: 8px; background: var(--bg); box-sizing: border-box;
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 34%); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+.md-duo.md-full .md-stage { position: static; padding: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; background: none; }
+.md-duo.md-full .md-video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+.md-duo.md-full .md-bar { margin-top: 6px; }
+.md-duo.md-full .md-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md-duo.md-full .md-side { max-height: none; min-height: 0; overflow-y: auto; }
+@media (orientation: portrait) {
+  .md-duo.md-full { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .md-duo.md-full .md-video { height: auto; max-height: 50vh; }
+}
+/* A half-folded foldable reports two viewport segments: the video takes one half, the timeline the other, and the hinge
+   between them is left empty. Fold held like a laptop (top/bottom), or like a book (left/right). */
+@media (vertical-viewport-segments: 2) {
+  .md-duo.md-full { padding-top: 0; padding-bottom: 0; row-gap: calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0));
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr); }
+  .md-duo.md-full .md-stage { padding-top: max(6px, env(safe-area-inset-top)); }
+  .md-duo.md-full .md-video { height: 100%; max-height: none; }
+  .md-duo.md-full .md-side { margin-bottom: max(6px, env(safe-area-inset-bottom)); }
+}
+@media (horizontal-viewport-segments: 2) {
+  .md-duo.md-full { padding-left: 0; padding-right: 0; column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
+    grid-template-rows: minmax(0, 1fr); grid-template-columns: env(viewport-segment-width 0 0) minmax(0, 1fr); }
+  .md-duo.md-full .md-stage { padding-left: max(6px, env(safe-area-inset-left)); }
+  .md-duo.md-full .md-video { height: 100%; max-height: none; }
+  .md-duo.md-full .md-side { margin-right: max(6px, env(safe-area-inset-right)); }
 }

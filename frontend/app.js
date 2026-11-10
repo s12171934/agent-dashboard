@@ -472,7 +472,7 @@ async function renderView(navigated) {
   if (r.v !== 'trees') { trMounted = false; trEdit = null; }
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
-  if (r.v !== 'media') mdMounted = false;
+  if (r.v !== 'media') { mdMounted = false; mdFull(false); }
   if (r.v !== 'canvas') cvMounted = false;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
@@ -7100,6 +7100,10 @@ try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(
 // the last wheel or touch drag anywhere: a reader scrolling by hand (scroll events cannot tell it from our own)
 let mdHandAt = 0;
 for (const ev of ['wheel', 'touchmove']) addEventListener(ev, () => { if (route().v === 'media') mdHandAt = Date.now(); }, { passive: true });
+// full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
+let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false;
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => mdFsChange());
+addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.md-full')) mdFull(false); });
 const mdSave = () => { try { localStorage.setItem('adash.media.view', JSON.stringify(md)); } catch {} };
 const mdKey = v => v.server + '\n' + v.path;
 const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
@@ -7141,8 +7145,8 @@ async function renderMedia(reload) {
 function mdPlay(v) {
   const box = $('#md-main');
   box.innerHTML = `<div class="md-duo"><div class="md-stage">
-      <video class="md-video" controls playsinline preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
-      <h3 class="md-title">${esc(v.name)}</h3></div>
+      <video class="md-video" controls playsinline controlslist="nofullscreen" preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
+      <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3><button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
     <div class="md-side">${v.timeline.length ? `<div class="md-side-h st">타임라인 ${v.timeline.length}줄 · 줄을 누르면 그 장면으로</div>
       <ol class="md-tl">${v.timeline.map(r => `<li data-t="${r.t}"><button class="md-t" data-t="${r.t}">${mdClock(r.t)}</button><span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span><span class="md-x">${esc(r.text)}</span></li>`).join('')}</ol>`
       : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)이 없습니다.</div>'}</div></div>`;
@@ -7159,8 +7163,8 @@ function mdPlay(v) {
   // pauses following for a few seconds so the reader is not pulled back while looking ahead.
   let at = -1;
   const own = () => getComputedStyle(side).overflowY === 'auto';
-  const follow = li => {
-    if (!md.follow || Date.now() - mdHandAt < 4000 || !li) return;
+  const follow = (li, now) => {
+    if (!li || !now && (!md.follow || Date.now() - mdHandAt < 4000)) return;
     if (own()) {
       const top = li.offsetTop - side.offsetTop, h = side.clientHeight;
       if (top < side.scrollTop + 30 || top > side.scrollTop + h - 60) { side.scrollTo({ top: Math.max(0, top - h / 3), behavior: 'smooth' }); }
@@ -7170,6 +7174,36 @@ function mdPlay(v) {
       const r = li.getBoundingClientRect(), pin = box.querySelector('.md-stage').offsetHeight;
       if (r.top < pin || r.bottom > innerHeight - 90) window.scrollTo({ top: scrollY + r.top - pin - (innerHeight - pin) / 3, behavior: 'smooth' });
     }
+  };
+  // Full screen with the timeline: the player's own full screen (dropped from its controls) shows the video alone, so
+  // the pair (.md-duo.md-full) covers the page instead — beside each other when wide, the video on top when tall, and
+  // split at the hinge on a half-folded foldable (CSS viewport segments). The page (<html>), not the pair, is what goes
+  // full screen: Chrome fits a full-screen element into one segment of a half-folded screen. iPhone has no element
+  // full screen: the class alone then covers the page. Chrome on Android may still put the video alone in full screen when the phone turns while
+  // playing; that is swapped for the pair when the browser allows it.
+  const duo = box.querySelector('.md-duo'), fsBtn = box.querySelector('.md-fs');
+  const root = document.documentElement, fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const setFull = on => {
+    duo.classList.toggle('md-full', on);
+    document.documentElement.classList.toggle('md-lock', on);
+    fsBtn.textContent = on ? '전체 화면 닫기' : '타임라인과 함께 전체 화면';
+    fsBtn.setAttribute('aria-pressed', on);
+    if (on) requestAnimationFrame(() => follow(rows[at], true));
+  };
+  mdFull = async on => {
+    if (on === duo.classList.contains('md-full')) return;
+    setFull(on);
+    try {
+      if (on) await (root.requestFullscreen?.({ navigationUI: 'hide' }) ?? root.webkitRequestFullscreen?.());
+      else if (fsEl()) await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
+    } catch {}
+  };
+  fsBtn.onclick = () => mdFull(!duo.classList.contains('md-full'));
+  mdFsChange = () => {
+    const el = fsEl();
+    if (el === video) root.requestFullscreen?.().then(() => setFull(true), () => {});
+    else if (!el && duo.classList.contains('md-full') && mdFsWas) setFull(false);  // left by Back or Esc
+    mdFsWas = !!el;
   };
   // the line now playing: the last one whose time has passed
   video.ontimeupdate = () => {
