@@ -5823,10 +5823,13 @@ const cutW = (t, units) => { t = String(t ?? ''); let w = 0, i = 0; for (; i < t
 const RANK = { stalled: 0, wait: 1, run: 2, bg: 2, planned: 3, blocked: 3, done: 4, idle: 5 };
 const famRank = f => Math.min(...f.members.map(m => m.decision ? -1 : RANK[status(m)] ?? 5), workerPlan(f.handle, f.extra)?.waiting ? 3 : 9);
 
-// ---------- 상호작용 (messages between sessions, from Orca's orchestration inbox and the QA driver's terminal-send log) ----------
+// ---------- 상호작용 (messages between sessions, from Orca's orchestration inbox, the QA driver's terminal-send log and workflow-canvas execution logs) ----------
 const TALK_TYPES = { question: ['질문', 'var(--warn)'], escalation: ['에스컬레이션', 'var(--bad)'], worker_done: ['완료 보고', 'var(--done)'], status: ['상태·답', 'var(--accent)'], dispatch: ['지시', 'var(--c7)'], heartbeat: ['heartbeat', 'var(--idle)'] };
 // A message typed into the receiver's terminal (`qa-driver tell`) rather than mailed through the inbox.
-const viaBadge = m => m.via === 'terminal' ? `<span class="talk-via" title="orca terminal send 로 입력창에 넣은 메시지 (qa-driver tell 기록)">터미널</span>` : '';
+// A workflow-canvas 실행: the canvas's request and brief to the coordinator it launched, and what that coordinator
+// reported back through the canvas API (its execution log, .executions/<launch>/events.jsonl).
+const viaBadge = m => m.via === 'terminal' ? `<span class="talk-via" title="orca terminal send 로 입력창에 넣은 메시지 (qa-driver tell 기록)">터미널</span>`
+  : m.via === 'canvas' ? `<span class="talk-via" title="workflow-canvas 실행 로그 (${esc(m.launch || '')})">워크플로</span>` : '';
 const talk = { types: new Set(['question', 'escalation', 'worker_done', 'status', 'dispatch']), who: '', q: '', threads: true, limit: 1500, view: localStorage.getItem('talkView') || 'chat', hours: 24, pair: null, sel: null, room: '', inRoom: false, pos: {}, open: new Set(), data: null, key: null, at: 0, busy: false, err: null };
 let talkMounted = false;
 
@@ -5840,6 +5843,7 @@ function talkEnd(term, kind, raw, m) {
   const t = term && (state.orca.terminals || []).find(x => x.handle === term);
   const run = m.run_id && state.orca.runs.find(r => r.id === m.run_id), key = term || raw;
   if (kind === 'run') return { key, name: t?.title ? `${t.title} (코디네이터)` : `Run 코디네이터${run ? ' · ' + cut(run.objective, 30) : ''}`, note: '세션 추적 범위 밖', coord: true, ch: officeDrivers(families().fams).some(x => x.drv.handle === term) ? { id: 'drv-' + term, role: 'driver' } : { id: key, role: 'coordinator' } };
+  if (kind === 'canvas') return { key: raw, name: `워크플로 · ${m.canvas_name || raw.slice(7)}`, note: '워크플로 캔버스', ch: { id: raw, role: 'driver' } };
   if (kind === 'dispatch') return { key, name: IX.tasks[m.task_id]?.display_name || t?.title || '워커 ' + raw.slice(9, 21), note: '세션 추적 범위 밖', ch: { id: key, role: 'worker' } };
   return { key, name: t?.title || (term ? '터미널 ' + term.slice(5, 13) : raw), note: t ? 'Orca 터미널' : '종료된 터미널', ch: { id: key } };
 }
