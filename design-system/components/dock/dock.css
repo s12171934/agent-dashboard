@@ -73,6 +73,8 @@ ds-dock .dn[hidden] { display: none; }
 .dock-more label.dock-btn:has(input:checked)::before { background: radial-gradient(circle at 24px 50%, var(--on-accent) 8px, transparent 8.5px), var(--accent); }
 .dock-more .dock-sep { width: auto; height: auto; margin: 6px 4px 2px; background: none; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .dock-more .dock-sep::after { content: attr(data-label); }
+/* .dock-cap: the heading over the bar's own settings (위치, 크기, 바에 둘 항목, 바 숨기기), set like a group heading above */
+.dock-cap { display: block; margin: 6px 4px 2px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .dock-size { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .dock-size input { flex: 1; height: 28px; margin: 0; accent-color: var(--accent); }
 /* 「바에 둘 항목」: one row per named item, checked = on the bar (unchecked = in this menu); then 「바 숨기기」 */
