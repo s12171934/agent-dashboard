@@ -7095,7 +7095,7 @@ async function renderCanvas(reload) {
 // line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
 let mdMounted = false, mdData = null;
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
-let md = { fold: false, follow: true };  // adash.media.view: the recording list folded away, the timeline following playback
+let md = { fold: false, follow: true, side: 'tl', q: '' };  // adash.media.view: the recording list folded away, the timeline following playback, the side list (timeline or captions), the search
 try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
 // the last wheel or touch drag anywhere: a reader scrolling by hand (scroll events cannot tell it from our own)
 let mdHandAt = 0;
@@ -7111,6 +7111,35 @@ addEventListener('keydown', e => {
   else if (mdKeys(e.key)) e.preventDefault();
 });
 let mdKeys = () => false;  // the full-screen player's keys (mdPlay): space, ←, →
+let mdSide = () => {}, mdSeek = () => {};  // the shown recording's side list redrawn (a new search), and a seek in it (mdPlay)
+// Search: every recording each server lists is searched here, so the merged view of several servers needs nothing
+// more from them. A query is words; a recording matches when each word is somewhere in its name, start time, folder,
+// timeline or captions (the explainer's narration), case and Hangul composition aside. Its hits are the timeline and
+// caption lines holding any word, by time.
+const mdNorm = s => String(s || '').normalize('NFC').toLowerCase();
+const mdTerms = () => [...new Set(mdNorm(md.q).split(/\s+/).filter(Boolean))];
+function mdFind(v, terms) {
+  const head = mdNorm([v.name, v.started, v.root].join(' '));
+  const lines = [...v.timeline.map(r => ({ ...r, side: 'tl', s: mdNorm(r.kind + ' ' + r.text) })),
+    ...(v.captions || []).map(r => ({ ...r, side: 'cap', s: mdNorm(r.text) }))];
+  if (!terms.every(w => head.includes(w) || lines.some(l => l.s.includes(w)))) return null;
+  return { head: terms.some(w => head.includes(w)), lines: lines.filter(l => terms.some(w => l.s.includes(w))).sort((a, b) => a.t - b.t) };
+}
+// the text with the query's words marked (escaped)
+function mdMark(text, terms) {
+  if (!terms.length) return esc(text);
+  const t = String(text || ''), low = mdNorm(t), on = new Array(t.length).fill(false);
+  if (low.length !== t.length) return esc(t);  // lower-casing changed the length: mark nothing rather than the wrong letters
+  for (const w of terms) for (let i = low.indexOf(w); i >= 0; i = low.indexOf(w, i + 1)) on.fill(true, i, i + w.length);
+  let out = '', i = 0;
+  while (i < t.length) {
+    let j = i;
+    while (j < t.length && on[j] === on[i]) j++;
+    out += on[i] ? `<mark>${esc(t.slice(i, j))}</mark>` : esc(t.slice(i, j));
+    i = j;
+  }
+  return out;
+}
 const mdSave = () => { try { localStorage.setItem('adash.media.view', JSON.stringify(md)); } catch {} };
 // the full-screen controls' icons (a streaming player's: circular arrows with the seconds inside them)
 const MD_ICON = {
@@ -7127,12 +7156,14 @@ async function renderMedia(reload) {
   if (mdMounted && !reload) return;
   if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 서버 데이터 폴더 <code>media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
     <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
+      <input type="search" id="md-q" class="md-q" placeholder="검색 — 이름·날짜·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
       <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label>
       <label class="st"><input type="checkbox" id="md-follow"${md.follow ? ' checked' : ''}> 재생 위치 따라가기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
   mdMounted = true;
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
   $('#md-fold').onchange = e => { md.fold = e.target.checked; mdSave(); $('#md-body .md-wrap')?.classList.toggle('md-folded', md.fold); };
   $('#md-follow').onchange = e => { md.follow = e.target.checked; mdSave(); };
+  $('#md-q').oninput = e => { md.q = e.target.value; mdSave(); mdDrawList(); mdSide(); };
   try { mdData = await api.media(); } catch { mdData = null; }
   if (route().v !== 'media') return;
   const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1;
@@ -7143,21 +7174,45 @@ async function renderMedia(reload) {
     return;
   }
   const cur = vs.find(v => mdKey(v) === mdSel) || vs[0];
-  $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" role="list">${vs.map(v => `<button class="md-item${v === cur ? ' on' : ''}" role="listitem" data-k="${esc(mdKey(v))}">
-      <b>${esc(v.name)}</b><span class="st">${esc(v.started || '')} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}</span></button>`).join('')}</div>
+  mdSel = mdKey(cur);
+  $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" role="list"></div>
     <div class="md-main" id="md-main"></div></div>`
     + (mdData.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
+  // a recording opens it; a hit under it opens it at that line (or only seeks when it is already the one shown)
   $('#md-body').querySelector('.md-list').onclick = e => {
-    const b = e.target.closest('.md-item');
+    const b = e.target.closest('.md-item, .md-hit');
     if (!b) return;
+    const v = vs.find(x => mdKey(x) === b.dataset.k), t = b.dataset.t == null ? null : +b.dataset.t;
+    if (b.dataset.side) md.side = b.dataset.side;
+    if (mdSel === b.dataset.k && $('#md-main .md-video')) { if (t != null) { mdSide(); mdSeek(t); } return; }
     mdSel = b.dataset.k;
     try { localStorage.setItem('adash.media', mdSel); } catch {}
-    $('#md-body').querySelectorAll('.md-item').forEach(x => x.classList.toggle('on', x === b));
-    mdPlay(vs.find(v => mdKey(v) === mdSel));
+    $('#md-body').querySelectorAll('.md-item').forEach(x => x.classList.toggle('on', x.dataset.k === mdSel));
+    mdPlay(v, t);
   };
+  mdDrawList();
   mdPlay(cur);
 }
-function mdPlay(v) {
+// The recording list, narrowed by the search: each match with up to MD_HITS of its lines (time and text, the words
+// marked) to open it at, and how many more there are.
+const MD_HITS = 5;
+function mdDrawList() {
+  const box = $('#md-body .md-list');
+  if (!box) return;
+  const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1, terms = mdTerms();
+  const found = vs.map(v => ({ v, f: terms.length ? mdFind(v, terms) : null })).filter(x => !terms.length || x.f);
+  const n = found.reduce((a, x) => a + (x.f?.lines.length || 0), 0);
+  $('#md-sum').textContent = `${terms.length ? `${vs.length}개 중 ${found.length}개 일치 · ${n}줄` : vs.length + '개'}${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
+  box.innerHTML = found.length ? found.map(({ v, f }) => {
+    const k = esc(mdKey(v)), lines = f?.lines || [];
+    return `<div class="md-entry" role="listitem"><button class="md-item${mdKey(v) === mdSel ? ' on' : ''}" data-k="${k}">
+      <b>${mdMark(v.name, terms)}</b><span class="st">${mdMark(v.started || '', terms)} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}${v.captions?.length ? ' · 자막' : ''}</span></button>
+      ${lines.length ? `<div class="md-hits">${lines.slice(0, MD_HITS).map(l => `<button class="md-hit" data-k="${k}" data-t="${l.t}" data-side="${l.side}">
+        <span class="md-t">${mdClock(Math.floor(l.t))}</span><span class="md-x">${l.side === 'cap' ? '' : `<span class="md-k">${esc(l.kind)}</span> `}${mdMark(l.text, terms)}</span></button>`).join('')}
+        ${lines.length > MD_HITS ? `<span class="st md-more">외 ${lines.length - MD_HITS}줄 — 열면 옆 목록에 표시됩니다</span>` : ''}</div>` : ''}</div>`;
+  }).join('') : `<div class="empty">「${esc(md.q.trim())}」와 일치하는 녹화가 없습니다.</div>`;
+}
+function mdPlay(v, startAt) {
   const box = $('#md-main');
   box.innerHTML = `<div class="md-duo"><div class="md-stage">
       <video class="md-video" controls playsinline controlslist="nofullscreen" preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
@@ -7168,12 +7223,28 @@ function mdPlay(v) {
         <div class="md-ov-bot"><div class="md-ov-track"><input type="range" class="md-seek" min="0" max="1000" step="1" value="0" aria-label="재생 위치"></div>
           <div class="md-ov-info"><span class="md-ov-time">00:00 / 00:00</span><span class="md-ov-scene"></span></div></div></div>
       <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3><button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
-    <div class="md-side">${v.timeline.length ? `<div class="md-side-h st">타임라인 ${v.timeline.length}줄 · 줄을 누르면 그 장면으로</div>
-      <ol class="md-tl">${v.timeline.map(r => `<li data-t="${r.t}"><button class="md-t" data-t="${r.t}">${mdClock(r.t)}</button><span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span><span class="md-x">${esc(r.text)}</span></li>`).join('')}</ol>`
-      : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)이 없습니다.</div>'}</div></div>`;
-  const video = box.querySelector('video'), side = box.querySelector('.md-side'), rows = [...box.querySelectorAll('.md-tl li')];
-  // a whole line seeks (a bigger target than its time on a phone), and the player keeps playing from there
-  box.querySelector('.md-tl')?.addEventListener('click', e => {
+    <div class="md-side"></div></div>`;
+  const video = box.querySelector('video'), side = box.querySelector('.md-side');
+  let rows = [];
+  // The side list: the timeline, or the captions (the narration, one line a cue) when there are any — a tab each when
+  // both are there. The search's words are marked in it, and its lines that hold one are tinted.
+  mdSide = () => {
+    if (!side.isConnected) return;
+    const caps = v.captions || [], kind = caps.length && (md.side === 'cap' || !v.timeline.length) ? 'cap' : 'tl';
+    const list = kind === 'cap' ? caps : v.timeline, terms = mdTerms();
+    const tab = (k, label, n) => `<button class="md-tab${k === kind ? ' on' : ''}" data-side="${k}" aria-pressed="${k === kind}">${label} ${n}</button>`;
+    const head = v.timeline.length && caps.length ? tab('tl', '타임라인', v.timeline.length) + tab('cap', '자막', caps.length) : `${kind === 'cap' ? '자막' : '타임라인'} ${list.length}줄`;
+    side.innerHTML = list.length ? `<div class="md-side-h st">${head} · 줄을 누르면 그 장면으로</div>
+      <ol class="md-tl${kind === 'cap' ? ' md-cap' : ''}">${list.map(r => `<li data-t="${r.t}"${terms.length && terms.some(w => mdNorm((r.kind || '') + ' ' + r.text).includes(w)) ? ' class="md-hit-on"' : ''}><button class="md-t" data-t="${r.t}">${mdClock(Math.floor(r.t))}</button>${kind === 'cap' ? '' : `<span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span>`}<span class="md-x">${mdMark(r.text, terms)}</span></li>`).join('')}</ol>`
+      : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)도 자막(.srt)도 없습니다.</div>';
+    rows = [...side.querySelectorAll('.md-tl li')];
+    at = -1;
+    if (video.readyState) video.ontimeupdate?.();
+  };
+  // a tab switches the list; a whole line seeks (a bigger target than its time on a phone), and the player keeps playing from there
+  side.addEventListener('click', e => {
+    const tb = e.target.closest('.md-tab');
+    if (tb) { md.side = tb.dataset.side; mdSave(); mdSide(); return; }
     const li = e.target.closest('li[data-t]');
     if (!li || getSelection()?.toString()) return;  // selecting a line's text to copy it is not a seek
     video.currentTime = +li.dataset.t;
@@ -7259,6 +7330,7 @@ function mdPlay(v) {
   const skip = n => { video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + n)); };
   video.addEventListener('loadedmetadata', () => {
     const d = video.duration;
+    if (startAt != null) { video.currentTime = startAt; startAt = null; video.play().catch(() => {}); }
     if (d) seek.parentElement.insertAdjacentHTML('beforeend', v.timeline.filter(r => r.t > 0 && r.t < d).map(r => `<i class="md-tick" style="left:${(r.t / d * 100).toFixed(2)}%"></i>`).join(''));
     paint();
   });
@@ -7288,6 +7360,12 @@ function mdPlay(v) {
     ovShow(true);
     return true;
   };
+  // a search hit in the list for the recording already shown: seek there, and bring its line into view
+  mdSeek = t => {
+    video.currentTime = t;
+    video.play().catch(() => {});
+    requestAnimationFrame(() => follow(rows.find(li => Math.abs(+li.dataset.t - t) < 0.01), true));
+  };
   mdPosture();  // half folded already: open the pair now (after the controls above exist)
   // the line now playing: the last one whose time has passed
   video.ontimeupdate = () => {
@@ -7298,9 +7376,10 @@ function mdPlay(v) {
     rows[at]?.classList.remove('md-now');
     rows[now]?.classList.add('md-now');
     at = now;
-    scene.textContent = now >= 0 ? v.timeline[now].text : '';
+    scene.textContent = v.timeline.filter(r => r.t <= video.currentTime + 0.25).pop()?.text || '';
     if (!video.paused || video.seeking) follow(rows[now]);
   };
+  mdSide();
 }
 
 let dz = { pane: true, q: '', last: null, lastIn: {}, fold: {} };  // adash.design: the toggles, the last document (overall and per project), the sidebar boxes left open or closed
