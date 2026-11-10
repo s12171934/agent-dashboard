@@ -1,8 +1,9 @@
-"""Recordings published to the page: a few videos the record skills left in ~/Movies, picked by name.
+"""Recordings published to the page: a few videos the record and explainer skills left in ~/Movies, picked by name.
 
 The ego-record and aside-record skills write <case> <YYYYmmdd-HHMMSS>.mp4 (ego-record also a .timeline.txt beside it)
-into fixed folders under ~/Movies, and their timeline notes point at them with file:// links, which open only on this
-Mac. A device on the tailnet sees a video only when it is listed in media.json (the data folder) — {"published": ["ego-record/<file
+into fixed folders under ~/Movies; source-to-explainer-video writes its narrated masters the same way into
+~/Movies/explainer-video, with a .timeline.txt of scene chapters. The record skills' timeline notes point at them
+with file:// links, which open only on this Mac. A device on the tailnet sees a video only when it is listed in media.json (the data folder) — {"published": ["ego-record/<file
 name>.mp4", ...]} — and sits directly in one of ROOTS. Nothing else on disk is reachable through this feature.
 """
 
@@ -14,7 +15,8 @@ import unicodedata
 import adash.core.config as core_config
 
 MOVIES = os.path.join(core_config.HOME, "Movies")
-ROOTS = {"ego-record": os.path.join(MOVIES, "ego-record"), "aside-record": os.path.join(MOVIES, "aside-record")}
+ROOTS = {"ego-record": os.path.join(MOVIES, "ego-record"), "aside-record": os.path.join(MOVIES, "aside-record"),
+         "explainer-video": os.path.join(MOVIES, "explainer-video")}
 PUBLISHED = os.path.join(core_config.DATA, "media.json")
 STAMP = re.compile(r"\s(\d{8}-\d{6})(?:-\d+)?$")  # the first frame's time ends the name; a repeat adds -2, -3
 LINE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})\s+(\S+)\s+(.*)$")  # MM:SS or H:MM:SS, kind, text

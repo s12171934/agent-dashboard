@@ -64,7 +64,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 워크트리 목록 | `orca repo list` 의 저장소마다 `git worktree list`(그 .git 아래 워크트리를 가진 서브모듈 git 디렉터리도)·`git status`·`git log -1` (「워크트리」 탭. 「VS Code 로 열기」(또는 「Zed 로 열기」, 설정의 「에디터」)·「웹으로 보기」·「삭제」는 이 맥의 루프백에서 연 화면에서만). 워크트리별 메모는 데이터 폴더의 `worktree-notes.json` 에 쓴다 |
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
-| 녹화 영상 | 데이터 폴더의 `media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
+| 녹화 영상 | 데이터 폴더의 `media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record`·`~/Movies/explainer-video` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
 
 - **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다. 워커 계획 바(조율자 상세·사무실 이름표)에는 아예 그리지 않고 범례에 「취소 N」 글자만 남긴다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
 
@@ -488,8 +488,10 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 
 `ego-record`·`aside-record` 스킬은 녹화를 그 Mac 의 `~/Movies/ego-record`·`~/Movies/aside-record` 에 남긴다. 타임라인 노트도 `file://` 링크로 가리켜서 그 Mac 에서만 열린다. 「녹화 영상」 화면(설정 메뉴의 ▶)은 그중 **공개한 것만** 서버를 거쳐 보여 준다. 그래서 tailnet 기기·iPhone 앱에서도 재생된다.
 
-- **공개 목록:** 서버 Mac 의 데이터 폴더의 `media.json` — `{"published": ["ego-record/<파일 이름>.mp4", "aside-record/<파일 이름>.mp4"]}`. 두 폴더 바로 아래의 `.mp4` 중 여기 적은 것만 내보낸다. 목록에 없는 파일, 다른 경로, 링크로 폴더를 벗어나는 파일은 404 다. 파일을 고치면 다음 요청부터 바로 반영되고, 서버를 다시 띄울 필요는 없다.
-- **자동 공개:** 두 스킬의 러너는 녹화를 mp4 로 묶어 남기면 `server/amedia add` 로 이 목록에 올린다. 고정 탭·고정 페이지를 벗어나 `[폐기]` 판정을 받은 녹화는 올리지 않는다. 끄려면 러너를 `ADASH_MEDIA_AUTO=0` 으로 부른다. `amedia` 는 `$AMEDIA`·PATH 에서 찾고, 없으면 그 스킬이 든 볼트의 `40_Tools/agent-dashboard/bin/amedia` 를 쓴다. 이 Mac 에서 녹화한 것만 올라간다(다른 기기의 녹화를 받아 오는 길은 없다).
+`source-to-explainer-video` 스킬이 만든 해설 영상도 같은 화면에 나온다. 완성본을 `~/Movies/explainer-video/<제목> <YYYYmmdd-HHMMSS>.mp4` 로 두고, 장면 목차를 옆의 `.timeline.txt`(`MM:SS 장면 <제목>`)로 남긴다. 스크립트·음성·QA 보고서 같은 작업 파일은 같은 이름의 하위 폴더에 둔다. 공개 목록은 폴더 바로 아래 `.mp4` 만 보므로 이 파일들은 나가지 않는다.
+
+- **공개 목록:** 서버 Mac 의 데이터 폴더의 `media.json` — `{"published": ["ego-record/<파일 이름>.mp4", "aside-record/<파일 이름>.mp4", "explainer-video/<파일 이름>.mp4"]}`. 세 폴더 바로 아래의 `.mp4` 중 여기 적은 것만 내보낸다. 목록에 없는 파일, 다른 경로, 링크로 폴더를 벗어나는 파일은 404 다. 파일을 고치면 다음 요청부터 바로 반영되고, 서버를 다시 띄울 필요는 없다.
+- **자동 공개:** 두 스킬의 러너는 녹화를 mp4 로 묶어 남기면 `server/amedia add` 로 이 목록에 올린다. 고정 탭·고정 페이지를 벗어나 `[폐기]` 판정을 받은 녹화는 올리지 않는다. 끄려면 러너를 `ADASH_MEDIA_AUTO=0` 으로 부른다. `amedia` 는 `$AMEDIA`·PATH 에서 찾고, 없으면 그 스킬이 든 볼트의 `40_Tools/agent-dashboard/bin/amedia` 를 쓴다. 이 Mac 에서 녹화한 것만 올라간다(다른 기기의 녹화를 받아 오는 길은 없다). `source-to-explainer-video` 는 인코딩 파일 QA 를 통과한 완성본을 넘길 때 같은 방식으로 올린다.
 - **목록 손보기 (`server/amedia`):** 잠금을 잡고 파일을 통째로 바꿔 쓰므로 동시에 끝난 녹화끼리 항목을 잃지 않는다.
 
 ```bash

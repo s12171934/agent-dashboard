@@ -2,13 +2,14 @@
 """amedia — the recordings published to the dashboard's 「녹화 영상」 page (media.json in the data folder).
 
     amedia ls                  every published entry, marked ok or missing (the file is no longer there)
-    amedia add FILE ...        publish recordings: a path to an .mp4 directly in ~/Movies/ego-record or
-                               ~/Movies/aside-record, or its "<root>/<file name>.mp4" entry. Already published is fine.
+    amedia add FILE ...        publish recordings: a path to an .mp4 directly in ~/Movies/ego-record,
+                               ~/Movies/aside-record or ~/Movies/explainer-video, or its "<root>/<file name>.mp4" entry. Already published is fine.
     amedia rm ENTRY ...        unpublish (path or entry); the video itself stays on disk
     amedia prune               unpublish every entry whose file is gone
 
 The ego-record and aside-record recorders call `amedia add` when a recording is encoded and kept (not on [폐기]),
-unless ADASH_MEDIA_AUTO=0. The server reads media.json on every request, so a change shows without a restart.
+unless ADASH_MEDIA_AUTO=0.
+The source-to-explainer-video skill calls `amedia add` for each narrated master it delivers into ~/Movies/explainer-video. The server reads media.json on every request, so a change shows without a restart.
 Writes take a lock and replace the file whole, so recordings that end together do not lose each other's entry.
 """
 
