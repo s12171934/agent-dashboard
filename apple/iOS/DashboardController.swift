@@ -55,6 +55,8 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
             MainActor.assumeIsolated { self?.switchIcon() }
         }
         let conf = WKWebViewConfiguration()
+        // videos play in the page (playsinline), not in iPhone's own full-screen player: 녹화 영상 keeps its timeline beside
+        conf.allowsInlineMediaPlayback = true
         relay.owner = self
         PageBridge.install(on: conf.userContentController, platform: "ios", handler: relay)
         conf.userContentController.addUserScript(WKUserScript(source: Self.facesScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))

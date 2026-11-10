@@ -2252,6 +2252,18 @@ html.md-lock, html.md-lock body { overflow: hidden; }
   .md-duo.md-full { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .md-duo.md-full .md-video { height: auto; max-height: 50vh; }
 }
+/* Half folded as the design system reports it (<html data-posture>, fold.js; the iPhone app passes its hinge there):
+   the halves the page and the dock's sheet use, the video in the first. Viewport segments below, where the browser
+   has them, place the hinge exactly. */
+:root[data-posture="laptop"] .md-duo.md-full { padding-block: 0; row-gap: var(--pane-gap);
+  grid-template-columns: minmax(0, 1fr); grid-template-rows: calc(50% - var(--pane-gap) / 2) minmax(0, 1fr); }
+:root[data-posture="laptop"] .md-duo.md-full .md-stage { padding-top: max(6px, env(safe-area-inset-top)); }
+:root[data-posture="laptop"] .md-duo.md-full .md-side { margin-bottom: max(6px, env(safe-area-inset-bottom)); }
+:root[data-posture="book"] .md-duo.md-full { padding-inline: 0; column-gap: var(--pane-gap);
+  grid-template-rows: minmax(0, 1fr); grid-template-columns: var(--seg-w) minmax(0, 1fr); }
+:root[data-posture="book"] .md-duo.md-full .md-stage { padding-left: max(8px, env(safe-area-inset-left)); }
+:root[data-posture="book"] .md-duo.md-full .md-side { margin-right: max(8px, env(safe-area-inset-right)); }
+:root[data-posture] .md-duo.md-full .md-video { height: 100%; max-height: none; }
 /* A half-folded foldable reports two viewport segments: the video takes one half, the timeline the other, and the hinge
    between them is left empty. Fold held like a laptop (top/bottom), or like a book (left/right). */
 @media (vertical-viewport-segments: 2) {
