@@ -535,7 +535,7 @@ const api = (() => {
       return d && { ...d, server };
     },
     // Recordings each server publishes (its data folder media.json): {videos[{server, path, root, name, started, size, mtime,
-    // timeline[{t (seconds), kind, text}]}], missing[{server, path}] (listed but not found), old (a server without it)}.
+    // timeline[{t (seconds), kind, text}], captions[{t, text}] (the .srt narration)}], missing[{server, path}] (listed but not found), old (a server without it)}.
     media: async () => {
       let old = false;
       const parts = await Promise.all(enabled().map(async srv => {
