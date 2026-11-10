@@ -5,21 +5,23 @@ import WebKit
 // The page in a web view under the system's own tab bar (UITabBarController: the App Store's bar — Liquid Glass, a
 // lens that follows a finger dragged across the tabs, the bar shrinking as the page scrolls down). The page's floating
 // bar is hidden (DockBridge) and stands in as:
-// - tabs for the five screens the page's bar keeps (홈, 에이전트, QA, 프로젝트, 테스트), with the page's badges; a tab
-//   press takes the page there (pressed again on 홈 or 에이전트, the page fits the office to the screen), and the page
-//   moving elsewhere (a link, a notification) moves the selection with it;
+// - tabs for four screens the person picks (TabScreens: 홈, 에이전트, QA, 프로젝트 until changed), with the page's
+//   badges; a tab press takes the page there (pressed again on 홈 or 에이전트, the page fits the office to the screen),
+//   and the page moving elsewhere (a link, a notification) moves the selection with it;
+// - 더보기, the fifth tab (the system tab bar holds five at most), as the system's More tab: a list of every other
+//   screen (ScreenList), a row pushing the page in under 더보기's back button, and 편집 there choosing and ordering
+//   the four tabs (TabEditor). The page going to a screen off the tabs selects 더보기 with the page pushed;
 // - 설정, the right button of each tab's navigation bar (a bar with no title or background: the page runs to the
 //   screen's top under it, only the buttons over it), where the App Store keeps
-//   its account button (the system tab bar holds five tabs at most, the search tab's place included), opening a sheet
-//   listing the rest of the bar as the App Store lists its settings: the other screens, the filters (a check while
-//   on), the settings, each pressing the page's own element. A count badge among them shows on its row only: 설정
+//   its account button, opening a sheet listing the rest of the bar as the App Store lists its settings: the filters
+//   (a check while on), the settings, each pressing the page's own element. A count badge among them shows on its row only: 설정
 //   gets no dot. An item the page keeps beside its 설정 (data-fab: 새 에이전트) is a button on 설정's left instead,
 //   opening its popover as a sheet of its own (PanelSheet).
 // One web view serves every tab: the selected tab's page holds it. The page fills the screen, the side strip of iPhone
 // Duo's outer display included (its content keeps to the safe area). Half folded (the hinge, iOS 27.1) the tab bar
 // hides and the page lays itself out as on the web — the first half a page, the second its bar's sheet (fold.js,
 // dock.css) — told so through window.dsHalfFolded.
-final class DashboardController: UITabBarController, UITabBarControllerDelegate, WKNavigationDelegate, WKUIDelegate {
+final class DashboardController: UITabBarController, UITabBarControllerDelegate, UINavigationControllerDelegate, WKNavigationDelegate, WKUIDelegate {
     static var pageURL: URL {
         URL(string: UserDefaults.standard.string(forKey: "pageURL") ?? "") ?? URL(string: "https://dashboard.s-dante.com/")!
     }
@@ -29,9 +31,11 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     static let pageBackground = UIColor { $0.userInterfaceStyle == .dark
         ? UIColor(red: 0.06, green: 0.07, blue: 0.08, alpha: 1) : UIColor(red: 0.957, green: 0.961, blue: 0.969, alpha: 1) }
 
-    private static let screens = [("#home", "홈", "house"), ("#agents", "에이전트", "person.2"),
-                                  ("#worktrees", "QA", "square.3.layers.3d"),
-                                  ("#projects", "프로젝트", "point.3.connected.trianglepath.dotted"), ("#tests", "테스트", "flask")]
+    private static let moreTab = "more"
+    private var tabScreens = TabScreens.load()  // the four screens on the tabs
+    private weak var screenList: ScreenList?  // 더보기's list, once its tab has been opened
+    private var moreShown: String?  // the screen pushed under 더보기, while it is
+    private var followed: String?  // the page's screen the selection last followed: a tab pressed on 더보기's list stays
 
     private var web: WKWebView!
     private let relay = Relay()
@@ -71,19 +75,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         web.translatesAutoresizingMaskIntoConstraints = false
 
         delegate = self
-        tabs = Self.screens.map { key, title, symbol in
-            UITab(title: title, image: UIImage(systemName: symbol), identifier: key) { [weak self] _ in
-                let slot = Slot()
-                if let self { navItems.append(slot.navigationItem); barButtons(slot.navigationItem) }
-                let nav = UINavigationController(rootViewController: slot)
-                // no bar of its own: no title, background or line; only its buttons show, over the page
-                let look = UINavigationBarAppearance()
-                look.configureWithTransparentBackground()
-                nav.navigationBar.standardAppearance = look
-                nav.navigationBar.scrollEdgeAppearance = look
-                return nav
-            }
-        }
+        makeTabs()
         if #available(iOS 26.0, *) { tabBarMinimizeBehavior = .onScrollDown }
         if #available(iOS 27.1, *) {
             view.addInteraction(UIHingeInteraction { [weak self] _, update in
@@ -91,6 +83,83 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
             })
         }
         web.load(URLRequest(url: Self.pageURL))
+    }
+
+    // the picked screens' tabs and 더보기 (again after 편집: the controllers are made anew, the page stays where it is)
+    private func makeTabs() {
+        navItems.removeAll()
+        moreShown = nil
+        let screens = tabScreens.map { s in
+            UITab(title: s.title, image: UIImage(systemName: s.symbol), identifier: s.key) { [weak self] _ in
+                let nav = UINavigationController(rootViewController: self?.slot() ?? Slot())
+                // no bar of its own: no title, background or line; only its buttons show, over the page
+                nav.navigationBar.standardAppearance = Self.clearBar
+                nav.navigationBar.scrollEdgeAppearance = Self.clearBar
+                return nav
+            }
+        }
+        let more = UITab(title: "더보기", image: UIImage(systemName: "ellipsis"), identifier: Self.moreTab) { [weak self] _ in
+            let list = ScreenList()
+            list.items = self?.offTabs ?? []
+            list.onPick = { [weak self] it in self?.showFromMore(it.key) }
+            list.onEdit = { [weak self] in self?.editTabs() }
+            self?.screenList = list
+            let nav = UINavigationController(rootViewController: list)
+            nav.navigationBar.prefersLargeTitles = true
+            nav.delegate = self
+            return nav
+        }
+        tabs = screens + [more]
+    }
+
+    private static let clearBar: UINavigationBarAppearance = {
+        let look = UINavigationBarAppearance()
+        look.configureWithTransparentBackground()
+        return look
+    }()
+
+    // a page under a tab, its navigation bar's buttons 설정 and the data-fab items
+    private func slot() -> Slot {
+        let slot = Slot()
+        navItems.append(slot.navigationItem)
+        barButtons(slot.navigationItem)
+        return slot
+    }
+
+    // the page pushed under 더보기's list: its bar clear (only 더보기's back button and 설정 over the page), as a tab's is
+    private func showFromMore(_ key: String) {
+        press(key)
+        pushUnderMore(key, animated: true)
+    }
+
+    private func pushUnderMore(_ key: String, animated: Bool) {
+        moreShown = key
+        guard let nav = selectedViewController as? UINavigationController, selectedTab?.identifier == Self.moreTab,
+              !(nav.topViewController is Slot) else { return }
+        let s = slot()
+        s.navigationItem.standardAppearance = Self.clearBar
+        s.navigationItem.scrollEdgeAppearance = Self.clearBar
+        s.navigationItem.largeTitleDisplayMode = .never
+        nav.pushViewController(s, animated: animated)
+    }
+
+    // the screens 더보기 lists: the page's own (its bar's tabs, data-more ones included) less those on the tabs
+    private var allScreens: [DockBridge.Item] { items.filter { $0.key.hasPrefix("#") && !$0.isFab } }
+    private var offTabs: [DockBridge.Item] { allScreens.filter { s in !tabScreens.contains { $0.key == s.key } } }
+
+    // 편집 (더보기's list): the four tabs and their order, kept for next time; the tabs are made again
+    private func editTabs() {
+        let e = TabEditor(tabs: tabScreens, others: offTabs.map(TabScreens.Screen.init))
+        e.onDone = { [weak self] picked in
+            guard let self, picked != tabScreens else { return }
+            tabScreens = picked
+            TabScreens.save(picked)
+            makeTabs()
+            followed = nil
+            sync(items)
+            hold()
+        }
+        present(UINavigationController(rootViewController: e), animated: true)
     }
 
     // 설정: the navigation bar's right button, where the App Store keeps its account button
@@ -127,7 +196,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     // page's field and the popover it sits in (fixed to the page's foot) stay above it.
     private var held: [NSLayoutConstraint] = []
     private func hold() {
-        guard let slot = (selectedViewController as? UINavigationController)?.topViewController, web.superview !== slot.view else { return }
+        guard let slot = (selectedViewController as? UINavigationController)?.topViewController as? Slot, web.superview !== slot.view else { return }
         NSLayoutConstraint.deactivate(held)
         slot.view.addSubview(web)
         held = KeyboardFit.pin(web, in: slot.view)
@@ -136,14 +205,25 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
 
     func tabBarController(_ c: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
         // the tab already shown pressed again: the page's own tab is pressed again (홈, 에이전트: the office fits the screen)
-        if tab === selectedTab && !following { press(tab.identifier); return false }
+        // (더보기 pressed again: back to its list, as the system's More tab does)
+        if tab === selectedTab && !following {
+            if tab.identifier == Self.moreTab { (selectedViewController as? UINavigationController)?.popToRootViewController(animated: true) }
+            else { press(tab.identifier) }
+            return false
+        }
         return true
     }
 
     func tabBarController(_ c: UITabBarController, didSelectTab tab: UITab, previousTab: UITab?) {
         hold()
         guard !following else { return }
-        press(tab.identifier)
+        if tab.identifier != Self.moreTab { press(tab.identifier) }
+        else if let key = moreShown, (selectedViewController as? UINavigationController)?.topViewController is Slot { press(key) }  // back to the page left under 더보기
+    }
+
+    // 더보기's list shown again (its back button): nothing pushed; the page pushed: it holds the web view
+    func navigationController(_ nav: UINavigationController, didShow vc: UIViewController, animated: Bool) {
+        if vc is Slot { hold() } else if vc is ScreenList { moreShown = nil }
     }
 
     private var current: String? { items.first { $0.on && $0.key.hasPrefix("#") }?.key }
@@ -159,26 +239,36 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
             let b = new.first { $0.key == t.identifier }?.badge
             t.badgeValue = b?.isEmpty == false ? b : nil
         }
+        // 더보기: the sum of its screens' counts, a dot for a badge that is not one
+        let off = offTabs.map(\.badge).filter { !$0.isEmpty }
+        let sum = off.compactMap { Int($0) }.reduce(0, +)
+        tabs.last?.badgeValue = off.isEmpty ? nil : sum > 0 ? String(sum) : ""
+        screenList?.items = offTabs
         let fab = new.filter(\.isFab).map(\.key)
         if fab != fabKeys { fabKeys = fab; navItems.forEach(barButtons) }
-        // a screen off the tabs (결정 대기, a session) leaves the selection where it was
-        if let cur = current, Self.screens.contains(where: { $0.0 == cur }) {
-            if selectedTab?.identifier != cur, let t = tabs.first(where: { $0.identifier == cur }) {
+        // the selection follows the page: its tab, or 더보기 with the page pushed for a screen off the tabs (a session,
+        // on no screen, leaves it where it was)
+        if let cur = current, cur != followed, !halfFolded {
+            followed = cur
+            let t = tabs.first { $0.identifier == cur } ?? tabs.last
+            let shown = selectedTab?.identifier == cur || selectedTab === t && t === tabs.last && moreShown == cur
+            if let t, !shown {
                 following = true
                 selectedTab = t
                 following = false
+                if t === tabs.last { pushUnderMore(cur, animated: false) } else { moreShown = nil }
                 hold()
             }
         }
         sheet?.items = moreItems
     }
 
-    // 설정: everything on the page's bar but the tabs, by the bar's groups, and the page's reload.
+    // 설정: everything on the page's bar but its screens (the tabs and 더보기), by the bar's groups, and the page's reload.
     private var moreItems: [(String, [DockBridge.Item])] {
-        var groups: [(String, [DockBridge.Item])] = [("화면", [])]
+        var groups: [(String, [DockBridge.Item])] = [("", [])]
         for it in items {
             if let sep = it.sep { groups.append((sep, [])) }
-            else if !it.isFab && !Self.screens.contains(where: { $0.0 == it.key }) { groups[groups.count - 1].1.append(it) }
+            else if !it.isFab && !it.key.hasPrefix("#") { groups[groups.count - 1].1.append(it) }
         }
         groups[groups.count - 1].1.append(DockBridge.Item(key: "", tip: "새로 고침", icon: "", on: false, badge: "", text: "", sep: nil))
         return groups.filter { !$0.1.isEmpty }
@@ -225,6 +315,13 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     }
 
     private func fold() {
+        // half folded the page is all there is: off 더보기's list (no page in it) onto the first tab, which holds it
+        if halfFolded, !((selectedViewController as? UINavigationController)?.topViewController is Slot) {
+            following = true
+            selectedTab = tabs.first
+            following = false
+            hold()
+        }
         setTabBarHidden(halfFolded, animated: true)
         for case let nav as UINavigationController in viewControllers ?? [] { nav.setNavigationBarHidden(halfFolded, animated: true) }
         // half folded, the page's sheet lists everything 설정 would: no 설정 button, on tabs not opened yet either
