@@ -1377,6 +1377,7 @@ function miniFam(f) {
     <div class="mini-body">${donut(counts, total || 1)}
       <div class="mini-leg">${DONUT.filter(([k]) => counts[k]).map(([k, c]) => `<span${PEND_TIP[k] ? ` title="${PEND_TIP[k]}"` : ''}><i style="background:${c}${PEND_TIP[k] ? ';outline:1px dashed var(--muted);outline-offset:-1px' : ''}"></i>${ST_LABEL[k]} <b>${counts[k]}</b></span>`).join('') || '<span class="st">하위 에이전트 없음</span>'}</div></div>
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
+    ${ipListHtml(f)}
     <div class="c-metrics">
       <div class="m"${pend ? ` title="세션 ${below.length} + ${PEND.filter(([k]) => pc[k]).map(([k, l]) => l + ' ' + pc[k]).join(' + ')}"` : ""}><span>하위</span><b>${total}</b></div>
       <div class="m" title="${ctxTitle(s)}"><span>컨텍스트</span><b class="${ctxLvl(s)}">${fmt(s.ctx_now)}</b></div><div class="m"><span>합계 비용</span><b>${usd(f.cost)}${f.costKnown ? '' : '+'}</b></div><div class="m"><span>합계 턴</span><b>${fmt(f.turns)}</b></div>${lifeMetric(s)}</div>
@@ -1401,6 +1402,7 @@ function famHtml(f, wk) {
       ${wk && direct.some(x => !here(x)) ? `<span title="이 코디네이터가 다른 워크트리에서 돌리는 직속 워커·하위 코디네이터">다른 워크트리 <b>${direct.filter(x => !here(x)).length}</b></span>` : ''}
       ${f.coord ? `<button class="tgl" data-toggle="${esc(f.key)}" style="margin-left:auto">▾ 최소화</button>` : ''}</div>
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
+    ${ipListHtml(f)}
     ${f.coord ? plansOf(f.coord).map(p => `<div class="pline" style="padding:2px 2px 0">${drvPlanLine(driverPlan(p))}</div>${ticketStrip(driverPlan(p))}`).join('') : ''}
     ${f.workers.length || f.subs.length ? `<div class="tree">${(() => {
       // Workers that belong to a group come first: sub-coordinator trees, then script drivers, then the coordinator's own
@@ -5470,6 +5472,31 @@ function implProgressBind(again) {
     if (ipOpen.has(k)) ipOpen.delete(k); else ipOpen.add(k);
     again();
   });
+}
+// The same progress in the agent list, under its coordinator (expanded family and folded card): one line of totals per ①
+// run and the tickets as chips grouped by repository like the driver plan's ticketStrip — done/total and, while it runs,
+// the current checkbox. 범위 밖 (separate-run) tickets are left out. One unfiltered fetch serves every coordinator.
+const IP_TKC = { done: 'done', running: 'run', blocked: 'fail', todo: 'pending' };
+const ipListAgain = () => route().v === 'agents' && !charMode && agView !== 'map' && agView !== 'tl' && (() => { const sv = saveScroll(); renderAgents(); restoreScroll(sv); })();
+function ipOfFam(f) {
+  const hs = [f.handle, ...(f.extra || [])].filter(Boolean);
+  return hs.length ? (ipGet({}, ipListAgain) || []).filter(p => hs.includes(p.coordinator) && p.tickets.some(t => !t.separate)) : [];
+}
+function ipListHtml(f) {
+  return ipOfFam(f).map(p => {
+    const s = p.summary, pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+    const ts = p.tickets.filter(t => !t.separate), groups = [];
+    for (const t of ts) { const r = t.repo || '저장소 미상'; let g = groups.find(x => x.repo === r); if (!g) groups.push(g = { repo: r, items: [] }); g.items.push(t); }
+    const chip = t => {
+      const cls = IP_TKC[t.state] || 'pending', c = t.state !== 'done' && t.current;
+      const n = t.total != null ? `${t.done}/${t.total}` : '?/?';
+      const st = t.state === 'todo' ? (t.child ? '착수 전' : '미착수') : IP_ST[t.state];
+      const tip = `${t.key}${t.label ? ' ' + t.label : ''}${t.repo ? ' · ' + t.repo : ''} · ${st} · 체크박스 ${n}${t.total == null ? ' (장부 없음 · 수 미상)' : ''}${c ? `\n현재 ${c.cb} ${c.text} · ${IP_CB[c.status]}` : ''}`;
+      return `<span class="tkc ${cls} ip-c" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${esc(t.label || t.key)} <b>${n}</b>${c ? `<span class="ip-c-cur">${esc(c.cb)}</span>` : ''}</span>`;
+    };
+    return `<div class="ip-list"><div class="pline"><b>구현 ① 티켓 진행</b> ${p.runId ? `<a href="#r=${esc(p.runId)}" onclick="event.stopPropagation()" title="Run 상세에서 티켓별 체크박스 목록">${esc(cut(p.title, 40))}</a>` : esc(cut(p.title, 40))} · 체크박스 <b>${s.done}/${s.total}</b> (${pct}%) · 완료 티켓 <b>${s.tickets_done}/${s.tickets}</b>${s.unknown ? ` · <span title="장부가 아직 없어 체크박스 수를 모르는 티켓 — 합계에 들지 않음">수 미상 ${s.unknown}</span>` : ''}</div>
+      <div class="xp-strip">${groups.map(g => `<div class="xp-grp"><span class="xp-repo-n">${esc(g.repo)}</span><div class="cbr">${g.items.map(chip).join('')}</div></div>`).join('')}</div></div>`;
+  }).join('');
 }
 
 function renderRun(id) {
