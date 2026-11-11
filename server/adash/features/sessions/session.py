@@ -14,7 +14,7 @@ from adash.features.orca_runs.store import orca_state
 from adash.features.sessions.config import (CHAT_CHARS, CHAT_LIMIT, CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS,
     SELF_CLOSE_SECONDS, STALL_SECONDS, WAIT_SECONDS, hooks)
 from adash.features.sessions.patterns import (APLAN_CMD, APLAN_SET, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS,
-    BG_NOTE, BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, DISPATCH_PREAMBLE, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD,
+    BG_NOTE, BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, DISPATCH_PREAMBLE, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD, SELF_START,
     RELAY, RELAY_BACK, RUN_CREATE, RUN_ID, TERM_CREATE, closes_own_terminal, classify_tool, tool_hint)
 from adash.features.sessions.places import place_of
 from adash.features.sessions.plans import build_plans
@@ -63,13 +63,13 @@ class Session:
         self.asks = {}  # AskUserQuestion call id -> [first question, epoch seconds, has a result], Bash call id -> [command, …]; see stale_decisions
         self.inbox_picks = {}  # 메일함 item id -> the pick the agent wrote for it ("[메일함 <id>] ..."); see sweep_decisions
         self.bg_calls = {}  # tool call id -> tool name, for calls that may start a background task
-        self.own_run_calls = set()  # tool call ids of this session's run-create/run-use
+        self.own_run_calls = set()  # tool call ids of this session's run-create/run-use (and worker-start/dispatch without --from)
         self.own_votes = collections.Counter()
         # Handles a run-create/run-use without --from bound this session as coordinator: a resumed session (reboot,
         # closed pane) gets a new terminal, so it has every terminal it ever coordinated from, not only own_handle.
         self.self_bind_calls = set()
         self.self_handles = []
-        self.own_runs = collections.Counter()  # Run ids this session's run-create printed
+        self.own_runs = collections.Counter()  # Run ids this session's run-create (or self-bound worker-start) printed
         self.create_calls = set()  # tool call ids of this session's run-create
         self.term_calls = {}  # tool call id -> command, for `orca terminal create`
         self.made_terms = []  # Orca terminals this session opened (e.g. a driver script acting as coordinator)
@@ -191,6 +191,9 @@ class Session:
                 self.self_bind_calls.add(call_id)
             if RUN_CREATE.search(cmd):
                 self.create_calls.add(call_id)
+        elif call_id and isinstance(cmd, str) and SELF_START.search(cmd) and "--from" not in cmd:
+            self.own_run_calls.add(call_id)
+            self.create_calls.add(call_id)
         if call_id and isinstance(cmd, str) and TERM_CREATE.search(cmd):
             self.term_calls[call_id] = cmd
         if call_id and isinstance(cmd, str) and APLAN_CMD.search(cmd):
