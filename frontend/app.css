@@ -58,6 +58,13 @@ main { padding: 16px var(--gutter); max-width: 2200px; margin: 0 auto; padding-b
 .ag-tiles { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
 .ag-tiles > .family { flex: 2 1 520px; min-width: 0; margin-bottom: 0; }
 .ag-tiles > .card { flex: 1 1 250px; min-width: 0; }
+.ag-pin-tools { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.ag-pin-tools .act { min-height: var(--tap); }
+.ag-pin { display: inline-flex; align-items: center; gap: 4px; }
+.ag-pin svg { width: 13px; height: 13px; }
+.ag-pin.on { color: var(--accent); border-color: var(--accent); }
+.ag-pin.on svg { fill: color-mix(in srgb, var(--accent) 20%, transparent); }
+.ag-pin-move { min-width: var(--tap); padding-inline: 6px; }
 @media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
   .ag-tiles, .wt-wrap > .wt-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   :root .wt-tiles > .wt-tile { min-width: 0; }

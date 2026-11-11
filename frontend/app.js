@@ -1373,6 +1373,35 @@ function card(s, cls) {
 const BG_COLOR = 'color-mix(in srgb, var(--ok) 50%, var(--muted))';
 let famMin = {};
 try { famMin = JSON.parse(localStorage.getItem('adash.min') || '{}'); } catch {}
+// Device-local coordinator pins keep their own order, ahead of the changing state/time order.
+const AG_PINS_KEY = 'adash.agent.pins';
+const parseAgentPins = text => { try { const p = JSON.parse(text); return Array.isArray(p) ? [...new Set(p.filter(k => typeof k === 'string' && k))] : []; } catch { return []; } };
+let agentPins = [];
+try { agentPins = parseAgentPins(localStorage.getItem(AG_PINS_KEY)); } catch {}
+const familyPinKey = f => `${(f.coord || f.members[0])?.server || ''}|${f.key}`;
+const pinRank = key => { const i = agentPins.indexOf(key); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+const familyPinRank = f => f ? pinRank(familyPinKey(f)) : Number.MAX_SAFE_INTEGER;
+const visibleAgentPins = () => { const shown = new Set(families().fams.filter(liveFam).map(familyPinKey)); return agentPins.filter(k => shown.has(k)); };
+function familyPinTools(f) {
+  if (f.depth || !f.key) return '';
+  const key = familyPinKey(f), pinned = agentPins.includes(key), visible = visibleAgentPins(), at = visible.indexOf(key);
+  return `<span class="ag-pin-tools"><button class="act ag-pin${pinned ? ' on' : ''}" data-agent-pin="${esc(key)}" aria-pressed="${pinned}" title="${pinned ? '상단 고정 해제' : '코디네이터 묶음을 상단에 고정'}"><ds-icon name="pin"></ds-icon>${pinned ? `고정 ${at + 1}` : '고정'}</button>${pinned ? `<button class="act ag-pin-move" data-agent-move="${esc(key)}" data-dir="-1" aria-label="고정 순서 위로" title="고정 순서 위로"${at <= 0 ? ' disabled' : ''}>↑</button><button class="act ag-pin-move" data-agent-move="${esc(key)}" data-dir="1" aria-label="고정 순서 아래로" title="고정 순서 아래로"${at >= visible.length - 1 ? ' disabled' : ''}>↓</button>` : ''}</span>`;
+}
+function changeAgentPin(key, direction = 0) {
+  const i = agentPins.indexOf(key);
+  if (direction) {
+    const visible = visibleAgentPins(), target = visible[visible.indexOf(key) + direction], j = agentPins.indexOf(target);
+    if (i < 0 || j < 0) return;
+    [agentPins[i], agentPins[j]] = [agentPins[j], agentPins[i]];
+  } else if (i < 0) agentPins.push(key); else agentPins.splice(i, 1);
+  try { localStorage.setItem(AG_PINS_KEY, JSON.stringify(agentPins)); } catch {}
+  const sv = saveScroll(); renderAgents(); restoreScroll(sv);
+}
+addEventListener('storage', e => {
+  if (e.key !== AG_PINS_KEY) return;
+  agentPins = parseAgentPins(e.newValue);
+  if (state && route().v === 'agents' && !charMode && ['tree', 'wt'].includes(agView)) renderWhenIdle();
+});
 const DONUT = [['run', 'var(--ok)'], ['bg', BG_COLOR], ['stalled', 'var(--bad)'], ['wait', 'var(--warn)'], ['done', 'var(--done)'], ['idle', 'var(--idle)'], ['blocked', 'color-mix(in srgb, var(--warn) 45%, transparent)'], ['planned', 'color-mix(in srgb, var(--muted) 45%, transparent)'], ['starting', 'color-mix(in srgb, var(--accent) 45%, transparent)'], ['unborn', 'color-mix(in srgb, var(--muted) 18%, transparent)']];
 // 「실행 중만」: inside a running tree keep only live sessions and the coordinators above them; finished leaves,
 // pending placeholders and finished drivers drop out. Folding still works: a live tree starts open by default
@@ -1404,6 +1433,7 @@ function miniFam(f) {
   const own = status(s), sub = isSubCoord(s);
   return `<div class="card mini-fam ${sub ? '' : 'coord'} st-${f.st === 'run' ? 'run' : own}" data-path="${esc(s.path)}">
     <div class="c-top"><span class="c-title" title="${esc(nameOf(s))}">${esc(nameOf(s))}</span>${sub ? '<span class="badge subcoord">하위 코디네이터</span>' : '<span class="badge coord">코디네이터</span>'}</div>
+    ${familyPinTools(f)}
     <div class="c-top">${pill(own, s)}${actBtns(s)}</div>
     <div class="c-top">${modelChip(s.model)}<span class="badge">${s.kind}</span>${srvBadge(s)}</div>
     <div class="mini-body">${donut(counts, total || 1)}
@@ -1432,7 +1462,7 @@ function famHtml(f, wk) {
       <span>${f.subs.length ? '하위 포함 ' : ''}합계 비용 <b>${usd(f.cost)}${f.costKnown ? '' : '+'}</b></span><span>합계 턴 <b>${fmt(f.turns)}</b></span><span>합계 토큰 <b>${fmt(f.tok)}</b></span>
       ${run ? `<span>Run <a href="#r=${run.id}" style="color:var(--accent)">${esc(cut(run.objective, 60))}</a>${f.runs.length > 1 ? ` 외 ${f.runs.length - 1}` : ''}</span>` : ''}
       ${wk && direct.some(x => !here(x)) ? `<span title="이 코디네이터가 다른 워크트리에서 돌리는 직속 워커·하위 코디네이터">다른 워크트리 <b>${direct.filter(x => !here(x)).length}</b></span>` : ''}
-      ${f.coord ? `<button class="tgl" data-toggle="${esc(f.key)}" style="margin-left:auto">▾ 최소화</button>` : ''}</div>
+      ${familyPinTools(f)}${f.coord ? `<button class="tgl" data-toggle="${esc(f.key)}" style="margin-left:auto">▾ 최소화</button>` : ''}</div>
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
     ${ipListHtml(f)}
     ${f.coord ? plansOf(f.coord).map(p => `<div class="pline" style="padding:2px 2px 0">${drvPlanLine(driverPlan(p))}</div>${ticketStrip(driverPlan(p))}`).join('') : ''}
@@ -2311,7 +2341,7 @@ function agentsHtml(fv, sv, srv) {
   // One list ordered by state (attention first, idle last); within a state orchestrations lead solo sessions, then newest first.
   // Minimised coordinators sink below every expanded one.
   const items = [...fv.map(f => ({ started: f.started, f, r: famRank(f), o: 0, m: +shut(f) })), ...sv.map(s => ({ started: s.started || '', s, r: sessRank(s), o: 1, m: 0 }))]
-    .sort((a, b) => a.m - b.m || a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
+    .sort((a, b) => familyPinRank(a.f) - familyPinRank(b.f) || a.m - b.m || a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
   const nc = fv.reduce((a, f) => a + count(f, 'c'), 0), nw = fv.reduce((a, f) => a + count(f, 'w'), 0);
   const title = srv ? `${srvTitle(srv)}<span>에이전트 ${nc + nw + sv.length}</span>` : `<h2>에이전트 ${nc + nw + sv.length}</h2>`;
   if (!items.length) return srv ? `<div class="sec-h srv-h">${title}</div><div class="empty srv-empty">표시할 에이전트가 없습니다.</div>` : '';
@@ -4988,6 +5018,8 @@ function renderAgents() {
   agViewBind();
   { const el = $('#view .tests-sec'); if (el) el.ontoggle = () => testsOpen = el.open; }  // survives live re-renders
   $('#view').querySelectorAll('.card[data-path]').forEach(c => c.onclick = () => openSession(c.dataset.path));
+  $('#view').querySelectorAll('[data-agent-pin]').forEach(b => b.onclick = e => { e.stopPropagation(); changeAgentPin(b.dataset.agentPin); });
+  $('#view').querySelectorAll('[data-agent-move]').forEach(b => b.onclick = e => { e.stopPropagation(); changeAgentPin(b.dataset.agentMove, +b.dataset.dir); });
   $('#view').querySelectorAll('[data-fold]').forEach(b => b.onclick = e => { e.stopPropagation(); foldAll(b.dataset.fold === 'open'); });
   $('#view').querySelectorAll('[data-ttoggle]').forEach(b => b.onclick = e => {
     if (e.target.closest('a')) return;
@@ -5102,15 +5134,20 @@ function wtHtml(top, fams, up, srv) {
   // workers and drivers run in. Worktrees with only solo sessions follow. Inside a group (and among the solo ones) by state.
   const rootOf = f => { for (let n = 0; f.coord && up.get(f.coord.path) && n < 8; n++) f = up.get(f.coord.path); return f.key; };
   const byState = (a, b) => a.r - b.r || b.started.localeCompare(a.started);
+  const rootPins = new Map(fams.map(f => [f.key, familyPinRank(f)]));
   const list = [...secs.values()].map(x => {
-    const own = x.items.find(it => it.f && !up.get(it.f.coord.path)), ext = x.items.find(it => it.list);
-    return { ...wtSec(x, tkAt.get(x.key)), root: own ? rootOf(own.f) : ext ? rootOf(ext.pf) : null, head: !!own };
+    // A worktree can hold several coordinators: a pinned one leads the shared section too.
+    const own = x.items.filter(it => it.f && !up.get(it.f.coord?.path)).map(it => it.f);
+    const candidates = own.concat(x.items.filter(it => it.list).map(it => it.pf))
+      .sort((a, b) => (rootPins.get(rootOf(a)) ?? Number.MAX_SAFE_INTEGER) - (rootPins.get(rootOf(b)) ?? Number.MAX_SAFE_INTEGER));
+    const root = candidates.length ? rootOf(candidates[0]) : null;
+    return { ...wtSec(x, tkAt.get(x.key)), root, head: own.some(f => rootOf(f) === root) };
   }).filter(x => x.html);
   const groups = new Map();
   for (const x of list) if (x.root) (groups.get(x.root) || groups.set(x.root, []).get(x.root)).push(x);
   const lead = xs => xs.find(x => x.head) || xs.slice().sort(byState)[0];
-  const ordered = [...groups.values()].sort((a, b) => byState(lead(a), lead(b)))
-    .flatMap(xs => xs.sort((a, b) => b.head - a.head || byState(a, b)));
+  const ordered = [...groups.entries()].sort(([a, xs], [b, ys]) => (rootPins.get(a) ?? Number.MAX_SAFE_INTEGER) - (rootPins.get(b) ?? Number.MAX_SAFE_INTEGER) || byState(lead(xs), lead(ys)))
+    .flatMap(([, xs]) => xs.sort((a, b) => b.head - a.head || byState(a, b)));
   list.splice(0, list.length, ...ordered, ...list.filter(x => !x.root).sort(byState));
   const n = list.reduce((a, x) => a + x.n, 0);
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
@@ -5132,7 +5169,7 @@ function wtSec({ key, items }, drivers = []) {
   const arr = [...ss], min = famMin['wt:' + key], drvs = items.flatMap(it => it.list || [it]).filter(x => x.d);
   if (!arr.length && !drvs.length) return { n: 0 };
   const folded = it => +!!(it.f && shut(it.f));  // minimised coordinators after expanded ones
-  items.sort((a, b) => folded(a) - folded(b) || a.r - b.r || b.started.localeCompare(a.started));
+  items.sort((a, b) => familyPinRank(a.f) - familyPinRank(b.f) || folded(a) - folded(b) || a.r - b.r || b.started.localeCompare(a.started));
   // span: columns (1–3) the section takes in the worktree tile grid, from its widest row — a card row's length, an open
   // driver's own tile span, 3 for an expanded coordinator family.
   let span = 1;
