@@ -2361,3 +2361,12 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 .ip-cb { flex-wrap: nowrap; } .ip-cbt { flex: 1 1 auto; min-width: 0; color: var(--text); }
 .ip-cb.closing { opacity: .5; }
 @media (max-width: 700px) { .ip-cb { flex-wrap: wrap; } .ip-cur { max-width: 100%; } }
+
+/* 구현 ① 티켓 진행 — 에이전트 목록의 코디네이터 묶음 (ipListHtml) */
+.ip-list { padding: 4px 2px 0; }
+.ip-list > .pline { white-space: normal; overflow: visible; text-overflow: clip; }
+.ip-list .pline a { color: var(--accent); }
+.ip-c b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ip-c-cur { font-size: 10px; color: var(--muted); }
+.tkc.run .ip-c-cur { color: var(--run); } .tkc.fail .ip-c-cur { color: var(--bad); }
+.mini-fam .ip-list .xp-grp { padding: 3px 6px 4px; }
