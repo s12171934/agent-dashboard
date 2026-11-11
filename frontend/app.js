@@ -1206,8 +1206,11 @@ function actBtns(s, big) {
     : st !== 'idle' && st !== 'done' ? `<button class="${cls} idle-w" data-act="idle" data-path="${esc(s.path)}" title="유휴로 표시 (새 기록이 생기면 자동으로 풀림)">유휴로</button>`
     : `<button class="${cls} idle-w slot" tabindex="-1" aria-hidden="true">유휴로</button>`;  // placeholder keeps the layout fixed
   // On a card the Orca buttons go to the bottom row (orcaBtns), so the state pill keeps its 「· n시간 전」.
-  return `<span class="acts">${big ? orcaBtns(s, true) : ''}${idle}</span>`;
+  return `<span class="acts">${big ? orcaBtns(s, true) : ''}${pinBtn(s, cls)}${idle}</span>`;
 }
+// ☆/★: pin a session to the top of the agents list (kept by its server, so every device shows it pinned). The session
+// page's detail comes from /api/session, which carries pinned as the snapshot row does.
+const pinBtn = (s, cls) => `<button class="${cls} pin${s.pinned ? ' on' : ''}" data-act="${s.pinned ? 'unpin' : 'pin'}" data-path="${esc(s.path)}" aria-pressed="${!!s.pinned}" title="${s.pinned ? '고정 풀기' : '에이전트 목록 맨 위에 고정 (필터에 걸려도 보임)'}">${s.pinned ? '★' : '☆'}</button>`;
 // 「Orca 에서 열기」 only where the server found the connected Orca terminal the agent runs in.
 const focusBtn = (handle, big) => handle ? `<button class="${big ? 'act big' : 'act'} accent" data-act="focus" data-handle="${esc(handle)}" title="Orca 에서 이 터미널 탭으로 전환">Orca 에서 열기</button>` : '';
 // 「Orca 에서 열기」 + 「닫기」 for a session (prompts go through the chat: the session page's box, a card's sheet). The
@@ -1237,6 +1240,7 @@ document.addEventListener('click', e => {
   const s = all.find(x => x.path === p), name = s ? nameOf(s) : '';
   if (a === 'idle') pref('idle', [p], { msg: `"${cut(name, 30)}" 유휴로 표시`, action: 'unidle' });
   else if (a === 'unidle') pref('unidle', [p]);
+  else if (a === 'pin' || a === 'unpin') pref(a, [p]).then(() => { if (route().v === 'session') reDetail(); });
   else if (a === 'idle-stalled') { const ps = stalledPaths(); if (ps.length) pref('idle', ps, { msg: `응답 없음 ${ps.length}개 유휴로 표시`, action: 'unidle' }); }
   else if (a === 'close') closeOrca(s, name, b.dataset.handle);
   else if (a === 'focus') api.focus(b.dataset.handle).then(r => toast(r.status === 200 ? 'Orca 에서 열었습니다' : r.body?.error || `Orca 전환 실패 (${r.status})`))
@@ -1384,7 +1388,10 @@ const liveNow = s => agg(s).live || status(s) === 'bg' || Date.now() - Math.max(
 // A subagent runs in its parent's terminal.
 const inOrca = s => !!(s.orca_focus || (s.parent && IX.byId[s.parent]?.orca_focus));
 const filtering = () => onlyLive || onlyOrca;
-const liveSess = w => (!onlyLive || liveNow(w)) && (!onlyOrca || inOrca(w));
+const liveSess = w => w.pinned || (!onlyLive || liveNow(w)) && (!onlyOrca || inOrca(w));
+// Pinned first: a family holding a pinned session (any depth), and a pinned session among its siblings.
+const famPinned = f => f.members.some(m => m.pinned);
+const PIN_LEAD = 100, pinnedR = r => r < -PIN_LEAD / 2;  // an order rank lowered by PIN_LEAD (ranks run from -1)
 const liveFam = f => !filtering() || f.members.some(liveSess) || (onlyLive && !onlyOrca && f.live);
 // A script driver stays only while one of its sessions passes the filters (its own terminal does not count).
 const liveDrv = d => !filtering() || d.workers.some(liveSess);
@@ -1441,7 +1448,7 @@ function famHtml(f, wk) {
       // workers. Each group by state (attention → idle), folded sub-trees after expanded ones; an expanded sub-tree is a
       // full-width block, folded ones share a grid.
       const drv = new Set((f.drivers || []).map(d => d.handle));
-      const subs = byRank(f.subs.filter(liveFam), x => famRank(x) + (shut(x) ? 20 : 0)), own = byRank(f.workers.filter(w => !drv.has(w.viaHandle) && liveSess(w)), sessRank);
+      const subs = byRank(f.subs.filter(liveFam), x => famRank(x) + (shut(x) ? 20 : 0) - (famPinned(x) ? PIN_LEAD : 0)), own = byRank(f.workers.filter(w => !drv.has(w.viaHandle) && liveSess(w)), w => sessRank(w) - (w.pinned ? PIN_LEAD : 0));
       let out = '', cells = [];
       const flush = () => { if (cells.length) out += `<div class="grid">${cells.join('')}</div>`; cells = []; };
       const away = [];
@@ -2310,8 +2317,9 @@ function agentsHtml(fv, sv, srv) {
   const count = (f, k) => (k === 'c' ? (f.coord || !termOwner(f.handle).title ? 1 : 0) : f.workers.filter(liveSess).length) + f.subs.filter(liveFam).reduce((a, x) => a + count(x, k), 0);
   // One list ordered by state (attention first, idle last); within a state orchestrations lead solo sessions, then newest first.
   // Minimised coordinators sink below every expanded one.
-  const items = [...fv.map(f => ({ started: f.started, f, r: famRank(f), o: 0, m: +shut(f) })), ...sv.map(s => ({ started: s.started || '', s, r: sessRank(s), o: 1, m: 0 }))]
-    .sort((a, b) => a.m - b.m || a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
+  // Pinned ones lead the list, ahead of the minimised order too.
+  const items = [...fv.map(f => ({ started: f.started, f, r: famRank(f), o: 0, m: +shut(f), p: +!famPinned(f) })), ...sv.map(s => ({ started: s.started || '', s, r: sessRank(s), o: 1, m: 0, p: +!s.pinned }))]
+    .sort((a, b) => a.p - b.p || a.m - b.m || a.r - b.r || a.o - b.o || b.started.localeCompare(a.started));
   const nc = fv.reduce((a, f) => a + count(f, 'c'), 0), nw = fv.reduce((a, f) => a + count(f, 'w'), 0);
   const title = srv ? `${srvTitle(srv)}<span>에이전트 ${nc + nw + sv.length}</span>` : `<h2>에이전트 ${nc + nw + sv.length}</h2>`;
   if (!items.length) return srv ? `<div class="sec-h srv-h">${title}</div><div class="empty srv-empty">표시할 에이전트가 없습니다.</div>` : '';
@@ -5072,7 +5080,7 @@ function wtHtml(top, fams, up, srv) {
   };
   for (const f of all) {
     if (!f.coord || !inSrv(f.coord) || !liveFam(f)) continue;
-    const k = wtKey(f.coord), pf = up.get(f.coord.path), it = { f, r: famRank(f), started: f.started };
+    const k = wtKey(f.coord), pf = up.get(f.coord.path), it = { f, r: famRank(f) - (famPinned(f) ? PIN_LEAD : 0), started: f.started };
     if (!pf) sec(k).items.push(it);
     else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);  // a sub-tree whose parent runs elsewhere
   }
@@ -5094,7 +5102,7 @@ function wtHtml(top, fams, up, srv) {
   for (const s of top) {
     if (!inSrv(s) || up.head.has(s.path) || !liveSess(s)) continue;
     if (s.viaHandle && drvAt.get(s.viaHandle) === wtKey(s)) continue;  // drawn in its driver's block
-    const pf = up.get(s.path), k = wtKey(s), it = { s, r: sessRank(s), started: s.started || '' };
+    const pf = up.get(s.path), k = wtKey(s), it = { s, r: sessRank(s) - (s.pinned ? PIN_LEAD : 0), started: s.started || '' };
     if (!pf) sec(k).items.push(it);
     else if (!pf.coord || wtKey(pf.coord) !== k) addExt(k, pf, it);
   }
@@ -5109,9 +5117,10 @@ function wtHtml(top, fams, up, srv) {
   const groups = new Map();
   for (const x of list) if (x.root) (groups.get(x.root) || groups.set(x.root, []).get(x.root)).push(x);
   const lead = xs => xs.find(x => x.head) || xs.slice().sort(byState)[0];
-  const ordered = [...groups.values()].sort((a, b) => byState(lead(a), lead(b)))
-    .flatMap(xs => xs.sort((a, b) => b.head - a.head || byState(a, b)));
-  list.splice(0, list.length, ...ordered, ...list.filter(x => !x.root).sort(byState));
+  const ordered = [...groups.values()].sort((a, b) => byState(lead(a), lead(b))).map(xs => xs.sort((a, b) => b.head - a.head || byState(a, b)));
+  // A group or solo worktree holding a pinned item (its r lowered by PIN_LEAD) leads the whole list, in the same order.
+  const blocks = [...ordered, ...list.filter(x => !x.root).sort(byState).map(x => [x])], pinG = xs => +!xs.some(x => pinnedR(x.r));
+  list.splice(0, list.length, ...blocks.filter(xs => !pinG(xs)).flat(), ...blocks.filter(pinG).flat());
   const n = list.reduce((a, x) => a + x.n, 0);
   const fold = `<span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span>`;
   const head = srv ? `<div class="sec-h srv-h">${srvTitle(srv)}<span>에이전트 ${n} · 워크트리 ${list.length}</span>${fold}</div>` : `<div class="sec-h"><h2>에이전트 ${n}</h2><span>워크트리 ${list.length}</span>${fold}</div>`;
@@ -5131,7 +5140,7 @@ function wtSec({ key, items }, drivers = []) {
   }
   const arr = [...ss], min = famMin['wt:' + key], drvs = items.flatMap(it => it.list || [it]).filter(x => x.d);
   if (!arr.length && !drvs.length) return { n: 0 };
-  const folded = it => +!!(it.f && shut(it.f));  // minimised coordinators after expanded ones
+  const folded = it => +!!(it.f && shut(it.f)) - (pinnedR(it.r) ? 2 : 0);  // pinned first, minimised coordinators after expanded ones
   items.sort((a, b) => folded(a) - folded(b) || a.r - b.r || b.started.localeCompare(a.started));
   // span: columns (1–3) the section takes in the worktree tile grid, from its widest row — a card row's length, an open
   // driver's own tile span, 3 for an expanded coordinator family.

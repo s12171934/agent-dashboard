@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
 from adash.core.prefs import prefs, save_prefs
@@ -67,11 +68,12 @@ def get_plans(h, url):
 
 def post_pref(h, url):
     """{"action": idle|unidle, "paths"}: mark sessions idle by hand, or undo it.
-    {"action": "char", "paths", "who", "boss", "pick"}: keep the person drawn for sessions (who null forgets it)."""
+    {"action": "char", "paths", "who", "boss", "pick"}: keep the person drawn for sessions (who null forgets it).
+    {"action": pin|unpin, "paths"}: pin sessions to the top of the agents list, or let them go."""
     try:
         body = json.loads(h.rfile.read(min(int(h.headers.get("Content-Length") or 0), 65536)))
         action, paths = body["action"], body["paths"]
-        assert action in ("idle", "unidle", "char") and isinstance(paths, list)
+        assert action in ("idle", "unidle", "char", "pin", "unpin") and isinstance(paths, list)
         who = body.get("who")
         assert action != "char" or who is None or isinstance(who, str) and re.fullmatch(r"[a-z0-9-]{1,40}", who)
     except (ValueError, KeyError, AssertionError, TypeError):
@@ -81,13 +83,18 @@ def post_pref(h, url):
             s = sessions.get(path)
             # A pending agent (no transcript yet) keeps its person too: the session that claims its terminal takes it
             # over (snapshot.carry_pending_chars), so the person does not change when the first prompt is sent.
-            if not s and not (action == "char" and path.startswith(PREFIX) and path in terminals_pending.pending):
+            # unpin: also for a session no longer loaded, so its entry does not stay behind for good.
+            if not s and action != "unpin" and not (action == "char" and path.startswith(PREFIX) and path in terminals_pending.pending):
                 continue
             if action == "char":
                 if who:
                     prefs["chars"][path] = {"who": who, "boss": bool(body.get("boss")), "pick": bool(body.get("pick"))}
                 else:
                     prefs["chars"].pop(path, None)
+            elif action == "pin":
+                prefs["pinned"][path] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            elif action == "unpin":
+                prefs["pinned"].pop(path, None)
             elif action == "idle":
                 prefs["idle"][path] = s.last_ts or ""
             else:

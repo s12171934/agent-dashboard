@@ -169,6 +169,8 @@ a.tkc:hover { border-color: var(--accent); }
 .xp-wt { font-size: 12px; } .xp-wt > b { flex: none; }
 .xp .badge { flex: none; }
 .acts .act.idle-w { min-width: 5.4em; text-align: center; }  /* 유휴로 / 자동 상태 share one width */
+.acts .act.pin { padding-inline: 6px; line-height: 1; }  /* ☆ / ★ pin to the top */
+.acts .act.pin.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 /* placement */
 .tlab { fill: var(--muted); font-size: 10.5px; font-weight: 600; }
 .tdep { fill: none; stroke-width: 1.6; stroke-dasharray: 5 3; stroke-linejoin: round; }

@@ -6,8 +6,10 @@ from adash.features.terminals.pending import PREFIX
 
 
 def apply_prefs(sm):
-    """A manual idle mark holds until the session writes something newer. char: the session's person, or None."""
+    """A manual idle mark holds until the session writes something newer. char: the session's person, or None.
+    pinned: pinned to the top of the agents list."""
     sm["char"] = prefs["chars"].get(sm["path"])
+    sm["pinned"] = sm["path"] in prefs["pinned"]
     mark = prefs["idle"].get(sm["path"])
     sm["manual_idle"] = mark is not None and (sm["last_ts"] or "") <= mark
     if sm["manual_idle"] and sm["state"] != "done":
