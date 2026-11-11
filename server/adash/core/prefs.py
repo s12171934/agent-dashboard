@@ -8,7 +8,7 @@ from adash.core.config import DATA
 
 # User choices made in the UI, shared by every device: {"idle": {path: last_ts when marked}, "chars": {path: {"who",
 # "boss", "pick"}}} (the person drawn for a session: picked by hand, or the first one the page drew, kept so every view
-# and device draws the same).
+# and device draws the same), "pinned": {path: when pinned} (sessions pinned to the top of the agents list).
 PREFS_PATH = os.path.join(DATA, "prefs.json")
 try:
     with open(PREFS_PATH) as _f:
@@ -17,6 +17,7 @@ except (OSError, ValueError):
     prefs = {}
 prefs.setdefault("idle", {})
 prefs.setdefault("chars", {})
+prefs.setdefault("pinned", {})
 
 
 def save_prefs():
