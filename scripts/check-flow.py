@@ -113,6 +113,8 @@ r = rules.flow_check(S2, {}, {"a": left, "b": plan("done", "done"), "c": plan("d
 check("계획 미이행: Orca 밖 유휴 세션이 6시간 넘게 기록 없음 → warn", items(r, "plan", session="a"), r["items"])
 check("계획 미이행: Orca 터미널이 열린 채 기다리는 코디네이터는 안 걸림", not items(r, "plan", session="e"), r["items"])
 check("계획 미이행: Orca 터미널이 닫힌 유휴 세션 → warn", items(r, "plan", session="f"), r["items"])
+ru = rules.flow_check(S2[5:6], {}, {"f": left}, [], now=NOW, terms_known=False)
+check("계획 미이행: Orca 터미널 목록을 아직 못 읽었으면 닫힘으로 보지 않음", not items(ru, "plan", session="f"), ru["items"])
 check("계획 미이행: Orca 밖 유휴 세션이 6시간 안쪽이면 안 걸림", not items(r, "plan", session="g"), r["items"])
 check("계획 미이행: 답을 기다리는 질문이 있으면 안 걸림", not items(r, "plan", session="h"), r["items"])
 check("계획 미이행: 수동으로 유휴 처리한 세션 → warn", items(r, "plan", session="i"), r["items"])

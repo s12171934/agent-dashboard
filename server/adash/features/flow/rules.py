@@ -115,43 +115,44 @@ def flow_stall(summaries, tasks, sess_of, now):
     return out
 
 
-def plan_ended(sm, now):
+def plan_ended(sm, now, terms_known=True):
     """Whether the session is over, for 계획 미이행. 완료 (dispatch settled) and a manual 유휴 are. A plain 유휴 is only a
     turn that ended over WAIT_SECONDS ago: a coordinator waiting for the user's answer or a worker's message sits there
     with its plan open, so it counts as ended only once its Orca terminal is gone, or — for a session with no Orca
-    terminal to tell by — after FLOW_PLAN_QUIET_S with no record."""
+    terminal to tell by — after FLOW_PLAN_QUIET_S with no record. Until Orca's terminal list is read (terms_known:
+    right after start, or while the orca CLI fails) a missing terminal says nothing, so the quiet rule applies."""
     if sm.get("state") == "done" or (sm.get("state") == "idle" and sm.get("manual_idle")):
         return True
     if sm.get("state") != "idle" or sm.get("decision") or sm.get("orca_focus"):
         return False
-    if sm.get("own_handle"):
+    if sm.get("own_handle") and terms_known:
         return True  # it ran in an Orca terminal, and that terminal is closed
     last = ts_of(sm.get("last_ts"))
     return last is not None and now - last >= FLOW_PLAN_QUIET_S
 
 
-def ended_why(sm, now):
+def ended_why(sm, now, terms_known=True):
     if sm["state"] == "done":
         return "완료"
     if sm.get("manual_idle"):
         return "수동으로 유휴 처리"
-    if sm.get("own_handle"):
+    if sm.get("own_handle") and terms_known:
         return "유휴 · Orca 터미널 닫힘"
     return f"유휴 · {mins(now - (ts_of(sm.get('last_ts')) or now))}째 기록 없음"
 
 
-def flow_plan(summaries, plans, now):
+def flow_plan(summaries, plans, now, terms_known=True):
     """계획 미이행: the session ended (plan_ended) while steps of its latest aplan plan are still open."""
     out = []
     for sm in summaries:
         p = plans.get(sm["path"])
-        if sm.get("parent") or not p or not plan_ended(sm, now):
+        if sm.get("parent") or not p or not plan_ended(sm, now, terms_known):
             continue
         left = [(i, x) for i, x in enumerate(p["steps"]) if x.get("st") in ("run", "todo")]
         if not left:
             continue
         ev = ["남은 단계: " + " · ".join(f"{i + 1}. {short(x.get('t') or '', 40)}" for i, x in left[:4]) + (f" 외 {len(left) - 4}" if len(left) > 4 else ""),
-              f"계획 {sum(x.get('st') in ('done', 'skip') for x in p['steps'])}/{len(p['steps'])} 완료 · 세션 {ended_why(sm, now)} (마지막 기록 {clock(ts_of(sm.get('last_ts')))})"]
+              f"계획 {sum(x.get('st') in ('done', 'skip') for x in p['steps'])}/{len(p['steps'])} 완료 · 세션 {ended_why(sm, now, terms_known)} (마지막 기록 {clock(ts_of(sm.get('last_ts')))})"]
         out.append(deviation("plan", "warn", "session", f"{sm['path']}|{p.get('ts')}", f"세션이 끝났는데 계획 {len(left)}단계가 남음", ev,
                              session=sm["path"], task_id=sm.get("task_id")))
     return out
@@ -239,9 +240,9 @@ def flow_tickets(review_sets, contract, coord_of):
     return out
 
 
-def flow_check(summaries, tasks, plans, review_sets, now=None):
+def flow_check(summaries, tasks, plans, review_sets, now=None, terms_known=True):
     """Every rule over one snapshot. tasks: run id -> Orca tasks; plans: session path -> its latest aplan plan;
-    review_sets: review_state["sets"]. Dismissed deviations (prefs flow_ok) are left out and counted."""
+    review_sets: review_state["sets"]; terms_known: Orca's terminal list has been read. Dismissed deviations (prefs flow_ok) are left out and counted."""
     now = now or time.time()
     sess_of = {}
     for sm in summaries:
@@ -255,7 +256,7 @@ def flow_check(summaries, tasks, plans, review_sets, now=None):
                 handle_of.setdefault(h, sm["path"])
     coord_of = lambda hs: next((handle_of[h] for h in hs if h in handle_of), None)
     items = (flow_tickets(review_sets, qa_contract(), coord_of) + flow_checkboxes(tasks, sess_of)
-             + flow_stall(summaries, tasks, sess_of, now) + flow_plan(summaries, plans, now))
+             + flow_stall(summaries, tasks, sess_of, now) + flow_plan(summaries, plans, now, terms_known))
     ok = prefs.get("flow_ok") or {}
     shown = [x for x in items if x["id"] not in ok]
     return {"contracts": flow_contracts(), "items": shown, "ok": len(items) - len(shown), "rules": FLOW_RULES}

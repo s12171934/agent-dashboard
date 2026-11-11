@@ -220,7 +220,8 @@ def build_state(encode):
         terminals_targets.close_trees = trees
         try:
             flow = flow_check(summaries, orca_state.get("tasks") or {},
-                              {s.path: s.plans[-1] for s in by_id.values() if s.plans}, review_state["sets"])
+                              {s.path: s.plans[-1] for s in by_id.values() if s.plans}, review_state["sets"],
+                              terms_known=bool(orca_state.get("updated")) and not orca_state.get("error"))
         except Exception as e:  # a rule bug must not take the whole snapshot down
             report_failure("flow_check", e)
             flow = {"contracts": None, "items": [], "ok": 0, "rules": FLOW_RULES, "error": short(repr(e), 200)}
