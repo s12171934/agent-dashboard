@@ -56,6 +56,8 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UIStatusBarStyle: UIStatusBarStyleLightContent
+        # 녹화 영상 keeps playing (its sound) with the app put away or the phone locked
+        UIBackgroundModes: [audio]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:

@@ -62,7 +62,7 @@ final class DashboardWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWin
         switch PageBridge.parse(body) {
         case .icon(let url): onIcon?(url)
         case .server(let url): onServer?(url)
-        case .dock, .chrome, nil: break
+        case .dock, .chrome, .pip, nil: break
         }
     }
 

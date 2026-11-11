@@ -6,7 +6,9 @@ import WebKit
 // - Notification off: the app posts its own notifications (DecisionNotifier), which also work with the page closed.
 // - adash messages: {icon: url} from icon-boot.js (the 앱 아이콘 choice), {servers: json} from here (the page's server
 //   list, so the app watches the server the page uses), {dock: [items]} and {chrome: {theme, bg}} (the page's light /
-//   dark and background colour, which the bars around it follow) from the iPhone app's DockBridge.
+//   dark and background colour, which the bars around it follow) from the iPhone app's DockBridge, and {pip: {src, t,
+//   playing, rate, rect}} from the 녹화 영상 player (app.js mdPip), which the iPhone app's PipController mirrors so the
+//   video goes on in Picture in Picture when the app is put away.
 enum PageBridge {
     static func install(on c: WKUserContentController, platform: String, handler: WKScriptMessageHandler) {
         c.add(handler, name: "adash")
@@ -20,13 +22,14 @@ enum PageBridge {
             """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     }
 
-    enum Message { case icon(URL), server(URL), dock([[String: Any]]), chrome(dark: Bool, bg: String) }
+    enum Message { case icon(URL), server(URL), dock([[String: Any]]), chrome(dark: Bool, bg: String), pip([String: Any]) }
 
     static func parse(_ body: Any) -> Message? {
         guard let m = body as? [String: Any] else { return nil }
         if let s = m["icon"] as? String, let url = URL(string: s) { return .icon(url) }
         if let s = m["servers"] as? String { return firstServer(s).map(Message.server) }
         if let d = m["dock"] as? [[String: Any]] { return .dock(d) }
+        if let p = m["pip"] as? [String: Any] { return .pip(p) }
         if let c = m["chrome"] as? [String: Any] { return .chrome(dark: c["theme"] as? String == "dark", bg: c["bg"] as? String ?? "") }
         return nil
     }

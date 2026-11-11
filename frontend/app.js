@@ -7232,6 +7232,31 @@ let mdHandAt = 0;
 for (const ev of ['wheel', 'touchmove']) addEventListener(ev, () => { if (route().v === 'media') mdHandAt = Date.now(); }, { passive: true });
 // full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
 let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () => {};
+// iPhone app: Picture in Picture as the app is put away. The app's own muted player follows the video shown here
+// (mdPip, {pip} messages) and AVKit starts PiP from it; it calls adashPip('start') to pause this one while PiP plays,
+// and adashPip('stop', t, playing) when the app is back (or PiP closed) to go on from PiP's position.
+let mdPipVideo = null;
+window.adashPip = (what, t, playing) => {
+  const v = mdPipVideo;
+  if (!v?.isConnected) return;
+  if (what === 'start') return v.pause();
+  if (Number.isFinite(t)) v.currentTime = t;
+  if (playing) v.play().catch(() => {});
+};
+function mdPip(video) {
+  const post = window.webkit?.messageHandlers?.adash;
+  if (window.adashApp !== 'ios' || !post) return;
+  mdPipVideo = video;
+  let sent = 0;
+  // removed from the page (another recording, the list rebuilt) the video pauses: src '' then lets the app's go
+  const tell = () => {
+    sent = Date.now();
+    const r = video.getBoundingClientRect(), on = video.isConnected;
+    try { post.postMessage({ pip: { src: on ? video.currentSrc : '', t: video.currentTime, playing: on && !video.paused && !video.ended, rate: video.playbackRate, rect: [r.x, r.y, r.width, r.height] } }); } catch {}
+  };
+  for (const ev of ['loadedmetadata', 'play', 'pause', 'seeked', 'ratechange', 'ended']) video.addEventListener(ev, tell);
+  video.addEventListener('timeupdate', () => { if (Date.now() - sent > 1000) tell(); });
+}
 // half folded (<html data-posture>, ds fold.js — on iPhone Duo the app passes the hinge, WebKit has no viewport segments)
 addEventListener('ds-posture', () => { if (route().v === 'media') mdPosture(); });
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => mdFsChange());
@@ -7362,6 +7387,7 @@ function mdPlay(v, startAt) {
       <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3><button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
     <div class="md-side"></div></div>`;
   const video = box.querySelector('video'), side = box.querySelector('.md-side');
+  mdPip(video);
   let rows = [];
   // The side list: the timeline, or the captions (the narration, one line a cue) when there are any — a tab each when
   // both are there. The search's words are marked in it, and its lines that hold one are tinted.
