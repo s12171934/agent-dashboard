@@ -16,6 +16,7 @@ FLOW_SIBLINGS = 2       # ... judged only with at least this many finished sibli
 FLOW_REPEAT = 3         # 구현 → 리뷰 rounds on one checkbox that count as 반복
 FLOW_SLACK_S = 60       # clock slack between two records of one ordering
 FLOW_OK_KEEP_S = 30 * 86400
+FLOW_PLAN_QUIET_S = 6 * 3600  # a 유휴 session outside Orca counts as ended for 계획 미이행 after this long with no record
 FLOW_TASK_NAME = re.compile(r"^([A-Z]+\d+)(?:#(\d+))?\s*(.*)$")
 FLOW_SETTLED = ("completed", "failed", "cancelled")
 FLOW_RULES = {"order": "순서 위반", "missing": "필수 단계 누락", "stall": "정체", "repeat": "반복", "plan": "계획 미이행"}
@@ -62,8 +63,8 @@ def deviation(rule, severity, unit, key, reason, evidence, **ref):
 
 def flow_stall(summaries, tasks, sess_of, now):
     """정체: a session whose turn is open with no record (state stalled, 응답 없음), or a worker task running longer than
-    FLOW_STALL_X × the median of finished sibling tasks in its run (same role when there are enough, then same model —
-    the page's estIndex). A worker waiting for input is the user's time and is not judged."""
+    FLOW_STALL_X × the median of finished sibling tasks of its role in its run (same model when there are enough). With
+    fewer than FLOW_SIBLINGS such siblings it is not judged. A worker waiting for input is the user's time and is not judged."""
     durs = {}
     for rid, ts in tasks.items():
         for t in ts:
@@ -81,8 +82,9 @@ def flow_stall(summaries, tasks, sess_of, now):
             if not w or t.get("status") in FLOW_SETTLED or w.get("task_id") != t.get("id") or w.get("state") not in ("run", "bg", "stalled"):
                 continue
             ds, role = durs.get(rid, []), task_role(t)
+            # Same role only: a run mixes minute-long steps with the coordinators that supervise them for hours,
+            # so the whole run's median says nothing about one role (it put live 구현 ② coordinators at 372x).
             pool = [d for d in ds if d[2] == role]
-            pool, by_role = (pool, True) if len(pool) >= FLOW_SIBLINGS else (ds, False)
             same = [d for d in pool if w.get("model") and d[1] == w.get("model")]
             if len(same) >= FLOW_SIBLINGS:
                 pool = same
@@ -92,7 +94,7 @@ def flow_stall(summaries, tasks, sess_of, now):
             med = v[len(v) // 2] if len(v) % 2 else (v[len(v) // 2 - 1] + v[len(v) // 2]) / 2
             el = now - max(ts_of(w.get("started")) or now, ts_of(t.get("created_at")) or 0)
             if el > FLOW_STALL_X * med:
-                over[w["path"]] = (t, el, med, len(pool), role if by_role else None)
+                over[w["path"]] = (t, el, med, len(pool), role)
     out = []
     for sm in summaries:
         if sm.get("parent"):
@@ -106,25 +108,50 @@ def flow_stall(summaries, tasks, sess_of, now):
               f"마지막 동작: {la.get('text')}" if la.get("text") else None,
               f"계획 단계: {plan['cur'] + 1}/{plan['total']} {plan.get('cur_text') or ''}".strip() if plan.get("cur") is not None else None]
         if o:
-            ev.insert(0, f"경과 {mins(o[1])} · 같은 Run{' · 같은 역할(' + o[4] + ')' if o[4] else ''}의 끝난 형제 {o[3]}개 중앙값 {mins(o[2])}의 {o[1] / o[2]:.1f}배")
+            ev.insert(0, f"경과 {mins(o[1])} · 같은 Run · 같은 역할({o[4]})의 끝난 형제 {o[3]}개 중앙값 {mins(o[2])}의 {o[1] / o[2]:.1f}배")
         reason = ("응답 없음 — " + (sm.get("state_reason") or "턴이 열린 채 기록 없음")) if stalled else f"기대 시간의 {o[1] / o[2]:.1f}배 경과"
         out.append(deviation("stall", "bad" if stalled else "warn", "session", (t["id"] if t else sm["path"]), reason, ev,
                              session=sm["path"], task_id=t["id"] if t else sm.get("task_id"), task_ids=[t["id"]] if t else []))
     return out
 
 
-def flow_plan(summaries, plans):
-    """계획 미이행: the session ended (완료 or 유휴, the page's ENDED) while steps of its latest aplan plan are still open."""
+def plan_ended(sm, now):
+    """Whether the session is over, for 계획 미이행. 완료 (dispatch settled) and a manual 유휴 are. A plain 유휴 is only a
+    turn that ended over WAIT_SECONDS ago: a coordinator waiting for the user's answer or a worker's message sits there
+    with its plan open, so it counts as ended only once its Orca terminal is gone, or — for a session with no Orca
+    terminal to tell by — after FLOW_PLAN_QUIET_S with no record."""
+    if sm.get("state") == "done" or (sm.get("state") == "idle" and sm.get("manual_idle")):
+        return True
+    if sm.get("state") != "idle" or sm.get("decision") or sm.get("orca_focus"):
+        return False
+    if sm.get("own_handle"):
+        return True  # it ran in an Orca terminal, and that terminal is closed
+    last = ts_of(sm.get("last_ts"))
+    return last is not None and now - last >= FLOW_PLAN_QUIET_S
+
+
+def ended_why(sm, now):
+    if sm["state"] == "done":
+        return "완료"
+    if sm.get("manual_idle"):
+        return "수동으로 유휴 처리"
+    if sm.get("own_handle"):
+        return "유휴 · Orca 터미널 닫힘"
+    return f"유휴 · {mins(now - (ts_of(sm.get('last_ts')) or now))}째 기록 없음"
+
+
+def flow_plan(summaries, plans, now):
+    """계획 미이행: the session ended (plan_ended) while steps of its latest aplan plan are still open."""
     out = []
     for sm in summaries:
         p = plans.get(sm["path"])
-        if sm.get("parent") or not p or sm.get("state") not in ("idle", "done"):
+        if sm.get("parent") or not p or not plan_ended(sm, now):
             continue
         left = [(i, x) for i, x in enumerate(p["steps"]) if x.get("st") in ("run", "todo")]
         if not left:
             continue
         ev = ["남은 단계: " + " · ".join(f"{i + 1}. {short(x.get('t') or '', 40)}" for i, x in left[:4]) + (f" 외 {len(left) - 4}" if len(left) > 4 else ""),
-              f"계획 {sum(x.get('st') in ('done', 'skip') for x in p['steps'])}/{len(p['steps'])} 완료 · 세션 {'완료' if sm['state'] == 'done' else '유휴'} (마지막 기록 {clock(ts_of(sm.get('last_ts')))})"]
+              f"계획 {sum(x.get('st') in ('done', 'skip') for x in p['steps'])}/{len(p['steps'])} 완료 · 세션 {ended_why(sm, now)} (마지막 기록 {clock(ts_of(sm.get('last_ts')))})"]
         out.append(deviation("plan", "warn", "session", f"{sm['path']}|{p.get('ts')}", f"세션이 끝났는데 계획 {len(left)}단계가 남음", ev,
                              session=sm["path"], task_id=sm.get("task_id")))
     return out
@@ -228,7 +255,7 @@ def flow_check(summaries, tasks, plans, review_sets, now=None):
                 handle_of.setdefault(h, sm["path"])
     coord_of = lambda hs: next((handle_of[h] for h in hs if h in handle_of), None)
     items = (flow_tickets(review_sets, qa_contract(), coord_of) + flow_checkboxes(tasks, sess_of)
-             + flow_stall(summaries, tasks, sess_of, now) + flow_plan(summaries, plans))
+             + flow_stall(summaries, tasks, sess_of, now) + flow_plan(summaries, plans, now))
     ok = prefs.get("flow_ok") or {}
     shown = [x for x in items if x["id"] not in ok]
     return {"contracts": flow_contracts(), "items": shown, "ok": len(items) - len(shown), "rules": FLOW_RULES}

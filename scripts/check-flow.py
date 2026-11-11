@@ -92,14 +92,30 @@ check("정체: 형제 중앙값 2배를 넘긴 워커는 warn", items(r, "stall"
 check("정체: 중앙값 2배 안쪽 워커는 안 걸림", not items(r, "stall", session="w2"), r["items"])
 check("정체: 입력 대기 워커는 판정하지 않음", not items(r, "stall", session="w3"), r["items"])
 check("정체: 응답 없음(stalled) 세션은 bad", items(r, "stall", session="z", severity="bad"), r["items"])
+# a coordinator task among minute-long steps of another role: no same-role siblings, so not judged
+TC = T[:3] + [task("tc", "구현 ② 티켓·워크트리 브리프 실행", status="dispatched", created=NOW - 120 * M)]
+rc = rules.flow_check(S[:3] + [sess("co", "run", task_id="tc", started=NOW - 120 * M)], {"run_a": TC}, {}, [], now=NOW)
+check("정체: 같은 역할의 끝난 형제가 없으면 다른 역할과 비교하지 않음", not items(rc, "stall", session="co"), rc["items"])
 r1 = rules.flow_check(S[:1] + S[3:4], {"run_a": T[:1] + T[3:4]}, {}, [], now=NOW)
 check("정체: 끝난 형제가 1개뿐이면 판정하지 않음", not items(r1, "stall"), r1["items"])
 
 # ---------- 계획 미이행 ----------
 plan = lambda *st: {"ts": iso(NOW - 50 * M), "steps": [{"t": f"단계 {i + 1}", "st": x, "ts0": None, "ts1": None} for i, x in enumerate(st)]}
-S2 = [sess("a", "idle"), sess("b", "idle"), sess("c", "run"), sess("d", "done")]
-r = rules.flow_check(S2, {}, {"a": plan("done", "run", "todo"), "b": plan("done", "done"), "c": plan("done", "run"), "d": plan("done", "skip", "todo")}, [], now=NOW)
-check("계획 미이행: 유휴 세션에 남은 단계 → warn", items(r, "plan", session="a"), r["items"])
+S2 = [sess("a", "idle", last=NOW - 7 * 60 * M), sess("b", "idle"), sess("c", "run"), sess("d", "done"),
+      sess("e", "idle", own_handle="term_e", orca_focus="term_e", last=NOW - 90 * M),  # coordinator waiting in its open Orca terminal
+      sess("f", "idle", own_handle="term_f", last=NOW - 40 * M),                       # its Orca terminal is closed
+      sess("g", "idle", last=NOW - 40 * M),                                            # no Orca terminal, quiet only 40 min
+      sess("h", "idle", last=NOW - 7 * 60 * M, decision={"id": "q"}),                  # waiting on a pending question
+      sess("i", "idle", manual_idle=True, own_handle="term_i", orca_focus="term_i")]   # the user marked it 유휴
+left = plan("done", "run", "todo")
+r = rules.flow_check(S2, {}, {"a": left, "b": plan("done", "done"), "c": plan("done", "run"), "d": plan("done", "skip", "todo"),
+                              "e": left, "f": left, "g": left, "h": left, "i": left}, [], now=NOW)
+check("계획 미이행: Orca 밖 유휴 세션이 6시간 넘게 기록 없음 → warn", items(r, "plan", session="a"), r["items"])
+check("계획 미이행: Orca 터미널이 열린 채 기다리는 코디네이터는 안 걸림", not items(r, "plan", session="e"), r["items"])
+check("계획 미이행: Orca 터미널이 닫힌 유휴 세션 → warn", items(r, "plan", session="f"), r["items"])
+check("계획 미이행: Orca 밖 유휴 세션이 6시간 안쪽이면 안 걸림", not items(r, "plan", session="g"), r["items"])
+check("계획 미이행: 답을 기다리는 질문이 있으면 안 걸림", not items(r, "plan", session="h"), r["items"])
+check("계획 미이행: 수동으로 유휴 처리한 세션 → warn", items(r, "plan", session="i"), r["items"])
 check("계획 미이행: 모두 완료면 안 걸림", not items(r, "plan", session="b"), r["items"])
 check("계획 미이행: 실행 중 세션은 안 걸림", not items(r, "plan", session="c"), r["items"])
 check("계획 미이행: 완료(done) 워커에 남은 단계 → warn", items(r, "plan", session="d"), r["items"])
