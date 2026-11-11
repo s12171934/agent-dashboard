@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UserNotifications
 import UIKit
@@ -50,5 +51,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         dash.onServer = { [weak self] in self?.watcher.use($0) }
         watcher.start()
+        // 녹화 영상 plays on with the app put away or the phone locked (UIBackgroundModes audio): the page's video
+        // sound is playback, not ambient, so the silent switch and leaving the app do not stop it.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         return true
     }}

@@ -39,6 +39,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
 
     private var web: WKWebView!
     private let relay = Relay()
+    private let pip = PipController()  // 녹화 영상 into Picture in Picture as the app is put away
     private var items: [DockBridge.Item] = []
     private var following = false  // selecting the tab the page went to: not a press
     private weak var sheet: MoreController?
@@ -82,6 +83,8 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
                 self?.halfFolded = update.hinge?.status == .partiallyOpen
             })
         }
+        pip.install(in: view)
+        pip.page = { [weak self] in self?.web.evaluateJavaScript($0) }
         web.load(URLRequest(url: Self.pageURL))
     }
 
@@ -362,6 +365,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         case .server(let url): onServer?(url)
         case .dock(let raw): sync(DockBridge.items(raw))
         case .chrome(let dark, let bg): follow(dark: dark, bg: DockBridge.color(bg))
+        case .pip(let m): pip.update(m, in: web)
         case nil: break
         }
     }
