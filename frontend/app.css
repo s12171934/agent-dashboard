@@ -58,6 +58,9 @@ main { padding: 16px var(--gutter); max-width: 2200px; margin: 0 auto; padding-b
 .ag-tiles { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
 .ag-tiles > .family { flex: 2 1 520px; min-width: 0; margin-bottom: 0; }
 .ag-tiles > .card { flex: 1 1 250px; min-width: 0; }
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  .ag-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 /* Cards under a coordinator or a driver share each line equally: two take half each, a lone one the full width. */
 .tree > .grid:not(.wt-away-grid), .drv > .grid { display: flex; flex-wrap: wrap; }
 .tree > .grid:not(.wt-away-grid) > *, .drv > .grid > * { flex: 1 1 0; min-width: min(250px, 100%); }
