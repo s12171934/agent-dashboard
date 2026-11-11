@@ -7236,7 +7236,7 @@ async function renderCanvas(reload) {
 // line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
 let mdMounted = false, mdData = null;
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
-let md = { fold: false, side: 'tl', q: '', kind: '' };  // adash.media.view: the recording list folded away, the side list (timeline or captions), the search, the kind shown ('' all)
+let md = { fold: false, side: 'tl', q: '', kind: '', sw: {} };  // adash.media.view: the recording list folded away, the side list (timeline or captions), the search, the kind shown ('' all), the timeline's width dragged beside the video (a share of the pair's width, per layout: page | full)
 try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
 // full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
 let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () => {};
@@ -7391,6 +7391,7 @@ function mdPlay(v, startAt) {
         <div class="md-ov-bot"><div class="md-ov-track"><input type="range" class="md-seek" min="0" max="1000" step="1" value="0" aria-label="재생 위치"></div>
           <div class="md-ov-info"><span class="md-ov-time">00:00 / 00:00</span><span class="md-ov-scene"></span></div></div></div>
       <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3><button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
+    <div class="md-grip" role="separator" aria-orientation="vertical" aria-label="타임라인 너비 — 끌어서 조절, 두 번 누르면 처음대로" tabindex="0" hidden></div>
     <div class="md-side"></div></div>`;
   const video = box.querySelector('video'), side = box.querySelector('.md-side');
   mdPip(video);
@@ -7536,6 +7537,49 @@ function mdPlay(v, startAt) {
     video.play().catch(() => {});
     requestAnimationFrame(() => follow(rows.find(li => Math.abs(+li.dataset.t - t) < 0.01)));
   };
+  // The timeline's width beside the video (an iPhone held sideways, full screen or not; any wide screen too): the grip
+  // between them drags it, a double tap puts the layout's own width back, ← → on the focused grip step it. Kept as a
+  // share of the pair's width for each layout (md.sw.page | md.sw.full), so turning or resizing keeps the proportion.
+  // Not offered where the halves are fixed: half folded or split at a hinge, or stacked.
+  const grip = box.querySelector('.md-grip'), stage = box.querySelector('.md-stage');
+  const swKey = () => duo.classList.contains('md-full') ? 'full' : 'page';
+  const swMin = 200, vMin = 240;
+  const swSet = frac => {
+    const w = duo.clientWidth;
+    if (frac == null) { duo.style.removeProperty('--md-sw'); return; }
+    duo.style.setProperty('--md-sw', Math.round(Math.max(swMin, Math.min(w - vMin, frac * w))) + 'px');
+  };
+  const gripPlace = () => {
+    if (!duo.isConnected) return;
+    swSet(md.sw?.[swKey()]);
+    const beside = side.offsetLeft > stage.offsetLeft + 40 && side.offsetTop < stage.offsetTop + stage.offsetHeight
+      && !root.dataset.posture && !matchMedia('(horizontal-viewport-segments: 2)').matches;
+    grip.hidden = !beside;
+    if (beside) grip.style.left = (stage.offsetLeft + stage.offsetWidth + side.offsetLeft) / 2 + 'px';
+  };
+  const swSave = px => { md.sw = { ...md.sw, [swKey()]: px / duo.clientWidth }; mdSave(); gripPlace(); };
+  grip.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    grip.classList.add('on');
+    const r = duo.getBoundingClientRect(), gap = side.offsetLeft - stage.offsetLeft - stage.offsetWidth;
+    const move = ev => swSave(r.right - ev.clientX - gap / 2);
+    const up = () => { grip.classList.remove('on'); grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up); };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', () => { const sw = { ...md.sw }; delete sw[swKey()]; md.sw = sw; mdSave(); gripPlace(); });
+  grip.addEventListener('keydown', e => {
+    const n = e.key === 'ArrowLeft' ? 24 : e.key === 'ArrowRight' ? -24 : 0;
+    if (!n) return;
+    e.preventDefault(); e.stopPropagation();  // not the full-screen player's 10-second skip
+    swSave(side.offsetWidth + n);
+  });
+  new ResizeObserver(gripPlace).observe(duo);
+  new MutationObserver(gripPlace).observe(duo, { attributes: true, attributeFilter: ['class'] });
+  gripPlace();
   mdPosture();  // half folded already: open the pair now (after the controls above exist)
   // the line now playing: the last one whose time has passed
   video.ontimeupdate = () => {
