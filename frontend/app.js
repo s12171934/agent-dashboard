@@ -6,7 +6,10 @@ const cut = (t, n) => { t = String(t ?? ''); return t.length > n ? t.slice(0, n 
 // The fold layout (ds --fold): an unfolded foldable in two panes. narrow() is the narrow layout (max-width 700px) without it.
 const isFold = () => getComputedStyle(document.documentElement).getPropertyValue('--fold').trim() === '1';
 const narrow = () => innerWidth <= 700 && !isFold();
-const hhmm = ts => ts ? new Date(ts).toLocaleTimeString('ko-KR', { hour12: false }) : '';
+// Reuse Intl formatters: constructing one for every card dominated large mobile refreshes.
+const timeFmt = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const dateTimeFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const hhmm = ts => ts ? timeFmt.format(new Date(ts)) : '';
 const ago = ts => { if (!ts) return ''; const s = (Date.now() - new Date(ts)) / 1000; return s < 60 ? Math.max(0, Math.round(s)) + '초 전' : s < 3600 ? Math.round(s / 60) + '분 전' : s < 86400 ? Math.round(s / 3600) + '시간 전' : Math.round(s / 86400) + '일 전'; };
 const toDate = a => new Date(a.includes('T') ? a : a.replace(' ', 'T') + 'Z');
 const human = sec => sec < 60 ? Math.round(sec) + '초' : sec < 3600 ? Math.round(sec / 60) + '분' : sec < 86400 ? `${Math.floor(sec / 3600)}시간 ${Math.round(sec % 3600 / 60)}분` : `${Math.floor(sec / 86400)}일 ${Math.round(sec % 86400 / 3600)}시간`;
@@ -21,9 +24,9 @@ const lifetime = s => { if (!s.started) return ''; const end = OPEN(status(s)) ?
 const lifeMetric = s => {
   if (!s.started) return '';
   const big = lifetime(s), small = '', open = OPEN(status(s));
-  return `<div class="m life${open ? ' on' : ''}" title="시작 ${esc(new Date(toDate(s.started)).toLocaleString('ko-KR', { hour12: false }))}${open ? '' : ' · 마지막 기록까지'}"><span>${open ? '가동 중' : '가동(종료)'}</span><b>${big}</b>${small ? `<small> ${small}</small>` : ''}</div>`;
+  return `<div class="m life${open ? ' on' : ''}" title="시작 ${esc(dateTimeFmt.format(toDate(s.started)))}${open ? '' : ' · 마지막 기록까지'}"><span>${open ? '가동 중' : '가동(종료)'}</span><b>${big}</b>${small ? `<small> ${small}</small>` : ''}</div>`;
 };
-const lifeTag = s => s.started ? `<span title="시작 ${esc(new Date(toDate(s.started)).toLocaleString('ko-KR', { hour12: false }))}">${OPEN(status(s)) ? '가동' : '가동 · 종료'} ${lifetime(s)}</span>` : '';
+const lifeTag = s => s.started ? `<span title="시작 ${esc(dateTimeFmt.format(toDate(s.started)))}">${OPEN(status(s)) ? '가동' : '가동 · 종료'} ${lifetime(s)}</span>` : '';
 const dur = (a, b) => { if (!a) return ''; const s = ((b ? new Date(b) : new Date()) - toDate(a)) / 1000; return s < 60 ? Math.round(s) + 's' : s < 3600 ? Math.round(s / 60) + 'm' : (s / 3600).toFixed(1) + 'h'; };
 const total = s => s.tokens.input + s.tokens.cache_read + s.tokens.cache_write + s.tokens.output;
 const modelKey = m => !m ? 'other' : /opus/.test(m) ? 'opus' : /fable|mythos/.test(m) ? 'fable' : /sonnet/.test(m) ? 'sonnet' : /haiku/.test(m) ? 'haiku' : /gpt|codex|o\d/.test(m) ? 'gpt' : 'other';
@@ -188,10 +191,12 @@ const USE_PALETTE = ['#3b82f6', '#f97316', '#10b981', '#a855f7', '#ef4444', '#ea
 let useRank = {};
 const useColor = n => { if (useRank[n] !== undefined && useRank[n] < USE_PALETTE.length) return USE_PALETTE[useRank[n]]; let h = 0; for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 45% 55%)`; };
 function agg(s) {
+  const cache = memo().aggs ||= new WeakMap();
+  if (cache.has(s)) return cache.get(s);
   const subs = IX.subsOf[s.id] || [];
   const all = [s, ...subs];
   const sum = f => all.reduce((a, x) => a + (f(x) || 0), 0);
-  return {
+  const a = {
     cost: all.some(x => x.cost != null) ? sum(x => x.cost) : null,
     costKnown: all.every(x => x.cost != null),
     parts: ['input', 'cache_write', 'cache_read', 'output'].reduce((p, k) => (p[k] = sum(x => x.cost_parts?.[k]), p), {}),
@@ -202,6 +207,8 @@ function agg(s) {
     slots: mergeSlots(all.map(x => x.slots)),
     ctx: s.ctx_now, live: all.some(x => x.live), subs,
   };
+  cache.set(s, a);
+  return a;
 }
 // Server buckets: 5-minute slot (epoch / 300 s) -> [input, cache_write, cache_read, output, cost].
 function mergeSlots(hs) {
@@ -347,6 +354,8 @@ async function refresh() {
   // in state.server_errors (shown with the collector health).
   const hadDec = state?.decisions?.pending?.length || 0;
   const next = await api.state();
+  // A request may finish after a finger starts moving. Hold the expensive merge/render here too.
+  await whenQuiet();
   // Nothing new on any server (only the collectors' health moved): keep the view as drawn.
   if (state && next.unchanged) { state.health = next.health; renderHealth(); return; }
   state = next;
@@ -393,10 +402,17 @@ function restoreScroll(sv) {
 // new layout for them, their animations and scroll go on), changed text and attributes are set in place, the rest is
 // replaced. Live updates mostly change words (「n분 전」, a count, a state), so this is far less work for the browser than
 // innerHTML over the agents tab's tens of thousands of nodes. Event handlers are bound after it as after innerHTML.
-function morph(el, html) {
+const morphTrees = new WeakMap();
+function morph(el, html, reset = false) {
+  const prev = reset ? null : morphTrees.get(el);
+  if (prev?.html === html) return;
   const t = document.createElement('template');
   t.innerHTML = html;
-  morphKids(el, t.content);
+  // Compare detached markup to detached markup. Reading every live node's attributes makes unchanged cards
+  // expensive too; the saved tree also excludes the children added by custom elements themselves.
+  if (reset) el.replaceChildren(t.content.cloneNode(true));
+  else morphKids(el, t.content, prev?.tree);
+  morphTrees.set(el, { html, tree: t.content });
 }
 // Puts html into el like innerHTML, except that the nodes holding one of keep (open web VS Code panels) never leave the
 // document: without moveBefore (WebKit) an iframe whose node is detached, even for a moment, loads again from scratch.
@@ -437,20 +453,24 @@ function heldKids(l, b, keep) {
   }
   for (; i < target.length; i++) if (!pins.includes(target[i])) l.appendChild(target[i]);
 }
-function morphKids(l, b) {
+function morphKids(l, b, previous) {
   const ln = l.childNodes, bn = [...b.childNodes];
   for (let i = 0; i < bn.length; i++) {
     const x = ln[i], y = bn[i];
-    if (!x) { l.appendChild(y); continue; }
-    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { l.replaceChild(y, x); continue; }
+    if (x && previous?.childNodes[i]?.isEqualNode(y)) continue;
+    if (!x) { l.appendChild(y.cloneNode(true)); continue; }
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { l.replaceChild(y.cloneNode(true), x); continue; }
     if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
     const names = new Set([...x.getAttributeNames(), ...y.getAttributeNames()]);
     const same = [...names].every(n => x.getAttribute(n) === y.getAttribute(n));
     // A custom element (<ds-icon>) draws its own children from its attributes: kept when they match, else redrawn.
     // A card for another session or another id is another thing in this place: replaced, not patched.
-    if (x.localName.includes('-') || (x.id || x.dataset.path) !== (y.id || y.dataset.path)) { if (!same) l.replaceChild(y, x); continue; }
+    if (x.localName.includes('-') || (x.id || x.dataset.path) !== (y.id || y.dataset.path)) {
+      if (!same || x.textContent !== y.textContent) l.replaceChild(y.cloneNode(true), x);
+      continue;
+    }
     if (!same) for (const n of names) { const v = y.getAttribute(n); if (x.getAttribute(n) !== v) v === null ? x.removeAttribute(n) : x.setAttribute(n, v); }
-    morphKids(x, y);
+    morphKids(x, y, previous?.childNodes[i]);
   }
   while (ln.length > bn.length) l.lastChild.remove();
 }
@@ -458,10 +478,15 @@ function morphKids(l, b) {
 async function render(navigated) {
   if (!state) return;
   const sv = navigated ? null : saveScroll();
-  try { showDecisions(); await renderView(navigated); } finally { if (sv) { restoreScroll(sv); requestAnimationFrame(() => restoreScroll(sv)); } }
+  const hash = location.hash, activity = quietAt;
+  try { showDecisions(); await renderView(navigated); } finally { if (sv && hash === location.hash && quietAt === activity) {
+    restoreScroll(sv);
+    requestAnimationFrame(() => { if (hash === location.hash && quietAt === activity && holdFor() <= 0) restoreScroll(sv); });
+  } chWatchSprites(); }
 }
 async function renderView(navigated) {
-  const r = route();
+  const r = route(), hash = location.hash;
+  if (r.v !== 'agents' || charMode || ['map', 'tl'].includes(agView)) morphTrees.delete($('#view'));
   const tab = ['session', 'run', 'driver'].includes(r.v) ? 'agents' : r.v;
   document.querySelectorAll('#dock a, .dock-more a').forEach(a =>  // a data-more tab sits in the 설정 menu
     a.classList.toggle('on', a.dataset.v === tab));
@@ -494,10 +519,12 @@ async function renderView(navigated) {
   else if (r.v === 'designs') await renderDesigns();
   else if (r.v === 'media') await renderMedia();
   else if (r.v === 'canvas') renderCanvas();
-  else if (r.v === 'run') { runFull = await api.run(r.id); renderRun(r.id); }
+  else if (r.v === 'run') { const data = await api.run(r.id); if (hash !== location.hash) return; runFull = data; renderRun(r.id); }
   else if (r.v === 'driver') renderDriver(r.id);
   else if (r.v === 'session') {
-    detail = await api.session(r.id);
+    const data = await api.session(r.id);
+    if (hash !== location.hash) return;
+    detail = data;
     if (!detail) { $('#view').innerHTML = '<a class="back" href="#agents">← 에이전트</a><div class="empty">세션을 찾을 수 없습니다.</div>'; return; }
     renderSession(navigated);
   }
@@ -836,11 +863,13 @@ const ownerNote = h => {
 
 const delegatedOf = s => (s?.made_terms || []).filter(h => IX.runsByCoord[h] && !(state.all || state.sessions).some(x => x.own_handle === h));
 function workerPlan(handle, extra = []) {
+  const m = memo(), cache = m.workerPlans ||= new Map(), key = JSON.stringify([handle, ...extra]);
+  if (cache.has(key)) return cache.get(key);
   const runs = [handle, ...extra].flatMap(h => (h && IX.runsByCoord[h]) || []);
   const rows = runs.flatMap(r => (state.orca.tasks[r.id] || []).filter(t => t.plan_row?.kind !== 'driver').map(t => ({ t, r })));
-  if (!rows.length) return null;
-  const sess = {};
-  state.sessions.forEach(x => { if (x.role === 'worker' && !x.parent) (x.task_ids || (x.task_id ? [x.task_id] : [])).forEach(id => (sess[id] = x)); });
+  if (!rows.length) { cache.set(key, null); return null; }
+  const sess = m.wpSessions ||= Object.fromEntries(state.sessions.filter(x => x.role === 'worker' && !x.parent)
+    .flatMap(x => (x.task_ids || (x.task_id ? [x.task_id] : [])).map(id => [id, x])));
   const coordPlace = state.sessions.find(x => x.own_handle === handle && !x.parent)?.place;
   const byId = Object.fromEntries(rows.map(x => [x.t.id, x.t]));
   const deps = t => { try { return JSON.parse(t.deps || '[]').filter(d => byId[d]); } catch { return []; } };
@@ -862,8 +891,10 @@ function workerPlan(handle, extra = []) {
   }
   const c = k => items.filter(x => x.st === k).length;
   // Cancelled tasks (취소) leave the plan total and the bar: a plan with only done and cancelled tasks is complete.
-  return { items, byDeps, total: items.length - c('skip'), done: c('done'), fail: c('fail'), skip: c('skip'), live: c('spawned'), waiting: c('planned') + c('blocked'),
+  const plan = { items, byDeps, total: items.length - c('skip'), done: c('done'), fail: c('fail'), skip: c('skip'), live: c('spawned'), waiting: c('planned') + c('blocked'),
            spawnedEver: items.filter(x => x.st === 'spawned' || x.st === 'done' || x.st === 'fail').length };
+  cache.set(key, plan);
+  return plan;
 }
 const wpSeg = x => x.st === 'spawned' && x.live && x.live !== 'run' && x.live !== 'bg' ? (x.live === 'stalled' ? 'fail' : 'wait') : x.st;
 // Sessions a driver plan file lists that Orca has no task for yet. Under a driver that waits only for a launch
@@ -2142,18 +2173,25 @@ function casesHtml(t) {
     return `<details class="tcases" data-case="${esc(id)}" data-hist="${esc(t.hist_id)}" data-srv="${esc(t.server || '')}"${caseOpen.has(id) ? ' open' : ''}><summary>케이스 ${c.n} · 통과 ${c.ok}${c.bad ? ` · <b style="color:var(--bad)">실패 ${c.bad}</b>` : ''}${rest ? ` · 기타 ${rest}` : ''}</summary>
       <div class="tcase-list"><div class="st">${body}</div></div></details>`;
   }
-  const cs = list.map((c, i) => [c, i]).sort((a, b) => CASE_ORDER(a[0].status) - CASE_ORDER(b[0].status) || a[1] - b[1]).map(x => x[0]);
-  const n = s => cs.filter(c => s.includes(c.status)).length, bad = n(E2E_BAD), ok = n(['passed']), rest = cs.length - bad - ok, id = testId(t);
-  return `<details class="tcases" data-case="${esc(id)}"${caseOpen.has(id) ? ' open' : ''}><summary>케이스 ${cs.length} · 통과 ${ok}${bad ? ` · <b style="color:var(--bad)">실패 ${bad}</b>` : ''}${rest ? ` · 기타 ${rest}` : ''}</summary>
+  const n = s => list.filter(c => s.includes(c.status)).length, bad = n(E2E_BAD), ok = n(['passed']), rest = list.length - bad - ok, id = testId(t), open = caseOpen.has(id);
+  // A collapsed run can have thousands of cases. Build and sort its rows only when opened.
+  const cs = open ? list.map((c, i) => [c, i]).sort((a, b) => CASE_ORDER(a[0].status) - CASE_ORDER(b[0].status) || a[1] - b[1]).map(x => x[0]) : [];
+  return `<details class="tcases" data-case="${esc(id)}"${open ? ' open' : ''}><summary>케이스 ${list.length} · 통과 ${ok}${bad ? ` · <b style="color:var(--bad)">실패 ${bad}</b>` : ''}${rest ? ` · 기타 ${rest}` : ''}</summary>
     <div class="tcase-list">${cs.map(c => { const k = caseCls(c.status);
       return `<div class="tcase ${k}"><span class="tkc ${k}"><i>${TK_IC[k] || '·'}</i>${esc(E2E_TEST[c.status] || c.status || '?')}</span><code>${esc(c.id || '—')}</code><span class="tcase-t">${esc(c.title || '')}</span>${c.ms ? `<span class="st">${Math.round(c.ms / 1000)}s</span>` : ''}${c.msg ? `<span class="tcase-msg">${esc(cut(c.msg, 200))}</span>` : ''}</div>`; }).join('')}</div></details>`;
 }
 document.addEventListener('toggle', e => {
   const { case: id, hist, srv } = e.target.dataset || {};
-  if (id == null) return;
-  if (!e.target.open) return void caseOpen.delete(id);
+  if (id == null || !e.target.isConnected) return;
+  if (!e.target.open) {
+    caseOpen.delete(id); e.target.querySelector('.tcase-list')?.replaceChildren();
+    morphTrees.delete($('#view'));  // rows removed outside morph must be recreated on the next opening
+    return;
+  }
+  if (caseOpen.has(id)) return;  // a render restoring an already open toggle
   caseOpen.add(id);
   if (hist && !caseLists.has(hist)) api.testRun(hist, srv).catch(() => null).then(r => { caseLists.set(hist, r?.cases?.length ? r.cases : null); render(); });
+  else render();
 }, true);
 let testsOpen = true;
 // The agents view keeps only running tests; finished ones are in the 「테스트」 tab.
@@ -2279,15 +2317,8 @@ function agentsHtml(fv, sv, srv) {
   if (!items.length) return srv ? `<div class="sec-h srv-h">${title}</div><div class="empty srv-empty">표시할 에이전트가 없습니다.</div>` : '';
   let h = `<div class="sec-h${srv ? ' srv-h' : ''}">${title}<span>코디네이터 ${nc} · 워커 ${nw} · 단독 ${sv.length}</span>
     <span class="fold-all"><button class="act" data-fold="open" title="코디네이터 묶음·드라이버·티켓·저장소를 모두 펼침">모두 펼치기</button><button class="act" data-fold="min" title="모두 최소화">모두 최소화</button></span></div>`;
-  let pend = [];
-  const flush = () => { if (pend.length) h += `<div class="grid" style="margin-bottom:14px">${pend.join('')}</div>`; pend = []; };
-  for (const it of items) {
-    if (it.s) pend.push(card(it.s, 'solo'));
-    else if (shut(it.f)) pend.push(miniFam(it.f));
-    else { flush(); h += famHtml(it.f); }
-  }
-  flush();
-  return h;
+  // Expanded families share a wrapping row with the other cards; opening one no longer takes the entire row.
+  return h + `<div class="ag-tiles">${items.map(it => it.s ? card(it.s, 'solo') : shut(it.f) ? miniFam(it.f) : famHtml(it.f)).join('')}</div>`;
 }
 const srvTitle = srv => { const [cls, st] = srvState(srv); return `<h2>${esc(srv.name)}</h2><span class="sp-msg ${cls}" title="${esc(srv.url)}">${esc(st)}</span>`; };
 // ---------- 워크트리: a QA set's tickets with their worktrees, reviewed ticket by ticket in VS Code ----------
@@ -3793,10 +3824,26 @@ function chFig(st, s, small) {  // small: the session detail's header (1.5× pix
   const k = lp ? chLoopFrame(s.id || s.path, mv, chSets(who)) : f, src = chSdSrc(who, charFrame, lp ? CH_LOOP[mv][1] : '');
   return `<span class="ch-fig fig-ai" style="width:${pw}px;height:${ph}px;background-image:url(${src});background-size:${pw * (lp ? lp.top.length : n)}px ${ph}px;background-position:${-k * pw}px 0" data-who="${who}" data-mv="${mv}" data-pw="${pw}"${lp ? ' data-loop=""' : ''} aria-hidden="true"></span>`;
 }
-// A sprite whose slot has passed shows its new set, and the run motion its next frame
-setInterval(() => {
-  if (document.hidden) return;
+// Only sprites in the viewport tick. An office may contain hundreds of people outside its pan/zoom frame.
+const chSprites = new Set(), chVisibleSprites = new Set();
+const chSpriteObserver = new IntersectionObserver(entries => {
+  for (const { target, isIntersecting } of entries) {
+    if (isIntersecting) chVisibleSprites.add(target); else chVisibleSprites.delete(target);
+    target.classList.toggle('ch-away', !isIntersecting);
+  }
+});
+function chWatchSprites() {
+  for (const n of chSprites) if (!n.isConnected) { chSpriteObserver.unobserve(n); chSprites.delete(n); chVisibleSprites.delete(n); }
   document.querySelectorAll('.fig-ai[data-mv]').forEach(n => {
+    if (chSprites.has(n)) return;
+    chSprites.add(n); chSpriteObserver.observe(n);
+  });
+}
+// A sprite whose slot has passed shows its new set, and the run motion its next frame.
+setInterval(() => {
+  if (document.hidden || chMotion.matches || chPts.size) return;
+  chVisibleSprites.forEach(n => {
+    if (!n.isConnected) { chVisibleSprites.delete(n); return; }
     const who = n.dataset.who, id = n.closest('.ch')?.dataset.id || who;
     if (!CH_ART[who]) return;
     const p = `${-('loop' in n.dataset ? chLoopFrame(id, n.dataset.mv, chSets(who)) : chFrameOf(who, id, n.dataset.mv)) * n.dataset.pw}px 0px`;
@@ -4057,6 +4104,7 @@ function chLayout() {
 }
 const chPlace = (u, x, y) => { u.style.left = x + 'px'; u.style.top = y + 'px'; u.style.zIndex = 10 + Math.round(y); };
 function chBind(us = $('#view').querySelectorAll('.ch')) {  // us: the people put in anew by chPatch
+  chWatchSprites();
   us.forEach(u => {
     u.onclick = () => {
       if (Date.now() - chPanAt < 400) return;
@@ -4127,11 +4175,15 @@ function chApply() {
   $('#k-zoom').textContent = Math.round(chView.z * 100) + '%';
   $('#zoom-btn').setAttribute('aria-pressed', chView.fit);
 }
+let chApplyRaf = 0;
+function chQueueApply() {
+  if (!chApplyRaf) chApplyRaf = requestAnimationFrame(() => { chApplyRaf = 0; chApply(); });
+}
 // zoom by k around a point of the canvas (px from its top left)
 function chZoom(k, px, py) {
   const z = Math.min(2, Math.max(.25, chView.z * k)), f = z / chView.z;
   chView.x = px - (px - chView.x) * f; chView.y = py - (py - chView.y) * f; chView.z = z; chView.fit = chView.fitW = false;
-  chApply(); chViewSave();
+  chQueueApply(); chViewSave();
 }
 function chFit() { chView.fit = true; }
 // the canvas takes the screen below its top (to the very bottom on a phone or half folded, down to the bar's sheet
@@ -4163,14 +4215,15 @@ document.addEventListener('pointerdown', e => {
 addEventListener('pointermove', e => {
   const p = chPts.get(e.pointerId);
   if (!p) return;
-  const r = $('#ch-canvas')?.getBoundingClientRect();
-  if (!r) return;
+  const cv = $('#ch-canvas');
+  if (!cv) return;
   if (chPts.size === 1) {
     const dx = e.clientX - p[0], dy = e.clientY - p[1];
     if (Math.abs(dx) + Math.abs(dy) > 2) chPanAt = Date.now();
     chView.x += dx; chView.y += dy; chView.fit = false;
-    chApply();
+    chQueueApply();
   } else if (chPts.size === 2) {  // pinch: zoom by the change of the fingers' distance, around their middle
+    const r = cv.getBoundingClientRect();
     const [q] = [...chPts].filter(([id]) => id !== e.pointerId).map(([, v]) => v);
     const d0 = Math.hypot(p[0] - q[0], p[1] - q[1]), d1 = Math.hypot(e.clientX - q[0], e.clientY - q[1]);
     chPanAt = Date.now();
@@ -4180,6 +4233,7 @@ addEventListener('pointermove', e => {
 });
 const chUp = e => {
   if (!chPts.delete(e.pointerId) || chPts.size) return;
+  if (chApplyRaf) { cancelAnimationFrame(chApplyRaf); chApplyRaf = 0; chApply(); }
   chViewSave();
   if (chStale) { chStale = false; renderOffice(); }
 };
@@ -4929,7 +4983,7 @@ function renderAgents() {
   const html = seg + testsHtml() + (h || '<div class="empty">표시할 에이전트가 없습니다.</div>');
   // morph over the same view drawn last time (dataset.ag), a full draw after another tab or view
   const v = $('#view');
-  if (v.dataset.ag === agView && v.querySelector(':scope > .ag-controls')) morph(v, html); else v.innerHTML = html;
+  morph(v, html, !(v.dataset.ag === agView && v.querySelector(':scope > .ag-controls')));
   v.dataset.ag = agView;
   agViewBind();
   { const el = $('#view .tests-sec'); if (el) el.ontoggle = () => testsOpen = el.open; }  // survives live re-renders
@@ -6267,6 +6321,24 @@ addEventListener('pointerdown', () => { downAt = Date.now(); }, true);
 for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => { downAt = 0; quietAt = Date.now() + HOLD_MS; }, true);
 for (const ev of ['wheel', 'keydown', 'scroll', 'touchmove']) addEventListener(ev, () => { quietAt = Date.now() + HOLD_MS; }, { capture: true, passive: true });
 const holdFor = () => downAt && Date.now() - downAt < HOLD_DOWN_MS ? HOLD_MS : quietAt - Date.now();
+// Check again after asynchronous fetches, and for the age-label timer which does not go through pump().
+function whenQuiet() {
+  return new Promise(resolve => {
+    const check = () => {
+      if (document.hidden) { document.addEventListener('visibilitychange', check, { once: true }); return; }
+      const wait = holdFor();
+      if (wait > 0) setTimeout(check, wait); else resolve();
+    };
+    check();
+  });
+}
+let idleRenderPending = false;
+async function renderWhenIdle() {
+  if (idleRenderPending) return;
+  idleRenderPending = true;
+  try { await whenQuiet(); await render(); }
+  finally { idleRenderPending = false; }
+}
 // now: the user changed what to show (e.g. a metric server turned off), so skip the gap.
 async function pump(now) {
   if (document.hidden) { stale = true; return; }
@@ -8249,7 +8321,7 @@ function connect() {
   });
 }
 connect();
-setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests', 'usage'].includes(route().v) || onlyLive && route().v === 'compare')) render(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
+setInterval(() => { if (state && !document.hidden && (['agents', 'talk', 'tests', 'usage'].includes(route().v) || onlyLive && route().v === 'compare')) renderWhenIdle(); }, 15000); // keep "n분 전" fresh; let the 「실행 중만」 grace expire
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => {
   if (route().v === 'session' && detail) renderSession();
   if (route().v === 'projects' && pj.view === 'timeline') render();  // 자동 orientation follows the window's shape

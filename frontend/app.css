@@ -53,6 +53,15 @@ main { padding: 16px var(--gutter); max-width: 2200px; margin: 0 auto; padding-b
 .nest-label { font-size: 11px; color: var(--s-write); font-weight: 600; margin: 0 0 6px 2px; }
 .badge.subcoord { background: var(--s-write); border-color: var(--s-write); color: #fff; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+/* A family needs room for its tree, while folded families and solo cards keep their compact width.
+   Wrapping preserves priority order and lets two expanded coordinators share a wide screen. */
+.ag-tiles { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
+.ag-tiles > .family { flex: 2 1 520px; min-width: 0; margin-bottom: 0; }
+.ag-tiles > .card { flex: 1 1 250px; min-width: 0; }
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  .ag-tiles, .wt-wrap > .wt-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root .wt-tiles > .wt-tile { min-width: 0; }
+}
 /* Cards under a coordinator or a driver share each line equally: two take half each, a lone one the full width. */
 .tree > .grid:not(.wt-away-grid), .drv > .grid { display: flex; flex-wrap: wrap; }
 .tree > .grid:not(.wt-away-grid) > *, .drv > .grid > * { flex: 1 1 0; min-width: min(250px, 100%); }
@@ -62,6 +71,12 @@ main { padding: 16px var(--gutter); max-width: 2200px; margin: 0 auto; padding-b
 .c-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .c-top ds-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .card { overflow: hidden; }
+/* Hundreds of frosted cards keep WebKit repainting the scrolling backdrop. Keep the floating dock's glass,
+   but make touch-device cards opaque and still, with the same material borders and highlights. */
+@media (pointer: coarse) {
+  .card { --surface-blur-sm: none; --surface: var(--panel); --surface-2: var(--panel2); }
+}
+@media (hover: none) { .card:hover { transform: none; } }
 .c-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .card.coord .c-title { font-size: 14px; }
 .c-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px 4px; }
@@ -201,6 +216,7 @@ a.tkc:hover { border-color: var(--accent); }
 .card.st-idle, .card.st-done { opacity: .62; }
 .card.st-idle .model i, .card.st-done .model i { filter: grayscale(1); }
 .card.st-idle:hover, .card.st-done:hover { opacity: 1; }
+@media (pointer: coarse) { .card.st-idle, .card.st-done { opacity: .8; } }
 .card.st-run .ctxbar > div { background: var(--ok); }
 /* a coordinator keeps its pink frame while running; the running tint and glow still show */
 .card.coord.st-run, .card.mini-fam.coord.st-run { border-color: var(--coord); border-left: 4px solid var(--coord); }
@@ -478,6 +494,8 @@ button.dc-opt.picked .dc-check { border-color: var(--accent); background: var(--
 .tests { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 4px 12px; margin-top: 8px; }
 .tests-done { background: var(--panel2); }
 .trow { padding: 6px 0; border-bottom: 1px solid var(--line); } .trow:last-child { border-bottom: 0; }
+/* Keep the agents overview short on a phone; case chips and full names remain in the expandable case list. */
+@media (max-width: 700px) { .tests-sec .e2e-tcs { display: none; } }
 .e2e-card .trow { padding: 2px 0; border: 0; }
 .tstale { color: var(--warn); font-weight: 600; }
 .tfails { font-size: 11.5px; margin: 3px 0 0 4px; } .tfails summary { cursor: pointer; color: var(--bad); }
@@ -832,6 +850,9 @@ a.act { text-decoration: none; display: inline-block; }
    Same rules for a hinge the browser reports. A folded phone held sideways (height 500 or less) also matches. */
 @media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
   .grid { grid-template-columns: var(--fold-cols); column-gap: var(--pane-gap); }
+  .ag-tiles, .wt-wrap > .wt-tiles { display: grid; grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }
+  :root .wt-tiles > .wt-tile { min-width: 0; }
+  .ag-tiles > .card { container: fold-card / inline-size; }
   /* a card's six figures: three and three in a half-screen card, one row of six once it is wide (fold-card below) */
   .grid > .card { container: fold-card / inline-size; }
   .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -863,7 +884,9 @@ a.act { text-decoration: none; display: inline-block; }
 .wt-tiles { display: flex; flex-wrap: wrap; gap: 18px 14px; align-items: flex-start; }
 .wt-tile { flex: 1 1 0; min-width: min(340px, 100%); }
 .wt-tile > .wt-sec { margin-top: 0; }
-.wt-tile.s2 { min-width: min(600px, 100%); } .wt-tile.s3 { flex-basis: 100%; }
+.wt-tile.s2, .wt-tile.s3 { min-width: min(520px, 100%); }
+/* The outer worktree tiles already follow the fold; inner cards wrap to their own pane's width. */
+.wt-tile .grid { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
 .wt-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; margin-bottom: 10px; line-height: 22px; }
 .wt-h h3 { font-size: 14px; line-height: 22px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .wt-proj, .wt-br { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
@@ -1725,6 +1748,7 @@ a.hw-row:hover .hw-t { color: var(--accent); }
 .d-chspr { display: block; background-repeat: no-repeat; image-rendering: pixelated; }
 @media (max-width: 500px) { .d-hero { grid-template-areas: "fig head" "top top"; column-gap: 10px; row-gap: 8px; } .d-chgrp > .st { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .fig-ai { animation: none !important; } }
+.ch .ch-fig.fig-ai.ch-away { animation-play-state: paused; }
 /* 「캐릭터」 tab: the people as small tiles on the left, the one picked on the right (below on a narrow screen): its two
    stages (베이스 → 픽셀) in a row joined by labelled arrows, all 32 poses a row a set, the office's looks, and
    managing them */
