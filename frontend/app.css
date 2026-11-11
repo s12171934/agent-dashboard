@@ -68,7 +68,7 @@ main { padding: 16px var(--gutter); max-width: 2200px; margin: 0 auto; padding-b
 .m { min-width: 0; }
 .m small { display: inline-block; }
 .m.life.on b { color: var(--run); }
-.card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(6, minmax(0, 140px)); }
+.card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(5, minmax(0, 140px)); }
 .m span { display: block; color: var(--muted); font-size: 10.5px; }
 .m b { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .m small { color: var(--muted); font-size: 10.5px; }
@@ -153,7 +153,6 @@ a.tkc:hover { border-color: var(--accent); }
 .c-added .xp-why { font-size: 11.5px; line-height: 1.45; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .xp-wt { font-size: 12px; } .xp-wt > b { flex: none; }
 .xp .badge { flex: none; }
-.m.est b.est-over { color: var(--bad); } .m.est b.est-pause { color: var(--warn); }
 .acts .act.idle-w { min-width: 5.4em; text-align: center; }  /* 유휴로 / 자동 상태 share one width */
 /* placement */
 .tlab { fill: var(--muted); font-size: 10.5px; font-weight: 600; }
@@ -854,7 +853,7 @@ a.act { text-decoration: none; display: inline-block; }
   /* a side bar pads both sides alike, so the page's middle stays on the fold */
   :root:is([data-dock="left"], [data-dock="right"]) :is(main, #dec-alert, #decisions, #decide-head, #inbox) { padding-inline: calc(var(--dock-pick, 38px) + 38px); }
 }
-@container fold-card (min-width: 380px) { .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@container fold-card (min-width: 380px) { .c-metrics, .card.coord:not(.mini-fam) .c-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 
 }
 /* 「워크트리별」 보기: one section per worktree holding the tree view's own blocks; stand-ins (.wt-proxy) mark sessions drawn elsewhere */
@@ -1367,7 +1366,6 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .mp-t { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp-r { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp-role { color: var(--s-write); }
-.mp-over { color: var(--bad); font-weight: 600; }
 .mp-steps { display: inline-flex; gap: 2px; flex: none; }
 .mp-steps i { width: 7px; height: 5px; border-radius: 2px; background: var(--idle); }
 .mp-steps i.done, .mp-steps i.skip { background: var(--done); }
@@ -1406,7 +1404,6 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tl-leg .tl-k { width: 16px; height: 9px; border-radius: 3px; }
 .tl-k.bar { background: var(--done); }
 .tl-k.act { background: color-mix(in srgb, var(--muted) 45%, transparent); }
-.tl-k.ghost { background: none; border: 1.5px dashed var(--muted); box-sizing: border-box; }
 .tl-k.hatch { background: repeating-linear-gradient(135deg, var(--bad) 0 3px, transparent 3px 6px); }
 .tl-k.msg { width: 0; height: 12px; border-left: 2px dotted var(--c7); border-radius: 0; background: none; }
 .tl-k.now { width: 2px; height: 12px; border-radius: 0; background: var(--accent); }
@@ -1431,8 +1428,6 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .tl-b.act { background: color-mix(in srgb, var(--muted) 30%, transparent); color: var(--text); }
 .tl-b.hatch { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 32%, transparent) 0 5px, transparent 5px 10px); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); }
 .tl-b.hatch.bad { background: repeating-linear-gradient(135deg, var(--bad) 0 5px, color-mix(in srgb, var(--bad) 40%, transparent) 5px 10px); color: var(--on-accent); }
-.tl-ghost { position: absolute; top: -4px; height: 30px; box-sizing: border-box; border: 1.5px dashed var(--muted); border-radius: 7px; }
-.tl-ghost.open { border-right: 0; border-radius: 7px 0 0 7px; }
 .tl-none { font-size: 10.5px; }
 .tl-over { position: absolute; top: 0; bottom: 0; pointer-events: none; }
 .tl-msg { position: absolute; width: 0; border-left: 2px dotted var(--c7); pointer-events: auto; }
