@@ -5,6 +5,8 @@
 // single-choice question sends on click, several questions or a multiSelect send together with 「답 보내기」, typed
 // text only on single-choice questions. A Bash permission prompt (r.kind 'permission', from the same hook as a
 // PermissionRequest hook) is a card too: its command in a block and 허용 / 거부, which the server presses as Yes / No.
+// A workflow-canvas user decision (r.kind 'canvas': a gate or a user-judged branch a run waits on) is a card with its
+// outputs as options; a pick is registered on the canvas, as its own card does, and the coordinator takes it from there.
 // Cards live in #decisions, outside #view, which every refresh rebuilds. A card is built once per request id and
 // later refreshes only touch its meta and status lines, so picks, typed text, focus and an IME composition
 // survive (a periodic re-render wiping input is the bug the 8799 page hit first).
@@ -39,11 +41,12 @@ const decisions = (() => {
   async function send(c) {
     c.sentAt = Date.now();
     c.el.classList.add('done');
-    setStatus(c, '터미널에 입력하는 중…');
+    const canvas = c.r.kind === 'canvas';
+    setStatus(c, canvas ? '캔버스에 판정을 등록하는 중…' : '터미널에 입력하는 중…');
     let res;
     try { res = await api.decide(c.r.id, c.r.questions.map((q, i) => answerOf(q, c.ans[i]))); }
     catch { res = { status: 0, body: { error: '대시보드 서버에 보내지 못했습니다' } }; }
-    if (res.status === 200) return setStatus(c, '터미널에 답을 넣었습니다');
+    if (res.status === 200) return setStatus(c, canvas ? '판정을 등록했습니다 · 코디네이터가 곧 반영합니다' : '터미널에 답을 넣었습니다');
     if (res.body?.closed) return document.getElementById('toast')?.show?.(res.body.error);  // the card goes on the next refresh
     c.sentAt = 0;
     c.el.classList.remove('done');  // a question answered elsewhere goes on the next refresh
@@ -78,11 +81,11 @@ const decisions = (() => {
         <div class="dc-options">${q.options.map((o, i) => `<button class="dc-opt" data-i="${i}">
           <span class="dc-label">${q.multiSelect ? '<span class="dc-check">✓</span>' : ''}${esc(o.label)}</span>
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
-        ${q.multiSelect || r.kind === 'permission' ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
+        ${q.multiSelect || r.kind === 'permission' || r.kind === 'canvas' ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
       </div>`).join('')}
-      <p class="dc-hint">${r.kind === 'permission' ? '터미널에도 같은 권한 요청이 떠 있습니다. 여기서 고르면 터미널에서 Yes / No 를 대신 누릅니다.' : '터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.'}</p>
+      <p class="dc-hint">${r.kind === 'canvas' ? '워크플로 캔버스의 결정 대기 카드와 같습니다. 여기서 고르면 캔버스에 판정을 등록하고, 코디네이터가 다음 확인 때 반영합니다.' : r.kind === 'permission' ? '터미널에도 같은 권한 요청이 떠 있습니다. 여기서 고르면 터미널에서 Yes / No 를 대신 누릅니다.' : '터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.'}</p>
       ${needsSubmit(r) ? '<div class="dc-actions"><button class="dc-submit" disabled>답 보내기</button></div>' : ''}
-      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden title="대시보드에서만 치웁니다. 터미널의 선택기는 그대로입니다">카드 삭제</button></div>`;
+      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden title="${r.kind === 'canvas' ? '대시보드에서만 치웁니다. 캔버스의 결정 대기 카드는 그대로입니다' : '대시보드에서만 치웁니다. 터미널의 선택기는 그대로입니다'}">카드 삭제</button></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}), sentAt: 0 };
     el.querySelectorAll('.dc-q').forEach(qel => {
       const qi = +qel.dataset.qi, q = r.questions[qi];

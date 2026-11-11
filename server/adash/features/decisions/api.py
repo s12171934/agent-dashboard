@@ -6,6 +6,7 @@ from adash.core.prefs import prefs
 from adash.core.state import lock
 from adash.features.decisions.answer import answer_decision, inbox_answer
 from adash.features.decisions.ask import add_decision
+from adash.features.decisions.canvas import canvas_answer, canvas_close
 from adash.features.decisions.guard import guard_command
 from adash.features.decisions.store import DECISION_ID, set_inbox_mode, settle_decision
 
@@ -52,6 +53,11 @@ def post_decision(h, url):
         assert action != "inbox" or body["action"] != "answer" or isinstance(body["answers"], list)
     except (ValueError, KeyError, AssertionError, TypeError):
         return h.send_json({"error": "bad request"}, 400)
+    if action in ("answer", "dismiss") and rid.startswith("c"):  # a workflow-canvas decision (canvas.py)
+        if action == "answer":
+            status, out = canvas_answer(rid, body["answers"])
+            return h.send_json(out, status)
+        return h.send_json({"ok": True}) if canvas_close(rid) else h.send_json({"error": "이미 결정했거나 닫힌 결정입니다"}, 409)
     if action == "answer":
         status, out = answer_decision(rid, body["answers"])
         return h.send_json(out, status)
