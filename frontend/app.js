@@ -5493,7 +5493,7 @@ function ipListHtml(f) {
       const n = t.total != null ? `${t.done}/${t.total}` : '?/?';
       const st = t.state === 'todo' ? (t.child ? '착수 전' : '미착수') : IP_ST[t.state];
       const tip = `${t.key}${t.label ? ' ' + t.label : ''}${t.repo ? ' · ' + t.repo : ''} · ${st} · 체크박스 ${n}${t.total == null ? ' (장부 없음 · 수 미상)' : ''}${c ? `\n현재 ${c.cb} ${c.text} · ${IP_CB[c.status]}` : ''}`;
-      return `<span class="tkc ${cls} ip-c" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${esc(t.label || t.key)} <b>${n}</b>${c ? `<span class="ip-c-cur">${esc(c.cb)}</span>` : ''}</span>`;
+      return `<span class="tkc ${cls} ip-c" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${t.label ? `${esc(t.label)} <span class="ip-c-key">${esc(t.key)}</span>` : esc(t.key)} <b>${n}</b>${c ? `<span class="ip-c-cur">${esc(c.cb)}</span>` : ''}</span>`;
     };
     return `<div class="ip-list"><div class="pline"><b>구현 ① 티켓 진행</b> ${p.runId ? `<a href="#r=${esc(p.runId)}" onclick="event.stopPropagation()" title="Run 상세에서 티켓별 체크박스 목록">${esc(cut(p.title, 40))}</a>` : esc(cut(p.title, 40))} · 체크박스 <b>${s.done}/${s.total}</b> (${pct}%) · 완료 티켓 <b>${s.tickets_done}/${s.tickets}</b>${s.unknown ? ` · <span title="장부가 아직 없어 체크박스 수를 모르는 티켓 — 합계에 들지 않음">수 미상 ${s.unknown}</span>` : ''}</div>
       <div class="xp-strip">${groups.map(g => `<div class="xp-grp"><span class="xp-repo-n">${esc(g.repo)}</span><div class="cbr">${g.items.map(chip).join('')}</div></div>`).join('')}</div></div>`;
