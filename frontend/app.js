@@ -926,17 +926,50 @@ const FLOW_ST = { skip: '취소', fail: '실패', stalled: '응답 없음', wait
 // A cancelled task (a reviewer the driver dropped) is 취소, not 실패: it does not hold the node back.
 const flowItemSt = x => IX.tasks[x.id]?.status === 'cancelled' ? 'skip' : x.st === 'spawned' ? (x.live === 'stalled' ? 'stalled' : x.live === 'wait' ? 'wait' : 'run') : x.st;
 const flowSel = {};  // coordinator path -> selected node key; survives live re-renders
+// workflow-canvas runs name their tasks 「<단계 이름> · <실행 라벨>[ · <N>회차 | · <모델>]」 and the sub-runs they start
+// 「<그래프 이름> <항목>」. Read as is, every box repeats the run label (or the graph name) and the 22-unit cut hides the part
+// that tells boxes apart. So: drop the run label, put each loop round in its own lane (round-less tasks such as per-model
+// reviewers join the round they were created in), give sub-runs one lane per graph labelled by item, and leave the
+// parenthesised explanation out of the box (the full name stays in the tooltip). Null when the run is not canvas-named.
+function canvasNames(items) {
+  const segs = items.map(x => (x.name || '').split(' · '));
+  const tally = {};
+  segs.forEach(s => { if (s.length >= 2) tally[s[1]] = (tally[s[1]] || 0) + 1; });
+  const run = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0];
+  if (!run || tally[run] < 2) return null;
+  const order = items.map((x, i) => i).sort((a, b) => (items[a].created || '￿').localeCompare(items[b].created || '￿'));
+  const out = new Array(items.length), seen = {};
+  let round = 1;
+  for (const i of order) {
+    const s = segs[i], name = items[i].name || '';
+    if (s.length >= 2 && s[1] === run) {
+      const rest = s.slice(2), r = /^(\d+)회차$/.exec(rest[rest.length - 1] || '');
+      if (r) { round = Math.max(round, +r[1]); rest.pop(); }
+      const stage = s[0].replace(/\s*\([^)]*\)/g, '').trim() || s[0];
+      // A per-model child (「<단계> · <라벨> · <모델>」) sits next to its stage: the model alone tells it apart.
+      out[i] = { lane: `${r ? +r[1] : round}회차`, label: rest.length ? '↳ ' + rest.join(' · ') : stage };
+    } else {
+      const sp = name.lastIndexOf(' ');
+      const graph = sp > 0 ? name.slice(0, sp) : '하위 실행', item = sp > 0 ? name.slice(sp + 1) : name;
+      const k = graph + '\u0000' + item, nth = seen[k] = (seen[k] || 0) + 1;
+      out[i] = { lane: graph, label: nth > 1 ? `${item} · ${nth}` : item };
+    }
+  }
+  return out;
+}
 function flowOf(wp) {
   // One stray task (a driver fix, a manual check) must not undo the grouping: it goes to its own 기타 lane.
   const named = wp.items.some(x => TASK_NAME.test(x.name || ''));
+  const canvas = named ? null : canvasNames(wp.items);
   const nodes = new Map(), nodeOf = {}, byId = Object.fromEntries(wp.items.map(x => [x.id, x]));
   const depIds = x => { try { return JSON.parse(IX.tasks[x.id]?.deps || '[]').filter(d => byId[d]); } catch { return []; } };
-  for (const x of wp.items) {
+  for (const [ix, x] of wp.items.entries()) {
     const m = TASK_NAME.exec(x.name || ''), role = m ? (m[3] || '').trim() || '구현' : x.name;
     const base = role.replace(/\s+(codex|claude)$/, '');
     const key = !m ? x.id : m[2] ? `${m[1]}#${m[2]}` : `${m[1]} ${base} ${depIds(x).sort().join(',')}`;
+    const cv = canvas?.[ix];
     let n = nodes.get(key);
-    if (!n) nodes.set(key, n = { key, lane: m ? m[1] : named ? '기타' : '태스크', label: !m ? x.name : m[2] ? '#' + m[2] : base, items: [], deps: new Set() });
+    if (!n) nodes.set(key, n = { key, lane: m ? m[1] : cv ? cv.lane : named ? '기타' : '태스크', label: !m ? (cv ? cv.label : x.name) : m[2] ? '#' + m[2] : base, items: [], deps: new Set() });
     n.items.push({ ...x, role, ist: flowItemSt(x) });
     nodeOf[x.id] = n;
   }
@@ -965,7 +998,7 @@ function flowOf(wp) {
     l.nodes.push(n);
   }
   lanes.sort((a, b) => a.nodes[0].created.localeCompare(b.nodes[0].created));
-  return { nodes, lanes, named };
+  return { nodes, lanes, named, unit: canvas ? '레인' : '티켓' };
 }
 const ATTN = ['fail', 'stalled', 'wait'];
 const flowDots = n => n.items.map(i => `<i class="${i.ist}" title="${esc(i.role)} · ${FLOW_ST[i.ist]}"></i>`).join('');
@@ -1009,8 +1042,8 @@ function flowBox(d, wp) {
   if (grouped) {
     doneLanes.forEach(l => l.nodes.forEach(n => (vis[n.key] = 'lanes:done')));
     const names = doneLanes.map(l => l.key).join(' · ');
-    lanes = `<div class="fl-lane"><button class="fl-lh" data-k="lanes:done" data-fold="${esc(gk)}" title="눌러서 티켓별로 펼치기"><span class="tk-arrow">▸</span><b>✓ 완료 티켓 ${doneLanes.length}</b><span>${esc(cutW(names, 80))}</span></button></div>` + lanes;
-  } else if (doneLanes.length >= 2) lanes += `<button class="act" data-fold="${esc(gk)}" data-unfold="1">완료 티켓 ${doneLanes.length}개 한 줄로 접기</button>`;
+    lanes = `<div class="fl-lane"><button class="fl-lh" data-k="lanes:done" data-fold="${esc(gk)}" title="눌러서 ${f.unit}별로 펼치기"><span class="tk-arrow">▸</span><b>✓ 완료 ${f.unit} ${doneLanes.length}</b><span>${esc(cutW(names, 80))}</span></button></div>` + lanes;
+  } else if (doneLanes.length >= 2) lanes += `<button class="act" data-fold="${esc(gk)}" data-unfold="1">완료 ${f.unit} ${doneLanes.length}개 한 줄로 접기</button>`;
   for (const n of f.nodes.values()) for (const k of n.deps) { const a = vis[k], b = vis[n.key];
     if (a && b && a !== b && !edges.some(e => e.a === a && e.b === b)) edges.push({ a, b }); }
   const pick = sel && f.nodes.get(sel);
