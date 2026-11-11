@@ -98,6 +98,40 @@ L4 = "## 체크박스\n| 번호 | 문구 | 종류 | 상태 |\n| --- | --- | --- 
 items, _ = parse_ledger(L4)
 check("pipe in text", (items[0]["text"], items[0]["kind"], items[0]["status"]), ("a | b", "구현", "done"))
 
+# PSD-1101 모양: 착수 때 표를 running 으로 안 바꾼 장부 — 「체크박스 실행」 줄이 실행 중을 알린다
+L5 = """## 체크박스
+| 번호 | 문구 | 종류 | 상태 | 커밋 |
+| --- | --- | --- | --- | --- |
+| cb1 | a | 구현 | pending | |
+| cb2 | b | 구현 | pending | |
+## 실행
+- 현재 체크박스: cb1
+- 체크박스 실행: cb1 running 2026-11-11 14:52 · 1
+"""
+items, cur = parse_ledger(L5)
+s = summarize(items, cur)
+check("log running", ([x["status"] for x in items], s["state"], s["current"]["cb"]), (["running", "pending"], "running", "cb1"))
+
+# 커밋 뒤 마감 전(committed)은 완료로 세고, 현재 체크박스가 끝났으면 마감 중인 칸을 현재로 본다
+L6 = L5.replace("| cb1 | a | 구현 | pending | |", "| cb1 | a | 구현 | committed | abc |").replace("cb1 running", "cb1 running")
+items, cur = parse_ledger(L6)
+s = summarize(items, cur)
+check("committed counts", (items[0]["status"], s["done"], s["total"], s["state"], s["current"]["cb"]), ("committed", 1, 2, "running", "cb1"))
+
+# 표가 pending 이 아니면 실행 줄보다 표가 앞선다; fix-added·끊김 줄은 보정하지 않는다
+L7 = """## 체크박스
+| 번호 | 문구 | 종류 | 상태 |
+| --- | --- | --- | --- |
+| cb1 | a | 구현 | done |
+| cb2 | b | verify | pending |
+## 실행
+- 체크박스 실행: cb1 running 2026-11-11 11:41
+- 체크박스 실행: cb2 fix-added cb3 2026-11-11
+- 체크박스 실행 끊김: cb2 1 · running x
+"""
+items, _ = parse_ledger(L7)
+check("table wins, fix-added ignored", [x["status"] for x in items], ["done", "pending"])
+
 if fails:
     print("\n".join(fails))
     sys.exit(1)
