@@ -59,7 +59,8 @@ main { padding: 16px var(--gutter); max-width: 2200px; margin: 0 auto; padding-b
 .ag-tiles > .family { flex: 2 1 520px; min-width: 0; margin-bottom: 0; }
 .ag-tiles > .card { flex: 1 1 250px; min-width: 0; }
 @media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
-  .ag-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ag-tiles, .wt-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root .wt-tiles > .wt-tile { min-width: 0; }
 }
 /* Cards under a coordinator or a driver share each line equally: two take half each, a lone one the full width. */
 .tree > .grid:not(.wt-away-grid), .drv > .grid { display: flex; flex-wrap: wrap; }
@@ -849,7 +850,8 @@ a.act { text-decoration: none; display: inline-block; }
    Same rules for a hinge the browser reports. A folded phone held sideways (height 500 or less) also matches. */
 @media (pointer: coarse) and (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)), (horizontal-viewport-segments: 2) {
   .grid { grid-template-columns: var(--fold-cols); column-gap: var(--pane-gap); }
-  .ag-tiles { display: grid; grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }
+  .ag-tiles, .wt-tiles { display: grid; grid-template-columns: var(--fold-cols); gap: var(--pane-gap); }
+  :root .wt-tiles > .wt-tile { min-width: 0; }
   .ag-tiles > .card { container: fold-card / inline-size; }
   /* a card's six figures: three and three in a half-screen card, one row of six once it is wide (fold-card below) */
   .grid > .card { container: fold-card / inline-size; }
