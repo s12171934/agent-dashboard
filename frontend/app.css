@@ -2348,3 +2348,16 @@ html.md-lock, html.md-lock body { overflow: hidden; }
   .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
   .md-duo.md-full .md-side { border-width: 0; }
 }
+
+/* 구현 ① 티켓 진행 (implProgressHtml) */
+.ip .ip-sum { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; font-size: 12px; }
+.ip-layer { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; }
+.ip-n { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.ip-st { min-width: 52px; text-align: right; font-weight: 600; }
+.ip-st.done { color: var(--done); } .ip-st.running { color: var(--run); } .ip-st.blocked { color: var(--bad); } .ip-st.todo, .ip-st.out { color: var(--muted); font-weight: 400; }
+.ip-cur { font-size: 11px; padding: 0 6px; border-radius: 10px; border: 1px solid var(--line); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-cur.running { border-color: var(--run); color: var(--text); } .ip-cur.blocked { border-color: var(--bad); color: var(--bad); }
+.ip-out { opacity: .55; } .ip-out .tk-h { cursor: default; }
+.ip-cb { flex-wrap: nowrap; } .ip-cbt { flex: 1 1 auto; min-width: 0; color: var(--text); }
+.ip-cb.closing { opacity: .5; }
+@media (max-width: 700px) { .ip-cb { flex-wrap: wrap; } .ip-cur { max-width: 100%; } }
