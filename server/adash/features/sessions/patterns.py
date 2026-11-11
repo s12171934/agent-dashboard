@@ -93,6 +93,9 @@ def closes_own_terminal(cmd, own_handles=()):
 
 TERM_HANDLE_STR = re.compile(r'"handle\\*"\s*:\s*\\*"(' + TERM + ')')
 OWN_RUN_CMD = re.compile(r"orchestration (?:run-create|run-use)(?![\w-])")
+# worker-start/dispatch with no bound Run creates one bound to the calling terminal (the guide's default recipe, no
+# run-create at all), and its receipt names the Run (`"runId"`): it counts like run-create unless it acts --from another.
+SELF_START = re.compile(r"orchestration (?:worker-start|dispatch)(?![\w-])(?![^\n|;&]*--help)")
 RUN_CREATE = re.compile(r"orchestration run-create(?![\w-])(?![^\n|;&]*--help)")
 RUN_ID = re.compile(r"\brun_[0-9a-f]{12}\b")
 COORD_HANDLE_STR = re.compile(r'coordinator_handle\\*"\s*:\s*\\*"(' + TERM + ')')
