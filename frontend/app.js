@@ -5440,28 +5440,39 @@ function ipGet(q, again) {
   }
   return c.data;
 }
-const IP_ST = { todo: '미착수', running: '진행 중', blocked: '막힘', done: '완료', out: '범위 밖' };
-const IP_CB = { done: '완료', running: '실행 중', pending: '대기', blocked: '막힘' };
-const ipStep = x => x.status === 'done' ? 'done' : x.status === 'running' ? 'run' : x.status === 'blocked' ? 'blocked' : '';
+const IP_ST = { todo: '미착수', running: '진행 중', blocked: '막힘', finishing: '마무리 중', done: '완료', out: '범위 밖' };
+const IP_CB = { done: '완료', committed: '커밋됨 · 마감 중', running: '실행 중', pending: '대기', blocked: '막힘' };
+const ipStep = x => x.status === 'done' || x.status === 'committed' ? 'done' : x.status === 'running' ? 'run' : x.status === 'blocked' ? 'blocked' : '';
+// A ticket whose checkboxes are all done is 완료 only once its 구현 ② run has nothing left: after the last checkbox the run
+// still goes on (다음 회차 · 소비자 실서버 대조 · 브랜치 통합 검증 · 완료 보고). While that run has a task that is not
+// completed / failed / cancelled the ticket is 마무리 중. An untracked run (old, other machine) counts as finished.
+const ipRunOpen = id => (state.orca.tasks[id] || []).some(t => !['completed', 'failed', 'cancelled'].includes(t.status));
+function ipLive(list) {
+  return (list || []).map(p => {
+    const tickets = p.tickets.map(t => t.state === 'done' && t.child?.runId && ipRunOpen(t.child.runId) ? { ...t, state: 'finishing' } : t);
+    return { ...p, tickets, summary: { ...p.summary, tickets_done: tickets.filter(t => !t.separate && t.state === 'done').length,
+                                       finishing: tickets.filter(t => t.state === 'finishing').length } };
+  });
+}
 function implProgressHtml(list) {
   if (!list?.length) return '';
-  return list.map(p => {
+  return ipLive(list).map(p => {
     const s = p.summary, pct = s.total ? Math.round(s.done / s.total * 100) : 0;
     const row = t => {
       const id = p.launch + ':' + t.key, open = ipOpen.has(id), c = t.current, work = t.items.filter(x => !x.closing);
       const st = t.state === 'todo' ? (t.child ? '착수 전' : '미착수') : IP_ST[t.state];
-      const tip = t.ledger ? `장부 ${t.ledger}` : t.separate ? '이 실행이 디스패치하지 않는 티켓' : t.child ? `② ${t.child.launch} · 장부 없음` : '② 실행 없음';
+      const tip = t.state === 'finishing' ? `체크박스는 모두 끝 · ② ${t.child.launch} 가 마무리 단계(통합 검증·완료 보고 등) 진행 중` : t.ledger ? `장부 ${t.ledger}` : t.separate ? '이 실행이 디스패치하지 않는 티켓' : t.child ? `② ${t.child.launch} · 장부 없음` : '② 실행 없음';
       return `<div class="tk ip-t ${t.separate ? 'ip-out' : ''} ${open ? 'open' : ''}">
         <div class="tk-h" ${t.items.length ? `data-iptoggle="${esc(id)}"` : ''} title="${esc(tip)}"><span class="tk-arrow">${t.items.length ? (open ? '▾' : '▸') : ''}</span>
           <span class="ip-layer" title="1-map.txt 순서·층">${t.layer ?? '–'}</span><span class="tk-key">${esc(t.key)}</span><b>${esc(t.label || '')}</b>${t.repo ? `<span>${esc(t.repo)}</span>` : ''}${t.unmapped ? '<span class="st">맵 밖</span>' : ''}
-          ${c && t.state !== 'done' ? `<span class="ip-cur ${c.status}" title="${esc(c.cb + ' ' + c.text)}">${esc(c.cb)} ${esc(cut(c.text, 28))} · ${IP_CB[c.status]}</span>` : ''}
+          ${c && t.state !== 'done' && t.state !== 'finishing' ? `<span class="ip-cur ${c.status}" title="${esc(c.cb + ' ' + c.text)}">${esc(c.cb)} ${esc(cut(c.text, 28))} · ${IP_CB[c.status]}</span>` : ''}
           <span class="tk-bar">${t.total ? pbar({ steps: work.map(ipStep) }) : ''}</span>
           <span class="ip-n">${t.total != null ? `<b>${t.done}/${t.total}</b>` : t.separate ? '' : '<span class="st" title="장부가 없어 체크박스 수를 모름 (Jira 는 읽지 않음)">?/?</span>'}</span>
           <span class="ip-st ${t.state}">${st}${t.state === 'todo' && !t.total ? '<small> (수 미상)</small>' : ''}</span></div>
         ${open ? `<div class="tk-body">${t.items.map(x => `<div class="cbr ip-cb ${x.closing ? 'closing' : ''}" title="${esc(x.raw || '')}"><span class="cbn">${esc(x.cb)}</span><span class="ip-cbt">${esc(x.text)}</span><span class="st">${esc(x.kind || '')}</span><span class="tkc ${x.status === 'running' ? 'run' : x.status}">${IP_CB[x.status]}</span>${x.closing ? '<span class="st">합계 제외</span>' : ''}</div>`).join('')}</div>` : ''}</div>`;
     };
     return `<div class="box ip"><h3>구현 ① 티켓 진행 <span class="st">${esc(p.title)}${p.epic ? ' · 에픽 ' + esc(p.epic) : ''}${p.runId ? ' · ' + esc(p.runId) : ''}</span></h3>
-      <div class="pline ip-sum"><span>체크박스 <b>${s.done}/${s.total}</b> (${pct}%)</span><span>완료 티켓 <b>${s.tickets_done}/${s.tickets}</b></span>${s.unknown ? `<span class="st" title="장부가 아직 없는 티켓은 체크박스 수를 몰라 합계에 들지 않음">수 미상 티켓 ${s.unknown}</span>` : ''}<span class="st">「완료」 마감 칸은 합계 제외</span></div>
+      <div class="pline ip-sum"><span>체크박스 <b>${s.done}/${s.total}</b> (${pct}%)</span><span>완료 티켓 <b>${s.tickets_done}/${s.tickets}</b>${s.finishing ? ` · 마무리 중 ${s.finishing}` : ''}</span>${s.unknown ? `<span class="st" title="장부가 아직 없는 티켓은 체크박스 수를 몰라 합계에 들지 않음">수 미상 티켓 ${s.unknown}</span>` : ''}<span class="st">「완료」 마감 칸은 합계 제외</span></div>
       <div class="tks">${p.tickets.map(row).join('')}</div></div>`;
   }).join('');
 }
@@ -5477,11 +5488,11 @@ function implProgressBind(again) {
 // The same progress in the agent list, under its coordinator (expanded family and folded card): one line of totals per ①
 // run and the tickets as chips grouped by repository like the driver plan's ticketStrip — done/total and, while it runs,
 // the current checkbox. 범위 밖 (separate-run) tickets are left out. One unfiltered fetch serves every coordinator.
-const IP_TKC = { done: 'done', running: 'run', blocked: 'fail', todo: 'pending' };
+const IP_TKC = { done: 'done', finishing: 'bg', running: 'run', blocked: 'fail', todo: 'pending' };
 const ipListAgain = () => route().v === 'agents' && !charMode && agView !== 'map' && agView !== 'tl' && (() => { const sv = saveScroll(); renderAgents(); restoreScroll(sv); })();
 function ipOfFam(f) {
   const hs = [f.handle, ...(f.extra || [])].filter(Boolean);
-  return hs.length ? (ipGet({}, ipListAgain) || []).filter(p => hs.includes(p.coordinator) && p.tickets.some(t => !t.separate)) : [];
+  return hs.length ? ipLive(ipGet({}, ipListAgain) || []).filter(p => hs.includes(p.coordinator) && p.tickets.some(t => !t.separate)) : [];
 }
 function ipListHtml(f) {
   return ipOfFam(f).map(p => {
@@ -5489,13 +5500,13 @@ function ipListHtml(f) {
     const ts = p.tickets.filter(t => !t.separate), groups = [];
     for (const t of ts) { const r = t.repo || '저장소 미상'; let g = groups.find(x => x.repo === r); if (!g) groups.push(g = { repo: r, items: [] }); g.items.push(t); }
     const chip = t => {
-      const cls = IP_TKC[t.state] || 'pending', c = t.state !== 'done' && t.current;
+      const cls = IP_TKC[t.state] || 'pending', c = t.state !== 'done' && t.state !== 'finishing' && t.current;
       const n = t.total != null ? `${t.done}/${t.total}` : '?/?';
       const st = t.state === 'todo' ? (t.child ? '착수 전' : '미착수') : IP_ST[t.state];
-      const tip = `${t.key}${t.label ? ' ' + t.label : ''}${t.repo ? ' · ' + t.repo : ''} · ${st} · 체크박스 ${n}${t.total == null ? ' (장부 없음 · 수 미상)' : ''}${c ? `\n현재 ${c.cb} ${c.text} · ${IP_CB[c.status]}` : ''}`;
+      const tip = `${t.key}${t.label ? ' ' + t.label : ''}${t.repo ? ' · ' + t.repo : ''} · ${st} · 체크박스 ${n}${t.total == null ? ' (장부 없음 · 수 미상)' : ''}${t.state === 'finishing' ? '\n체크박스는 모두 끝 · ② 실행이 마무리 단계 진행 중' : ''}${c ? `\n현재 ${c.cb} ${c.text} · ${IP_CB[c.status]}` : ''}`;
       return `<span class="tkc ${cls} ip-c" title="${esc(tip)}"><i>${TK_IC[cls] || '·'}</i>${t.label ? `${esc(t.label)} <span class="ip-c-key">${esc(t.key)}</span>` : esc(t.key)} <b>${n}</b>${c ? `<span class="ip-c-cur">${esc(c.cb)}</span>` : ''}</span>`;
     };
-    return `<div class="ip-list"><div class="pline"><b>구현 ① 티켓 진행</b> ${p.runId ? `<a href="#r=${esc(p.runId)}" onclick="event.stopPropagation()" title="Run 상세에서 티켓별 체크박스 목록">${esc(cut(p.title, 40))}</a>` : esc(cut(p.title, 40))} · 체크박스 <b>${s.done}/${s.total}</b> (${pct}%) · 완료 티켓 <b>${s.tickets_done}/${s.tickets}</b>${s.unknown ? ` · <span title="장부가 아직 없어 체크박스 수를 모르는 티켓 — 합계에 들지 않음">수 미상 ${s.unknown}</span>` : ''}</div>
+    return `<div class="ip-list"><div class="pline"><b>구현 ① 티켓 진행</b> ${p.runId ? `<a href="#r=${esc(p.runId)}" onclick="event.stopPropagation()" title="Run 상세에서 티켓별 체크박스 목록">${esc(cut(p.title, 40))}</a>` : esc(cut(p.title, 40))} · 체크박스 <b>${s.done}/${s.total}</b> (${pct}%) · 완료 티켓 <b>${s.tickets_done}/${s.tickets}</b>${s.finishing ? ` · 마무리 중 <b>${s.finishing}</b>` : ''}${s.unknown ? ` · <span title="장부가 아직 없어 체크박스 수를 모르는 티켓 — 합계에 들지 않음">수 미상 ${s.unknown}</span>` : ''}</div>
       <div class="xp-strip">${groups.map(g => `<div class="xp-grp"><span class="xp-repo-n">${esc(g.repo)}</span><div class="cbr">${g.items.map(chip).join('')}</div></div>`).join('')}</div></div>`;
   }).join('');
 }

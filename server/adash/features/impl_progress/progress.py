@@ -92,9 +92,13 @@ def parse_map(text):
 
 
 def norm_status(s):
+    """장부 표 상태 → done·committed·running·blocked·pending. 구현 ③ 의 표 상태는 pending → running(착수) →
+    committed(커밋, 마감 전) → done(「토큰 집계·기각 로그·종료」) 순서다. 모르는 값은 pending."""
     s = (s or "").strip().lower()
-    if s.startswith("done") or s in ("완료", "통과"):
+    if s.startswith(("done", "verified")) or s in ("완료", "통과"):
         return "done"
+    if s.startswith(("committed", "커밋")):
+        return "committed"
     if s.startswith(("running", "in_progress", "진행")):
         return "running"
     if s.startswith(("blocked", "fail", "막힘", "실패")):
@@ -127,13 +131,22 @@ def parse_ledger(text):
         raw = cells[si + extra] if si + extra < len(cells) else ""
         items.append({"cb": cells[0], "text": text_, "kind": kind, "status": norm_status(raw), "raw": raw,
                       "closing": text_ == "완료"})
+    # 「체크박스 실행: cbN <상태> …」 줄(마지막 것)로 표가 아직 pending 인 칸을 보정한다 — 착수 때 표를 running 으로
+    # 바꾸지 않은 장부도 실행 중으로 보이게. 표가 pending 이 아니면 표를 따른다.
+    log = {}
+    for m in re.finditer(r"^[-*\s]*체크박스 실행:\s*(cb\d+)\s+(\S+)", text or "", re.M):
+        log[m.group(1)] = m.group(2)
+    for x in items:
+        st = norm_status(log.get(x["cb"]))
+        if x["status"] == "pending" and log.get(x["cb"]) and st != "pending":
+            x["status"], x["from_log"] = st, True
     cur = re.search(r"^[-*\s]*현재 체크박스:\s*(cb\d+)", text or "", re.M)
     return items, cur.group(1) if cur else None
 
 
 def summarize(items, current):
     work = [x for x in items if not x["closing"]]
-    done = sum(x["status"] == "done" for x in work)
+    done = sum(x["status"] in ("done", "committed") for x in work)  # committed: 커밋은 끝, 마감만 남음
     total = len(work)
     if total and done == total:
         state = "done"
@@ -143,8 +156,9 @@ def summarize(items, current):
         state = "running"
     cur = next((x for x in items if x["cb"] == current), None) if current else None
     if state != "done" and (cur is None or cur["status"] == "done"):
-        # 장부의 「현재 체크박스」가 비었거나 이미 끝난 칸이면: 돌거나 막힌 칸, 없으면 다음 대기 작업 칸
+        # 장부의 「현재 체크박스」가 비었거나 이미 끝난 칸이면: 돌거나 막힌 칸, 마감 중(committed)인 칸, 없으면 다음 대기 작업 칸
         cur = next((x for x in items if x["status"] in ("running", "blocked")), None) \
+            or next((x for x in work if x["status"] == "committed"), None) \
             or next((x for x in work if x["status"] == "pending"), cur)
     return {"done": done, "total": total, "state": state, "current": cur}
 

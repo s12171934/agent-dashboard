@@ -2371,3 +2371,6 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 .ip-c-key { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tkc.run .ip-c-cur { color: var(--run); } .tkc.fail .ip-c-cur { color: var(--bad); }
 .mini-fam .ip-list .xp-grp { padding: 3px 6px 4px; }
+.ip-st.finishing { color: var(--run); font-weight: 400; }
+.tkc.committed { border-color: color-mix(in srgb, var(--done) 55%, var(--line)); border-style: dashed; }
+.ip-cur.committed { border-color: var(--done); border-style: dashed; }
