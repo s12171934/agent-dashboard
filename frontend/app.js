@@ -5418,6 +5418,60 @@ function renderHourly() {
 }
 
 // ---------- run detail (reached from links on other screens) ----------
+// ---------- 「구현 ① 프로젝트」 티켓 진행 (/api/impl-progress) ----------
+// A workflow-canvas impl-project run (구현 ①) dispatches one 구현 ② run per ticket; each ticket's checkboxes live in its
+// worktree ledger. One box per ① run: totals, then every ticket of its 1-map.txt in topological order (also the ones no
+// ② run has reached yet), each opening to its checkbox list. The closing 「완료」 checkbox is listed but greyed and left
+// out of the totals. Fetched on demand (not in the snapshot), re-read at most every 8 s while the view re-renders.
+const ipCache = {};  // query string -> {at, json, data, busy}
+const ipOpen = new Set();  // launch + ticket key of opened ticket rows; survives live re-renders
+function ipGet(q, again) {
+  const k = new URLSearchParams(q).toString(), c = ipCache[k] ||= { at: 0, json: '', data: null };
+  if (!c.busy && Date.now() - c.at > 8000) {
+    c.busy = true;
+    api.implProgress(q).then(d => {
+      c.busy = false; c.at = Date.now();
+      const j = JSON.stringify(d);
+      if (j !== c.json) { c.json = j; c.data = d; again(); }
+    }).catch(() => { c.busy = false; c.at = Date.now(); });
+  }
+  return c.data;
+}
+const IP_ST = { todo: '미착수', running: '진행 중', blocked: '막힘', done: '완료', out: '범위 밖' };
+const IP_CB = { done: '완료', running: '실행 중', pending: '대기', blocked: '막힘' };
+const ipStep = x => x.status === 'done' ? 'done' : x.status === 'running' ? 'run' : x.status === 'blocked' ? 'blocked' : '';
+function implProgressHtml(list) {
+  if (!list?.length) return '';
+  return list.map(p => {
+    const s = p.summary, pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+    const row = t => {
+      const id = p.launch + ':' + t.key, open = ipOpen.has(id), c = t.current, work = t.items.filter(x => !x.closing);
+      const st = t.state === 'todo' ? (t.child ? '착수 전' : '미착수') : IP_ST[t.state];
+      const tip = t.ledger ? `장부 ${t.ledger}` : t.separate ? '이 실행이 디스패치하지 않는 티켓' : t.child ? `② ${t.child.launch} · 장부 없음` : '② 실행 없음';
+      return `<div class="tk ip-t ${t.separate ? 'ip-out' : ''} ${open ? 'open' : ''}">
+        <div class="tk-h" ${t.items.length ? `data-iptoggle="${esc(id)}"` : ''} title="${esc(tip)}"><span class="tk-arrow">${t.items.length ? (open ? '▾' : '▸') : ''}</span>
+          <span class="ip-layer" title="1-map.txt 순서·층">${t.layer ?? '–'}</span><span class="tk-key">${esc(t.key)}</span><b>${esc(t.label || '')}</b>${t.repo ? `<span>${esc(t.repo)}</span>` : ''}${t.unmapped ? '<span class="st">맵 밖</span>' : ''}
+          ${c && t.state !== 'done' ? `<span class="ip-cur ${c.status}" title="${esc(c.cb + ' ' + c.text)}">${esc(c.cb)} ${esc(cut(c.text, 28))} · ${IP_CB[c.status]}</span>` : ''}
+          <span class="tk-bar">${t.total ? pbar({ steps: work.map(ipStep) }) : ''}</span>
+          <span class="ip-n">${t.total != null ? `<b>${t.done}/${t.total}</b>` : t.separate ? '' : '<span class="st" title="장부가 없어 체크박스 수를 모름 (Jira 는 읽지 않음)">?/?</span>'}</span>
+          <span class="ip-st ${t.state}">${st}${t.state === 'todo' && !t.total ? '<small> (수 미상)</small>' : ''}</span></div>
+        ${open ? `<div class="tk-body">${t.items.map(x => `<div class="cbr ip-cb ${x.closing ? 'closing' : ''}" title="${esc(x.raw || '')}"><span class="cbn">${esc(x.cb)}</span><span class="ip-cbt">${esc(x.text)}</span><span class="st">${esc(x.kind || '')}</span><span class="tkc ${x.status === 'running' ? 'run' : x.status}">${IP_CB[x.status]}</span>${x.closing ? '<span class="st">합계 제외</span>' : ''}</div>`).join('')}</div>` : ''}</div>`;
+    };
+    return `<div class="box ip"><h3>구현 ① 티켓 진행 <span class="st">${esc(p.title)}${p.epic ? ' · 에픽 ' + esc(p.epic) : ''}${p.runId ? ' · ' + esc(p.runId) : ''}</span></h3>
+      <div class="pline ip-sum"><span>체크박스 <b>${s.done}/${s.total}</b> (${pct}%)</span><span>완료 티켓 <b>${s.tickets_done}/${s.tickets}</b></span>${s.unknown ? `<span class="st" title="장부가 아직 없는 티켓은 체크박스 수를 몰라 합계에 들지 않음">수 미상 티켓 ${s.unknown}</span>` : ''}<span class="st">「완료」 마감 칸은 합계 제외</span></div>
+      <div class="tks">${p.tickets.map(row).join('')}</div></div>`;
+  }).join('');
+}
+function implProgressBind(again) {
+  $('#view').querySelectorAll('[data-iptoggle]').forEach(b => b.onclick = e => {
+    if (e.target.closest('a')) return;
+    e.stopPropagation();
+    const k = b.dataset.iptoggle;
+    if (ipOpen.has(k)) ipOpen.delete(k); else ipOpen.add(k);
+    again();
+  });
+}
+
 function renderRun(id) {
   const run = state.orca.runs.find(r => r.id === id);
   if (!run) { $('#view').innerHTML = '<a class="back" href="#agents" onclick="history.length > 1 && (history.back(), event.preventDefault())">← 뒤로</a><div class="empty">Run 을 찾을 수 없습니다 (최근 Run 만 추적).</div>'; return; }
@@ -5461,9 +5515,11 @@ function renderRun(id) {
       <div class="kpi"><span>워커 비용 합계</span><b>${usd(wcost)}</b></div>
       <div class="kpi"><span>경과</span><b>${dur(tasks[0]?.created_at, tasks.every(t => t.completed_at) ? end.toISOString() : null)}</b></div>
     </div>
+    ${implProgressHtml(ipGet({ run: run.id }, () => route().v === 'run' && route().id === id && (() => { const sv = saveScroll(); renderRun(id); restoreScroll(sv); })()))}
     <div class="box"><h3>태스크 관계도 <span class="st">코디네이터 → deps 단계 순 · 노드를 누르면 워커 세션</span></h3><div class="gwrap" id="run-graph"></div></div>
     <div class="box"><h3>타임라인</h3><div class="tscroll"><table>${gantt}</table></div></div>`;
   runGraph(run, tasks, stages, depsOf, workers, result, sessByTask, coord);
+  implProgressBind(() => { const sv = saveScroll(); renderRun(id); restoreScroll(sv); });
 }
 
 function runGraph(run, tasks, stages, depsOf, workers, result, sessByTask, coord) {
@@ -5618,14 +5674,15 @@ function renderSession(navigated) {
   // The page is one tab per kind of content, opening on 요약 (relations and a tile per tab). A coordinator (workers, a
   // worker plan or a driver plan) has 오케스트레이션 too.
   const wp = d.own_handle ? workerPlan(d.own_handle, delegatedOf(d)) : null, plans = plansOf(d);
-  const orch = !!(wp || kids.length || plans.length);
+  const ipHtml = d.own_handle ? implProgressHtml(ipGet({ term: d.own_handle }, () => route().v === 'session' && detail === d && reDetail())) : '';
+  const orch = !!(wp || kids.length || plans.length || ipHtml);
   const truns = testRunsUnder([d.path], [d.own_handle, ...delegatedOf(d)]), tmany = orch || truns.some(t => t.sess.path !== d.path);
   const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0);
   const attn = kids.some(k => ['stalled', 'wait'].includes(status(k)) || k.decision) || wp?.fail;
   const lp = d.plans?.[d.plans.length - 1], lpDone = lp ? lp.steps.filter(x => x.st === 'done' || x.st === 'skip').length : 0;
   const docs = designRefsBox(d) + vaultBox(d);
   const tabs = [
-    orch && ['orch', '오케스트레이션', attn ? 'bad' : '', `${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
+    orch && ['orch', '오케스트레이션', attn ? 'bad' : '', `${ipHtml}${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(d, wp)}
         <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
       ${extPlansHtml(plans)}
       ${kids.length ? `<div class="box"><h3>워커 <span class="st">실행 중 ${kids.filter(k => agg(k).live).length} · 합계 비용 ${usd(kc)} · 합계 턴 ${fmt(kids.reduce((x, k) => x + agg(k).turns, 0))}</span></h3>${workerTable(d, kids, wp)}</div>` : ''}`],
@@ -5684,6 +5741,7 @@ function renderSession(navigated) {
   });
   ticketGraphBind();
   workerTableBind(d);
+  implProgressBind(reDetail);
   dtabShow(d, tab, navigated || scroll === undefined, scroll);
   testHistLoad()?.then(ok => ok && route().v === 'session' && detail === d && reDetail());
 }

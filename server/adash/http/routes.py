@@ -6,6 +6,7 @@ from adash.features.decisions import api as decisions
 from adash.features.designs import api as designs
 from adash.features.flow import api as flow
 from adash.features.history import api as history
+from adash.features.impl_progress import api as impl_progress
 from adash.features.interactions import api as interactions
 from adash.features.media import api as media
 from adash.features.orca_runs import api as orca_runs
@@ -33,6 +34,7 @@ GET = {
     "/api/history": history.get_history,
     "/api/reviews": review.get_reviews,
     "/api/run": orca_runs.get_run,
+    "/api/impl-progress": impl_progress.get_progress,
     "/api/decision/wait": decisions.get_wait,
     "/api/decision/mode": decisions.get_mode,
     "/api/orca/job": terminals.get_job,

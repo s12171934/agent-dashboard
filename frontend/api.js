@@ -390,6 +390,10 @@ const api = (() => {
     qaTicket: (server, epic, key, action, extra) => post(byId(server), '/api/qa/ticket', { epic, key, action, ...extra }),
     // One run with the raw task fields the snapshot leaves out (spec, result) and full worker rows. null when not tracked.
     run: async id => { const srv = ownerOf('run', id); return srv && getJson(srv, '/api/run?id=' + encodeURIComponent(id)); },
+    // 「구현 ① 프로젝트」 실행마다 티켓별 체크박스 진행, every server's (the canvas runs on one of them): [{launch, title,
+    // runId, epic, coordinator, summary{done, total, tickets, tickets_done, unknown}, tickets[{key, label, repo, layer,
+    // separate, state, done, total, current, items[{cb, text, kind, status, closing}], child}]}]. q: {run} | {term}.
+    implProgress: async q => (await fromAll('/api/impl-progress?' + new URLSearchParams(q))).flatMap(([s, d]) => tag(d.projects, s.id)),
     // Messages between sessions from Orca's orchestration inbox, newest first: {messages[{id, run_id, type, subject,
     // body, cut, thread_id, from, from_term, from_kind, to, to_term, to_kind, task_id, outcome, phase, question, files,
     // read, created_at}], fetched}. limit counts messages after the heartbeat filter; hb includes heartbeats.
