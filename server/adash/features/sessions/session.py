@@ -14,7 +14,7 @@ from adash.features.orca_runs.store import orca_state
 from adash.features.sessions.config import (CHAT_CHARS, CHAT_LIMIT, CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS,
     SELF_CLOSE_SECONDS, STALL_SECONDS, WAIT_SECONDS, hooks)
 from adash.features.sessions.patterns import (APLAN_CMD, APLAN_SET, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS,
-    BG_NOTE, BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD,
+    BG_NOTE, BG_START, BRIEF_COORD, BRIEF_TASK, COORD_CMD, DISPATCH_PREAMBLE, COORD_HANDLE_STR, HANDLE, NOT_INSTRUCTION, OWN_RUN_CMD,
     RELAY, RELAY_BACK, RUN_CREATE, RUN_ID, TERM_CREATE, closes_own_terminal, classify_tool, tool_hint)
 from adash.features.sessions.places import place_of
 from adash.features.sessions.plans import build_plans
@@ -157,8 +157,11 @@ class Session:
     def check_brief(self, text):
         """The first user message of an Orca worker carries its coordinator handle and task id. A settled
         worker's session can be handed a new task with a new brief, often under a terminal handle Orca reissued
-        for the same pane: that brief moves the session onto the new task and handle (the old ones are kept)."""
-        if self.role != "worker" and len(self.turns) > 2:  # the first brief opens the session
+        for the same pane: that brief moves the session onto the new task and handle (the old ones are kept).
+        A session started outside orchestration (orca agent launch, a plain terminal) becomes a worker when a
+        coordinator later dispatches a Task into its terminal: only Orca's own preamble counts then, not a brief
+        that a long-running session merely quotes."""
+        if self.role != "worker" and len(self.turns) > 2 and not DISPATCH_PREAMBLE.search(text):
             return
         c, t = BRIEF_COORD.search(text), BRIEF_TASK.search(text)
         if not (c and t) or t.group(1) == self.task_id:

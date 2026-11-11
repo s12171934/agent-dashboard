@@ -10,6 +10,8 @@ from adash.core.util import short
 TERM = r"term_(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{32})(?![0-9a-f-])"
 BRIEF_COORD = re.compile(r"Your coordinator's terminal handle is:\s*(" + TERM + ")")
 BRIEF_TASK = re.compile(r"Your task ID is:\s*(task_[0-9a-f]{12})")
+# The first line of Orca's worker preamble: a coordinator dispatched a Task into this terminal (worker-start --terminal).
+DISPATCH_PREAMBLE = re.compile(r"You are a dispatched worker\.\s*\n\s*Your coordinator's terminal handle is:")
 COORD_CMD = re.compile(r"(?:^|[;&|\n(\"'/]\s*)orca orchestration (?:run-create|run-use|dispatch|worker-start)(?![\w-])")  # not dispatch-show etc.
 HANDLE = re.compile(TERM)
 # A message handed to another terminal (RELAY) leaves the turn with the agent there until an answer comes back; a
