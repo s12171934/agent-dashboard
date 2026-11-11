@@ -885,6 +885,8 @@ a.act { text-decoration: none; display: inline-block; }
 .wt-tile { flex: 1 1 0; min-width: min(340px, 100%); }
 .wt-tile > .wt-sec { margin-top: 0; }
 .wt-tile.s2, .wt-tile.s3 { min-width: min(520px, 100%); }
+/* The outer worktree tiles already follow the fold; inner cards wrap to their own pane's width. */
+.wt-tile .grid { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
 .wt-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; margin-bottom: 10px; line-height: 22px; }
 .wt-h h3 { font-size: 14px; line-height: 22px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .wt-proj, .wt-br { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
