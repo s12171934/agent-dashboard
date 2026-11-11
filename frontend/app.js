@@ -596,6 +596,7 @@ function showDecisions() {
   else if (r.v === 'decide') items = pending;
   const owner = q => {
     const s = sessOf(q);
+    if (q.kind === 'canvas') return { name: '워크플로 · ' + (q.agent || '캔버스'), href: '#canvas', badge: srvBadge(q) };
     return { ...s ? { name: nameOf(s), href: r.v === 'session' ? null : '#s=' + encodeURIComponent(s.path) } : { name: (q.agent || '에이전트') + ' · 세션 목록에 없음' }, badge: srvBadge(q) };
   };
   decisions.show(items, pending, owner);

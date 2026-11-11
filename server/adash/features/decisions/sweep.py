@@ -5,6 +5,7 @@ import time
 from adash.core.state import lock, loop_failed, loop_ok, sessions
 from adash.features.decisions.store import (DECISION_EVERY, DECISION_KEEP_S, INBOX_KEEP, INBOX_KEEP_S, decision_lock,
     decision_store, decisions, inbox_store, publish_decisions, save_inbox, settle_decision)
+from adash.features.decisions.canvas import canvas_sweep
 import adash.features.sessions.scan as sessions_scan
 
 
@@ -42,7 +43,7 @@ def stale_decisions(pending):
 def sweep_decisions():
     """Cancel stale, orphaned or abandoned cards and forget settled ones after a while."""
     with lock:
-        pending = list(decisions["pending"])
+        pending = [r for r in decisions["pending"] if r.get("kind") != "canvas"]  # canvas cards: canvas_sweep
         stale = stale_decisions(pending)
         known = {s.id for s in sessions.values() if s.kind == "claude"}
     now = time.time()
@@ -75,6 +76,7 @@ def decision_loop():
     while True:
         try:
             sweep_decisions()
+            canvas_sweep()
             loop_ok("decision")
         except Exception as e:
             loop_failed("decision", e)

@@ -25,6 +25,7 @@ decisions = {"available": True, "pending": [], "inbox_mode": False, "inbox": []}
 # cards, oldest first; whether 메일함 mode is on; the 메일함, newest first
 decision_lock = threading.Lock()  # guards decision_store and inbox_store
 decision_store = {}  # id -> {"card": the public card, "state": pending|answered|cancelled, "terminal", "busy"}
+canvas_store = {}  # id -> {"card", "hidden"}: workflow-canvas decisions shown as cards (canvas.py), not persisted
 # Open cards outlive restarts too (pending.json, {id: {"card", "terminal"}}): the hook registers a question once,
 # so a restart while its picker is open used to drop the card for good. sweep_decisions closes the ones answered
 # or cancelled in the meantime, as it does any card.
@@ -75,7 +76,8 @@ def save_inbox():
 
 def publish_decisions():
     """Copy the open cards into `decisions` for /api/state. Call holding decision_lock, not `lock`."""
-    pending = sorted((d["card"] for d in decision_store.values() if d["state"] == "pending"), key=lambda c: c["created_at"])
+    pending = sorted([*(d["card"] for d in decision_store.values() if d["state"] == "pending"),
+                      *(d["card"] for d in canvas_store.values() if not d["hidden"])], key=lambda c: c["created_at"])
     inbox = sorted((dict(d["card"]) for d in inbox_store.values()), key=lambda c: c["created_at"], reverse=True)
     with lock:
         mode = bool(prefs.get("decision_inbox"))
