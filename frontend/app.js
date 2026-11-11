@@ -7236,11 +7236,8 @@ async function renderCanvas(reload) {
 // line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
 let mdMounted = false, mdData = null;
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
-let md = { fold: false, follow: true, side: 'tl', q: '', kind: '' };  // adash.media.view: the recording list folded away, the timeline following playback, the side list (timeline or captions), the search, the kind shown ('' all)
+let md = { fold: false, side: 'tl', q: '', kind: '' };  // adash.media.view: the recording list folded away, the side list (timeline or captions), the search, the kind shown ('' all)
 try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
-// the last wheel or touch drag anywhere: a reader scrolling by hand (scroll events cannot tell it from our own)
-let mdHandAt = 0;
-for (const ev of ['wheel', 'touchmove']) addEventListener(ev, () => { if (route().v === 'media') mdHandAt = Date.now(); }, { passive: true });
 // full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
 let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () => {};
 // iPhone app: Picture in Picture as the app is put away. The app's own muted player follows the video shown here
@@ -7327,12 +7324,10 @@ async function renderMedia(reload) {
     <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
       <span class="seg" id="md-kind"></span>
       <input type="search" id="md-q" class="md-q" placeholder="검색 — 이름·날짜·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
-      <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label>
-      <label class="st"><input type="checkbox" id="md-follow"${md.follow ? ' checked' : ''}> 재생 위치 따라가기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
+      <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
   mdMounted = true;
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
   $('#md-fold').onchange = e => { md.fold = e.target.checked; mdSave(); $('#md-body .md-wrap')?.classList.toggle('md-folded', md.fold); };
-  $('#md-follow').onchange = e => { md.follow = e.target.checked; mdSave(); };
   $('#md-kind').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; md.kind = b.dataset.k; mdSave(); mdDrawList(); };
   $('#md-q').oninput = e => { md.q = e.target.value; mdSave(); mdDrawList(); mdSide(); };
   try { mdData = await api.media(); } catch { mdData = null; }
@@ -7424,13 +7419,14 @@ function mdPlay(v, startAt) {
     video.currentTime = +li.dataset.t;
     video.play().catch(() => {});
   });
-  // Following: the playing line is scrolled into the timeline's own box, never the page (on a phone the box is the
-  // page, so it is scrolled only when the line has left the screen below the pinned player). A scroll by hand (mdHandAt)
-  // pauses following for a few seconds so the reader is not pulled back while looking ahead.
+  // Bringing a line into view — only for a search hit picked by hand (mdSeek). Playback itself never scrolls the
+  // timeline: the playing line is only marked (.md-now), so the reader's scroll stays where they left it. It is
+  // scrolled into the timeline's own box, never the page (on a phone the box is the page, so it is scrolled only when
+  // the line has left the screen below the pinned player).
   let at = -1;
   const own = () => getComputedStyle(side).overflowY === 'auto';
-  const follow = (li, now) => {
-    if (!li || !now && (!md.follow || Date.now() - mdHandAt < 4000)) return;
+  const follow = li => {
+    if (!li) return;
     if (own()) {
       const top = li.offsetTop - side.offsetTop, h = side.clientHeight;
       if (top < side.scrollTop + 30 || top > side.scrollTop + h - 60) { side.scrollTo({ top: Math.max(0, top - h / 3), behavior: 'smooth' }); }
@@ -7458,7 +7454,7 @@ function mdPlay(v, startAt) {
     document.documentElement.classList.toggle('md-lock', on);
     fsBtn.textContent = on ? '전체 화면 닫기' : '타임라인과 함께 전체 화면';
     fsBtn.setAttribute('aria-pressed', on);
-    if (on) requestAnimationFrame(() => follow(rows[at], true));
+    if (on) requestAnimationFrame(() => follow(rows[at]));  // opened by hand: show the playing line once
   };
   mdFull = async on => {
     if (on === duo.classList.contains('md-full')) return;
@@ -7538,7 +7534,7 @@ function mdPlay(v, startAt) {
   mdSeek = t => {
     video.currentTime = t;
     video.play().catch(() => {});
-    requestAnimationFrame(() => follow(rows.find(li => Math.abs(+li.dataset.t - t) < 0.01), true));
+    requestAnimationFrame(() => follow(rows.find(li => Math.abs(+li.dataset.t - t) < 0.01)));
   };
   mdPosture();  // half folded already: open the pair now (after the controls above exist)
   // the line now playing: the last one whose time has passed
@@ -7551,7 +7547,6 @@ function mdPlay(v, startAt) {
     rows[now]?.classList.add('md-now');
     at = now;
     scene.textContent = v.timeline.filter(r => r.t <= video.currentTime + 0.25).pop()?.text || '';
-    if (!video.paused || video.seeking) follow(rows[now]);
   };
   mdSide();
 }
