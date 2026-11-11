@@ -77,27 +77,14 @@ def items(res, rule=None, **match):
 
 
 # ---------- 정체 ----------
-# three finished 구현 siblings of ~10 min each; w1 runs 31 min (over 2x), w2 runs 12 min (under), w3 waits for input 40 min
-T = [task("t1", "S1#1 구현", created=NOW - 200 * M, done=NOW - 190 * M), task("t2", "S1#2 구현", created=NOW - 180 * M, done=NOW - 169 * M),
-     task("t3", "S1#3 구현", created=NOW - 160 * M, done=NOW - 151 * M),
-     task("tw1", "S1#4 구현", status="dispatched", created=NOW - 31 * M), task("tw2", "S1#5 구현", status="dispatched", created=NOW - 12 * M),
-     task("tw3", "S1#6 구현", status="dispatched", created=NOW - 40 * M)]
-S = [sess("p1", "done", task_id="t1", started=NOW - 200 * M), sess("p2", "done", task_id="t2", started=NOW - 180 * M),
-     sess("p3", "done", task_id="t3", started=NOW - 160 * M),
-     sess("w1", "run", task_id="tw1", started=NOW - 31 * M), sess("w2", "run", task_id="tw2", started=NOW - 12 * M),
-     sess("w3", "wait", task_id="tw3", started=NOW - 40 * M),
+# 정체 is 응답 없음 only: a long-running worker or one waiting for input is not judged
+S = [sess("w1", "run", task_id="tw1", started=NOW - 300 * M), sess("w3", "wait", task_id="tw3", started=NOW - 40 * M),
      sess("z", "stalled", reason="턴이 열린 채 기록 없음", last=NOW - 20 * M)]
+T = [task("tw1", "S1#4 구현", status="dispatched", created=NOW - 300 * M), task("tw3", "S1#6 구현", status="dispatched", created=NOW - 40 * M)]
 r = rules.flow_check(S, {"run_a": T}, {}, [], now=NOW)
-check("정체: 형제 중앙값 2배를 넘긴 워커는 warn", items(r, "stall", session="w1", severity="warn"), r["items"])
-check("정체: 중앙값 2배 안쪽 워커는 안 걸림", not items(r, "stall", session="w2"), r["items"])
+check("정체: 오래 실행 중인 워커는 걸리지 않음(기대 시간 판정 없음)", not items(r, "stall", session="w1"), r["items"])
 check("정체: 입력 대기 워커는 판정하지 않음", not items(r, "stall", session="w3"), r["items"])
 check("정체: 응답 없음(stalled) 세션은 bad", items(r, "stall", session="z", severity="bad"), r["items"])
-# a coordinator task among minute-long steps of another role: no same-role siblings, so not judged
-TC = T[:3] + [task("tc", "구현 ② 티켓·워크트리 브리프 실행", status="dispatched", created=NOW - 120 * M)]
-rc = rules.flow_check(S[:3] + [sess("co", "run", task_id="tc", started=NOW - 120 * M)], {"run_a": TC}, {}, [], now=NOW)
-check("정체: 같은 역할의 끝난 형제가 없으면 다른 역할과 비교하지 않음", not items(rc, "stall", session="co"), rc["items"])
-r1 = rules.flow_check(S[:1] + S[3:4], {"run_a": T[:1] + T[3:4]}, {}, [], now=NOW)
-check("정체: 끝난 형제가 1개뿐이면 판정하지 않음", not items(r1, "stall"), r1["items"])
 
 # ---------- 계획 미이행 ----------
 plan = lambda *st: {"ts": iso(NOW - 50 * M), "steps": [{"t": f"단계 {i + 1}", "st": x, "ts0": None, "ts1": None} for i, x in enumerate(st)]}

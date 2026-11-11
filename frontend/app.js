@@ -801,91 +801,21 @@ function plannedPlace(t, coordPlace) {
 // ---------- coordinator worker plan: its Runs' Tasks, planned (Task row) → spawned (worker session) → settled ----------
 const WP_LABEL = { planned: '계획됨', blocked: '선행 대기', spawned: '워커 실행', done: '완료', fail: '실패', skip: '취소' };
 const WP_IC = { planned: '', blocked: '…', spawned: '●', done: '✓', fail: '✕', skip: '–', manual: '◇' };
-// ---------- time estimates ----------
-// A task's expected run time comes from sibling tasks that already finished in the same Orca run
-// (same model when available): they got the same kind of brief, so their times cluster. Measured on this
-// machine, step-based estimates from a single session's own plan were too uneven to be useful.
+// ---------- task → worker session index ----------
 // Ticket keys come as ABC123, FC-NAV, TEST-FC, D-1: capitals with a digit or a hyphen somewhere, so a plain word is not one.
 const TASK_NAME = /^((?=[A-Z0-9-]*[\d-])[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)(?:#(\d+))?(?:\s+(.*))?$/;
 const taskName = t => t.display_name || t.task_title || '';
 const roleOf = t => { const m = TASK_NAME.exec(taskName(t)); return m ? (m[3] || '').trim() : taskName(t); };
 let EST = null;
 const msOf = x => x ? toDate(x).getTime() : null;
-const median = a => { const v = [...a].sort((x, y) => x - y); return v.length % 2 ? v[v.length >> 1] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2; };
 const mins = ms => Math.max(1, Math.round(ms / 60e3)) + '분';
 const SETTLED_T = ['completed', 'failed', 'cancelled'];
 function estIndex() {
   if (EST && EST.v === state) return EST;
-  const sess = {}, durs = {};
+  const sess = {};
   // A re-engaged worker session serves several tasks in turn (e.g. 구현 then 판정); map every one of them.
   (state.all || state.sessions).forEach(x => { if (!x.parent) (x.task_ids || (x.task_id ? [x.task_id] : [])).forEach(id => (sess[id] = x)); });  // hidden siblings still count
-  for (const [rid, ts] of Object.entries(state.orca.tasks || {})) for (const t of ts) {
-    const w = sess[t.id];
-    if (t.status !== 'completed' || !w?.started) continue;
-    const ms = (msOf(t.completed_at) || msOf(w.last_ts)) - Math.max(msOf(w.started), msOf(t.created_at) || 0);  // a reused session starts the task later
-    if (ms > 0) (durs[rid] ||= []).push({ ms, model: w.model, role: roleOf(t) });
-  }
-  return EST = { v: state, sess, durs };
-}
-function taskLeft(t) {
-  if (SETTLED_T.includes(t.status)) return { left: 0, done: true };
-  const w = estIndex().sess[t.id], ds = estIndex().durs[t.run_id] || [];
-  const role = roleOf(t), byRole = ds.filter(d => d.role === role);
-  const pool = byRole.length ? byRole : ds;
-  const same = w?.model ? pool.filter(d => d.model === w.model) : [];
-  const use = same.length ? same : pool;
-  if (!use.length) return null;
-  const v = use.map(d => d.ms), e = { ms: median(v), lo: Math.min(...v), hi: Math.max(...v), n: use.length, same: !!same.length, role: byRole.length ? role : null };
-  if (!w) return { left: e.ms, e, planned: true };
-  const el = Date.now() - Math.max(msOf(w.started), msOf(t.created_at) || 0);
-  return { left: Math.max(0, e.ms - el), el, e, over: el > e.hi, paused: ['wait', 'stalled'].includes(status(w)) };
-}
-// Coordinator: longest chain of remaining work through task deps (a task starts when its deps finish).
-function coordLeft(handle, extra = []) {
-  const runs = [handle, ...extra].flatMap(h => (h && IX.runsByCoord[h]) || []);
-  return tasksLeft(runs.flatMap(r => state.orca.tasks[r.id] || []));
-}
-function tasksLeft(tasks) {
-  if (!tasks.length) return null;
-  const byId = Object.fromEntries(tasks.map(t => [t.id, t]));
-  const deps = t => { try { return JSON.parse(t.deps || '[]').filter(d => byId[d]); } catch { return []; } };
-  const memo = {};
-  let unknown = 0, paused = 0;
-  const fin = id => {
-    if (memo[id] !== undefined) return memo[id];
-    memo[id] = 0;
-    const r = taskLeft(byId[id]);
-    if (!r) unknown++; else if (r.paused) paused++;
-    return memo[id] = (r ? r.left : 0) + deps(byId[id]).reduce((m, d) => Math.max(m, fin(d)), 0);
-  };
-  const open = tasks.filter(t => !SETTLED_T.includes(t.status));
-  if (!open.length) return { left: 0, done: true, n: tasks.length };
-  const left = Math.max(...open.map(t => fin(t.id)));
-  return { left, unknown, paused, open: open.length, n: tasks.length };
-}
-// Card metric: always rendered so the metric grid keeps its shape.
-function estMetric(s) {
-  let text = '–', title = '추정 근거 없음 (같은 Run 에 끝난 워커가 없거나 Orca 태스크가 아님)', cls = '';
-  const delegated = delegatedOf(s);  // runs driven by script terminals it opened
-  const c = (s.own_handle && IX.runsByCoord[s.own_handle]) || delegated.length ? coordLeft(s.own_handle, delegated) : null;
-  if (c) {
-    if (c.done) { text = '완료'; title = `태스크 ${c.n}개 모두 정리됨`; }
-    else if (c.unknown === c.open) { title = `남은 태스크 ${c.open}개 · 끝난 형제 워커가 없어 아직 추정 불가`; }
-    else {
-      text = !c.unknown && c.left < 60e3 ? '곧' : (c.unknown ? '≥' : '') + durHM(c.left / 1000);
-      title = `남은 태스크 ${c.open}개의 의존 경로 중 가장 긴 줄기 기준${c.unknown ? ` · ${c.unknown}개는 근거 없어 0으로 계산` : ''}${c.paused ? ` · ${c.paused}개는 입력 대기/응답 없음 (사람 응답 시간 제외)` : ''} · 예상 완료 ${new Date(Date.now() + c.left).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })}`;
-    }
-  } else if (s.role === 'worker' && s.task_id && IX.tasks[s.task_id]) {
-    const r = taskLeft(IX.tasks[s.task_id]);
-    if (r?.done) { text = '완료'; title = '태스크 정리됨'; }
-    else if (r) {
-      const basis = `근거: 같은 Run${r.e.role ? ` · 같은 역할(${r.e.role})` : ''}${r.e.same ? ' · 같은 모델' : ''}의 끝난 워커 ${r.e.n}개 (${mins(r.e.lo)}~${mins(r.e.hi)}, 중앙 ${mins(r.e.ms)})`;
-      if (r.paused) { text = '멈춤'; cls = 'est-pause'; title = `입력 대기/응답 없음 — 사람 응답 시간은 추정하지 않음 · ${basis}`; }
-      else if (r.over) { text = '초과'; cls = 'est-over'; title = `경과 ${mins(r.el)} · 형제 최장 ${mins(r.e.hi)} 을 넘김 · ${basis}`; }
-      else { text = r.left < 60e3 ? '곧' : durHM(r.left / 1000); title = `경과 ${mins(r.el)} · ${r.left < 60e3 ? '형제 중앙값을 지났고 최장 안쪽 · ' : ''}${basis}`; }
-    }
-  }
-  return `<div class="m est" title="${esc(title)}"><span>남은 예상</span><b class="${cls}">${text}</b></div>`;
+  return EST = { v: state, sess };
 }
 
 // A run's coordinator handle with no agent session behind it: usually an Orca terminal running a script
@@ -1171,10 +1101,6 @@ function secSave(d, k, v) {
   (dsec[d.path] ||= {})[k] = v;
   try { localStorage.setItem('adash.dsec', JSON.stringify(dsec)); } catch {}
 }
-function coordEta(d) {
-  const cl = coordLeft(d.own_handle, delegatedOf(d));
-  return cl && !cl.done && cl.unknown < cl.open ? `남은 예상 ${cl.unknown ? '≥' : ''}${durHM(cl.left / 1000)} (완료 약 ${new Date(Date.now() + cl.left).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })})` : '';
-}
 
 // Three step lines over time: tasks planned, workers spawned, tasks settled.
 function wpChart(d) {
@@ -1368,7 +1294,7 @@ function card(s, cls) {
       <div class="m" title="${ctxTitle(s)}"><span>컨텍스트</span><b class="${ctxLvl(s)}">${fmt(s.ctx_now)}</b></div>
       <div class="m"><span>비용</span><b>${usd(a.cost)}</b>${a.cost != null && !a.costKnown ? '<small>+</small>' : ''}</div>
       <div class="m" title="${esc(Object.entries(a.uses.both_use).sort((x, y) => y[1] - x[1]).map(([n, c]) => `${METRICS.both.nm(n)} ${c}회`).join(', ') || '스킬·MCP 호출 없음')}"><span>스킬·MCP</span><b>${fmt(a.skills + a.mcp)}</b></div>
-      ${lifeMetric(s)}${estMetric(s)}
+      ${lifeMetric(s)}
     </div>
     <div class="ctxbar"><div class="${ctxLvl(s)}" style="width:${pct}%"></div></div>
     ${s.plan ? `<div>${pbar(missed(s.plan, ENDED(st)))}${planLine(s.plan, ENDED(st))}</div>` : ''}
@@ -1420,7 +1346,7 @@ function miniFam(f) {
     ${(() => { const wp = workerPlan(f.handle, f.extra); return wp ? wpBar(wp, planExtra(f.coord)) : ''; })()}
     <div class="c-metrics">
       <div class="m"${pend ? ` title="세션 ${below.length} + ${PEND.filter(([k]) => pc[k]).map(([k, l]) => l + ' ' + pc[k]).join(' + ')}"` : ""}><span>하위</span><b>${total}</b></div>
-      <div class="m" title="${ctxTitle(s)}"><span>컨텍스트</span><b class="${ctxLvl(s)}">${fmt(s.ctx_now)}</b></div><div class="m"><span>합계 비용</span><b>${usd(f.cost)}${f.costKnown ? '' : '+'}</b></div><div class="m"><span>합계 턴</span><b>${fmt(f.turns)}</b></div>${lifeMetric(s)}${estMetric(s)}</div>
+      <div class="m" title="${ctxTitle(s)}"><span>컨텍스트</span><b class="${ctxLvl(s)}">${fmt(s.ctx_now)}</b></div><div class="m"><span>합계 비용</span><b>${usd(f.cost)}${f.costKnown ? '' : '+'}</b></div><div class="m"><span>합계 턴</span><b>${fmt(f.turns)}</b></div>${lifeMetric(s)}</div>
     ${ctxBar(s)}
     <div class="c-foot"><span>${f.runs[0] ? 'Run · ' + esc(f.runs[0].objective) : esc((s.cwd || '').split('/').pop())}</span><button class="tgl" data-toggle="${esc(f.key)}">▸ 펼치기</button></div>
   </div>`;
@@ -1524,15 +1450,14 @@ function ticketsHtml(d, activeOnly) {
   };
   const row = k => {
     const id = 'tk:' + d.handle + ':' + k.pkg, open = famMin[id] ?? k.sts.some(x => OPEN_ST.includes(x));
-    const n = x => k.sts.filter(y => y === x).length, c = tasksLeft(k.tasks);
-    const eta = !c || c.done ? '' : c.unknown === c.open ? '' : !c.unknown && c.left < 60e3 ? '남은 예상 곧' : `남은 예상 ${c.unknown ? '≥' : ''}${durHM(c.left / 1000)}`;
+    const n = x => k.sts.filter(y => y === x).length;
     const cbRows = [...k.cbs.entries()].sort((a, b) => a[0] - b[0]).map(([num, ts]) =>
       `<div class="cbr"><span class="cbn">${num ? '#' + num : '착수'}</span>${ts.sort((a, b) => (a.created_at || '~').localeCompare(b.created_at || '~')).map(chip).join('')}</div>`).join('');
     return `<div class="tk ${open ? 'open' : ''}">
       <div class="tk-h" data-ttoggle="${esc(id)}"><span class="tk-arrow">${open ? '▾' : '▸'}</span><b>${esc(k.pkg)}</b>${k.key ? `<span class="tk-key">${esc(k.key)}</span>` : ''}
         ${k.cbTotal ? `<span>체크박스 <b>${k.cbDone}/${k.cbTotal}</b></span>` : '<span>착수 단계</span>'}
         ${n('run') ? `<span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>` : ''}${n('bg') ? `<span>백그라운드 <b>${n('bg')}</b></span>` : ''}${n('wait') ? `<span>입력 대기 <b style="color:var(--warn)">${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}${n('fail') ? `<span>실패 <b style="color:var(--bad)">${n('fail')}</b></span>` : ''}${n('skip') ? `<span class="st">취소 ${n('skip')}</span>` : ''}
-        <span>워커 ${k.sessions.length}</span><span>${usd(k.cost)}</span>${eta ? `<span>${eta}</span>` : ''}
+        <span>워커 ${k.sessions.length}</span><span>${usd(k.cost)}</span>
         <span class="tk-bar">${pbar({ steps: k.sts.map(x => x === 'done' || x === 'skip' ? x : x === 'fail' || x === 'stalled' ? 'fail' : OPEN_ST.includes(x) ? (x === 'run' || x === 'bg' ? 'run' : 'wait') : '') })}</span></div>
       ${planTicketE2e(k.pkg)}
       ${open ? `<div class="tk-body">${cbRows}</div>` : ''}</div>`;
@@ -2005,7 +1930,7 @@ const CELL = '<!--cell-->';
 // a driver takes as many columns as it has worker cards to show (1–3) and short drivers sit side by side.
 const TILE = '<!--tile:';
 function driverMini(d, owner) {
-  const ws = d.workers, wp = workerPlan(null, [d.handle]), c = coordLeft(null, [d.handle]), t = termOwner(d.handle).t;
+  const ws = d.workers, wp = workerPlan(null, [d.handle]), t = termOwner(d.handle).t;
   const counts = ws.reduce((a, w) => (a[status(w)] = (a[status(w)] || 0) + 1, a), {});
   const pc = pendCounts(wp, planExtra(owner, d.handle));
   for (const [k] of PEND) if (pc[k]) counts[k] = pc[k];
@@ -2014,7 +1939,6 @@ function driverMini(d, owner) {
   const last = ws.map(w => w.last_ts).filter(Boolean).sort().pop(), first = ws.map(w => w.started).filter(Boolean).sort()[0];
   const sum = ws.reduce((a, w) => { const g = agg(w); a.cost += g.cost || 0; a.turns += g.turns || 0; return a; }, { cost: 0, turns: 0 });
   const live = OPEN(st), life = first ? durHM(((live ? Date.now() : msOf(last)) - msOf(first)) / 1000) : '–';
-  const eta = !c ? '–' : c.done ? '완료' : c.unknown === c.open ? '–' : !c.unknown && c.left < 60e3 ? '곧' : (c.unknown ? '≥' : '') + durHM(c.left / 1000);
   return CELL + `<div class="card mini-fam drv-mini st-${st}" style="cursor:default">
     <div class="c-top"><a class="c-title" href="${drvHref(d.handle)}" title="${esc(d.handle)} · 드라이버 상세">⚙ ${esc(d.title)}</a><span class="badge subcoord">스크립트 드라이버</span></div>
     <div class="c-top">${pill(st, { last_ts: last, state_reason: '' })}${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}</div>
@@ -2025,8 +1949,7 @@ function driverMini(d, owner) {
     <div class="c-metrics">
       <div class="m"${pend ? ` title="세션 ${ws.length} + ${PEND.filter(([k]) => pc[k]).map(([k, l]) => l + ' ' + pc[k]).join(' + ')}"` : ''}><span>워커</span><b>${total}</b></div>
       <div class="m"><span>합계 비용</span><b>${usd(sum.cost)}</b></div><div class="m"><span>합계 턴</span><b>${fmt(sum.turns)}</b></div>
-      <div class="m life${live ? ' on' : ''}"${first ? ` title="첫 워커 시작 ${esc(new Date(toDate(first)).toLocaleString('ko-KR', { hour12: false }))}"` : ''}><span>${live ? '가동 중' : '가동(종료)'}</span><b>${life}</b></div>
-      <div class="m"><span>남은 예상</span><b>${eta}</b></div></div>
+      <div class="m life${live ? ' on' : ''}"${first ? ` title="첫 워커 시작 ${esc(new Date(toDate(first)).toLocaleString('ko-KR', { hour12: false }))}"` : ''}><span>${live ? '가동 중' : '가동(종료)'}</span><b>${life}</b></div></div>
     <div class="c-foot"><span>${d.runs[0] ? `Run · <a href="#r=${d.runs[0].id}" style="color:var(--accent)">${esc(d.runs[0].objective)}</a>` : esc(d.handle.slice(0, 13))}</span><span><a class="tgl" href="${drvHref(d.handle)}">상세 ↗</a> <button class="tgl" data-dtoggle="${esc(d.handle)}">▸ 펼치기</button></span></div>
   </div>`;
 }
@@ -2047,9 +1970,8 @@ const cellsJoin = parts => {
 function driverHtml(d, wk) {
   const owner = families().fams.find(f => (f.drivers || []).some(x => x.handle === d.handle))?.coord;
   if (!drvOpen(d)) return driverMini(d, owner);
-  const ws = byRank(d.workers, sessRank), wp = workerPlan(null, [d.handle]), c = coordLeft(null, [d.handle]);
+  const ws = byRank(d.workers, sessRank), wp = workerPlan(null, [d.handle]);
   const n = k => ws.filter(w => status(w) === k).length, open = drvOpen(d), t = termOwner(d.handle).t;
-  const eta = !c ? '' : c.done ? '완료' : c.unknown === c.open ? '남은 예상 –' : !c.unknown && c.left < 60e3 ? '남은 예상 곧' : `남은 예상 ${c.unknown ? '≥' : ''}${durHM(c.left / 1000)}`;
   // Columns = worker cards in view (the ones passing a filter, else active ones or the opened finished list), 1 to 3.
   const shown = filtering() ? ws.filter(liveSess).length
     : Math.max(ws.filter(w => !['done', 'idle'].includes(status(w))).length, famMin['drvfin:' + d.handle] && !ticketsOf(d) ? ws.filter(w => ['done', 'idle'].includes(status(w))).length : 0);
@@ -2057,7 +1979,7 @@ function driverHtml(d, wk) {
     <div class="drv-h"><b><a href="${drvHref(d.handle)}" title="드라이버 상세">⚙ ${esc(d.title)}</a></b><span class="badge">스크립트 드라이버</span>${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}${t?.connected ? focusBtn(d.handle) : ''}
       ${d.runs[0] ? `<span>Run <a href="#r=${d.runs[0].id}" style="color:var(--accent)">${esc(cut(d.runs[0].objective, 40))}</a></span>` : ''}
       ${d.drove ? `<span>맡은 티켓 <b>${d.drove.map(esc).join('·')}</b></span>` : ''}<span>워커 <b>${ws.length}</b></span><span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>${n('bg') ? `<span>백그라운드 <b>${n('bg')}</b></span>` : ''}${n('wait') ? `<span>입력 대기 <b>${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}
-      ${wp ? `<span>태스크 완료 <b>${wp.done}/${wp.total}</b></span>` : ''}${eta ? `<span>${eta}</span>` : ''}
+      ${wp ? `<span>태스크 완료 <b>${wp.done}/${wp.total}</b></span>` : ''}
       <a class="tgl" href="${drvHref(d.handle)}" style="margin-left:auto">상세 ↗</a><button class="tgl" data-dtoggle="${esc(d.handle)}">▾ 최소화</button></div>
     ${wp ? wpBar(wp, planExtra(owner, d.handle)) : ''}
     ${e2eDriverHtml(d)}
@@ -3252,9 +3174,7 @@ function nodeProgress(n) {
     out.push(`<span class="mp-r"><span class="mp-steps" aria-hidden="true">${missed(p, ended).steps.map(x => `<i class="${x === 'miss' ? 'fail' : x}"></i>`).join('')}</span>계획 ${p.done}/${p.total}${p.cur_text && !ended ? ' · ▶ ' + esc(cutW(p.cur_text, 18)) : ''}</span>`);
   }
   if (n.kind === 'task' && n.st !== 'done' && n.st !== 'skip' && n.st !== 'fail') {
-    const t = IX.tasks[n.taskId], r = t && taskLeft(t);
     if (!n.sess) out.push(`<span class="mp-r">${n.item?.open ? `선행 대기: ${esc(cut(n.item.deps.join(', '), 30))}` : esc(NODE_ST[n.st])}</span>`);
-    else if (r?.e && r.el != null) out.push(`<span class="mp-r${r.el > 2 * r.e.ms ? ' mp-over' : ''}">${mins(r.el)}째 (기대 ${mins(r.e.ms)})</span>`);
   }
   return out.join('');
 }
@@ -3518,7 +3438,7 @@ function tlHtml() {
     return `<option value="${esc(n.id)}"${x === pick ? ' selected' : ''}>${d ? `⚠${d} ` : ''}${esc(cutW(n.name, 50))} · ${esc(NODE_ST[n.st] || '')} · 하위 ${x.b.work.length + x.b.review.length}</option>`; };
   return `<div class="controls tl-ctl"><label>코디네이터 <select id="tl-pick" class="field">${ch.map(opt).join('')}</select></label>
       <span class="seg" id="tl-win" role="group" aria-label="기간">${TL_WIN.map(([h, l]) => `<button type="button" data-h="${h}">${h ? '최근 ' + l : l}</button>`).join('')}</span></div>
-    <div class="legend tl-leg"><span><i class="tl-k bar"></i>막대 = aplan 계획 단계(시작~끝)</span><span><i class="tl-k act"></i>회색 막대 = 계획 없음(첫 기록~마지막 기록)</span><span><i class="tl-k ghost"></i>점선 틀 = 기대 시간(같은 Run 의 끝난 형제 중앙값)</span><span><i class="tl-k hatch"></i>빗금 = 결과 없음 · 응답 없음</span><span><i class="tl-k msg"></i>보라 점선 = 메시지</span><span><i class="tl-k now"></i>파란 선 = 지금</span></div>
+    <div class="legend tl-leg"><span><i class="tl-k bar"></i>막대 = aplan 계획 단계(시작~끝)</span><span><i class="tl-k act"></i>회색 막대 = 계획 없음(첫 기록~마지막 기록)</span><span><i class="tl-k hatch"></i>빗금 = 결과 없음 · 응답 없음</span><span><i class="tl-k msg"></i>보라 점선 = 메시지</span><span><i class="tl-k now"></i>파란 선 = 지금</span></div>
     <div id="tl-body" data-pick="${esc(pick.b.coord.id)}"><div class="empty">계획을 불러오는 중…</div></div>`;
 }
 const TL_ROW = 34, TL_LABEL = 190;
@@ -3571,8 +3491,6 @@ function tlBody(rows, plans, meta = {}) {
     const n = r.n, s = n.sess, a = taskT0(n), z = taskT1(n);
     if (!s || !a) return `<span class="st tl-none">${esc(NODE_ST[n.st] || '')}${n.item?.open ? ' · 선행 ' + esc(cut(n.item.deps.join(', '), 40)) : ''}</span>`;
     let h = '';
-    const t = n.taskId && IX.tasks[n.taskId], e = t && taskLeft(t)?.e;
-    if (e && a + e.ms > T0) { const g1 = a + e.ms; h += `<div class="tl-ghost${g1 > T1 ? ' open' : ''}" style="left:${X(Math.max(a, T0))}px;width:${X(Math.min(g1, T1)) - X(Math.max(a, T0))}px" title="기대 ${mins(e.ms)} · 같은 Run${e.role ? ` · 같은 역할(${esc(e.role)})` : ''}의 끝난 형제 ${e.n}개 중앙값${g1 > T1 ? ' · 기대 끝은 아직 오지 않음' : ''}"></div>`; }
     const ended = ENDED(status(s)), stalled = status(s) === 'stalled', last = toDate(s.last_ts).getTime();
     const steps = (plans[s.path] || []).flatMap(p => p.steps.map((x, i) => ({ ...x, i, n: p.steps.length })))
       .filter(x => x.ts0 && x.st !== 'todo').map(x => ({ ...x, a: new Date(x.ts0).getTime(), b: x.ts1 ? new Date(x.ts1).getTime() : x.st === 'run' && !ended && !stalled ? Math.min(now, z || now) : last }))
@@ -3595,8 +3513,8 @@ function tlBody(rows, plans, meta = {}) {
   const devRows = rows.filter(r => r.n.devs?.length), okRows = rows.filter(r => r.n.sess && judged(r.n) && !r.n.devs?.length && ENDED_ST(r.n.st) && r.n.st !== 'fail');
   const okCards = okRows.slice(0, 3).map(r => { const s = r.n.sess, pl = (plans[s.path] || []).slice(-1)[0], t = r.n.taskId && IX.tasks[r.n.taskId];
     const inOrder = pl && pl.steps.every((x, i, xs) => x.st === 'done' && (!i || (xs[i - 1].ts1 || '') <= (x.ts1 || '')));
-    const took = taskT0(r.n) && taskT1(r.n) ? taskT1(r.n) - taskT0(r.n) : null, med = t && estIndex().durs[t.run_id]?.length ? (() => { const ds = estIndex().durs[t.run_id].filter(d => d.role === roleOf(t)); return ds.length ? median(ds.map(d => d.ms)) : null; })() : null;
-    return `<div class="box tl-card ok"><b>✓ ${esc(cutW(r.n.name, 34))} — 정상</b><div class="st">${pl ? `aplan ${pl.steps.length}단계를 ${[inOrder && '순서대로', pl.steps.every(x => x.st === 'done' || x.st === 'skip') ? '모두 끝냄' : '일부 남김'].filter(Boolean).join(' ')}` : '계획 없이 끝남'}${took && med ? ` · ${mins(took)} (형제 중앙값 ${mins(med)})` : took ? ` · ${mins(took)}` : ''}</div></div>`; }).join('');
+    const took = taskT0(r.n) && taskT1(r.n) ? taskT1(r.n) - taskT0(r.n) : null;
+    return `<div class="box tl-card ok"><b>✓ ${esc(cutW(r.n.name, 34))} — 정상</b><div class="st">${pl ? `aplan ${pl.steps.length}단계를 ${[inOrder && '순서대로', pl.steps.every(x => x.st === 'done' || x.st === 'skip') ? '모두 끝냄' : '일부 남김'].filter(Boolean).join(' ')}` : '계획 없이 끝남'}${took ? ` · ${mins(took)}` : ''}</div></div>`; }).join('');
   const devCards = devRows.flatMap(r => r.n.devs.map(x => `<div class="box tl-card ${x.severity}"><b>⚠ ${esc(cutW(r.n.name, 30))} — ${esc(x.rule_name)}</b><div>${esc(x.reason)}</div><ul class="st">${x.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
     <button type="button" class="act" data-flow-ok="${esc(x.id)}" data-srv="${esc(x.server || '')}">정상으로 표시</button></div>`)).join('');
   return `<div class="tscroll tl-scroll"><div class="tl" style="width:${TL_LABEL + W + 16}px">
@@ -5573,9 +5491,9 @@ function driverOf(h) {
 function renderDriver(h) {
   const d = driverOf(h), back = '<a class="back" href="#agents" onclick="history.length > 1 && (history.back(), event.preventDefault())">← 뒤로</a>';
   if (!d) { $('#view').innerHTML = back + '<div class="empty">드라이버를 찾을 수 없습니다 (Orca 터미널·Run 목록에 없음).</div>'; return; }
-  const dd = { path: 'drv:' + h, own_handle: h };  // key for the flow selection; own_handle feeds wpChart and coordEta
+  const dd = { path: 'drv:' + h, own_handle: h };  // key for the flow selection; own_handle feeds wpChart
   const o = termOwner(h), t = o.t, st = drvSt(d), p = drvPlace(h), by = o.by;
-  const ws = byRank(d.workers, sessRank), wp = workerPlan(h), eta = coordEta(dd);
+  const ws = byRank(d.workers, sessRank), wp = workerPlan(h);
   const n = k => ws.filter(w => status(w) === k).length, cost = ws.reduce((a, w) => a + (agg(w).cost || 0), 0);
   const last = ws.map(w => w.last_ts).filter(Boolean).sort().pop(), first = ws.map(w => w.started).filter(Boolean).sort()[0];
   const rel = [
@@ -5591,7 +5509,7 @@ function renderDriver(h) {
     <div class="sub-h"><span class="badge subcoord">스크립트 드라이버</span> · <b title="${esc(p?.path || '')}">▣ ${esc(placeLabel(p))}</b>${srvBadge(d.owner) ? ' · ' + srvBadge(d.owner) : ''}<br>${esc(h)}${first ? ` · 첫 워커 ${esc(new Date(toDate(first)).toLocaleString('ko-KR', { hour12: false }))}` : ''}${t ? '' : ' · Orca 터미널 목록에 없음 (종료됨 또는 다른 기기)'}</div>
     <div class="c-top" style="margin:-4px 0 12px">${pill(st, { last_ts: last, state_reason: '' })}${t && !t.connected ? '<span class="badge" style="color:var(--bad)">연결 끊김</span>' : ''}<span class="acts">${t?.connected ? focusBtn(h, true) : ''}</span></div>
     ${rel ? `<div class="box">${rel}</div>` : ''}
-    <div class="box o-sum">${wp ? wpBar(wp, planExtra(d.owner, h)) : ''}<div class="pline"><span>워커 <b>${ws.length}</b></span><span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>${n('wait') ? `<span>입력 대기 <b>${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}<span>워커 합계 비용 <b>${usd(cost)}</b></span>${eta ? `<span>${eta}</span>` : ''}</div></div>
+    <div class="box o-sum">${wp ? wpBar(wp, planExtra(d.owner, h)) : ''}<div class="pline"><span>워커 <b>${ws.length}</b></span><span>실행 중 <b style="color:var(--run)">${n('run')}</b></span>${n('wait') ? `<span>입력 대기 <b>${n('wait')}</b></span>` : ''}${n('stalled') ? `<span>응답 없음 <b style="color:var(--bad)">${n('stalled')}</b></span>` : ''}<span>워커 합계 비용 <b>${usd(cost)}</b></span></div></div>
     ${wp ? `<div class="box"><h3>체크박스 흐름 <span class="st">${wp.byDeps ? 'deps 순서' : 'deps 없음 · 만든 순서'}</span></h3>${flowBox(dd, wp)}
       <details id="d-wpchart" ${openState.wpchart ? 'open' : ''}><summary class="st">시간 추이 (계획 · 생성 · 완료)</summary><div id="wp-chart" style="margin-top:8px"></div></details></div>` : ''}
     ${tk || e2e ? `<div class="box"><h3>티켓</h3>${tk}${e2e}</div>` : ''}
@@ -5669,7 +5587,7 @@ function renderSession(navigated) {
   const wp = d.own_handle ? workerPlan(d.own_handle, delegatedOf(d)) : null, plans = plansOf(d);
   const orch = !!(wp || kids.length || plans.length);
   const truns = testRunsUnder([d.path], [d.own_handle, ...delegatedOf(d)]), tmany = orch || truns.some(t => t.sess.path !== d.path);
-  const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0), eta = orch ? coordEta(d) : '';
+  const kc = kids.reduce((x, k) => x + (agg(k).cost || 0), 0);
   const attn = kids.some(k => ['stalled', 'wait'].includes(status(k)) || k.decision) || wp?.fail;
   const lp = d.plans?.[d.plans.length - 1], lpDone = lp ? lp.steps.filter(x => x.st === 'done' || x.st === 'skip').length : 0;
   const docs = designRefsBox(d) + vaultBox(d);
@@ -5688,7 +5606,7 @@ function renderSession(navigated) {
   tabs.unshift(['sum', '요약', '', null]);
   const tab = dtabOf(d, tabs.map(t => t[0]), 'sum');
   const body = `<span class="seg d-tabs" role="tablist">${tabs.map(([k, l, dot]) => `<button type="button" role="tab" data-dtab-btn="${k}"${k === tab ? ' class="on"' : ''}>${esc(l)}${dot ? `<i class="d-tab-dot ${dot}"></i>` : ''}</button>`).join('')}</span>
-    <div class="d-pane" data-dtab="sum"${tab === 'sum' ? '' : ' hidden'}>${rel ? `<div class="box">${rel}</div>` : ''}${sumTiles(d, { has: tabs.map(t => t[0]), wp, kids, eta, attn, lp, lpDone, truns })}</div>
+    <div class="d-pane" data-dtab="sum"${tab === 'sum' ? '' : ' hidden'}>${rel ? `<div class="box">${rel}</div>` : ''}${sumTiles(d, { has: tabs.map(t => t[0]), wp, kids, attn, lp, lpDone, truns })}</div>
     ${tabs.filter(t => t[3] != null).map(([k, , , html]) => `<div class="d-pane" data-dtab="${k}"${k === tab ? '' : ' hidden'}>${html}</div>`).join('')}`;
   const ch = chShown(), who = chName(chWho(d));
   const html = `<a class="back" href="#agents">← 에이전트</a>
@@ -5738,7 +5656,7 @@ function renderSession(navigated) {
 }
 // The 요약 tab: one tile per other tab, as the home screen does for the screens — a figure, a line under it and a small
 // chart or the few rows that matter; a tile opens its tab. Tiles that need attention turn red.
-function sumTiles(d, { has, wp, kids, eta, attn, lp, lpDone, truns }) {
+function sumTiles(d, { has, wp, kids, attn, lp, lpDone, truns }) {
   const tile = (k, z, name, big, sub, chart, tone) => has.includes(k) ? `<section class="hw ${z} hub d-tile" data-dtab-go="${k}" tabindex="0" role="button" aria-label="${name} 탭 열기"><h3><span class="hw-name">${name}</span><span class="hw-more" aria-hidden="true">→</span></h3>
     <div class="hw-body"><div class="hw-big${tone ? ' ' + tone : ''}">${big}</div><div class="st">${sub}</div>${chart ? `<div class="hub-chart">${chart}</div>` : ''}</div></section>` : '';
   const rows = xs => xs.map(([l, v]) => `<div class="hub-sum"><b>${esc(l)}</b><span>${esc(v)}</span></div>`).join('');
@@ -5746,7 +5664,7 @@ function sumTiles(d, { has, wp, kids, eta, attn, lp, lpDone, truns }) {
   // 오케스트레이션: workers by state, the worker plan bar, the workers that need a look (else the running ones)
   const watch = kids.filter(w => ['stalled', 'wait'].includes(status(w)) || w.decision), runK = kids.filter(w => status(w) === 'run');
   const orch = tile('orch', 'M', '오케스트레이션', kids.length ? `워커 ${kids.length}` : wp ? `태스크 ${wp.total}` : '드라이버 계획',
-    esc([kids.length && `실행 중 ${n(['run', 'bg'])}`, n(['stalled', 'wait']) && `주의 ${n(['stalled', 'wait'])}`, kids.length && `완료 ${n(['done', 'idle'])}`, eta].filter(Boolean).join(' · ')),
+    esc([kids.length && `실행 중 ${n(['run', 'bg'])}`, n(['stalled', 'wait']) && `주의 ${n(['stalled', 'wait'])}`, kids.length && `완료 ${n(['done', 'idle'])}`].filter(Boolean).join(' · ')),
     (wp ? wpBar(wp, planExtra(d)) : hubSeg([['완료', ['done', 'idle'], 'done'], ['실행', ['run', 'bg'], 'run'], ['대기', ['wait'], 'wait'], ['응답 없음', ['stalled'], 'fail']].map(([l, k, c]) => ({ l, n: n(k), c }))))
       + rows((watch.length ? watch : runK).slice(0, 3).map(w => [nameOf(w), w.decision ? '결정 대기' : ST_LABEL[status(w)]])), attn ? 'bad' : '');
   // 계획: steps done, the step on now and the next ones

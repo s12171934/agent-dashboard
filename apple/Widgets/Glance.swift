@@ -127,7 +127,7 @@ struct Glance: Decodable {
                      cur: "PR 머지·포인터 갱신")],
         projects: [Project(name: "PRD-19 리스닝·리딩 모바일 사용성", error: nil, ratio: 0.775, total: 40, done: 31, stage: "구현", stage_no: 5, stages: 9, end: "2026-10-30"),
                    Project(name: "PRD-60 회원가입 마케팅 수신동의", error: nil, ratio: 0.69, total: 29, done: 20, stage: "구현", stage_no: 5, stages: 9, end: nil)],
-        flow: Flow(bad: 1, warn: 3, items: [.init(rule: "정체", severity: "bad", reason: "기대 시간의 5.3배 경과", title: "PSD-1030 e2e", path: nil),
+        flow: Flow(bad: 1, warn: 3, items: [.init(rule: "정체", severity: "bad", reason: "응답 없음 — 턴이 열린 채 기록 없음", title: "PSD-1030 e2e", path: nil),
                                             .init(rule: "계획 미이행", severity: "warn", reason: "세션이 끝났는데 계획 1단계가 남음", title: "PSQ-1109", path: nil)]),
         cost: Cost(total: 305.02, hours: [15, 25, 19, 5, 0, 0, 0, 0, 0, 42, 63, 81, 55] + Array(repeating: 0, count: 11), now_hour: 12,
                    top: [.init(title: "ego-lite 모바일 화면 실측", model: "claude-opus-5-5", cost: 15.49, path: nil),

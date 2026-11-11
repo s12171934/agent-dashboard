@@ -11,8 +11,6 @@ from adash.features.flow.contracts import CHECKBOX_FLOW, flow_contracts, qa_cont
 from adash.features.review.ship import jira_stage
 
 
-FLOW_STALL_X = 2        # a task running longer than this many times its finished siblings' median is 정체
-FLOW_SIBLINGS = 2       # ... judged only with at least this many finished siblings
 FLOW_REPEAT = 3         # 구현 → 리뷰 rounds on one checkbox that count as 반복
 FLOW_SLACK_S = 60       # clock slack between two records of one ordering
 FLOW_OK_KEEP_S = 30 * 86400
@@ -61,57 +59,19 @@ def deviation(rule, severity, unit, key, reason, evidence, **ref):
             "ticket": None, "handles": [], **ref}
 
 
-def flow_stall(summaries, tasks, sess_of, now):
-    """정체: a session whose turn is open with no record (state stalled, 응답 없음), or a worker task running longer than
-    FLOW_STALL_X × the median of finished sibling tasks of its role in its run (same model when there are enough). With
-    fewer than FLOW_SIBLINGS such siblings it is not judged. A worker waiting for input is the user's time and is not judged."""
-    durs = {}
-    for rid, ts in tasks.items():
-        for t in ts:
-            w = sess_of.get(t.get("id"))
-            if t.get("status") != "completed" or not w or not w.get("started"):
-                continue
-            end = ts_of(t.get("completed_at")) or ts_of(w.get("last_ts"))
-            start = max(ts_of(w["started"]) or 0, ts_of(t.get("created_at")) or 0)
-            if end and end > start:
-                durs.setdefault(rid, []).append((end - start, w.get("model"), task_role(t)))
-    over = {}
-    for rid, ts in tasks.items():
-        for t in ts:
-            w = sess_of.get(t.get("id"))
-            if not w or t.get("status") in FLOW_SETTLED or w.get("task_id") != t.get("id") or w.get("state") not in ("run", "bg", "stalled"):
-                continue
-            ds, role = durs.get(rid, []), task_role(t)
-            # Same role only: a run mixes minute-long steps with the coordinators that supervise them for hours,
-            # so the whole run's median says nothing about one role (it put live 구현 ② coordinators at 372x).
-            pool = [d for d in ds if d[2] == role]
-            same = [d for d in pool if w.get("model") and d[1] == w.get("model")]
-            if len(same) >= FLOW_SIBLINGS:
-                pool = same
-            if len(pool) < FLOW_SIBLINGS:
-                continue
-            v = sorted(d[0] for d in pool)
-            med = v[len(v) // 2] if len(v) % 2 else (v[len(v) // 2 - 1] + v[len(v) // 2]) / 2
-            el = now - max(ts_of(w.get("started")) or now, ts_of(t.get("created_at")) or 0)
-            if el > FLOW_STALL_X * med:
-                over[w["path"]] = (t, el, med, len(pool), role)
+def flow_stall(summaries, now):
+    """정체: a session whose turn is open with no record (state stalled, 응답 없음). A worker waiting for input is the
+    user's time and is not judged."""
     out = []
     for sm in summaries:
-        if sm.get("parent"):
+        if sm.get("parent") or sm.get("state") != "stalled":
             continue
-        o, stalled = over.get(sm["path"]), sm.get("state") == "stalled"
-        if not o and not stalled:
-            continue
-        t = o[0] if o else None
         la, plan = sm.get("last_action") or {}, sm.get("plan") or {}
         ev = [f"마지막 기록 {clock(ts_of(sm.get('last_ts')))} ({mins(now - (ts_of(sm.get('last_ts')) or now))} 전)" if sm.get("last_ts") else None,
               f"마지막 동작: {la.get('text')}" if la.get("text") else None,
               f"계획 단계: {plan['cur'] + 1}/{plan['total']} {plan.get('cur_text') or ''}".strip() if plan.get("cur") is not None else None]
-        if o:
-            ev.insert(0, f"경과 {mins(o[1])} · 같은 Run · 같은 역할({o[4]})의 끝난 형제 {o[3]}개 중앙값 {mins(o[2])}의 {o[1] / o[2]:.1f}배")
-        reason = ("응답 없음 — " + (sm.get("state_reason") or "턴이 열린 채 기록 없음")) if stalled else f"기대 시간의 {o[1] / o[2]:.1f}배 경과"
-        out.append(deviation("stall", "bad" if stalled else "warn", "session", (t["id"] if t else sm["path"]), reason, ev,
-                             session=sm["path"], task_id=t["id"] if t else sm.get("task_id"), task_ids=[t["id"]] if t else []))
+        reason = "응답 없음 — " + (sm.get("state_reason") or "턴이 열린 채 기록 없음")
+        out.append(deviation("stall", "bad", "session", sm["path"], reason, ev, session=sm["path"], task_id=sm.get("task_id")))
     return out
 
 
@@ -256,7 +216,7 @@ def flow_check(summaries, tasks, plans, review_sets, now=None, terms_known=True)
                 handle_of.setdefault(h, sm["path"])
     coord_of = lambda hs: next((handle_of[h] for h in hs if h in handle_of), None)
     items = (flow_tickets(review_sets, qa_contract(), coord_of) + flow_checkboxes(tasks, sess_of)
-             + flow_stall(summaries, tasks, sess_of, now) + flow_plan(summaries, plans, now, terms_known))
+             + flow_stall(summaries, now) + flow_plan(summaries, plans, now, terms_known))
     ok = prefs.get("flow_ok") or {}
     shown = [x for x in items if x["id"] not in ok]
     return {"contracts": flow_contracts(), "items": shown, "ok": len(items) - len(shown), "rules": FLOW_RULES}
