@@ -3,7 +3,7 @@ import WidgetKit
 
 // One widget per page screen not covered in Widgets.swift and Insights.swift: 홈 (내 차례 and a tile per screen),
 // QA (워크트리 리뷰), 상호작용, 설계문서, 워크트리 and 비용 (비교). They read the screens' summaries in /api/glance
-// (server/adash/http/glance_screens.py).
+// (server/src/glance.rs).
 
 private func dollars(_ v: Double) -> String { v >= 100 ? String(format: "$%.0f", v) : String(format: "$%.2f", v) }
 

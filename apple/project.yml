@@ -22,6 +22,9 @@ targets:
     type: application
     platform: macOS
     sources: [Shared, macOS]
+    dependencies:
+      - framework: build/AgentDashboardCore.xcframework
+        embed: false
     info:
       path: build/Info-macOS.plist
       properties:
@@ -36,6 +39,8 @@ targets:
     platform: iOS
     sources: [Shared, iOS]
     dependencies:
+      - framework: build/AgentDashboardCore.xcframework
+        embed: false
       - target: AgentDashboard-Widgets
     entitlements:
       path: build/iOS.entitlements

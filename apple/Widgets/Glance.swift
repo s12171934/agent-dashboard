@@ -2,7 +2,7 @@ import AppIntents
 import Foundation
 import WidgetKit
 
-// The metric server's /api/glance (server/adash/http/snapshot.py): the few KB the widgets show.
+// The metric server's /api/glance (server/src/glance.rs): the few KB the widgets show.
 struct Glance: Decodable {
     struct Decision: Decodable, Identifiable {
         let id: String, title: String, header: String?, question: String, more: Int, options: [String], path: String?
@@ -159,7 +159,7 @@ private let isoFrac: ISO8601DateFormatter = {
 private let iso = ISO8601DateFormatter()
 func parseDate(_ s: String) -> Date? { isoFrac.date(from: s) ?? iso.date(from: s) }
 
-// The page's names and colours for an agent's state (frontend/app.js ST_LABEL).
+// The page's names and colours for an agent's state (web-ui/src/model.rs state_label).
 enum AgentState: String, CaseIterable {
     case run, stalled, wait, bg
     var label: String { ["run": "실행 중", "stalled": "응답 없음", "wait": "입력 대기", "bg": "백그라운드"][rawValue]! }

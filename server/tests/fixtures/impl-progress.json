@@ -1,0 +1,348 @@
+[
+  {
+    "name": "MAP_LAYERED",
+    "map": "decision: ok\norder:\n  0 PSD-1117 설계 (별도 실행, plang_projects PR #112)\n  1 PSD-1118 R1 plang_rails develop PSD-1118-x | PSD-1121 F1 plang-front-common main PSD-1121-y\n  2 PSD-1119 R2 plang_rails base=R1 PSD-1119-z\n  5 PSD-1127 V (별도 실행, 저장소 없음)\nchain-deps: R1→R2 계약\n",
+    "expected": [
+      {
+        "key": "PSD-1117",
+        "label": "설계",
+        "repo": null,
+        "layer": 0,
+        "separate": true
+      },
+      {
+        "key": "PSD-1118",
+        "label": "R1",
+        "repo": "plang_rails",
+        "layer": 1,
+        "separate": false
+      },
+      {
+        "key": "PSD-1121",
+        "label": "F1",
+        "repo": "plang-front-common",
+        "layer": 1,
+        "separate": false
+      },
+      {
+        "key": "PSD-1119",
+        "label": "R2",
+        "repo": "plang_rails",
+        "layer": 2,
+        "separate": false
+      },
+      {
+        "key": "PSD-1127",
+        "label": "V",
+        "repo": null,
+        "layer": 5,
+        "separate": true
+      }
+    ]
+  },
+  {
+    "name": "MAP_LINES",
+    "map": "mismatches: none\norder (§12 층 순서 그대로):\n1 PSD-1100 R1 | plang_rails | origin/develop | PSD-1100-a | wt PSD-1100\n11 PSD-1110 X1 | plang-test-automation (+ 대시보드 fc 핀) | origin/main | PSD-1110-b | wt PSD-1110\nseparate run (이 실행에서 디스패치하지 않음): PSD-1099 설계(plang_projects 슈퍼프로젝트, 설계 PR #111) · PSD-1112 V1(코드 없음)\nstack-only edges: R2→R3\n",
+    "expected": [
+      {
+        "key": "PSD-1100",
+        "label": "R1",
+        "repo": "plang_rails",
+        "layer": 1,
+        "separate": false
+      },
+      {
+        "key": "PSD-1110",
+        "label": "X1",
+        "repo": "plang-test-automation",
+        "layer": 11,
+        "separate": false
+      },
+      {
+        "key": "PSD-1099",
+        "label": "설계",
+        "repo": null,
+        "layer": null,
+        "separate": true
+      },
+      {
+        "key": "PSD-1112",
+        "label": "V1",
+        "repo": null,
+        "layer": null,
+        "separate": true
+      }
+    ]
+  },
+  {
+    "name": "LEDGER",
+    "ledger": "# PSD-1 장부\n\n## 체크박스\n\n| 번호 | 문구 | 종류 | 상태 | 커밋 해시 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| cb1 | test: a | 구현 | done | abc | x |\n| cb2 | feat: b | 구현 | running |  |  |\n| cb3 | 확인: c | verify | pending |  |  |\n| cb4 | 완료 | verify | 디스패치 대상 아님 |  | 마감 |\n\n## 체크박스 실행\n\n- 현재 체크박스: cb2\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "test: a",
+        "kind": "구현",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      },
+      {
+        "cb": "cb2",
+        "text": "feat: b",
+        "kind": "구현",
+        "status": "running",
+        "raw": "running",
+        "closing": false
+      },
+      {
+        "cb": "cb3",
+        "text": "확인: c",
+        "kind": "verify",
+        "status": "pending",
+        "raw": "pending",
+        "closing": false
+      },
+      {
+        "cb": "cb4",
+        "text": "완료",
+        "kind": "verify",
+        "status": "pending",
+        "raw": "디스패치 대상 아님",
+        "closing": true
+      }
+    ],
+    "current": "cb2",
+    "summary": {
+      "done": 1,
+      "total": 3,
+      "state": "running",
+      "current": {
+        "cb": "cb2",
+        "text": "feat: b",
+        "kind": "구현",
+        "status": "running",
+        "raw": "running",
+        "closing": false
+      }
+    }
+  },
+  {
+    "name": "L2",
+    "ledger": "## 체크박스\n| 번호 | 문구 | 종류 | 상태 |\n| --- | --- | --- | --- |\n| cb1 | a | 구현 | done |\n| cb2 | 완료 | verify | pending |\n| cb3 | fix: 통합 | 통합 수정 | done |\n## 실행\n현재 체크박스: cb3\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      },
+      {
+        "cb": "cb2",
+        "text": "완료",
+        "kind": "verify",
+        "status": "pending",
+        "raw": "pending",
+        "closing": true
+      },
+      {
+        "cb": "cb3",
+        "text": "fix: 통합",
+        "kind": "통합 수정",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      }
+    ],
+    "current": "cb3",
+    "summary": {
+      "done": 2,
+      "total": 2,
+      "state": "done",
+      "current": {
+        "cb": "cb3",
+        "text": "fix: 통합",
+        "kind": "통합 수정",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      }
+    }
+  },
+  {
+    "name": "L3",
+    "ledger": "## 체크박스\n| 번호 | 문구 | 종류 | 상태 |\n| --- | --- | --- | --- |\n| cb1 | a | 구현 | done |\n| cb2 | 완료 | verify | blocked |\n| cb3 | fix: 통합 | 통합 수정 | pending |\n## 실행\n현재 체크박스: cb1\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      },
+      {
+        "cb": "cb2",
+        "text": "완료",
+        "kind": "verify",
+        "status": "blocked",
+        "raw": "blocked",
+        "closing": true
+      },
+      {
+        "cb": "cb3",
+        "text": "fix: 통합",
+        "kind": "통합 수정",
+        "status": "pending",
+        "raw": "pending",
+        "closing": false
+      }
+    ],
+    "current": "cb1",
+    "summary": {
+      "done": 1,
+      "total": 2,
+      "state": "blocked",
+      "current": {
+        "cb": "cb2",
+        "text": "완료",
+        "kind": "verify",
+        "status": "blocked",
+        "raw": "blocked",
+        "closing": true
+      }
+    }
+  },
+  {
+    "name": "L4",
+    "ledger": "## 체크박스\n| 번호 | 문구 | 종류 | 상태 |\n| --- | --- | --- | --- |\n| cb1 | a | b | 구현 | done |\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "a | b",
+        "kind": "구현",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      }
+    ],
+    "current": null,
+    "summary": {
+      "done": 1,
+      "total": 1,
+      "state": "done",
+      "current": null
+    }
+  },
+  {
+    "name": "L5",
+    "ledger": "## 체크박스\n| 번호 | 문구 | 종류 | 상태 | 커밋 |\n| --- | --- | --- | --- | --- |\n| cb1 | a | 구현 | pending | |\n| cb2 | b | 구현 | pending | |\n## 실행\n- 현재 체크박스: cb1\n- 체크박스 실행: cb1 running 2026-11-11 14:52 · 1\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "running",
+        "raw": "pending",
+        "closing": false,
+        "from_log": true
+      },
+      {
+        "cb": "cb2",
+        "text": "b",
+        "kind": "구현",
+        "status": "pending",
+        "raw": "pending",
+        "closing": false
+      }
+    ],
+    "current": "cb1",
+    "summary": {
+      "done": 0,
+      "total": 2,
+      "state": "running",
+      "current": {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "running",
+        "raw": "pending",
+        "closing": false,
+        "from_log": true
+      }
+    }
+  },
+  {
+    "name": "L6",
+    "ledger": "## 체크박스\n| 번호 | 문구 | 종류 | 상태 | 커밋 |\n| --- | --- | --- | --- | --- |\n| cb1 | a | 구현 | committed | abc |\n| cb2 | b | 구현 | pending | |\n## 실행\n- 현재 체크박스: cb1\n- 체크박스 실행: cb1 running 2026-11-11 14:52 · 1\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "committed",
+        "raw": "committed",
+        "closing": false
+      },
+      {
+        "cb": "cb2",
+        "text": "b",
+        "kind": "구현",
+        "status": "pending",
+        "raw": "pending",
+        "closing": false
+      }
+    ],
+    "current": "cb1",
+    "summary": {
+      "done": 1,
+      "total": 2,
+      "state": "running",
+      "current": {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "committed",
+        "raw": "committed",
+        "closing": false
+      }
+    }
+  },
+  {
+    "name": "L7",
+    "ledger": "## 체크박스\n| 번호 | 문구 | 종류 | 상태 |\n| --- | --- | --- | --- |\n| cb1 | a | 구현 | done |\n| cb2 | b | verify | pending |\n## 실행\n- 체크박스 실행: cb1 running 2026-11-11 11:41\n- 체크박스 실행: cb2 fix-added cb3 2026-11-11\n- 체크박스 실행 끊김: cb2 1 · running x\n",
+    "items": [
+      {
+        "cb": "cb1",
+        "text": "a",
+        "kind": "구현",
+        "status": "done",
+        "raw": "done",
+        "closing": false
+      },
+      {
+        "cb": "cb2",
+        "text": "b",
+        "kind": "verify",
+        "status": "pending",
+        "raw": "pending",
+        "closing": false
+      }
+    ],
+    "current": null,
+    "summary": {
+      "done": 1,
+      "total": 2,
+      "state": "running",
+      "current": {
+        "cb": "cb2",
+        "text": "b",
+        "kind": "verify",
+        "status": "pending",
+        "raw": "pending",
+        "closing": false
+      }
+    }
+  }
+]

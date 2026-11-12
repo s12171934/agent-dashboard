@@ -1,0 +1,326 @@
+[
+  {
+    "calls": [
+      [
+        "orca orchestration worker-start --spec-file b.md --worktree current --agent claude --json",
+        "{\"taskId\": \"task_b4a472891c97\", \"dispatchId\": \"ctx_17234416d565\", \"runId\": \"run_40484a1898ca\", \"terminal\": \"term_cccccccc-0000-0000-0000-000000000003\", \"handle\": null}"
+      ],
+      [
+        "orca orchestration worker-start --spec-file c.md --run run_40484a1898ca --agent claude --json | python3 -c ...",
+        "{'taskId': 'task_6cc37b12d042', 'dispatchId': 'ctx_c40c151b6c63', 'terminal': 'term_cccccccc-0000-0000-0000-000000000003'}"
+      ]
+    ],
+    "hooks": {
+      "sid": {
+        "pane": "tab1:leaf1"
+      }
+    },
+    "orca": {
+      "runs": [],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration worker-start --spec-file b.md --agent claude --json",
+        "{\"taskId\": \"task_b4a472891c97\", \"dispatchId\": \"ctx_17234416d565\", \"runId\": \"run_40484a1898ca\", \"terminal\": \"term_cccccccc-0000-0000-0000-000000000003\", \"handle\": null}"
+      ]
+    ],
+    "hooks": {},
+    "orca": {
+      "runs": [
+        {
+          "id": "run_40484a1898ca",
+          "coordinator_handle": "term_aaaaaaaa-0000-0000-0000-000000000001"
+        }
+      ],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration dispatch --task task_1 --agent claude --json",
+        "{\"taskId\": \"task_b4a472891c97\", \"dispatchId\": \"ctx_17234416d565\", \"runId\": \"run_40484a1898ca\", \"terminal\": \"term_cccccccc-0000-0000-0000-000000000003\", \"handle\": null}"
+      ]
+    ],
+    "hooks": {
+      "sid": {
+        "pane": "tab1:leaf1"
+      }
+    },
+    "orca": {
+      "runs": [],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration worker-start --help",
+        "Usage: orca orchestration worker-start ..."
+      ]
+    ],
+    "hooks": {
+      "sid": {
+        "pane": "tab1:leaf1"
+      }
+    },
+    "orca": {
+      "runs": [],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": null,
+      "role": "solo"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration worker-start --from term_bbbbbbbb-0000-0000-0000-000000000002 --spec x --agent claude --json",
+        "{\"taskId\": \"task_b4a472891c97\", \"dispatchId\": \"ctx_17234416d565\", \"runId\": \"run_40484a1898ca\", \"terminal\": \"term_cccccccc-0000-0000-0000-000000000003\", \"handle\": null}"
+      ]
+    ],
+    "hooks": {},
+    "orca": {
+      "runs": [
+        {
+          "id": "run_40484a1898ca",
+          "coordinator_handle": "term_bbbbbbbb-0000-0000-0000-000000000002"
+        }
+      ],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": null,
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration worker-start --from term_bbbbbbbb-0000-0000-0000-000000000002 --spec x --agent claude --json",
+        "{\"taskId\": \"task_b4a472891c97\", \"dispatchId\": \"ctx_17234416d565\", \"runId\": \"run_40484a1898ca\", \"terminal\": \"term_cccccccc-0000-0000-0000-000000000003\", \"handle\": null}"
+      ]
+    ],
+    "hooks": {
+      "sid": {
+        "pane": "tab1:leaf1"
+      }
+    },
+    "orca": {
+      "runs": [],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": null,
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration run-create --json",
+        "{\"id\": \"run_111111111111\", \"coordinator_handle\": \"term_aaaaaaaa-0000-0000-0000-000000000001\"}"
+      ]
+    ],
+    "hooks": {},
+    "orca": {
+      "runs": [],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration run-create --json | grep '\"id\"'",
+        "\"id\": \"run_111111111111\""
+      ]
+    ],
+    "hooks": {
+      "sid": {
+        "pane": "tab1:leaf1"
+      }
+    },
+    "orca": {
+      "runs": [],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration run-create --json | grep '\"id\"'",
+        "\"id\": \"run_111111111111\""
+      ]
+    ],
+    "hooks": {},
+    "orca": {
+      "runs": [
+        {
+          "id": "run_111111111111",
+          "coordinator_handle": "term_aaaaaaaa-0000-0000-0000-000000000001"
+        }
+      ],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+      "role": "coordinator"
+    }
+  },
+  {
+    "calls": [
+      [
+        "orca orchestration run-use --from term_bbbbbbbb-0000-0000-0000-000000000002 run_111111111111",
+        "{\"id\": \"run_111111111111\"}"
+      ]
+    ],
+    "hooks": {},
+    "orca": {
+      "runs": [
+        {
+          "id": "run_111111111111",
+          "coordinator_handle": "term_bbbbbbbb-0000-0000-0000-000000000002"
+        }
+      ],
+      "tasks": {},
+      "workers": [],
+      "terminals": [
+        {
+          "handle": "term_aaaaaaaa-0000-0000-0000-000000000001",
+          "connected": true,
+          "tabId": "tab1",
+          "leafId": "leaf1"
+        }
+      ],
+      "error": null,
+      "updated": 0
+    },
+    "expected": {
+      "own_handle": null,
+      "role": "coordinator"
+    }
+  }
+]

@@ -1,0 +1,4 @@
+module AgentDashboardCore {
+    header "AgentDashboardCore.h"
+    export *
+}

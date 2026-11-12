@@ -1,0 +1,11 @@
+#!/bin/sh
+# The server and its CLI clients share one native executable.
+set -eu
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export ADASH_SERVER_DIR="$HERE"
+BINARY="${ADASH_BINARY:-$HERE/target/release/agent-dashboard}"
+if [ ! -x "$BINARY" ]; then
+  printf '%s\n' "Rust binary missing: $BINARY" 'Build it with: server/cargo build --release --locked' >&2
+  exit 127
+fi
+exec "$BINARY" "$@"

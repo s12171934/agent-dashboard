@@ -4,7 +4,7 @@ import UIKit
 
 // 녹화 영상 into Picture in Picture by itself when the app is put away (home, another app, the phone locked).
 // WebKit gives an inline <video> no automatic PiP, so the app keeps its own player beside the page's: a muted AVPlayer
-// on the same file that follows the page's (play, pause, position, speed — app.js mdPip tells it), its layer behind the
+// on the same file that follows the page's (play, pause, position, speed — web-ui/src/runtime.js videoBridge tells it), its layer behind the
 // web view where the page's video is. AVKit starts PiP from it as the app leaves while it plays
 // (canStartPictureInPictureAutomaticallyFromInline). Then it takes over: the page's video pauses and this one plays
 // with sound; back in the app (or PiP closed) the page's video goes on from where PiP got to.

@@ -1,7 +1,7 @@
 ---
 title: agent-dashboard
 created: 2026-10-16
-updated: 2026-10-29
+updated: 2026-11-13
 tags: [domain/인공지능, area/ai에이전트, agent/claude-1b219bef-b3db-4ef6-8088-81f7f0d19120]
 source: ai
 ---
@@ -12,18 +12,20 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 
 - 세션 로그를 증분으로 읽어 상태 변화를 SSE 로 브라우저에 밀어 준다.
 - 세션별 토큰·비용, 진행 중인 단계, 에이전트 사이 상호작용, 테스트 실행, 결정 대기 질문을 보여 준다.
-- 서버는 Python 표준 라이브러리만 쓴다. 설치할 의존성이 없다.
+- 서버·수집기·CLI는 Rust 바이너리 하나로 실행한다. Cargo.lock으로 의존성을 고정한다.
 
 ## 구성
 
 | 폴더 | 무엇 | 어디서 도는가 |
 | --- | --- | --- |
-| `frontend/` | 정적 페이지 (빌드 단계 없음) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
+| `frontend/` | Rust/WASM 빌드 결과·정적 셸·전송 계층 | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
+| `web-ui/` | Leptos CSR 화면·라우팅·폼·상태. `scripts/build-web.sh`로 WASM 빌드 | macOS·iPhone WebKit, 브라우저 |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
-| `server/` | 메트릭 서버 (진입점 `server.py`, 코드는 `adash/` 패키지 — 레이어·기능 구조는 [`server/adash/README.md`](server/adash/README.md). REST `/api/*` + SSE `/events`), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `adata`, `amedia`, `launchd/` | 로컬 Mac |
-| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-impl-progress.py` — 「구현 ① 티켓 진행」의 맵·장부 파서를 가짜 입력으로 확인, `check-server.py` — 서버 패키지의 레이어 의존·순환 import 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `check-own-handle.py` — 코디네이터의 자기 터미널(own_handle) 추론(run-create·worker-start 만으로 만든 Run·`--from` 드라이버 제외) 확인, `check-snapshot-cost.py` — 스냅숏 빌드를 가볍게 하는 캐시(Orca 색인·`lite_orca`·테스트 진행 항목·`lite_test`)가 캐시 없는 계산과 같은지 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
-| `apple/` | macOS·iPhone 앱(배포된 페이지를 감싼 네이티브 셸)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
+| `server/` | 메트릭 서버 (`src/main.rs` → `src/http.rs`, REST `/api/*` + SSE `/events`; `server/run`으로 실행), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `adata`, `amedia`, `launchd/` | 로컬 Mac |
+| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-impl-progress.py` — 「구현 ① 티켓 진행」의 맵·장부 파서를 가짜 입력으로 확인, `check-server.py` — Rust 컴파일·Clippy 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `check-own-handle.py` — 코디네이터의 자기 터미널(own_handle) 추론(run-create·worker-start 만으로 만든 Run·`--from` 드라이버 제외) 확인, `check-snapshot-cost.py` — 스냅숏 delta의 항목 식별 규약 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
+| `apple/` | macOS·iPhone 앱(네이티브 UI·Rust 공용 상태·WebView)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
+| `client-core/` | 서버·WASM UI·Apple 앱이 공유하는 Rust 결정 응답 타입, 알림 상태 판정과 C ABI | 서버, macOS, iPhone |
 | `bin/` | 공개 CLI 진입점 — `atest`(→ `server/atest`). 다른 저장소(스킬 등)는 이 경로로 부른다 | 로컬 Mac |
 | `exports/` | 공개 스키마 | |
 
@@ -44,8 +46,9 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 
 ## 요구 사항
 
-- macOS (상시 실행에 `launchd` 를 쓴다. 서버 자체는 Python 3 만 있으면 된다)
-- Python 3
+- macOS (상시 실행에 `launchd`를 쓴다)
+- Rust/Cargo (빌드에 필요; 검증 환경 Rust 1.99.1). 실행에는 빌드된 바이너리만 필요하다.
+- 프론트 개발·캐릭터 제작용 보조 스크립트는 Python을 사용한다. RSpec 연동은 Ruby formatter를 사용한다.
 - 선택: Orca CLI(`orca`)가 `PATH` 에 있으면 Run·터미널 정보를 함께 보여 준다
 
 ## 읽는 데이터
@@ -71,11 +74,12 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 ## 실행
 
 ```sh
-python3 server/server.py --origin https://dashboard.s-dante.com --origin https://agent-dashboard-2at.pages.dev
+server/cargo build --release --locked
+server/run --origin https://dashboard.s-dante.com --origin https://agent-dashboard-2at.pages.dev
 tailscale serve --bg 8787                                                  # 다른 기기용 https 주소 (선택)
 ```
 
-로컬에서 페이지를 고칠 때는 `python3 scripts/dev-frontend.py` 로 띄우고 `http://127.0.0.1:5500` 을 연다(`--port` 로 바꿀 수 있다). `frontend/` 의 파일을 저장하면 열린 탭이 저절로 따라온다: CSS 는 새로 고치지 않고 그 자리에서 바뀌고, 나머지는 페이지를 새로 고친다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다. 디스크에 없는 `/chars/*`(`chars.json`·R2 에 올린 캐릭터)는 배포 사이트에서 받아 준다.
+로컬에서 먼저 `scripts/build-web.sh`로 Rust UI를 빌드한 뒤 `python3 scripts/dev-frontend.py` 로 띄우고 `http://127.0.0.1:5500` 을 연다(`--port` 로 바꿀 수 있다). Rust 코드를 바꾸면 `scripts/build-web.sh`를 다시 실행한다. `frontend/` 의 파일을 저장하면 열린 탭이 저절로 따라온다: CSS 는 새로 고치지 않고 그 자리에서 바뀌고, 나머지는 페이지를 새로 고친다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다. 디스크에 없는 `/chars/*`(`chars.json`·R2 에 올린 캐릭터)는 배포 사이트에서 받아 준다.
 
 | 옵션 | 기본값 | 뜻 |
 | --- | --- | --- |
@@ -88,6 +92,49 @@ tailscale serve --bg 8787                                                  # 다
 | `--projects-dir` | 없음 (기능 꺼짐) | 프로젝트 폴더들을 담은 폴더. 바로 아래 하위 폴더 중 `progress.json` 이 있는 것을 프로젝트로 본다. 여러 번 줄 수 있다 |
 | `--design-dir` | 없음 | 설계문서 폴더. `prefs.json` 의 `design_dirs` 에 더해진다. 여러 번 줄 수 있다. 둘 다 없고 외부 계획에 `design_root` 도 없으면 「설계문서」 기능이 꺼진다 |
 | `--design-days` | `14` | `--hours` 밖의 세션 로그에서 설계문서 참조를 찾는 기간(일). 한 번 읽은 로그는 바뀌기 전까지 다시 읽지 않는다 |
+
+## Rust/WASM UI 개발
+
+현재 화면의 17개 경로(홈·에이전트·세션·Run·드라이버·QA·프로젝트·테스트·결정함·사용량·비교·상호작용·설계·영상·캔버스·워크트리·캐릭터)는 `web-ui/src/views`에서 그린다. 이전 `app.js`·`decision.js` 진입점은 제거했다. `frontend/api.js`는 기존 다중 서버 HTTP/SSE 전송을, 디자인 시스템은 스타일·웹 컴포넌트를 담당한다. `web-ui/src/runtime.js`는 저장소·파일·영상·네이티브 메시지 등 브라우저 연결만 맡는다.
+
+```sh
+scripts/build-web.sh
+python3 scripts/dev-frontend.py --port 5500
+# Rust 수정 후 같은 build-web.sh를 다시 실행
+server/atest run --label "Rust UI" -- server/cargo test --locked --manifest-path "$PWD/web-ui/Cargo.toml"
+server/atest run --label "전송 복귀" -- node --test tests/frontend/api-resume.test.cjs
+```
+
+빌드에는 Rust의 `wasm32-unknown-unknown` 타깃과 wasm-bindgen CLI **0.2.130**을 쓴다(스크립트가 맞는 CLI를 준비). 생성된 JS·WASM·연결 모듈은 `frontend/wasm/<내용 해시>/`에 함께 들어가고 `frontend/rust-ui.js`가 로드한다. 생성물은 git에 넣지 않는다. 배포 스크립트와 CI도 먼저 빌드하며, PWA 캐시는 해당 번들의 manifest 전체를 보관한다. 공개 배포를 하지 않고 준비 결과만 확인하려면 `DEPLOY_OUT=/tmp/adash-preview scripts/deploy-frontend.sh`를 쓴다.
+
+화면별 레코드는 안정적인 키와 별도 Rust signal을 갖는다. 수치 갱신 때 결정 입력·워크트리 메모·열린 iframe·영상 노드를 유지한다. 결정 초안은 화면을 옮겨도 보관한다. 네이티브 탭의 기존 DOM 키, 앱 복귀 `adashNative.resume`, 영상 `adashPip` 계약을 유지하며 캐릭터 애니메이션은 화면 안에 있는 항목만 갱신하고 백그라운드·동작 줄이기 설정에서는 멈춘다. 프로젝트·설계·QA 화면은 작은 화면에서 한 열로 접힌다.
+
+합성 데이터로 실제 WASM 번들을 검증하는 서버는 `python3 tests/frontend/fixture-server.py 5517`이다. 이 서버는 메트릭 서버·Orca로 요청을 보내지 않는다. 띄운 뒤 `server/atest run --label "WebKit UI" -- apple/test-web-ui.sh`로 17개 경로·입력 보존·영상·실행/전송·iPhone 탭 브리지를 검사한다. `tests/frontend/ui-checks.js`는 Chromium에서도 같은 검사에 사용한다. 기존 README의 세부 화면 배치 설명은 이전 UI의 참고이며, 현재 레이아웃과 컨트롤 구성은 Rust 컴포넌트를 기준으로 한다.
+
+## Rust 서버 개발·전환
+
+```sh
+server/cargo fmt --check
+server/cargo clippy --locked --all-targets -- -D warnings
+server/atest run --label "Rust 서버 회귀" -- server/cargo test --locked --all-targets
+server/cargo build --release --locked
+```
+
+기존 `aplan`·`atest`·`adata`·`aqa`·`amedia`·`ausage`·훅 경로는 셸 래퍼를 통해 같은 Rust 실행 파일의 하위 명령을 부른다. 먼저 릴리스 빌드를 해야 한다. 별도 바이너리를 쓰려면 `ADASH_BINARY`를 지정한다. 훅은 바이너리나 서버가 없을 때 에이전트 작업을 막지 않는다.
+
+Python 서버에서 전환할 때는 기존 데이터 폴더와 CLI 경로를 그대로 쓴다. JSON 데이터 마이그레이션은 필요 없다. 실행 중인 서비스는 소스 수정만으로 바뀌지 않으므로, 빌드·검증 후 기존 `DASH_*` 설정으로 `server/launchd/install.sh`를 다시 실행한다. 설치기는 빌드나 plist 검증에 실패하면 기존 서비스를 내리지 않는다.
+
+| Rust 모듈 | 역할 |
+| --- | --- |
+| `main.rs`, `http.rs`, `app.rs` | 실행 옵션, HTTP·SSE·보안·delta, 수집기와 스냅숏 |
+| `sessions.rs`, `plans.rs`, `relations.rs`, `reads.rs` | 증분 로그 파싱, 작업 계획, 세션 관계, 읽기 증거 |
+| `decisions.rs`, `terminals.rs` | 결정·메일함·선택기·보호 훅, 터미널 조작 |
+| `projects.rs`, `designs.rs`, `impl_progress.rs`, `flow.rs` | 프로젝트·설계문서·구현 진행·흐름 판정 |
+| `review.rs`, `worktrees.rs`, `vscode.rs` | QA 리뷰·반출·리포트, 워크트리, VS Code 웹 중계 |
+| `archive.rs`, `plan_usage.rs`, `test_runs.rs`, `usage.rs`, `media.rs`, `chars.rs` | 노트·과거 기록, 사용량·테스트·영상·캐릭터 |
+| `cli.rs`, `atest.rs`, `data.rs`, `core.rs` | CLI, 테스트 래퍼, 데이터 이관, 공통 파일·프로세스 처리 |
+
+`server/tests/fixtures`는 전환 전에 Python 구현으로 만든 합성 입력의 고정 결과다. 테스트는 Python 없이 이 결과와 Rust를 비교한다. HTTP 통합 테스트는 임시 HOME·데이터 폴더와 가짜 Orca·Keychain 명령을 사용하며 실제 사용자 데이터를 수정하지 않는다.
 
 ## 기능 사용 분석 (`ausage`)
 
@@ -108,7 +155,7 @@ server/ausage --json                # 표 대신 JSON
 
 ## 상시 실행 (launchd)
 
-`server/launchd/install.sh` 가 템플릿(`server/launchd/agent-dashboard.plist.in`)을 채워 `~/Library/LaunchAgents/` 에 설치하고 시작한다.
+`server/launchd/install.sh`가 먼저 릴리스 빌드와 plist 검증을 마친 뒤 템플릿(`server/launchd/agent-dashboard.plist.in`)을 채워 `~/Library/LaunchAgents/` 에 설치하고 시작한다.
 
 ```sh
 DASH_ORIGINS="https://dashboard.s-dante.com https://agent-dashboard-2at.pages.dev" server/launchd/install.sh   # 설치·재설치
@@ -120,7 +167,7 @@ server/launchd/install.sh uninstall                                             
 | `DASH_LABEL` | `local.agent-dashboard` |
 | `DASH_HOSTS` | `127.0.0.1` (공백으로 구분) |
 | `DASH_ORIGINS` | 없음 (공백으로 구분, `--origin` 으로 넘김) |
-| `DASH_PYTHON` | `PATH` 의 `python3` |
+| `DASH_BINARY` | `server/target/release/agent-dashboard` (지정하면 빌드를 생략하고 해당 실행 파일을 사용) |
 | `DASH_PROJECTS_DIRS` | 없음 (`:` 로 구분 — 경로에 공백이 있을 수 있어서. 각각 `--projects-dir` 로 넘김) |
 | `DASH_DATA` | `server/data` 가 있으면 그것, 없으면 `server/` (`ADASH_DATA` 로 넘김 — 아래 「로컬 상태 파일」) |
 
@@ -152,14 +199,18 @@ DEPLOY_OUT=/tmp/adash-out scripts/deploy-frontend.sh   # 배포하지 않고 올
 - 아이콘은 `scripts/make-icons.py` 가 만든다(SVG 템플릿 → headless Chrome 으로 PNG). 기본(그리드·블루)은 `icons/` 와 `manifest.webmanifest`, 나머지는 `icons/app/<컨셉>-<색>/` 에 manifest 와 함께 있다. 아이콘을 바꾸거나 더할 때는 스크립트를 고쳐 다시 돌리고, 목록은 `icon-boot.js` 에도 맞춘다.
 - 배포할 때 페이지가 이름으로 불러오는 파일(`index.html` 의 스크립트·스타일, `ds.css` 의 `@import`, `ds.js` 의 `import`, 아이콘 스프라이트 `icons.svg`)에 `?v=<build>` 를 붙인다(원본은 그대로). `dashboard.s-dante.com` zone 이 `_headers` 의 `no-cache` 를 무시하고 JS·CSS·SVG 를 4시간 브라우저 캐시로 내보내서, 새 `index.html` 이 예전 `app.js`·`app.css`·`icons.svg` 와 섞여 화면이 깨졌기 때문이다(`*.pages.dev` 주소는 `no-cache` 그대로). 근본적으로는 그 zone 의 Caching → Browser Cache TTL 을 「Respect Existing Headers」로 두면 된다. 서비스 워커는 파일을 쿼리 없이 경로로 캐시한다.
 - 배포본에는 `build.json` 이 붙는다. 열려 있는 탭은 1분마다, 그리고 화면에 다시 나타나거나 포커스·네트워크를 되찾을 때마다(10초에 한 번까지) 이것을 확인해 새 배포면 서비스 워커를 갱신하고 새로 고친다. 설치한 PWA 는 다시 열기보다 백그라운드에서 돌아오는 일이 많아서다.
-- 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server/adash/http/snapshot.py` 의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
+- 서버와 페이지는 따로 배포되므로, `/api/*` 모양을 깨는 변경은 `server/src/http.rs`의 `API_VERSION` 과 `frontend/api.js` 의 `API_VERSION` 을 함께 올린다. 다르면 페이지가 그리지 않고 알린다.
 
 ## macOS·iPhone 앱 (`apple/`)
 
-배포된 페이지를 그대로 띄우는 네이티브 셸이다. 페이지를 묶어 넣지 않으므로 프론트 배포가 앱을 다시 빌드하지 않아도 보인다. PWA 와 함께 쓴다.
+네이티브 탭·메뉴·알림·PiP와 WebView 화면을 함께 쓴다. 결정 상태 판정은 `client-core/`의 Rust 코드를 두 앱에 정적으로 링크한다. 브라우저용 WASM 초기화 없이 네이티브 코드로 실행한다. UI는 기존 Swift·UIKit/AppKit과 디자인 시스템을 유지한다.
+
+페이지는 묶어 넣지 않으므로 프론트 배포가 앱을 다시 빌드하지 않아도 보인다. Rust 코어나 Swift 앱을 바꾸면 앱을 다시 빌드해야 한다. PWA와 함께 쓴다.
 
 ```sh
 brew install xcodegen          # 한 번. Xcode 27.1 이상(iPhone Duo 의 옆 띠)
+# Rust/Cargo 설치 후, Apple용 표준 라이브러리 타깃을 한 번 준비한다.
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-darwin x86_64-apple-ios
 apple/build.sh mac             # macOS 앱 → ~/Applications/Agent Dashboard.app
 apple/build.sh sim             # 켜진 시뮬레이터 (SIM=<udid>)
 apple/build.sh ios             # 연결한 iPhone (팀 필요)
@@ -170,6 +221,21 @@ apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 �
 - **macOS:** 창 여러 개·탭, 메뉴 막대의 결정 대기 메뉴, Dock 배지, 알림(선택지 버튼으로 바로 답함). 페이지의 「앱 아이콘」 선택이 Dock 아이콘이 된다. 페이지는 앱 안의 루프백 프록시(`http://127.0.0.1:8790`)로 띄운다. https 페이지가 http 루프백 서버를 부르는 것을 WebKit 이 막기 때문이다. 이 프록시는 `/vscode/` 도 메트릭 서버로 그대로 넘겨서, 웹 VS Code 를 페이지와 같은 출처로 연다. 출처가 다른 iframe 은 WebKit 이 클릭 전까지 30fps 이하로 그린다.
 - **iPhone:** 시스템 탭 바가 페이지의 플로팅 바를 대신한다(`DockBridge`). 탭은 고른 화면 넷(기본 홈·에이전트·QA·프로젝트)과 「더보기」다. 「더보기」는 나머지 화면을 모두 목록으로 보여 주고(배지는 그 화면들 개수의 합), 고른 화면은 그 아래로 열린다. 페이지가 탭에 없는 화면으로 가면(링크·알림) 「더보기」가 선택된다. 목록의 「편집」에서 탭에 둘 화면과 순서를 바꾸며 앱에 저장된다. 필터와 설정은 오른쪽 위 톱니바퀴 시트에 있다. 반쯤 접은 iPhone Duo 에서는 탭 바를 숨기고 페이지의 분할 화면을 쓴다. 「앱 아이콘」 선택은 앱의 대체 아이콘으로 바뀐다(캐릭터 얼굴은 제외).
 - **위젯(iPhone):** 결정 대기(선택지가 하나인 질문은 위젯 버튼으로 답함)·에이전트(상태별 수와 최근 에이전트)·테스트(실행 중인 테스트의 진행). 홈 화면과 잠금 화면에 둘 수 있다. 메트릭 서버의 `/api/glance`(수 KB 요약)를 읽고, 서버 주소는 앱이 키체인 공유 그룹으로 넘긴다(무료 팀은 App Group 을 쓸 수 없다). 누르면 앱이 `agentdash://` 로 그 화면이나 세션을 연다.
+- **공용 상태:** 서버의 `/api/decisions` 응답과 앱의 소비자가 같은 Rust 타입을 쓴다. Swift의 `DecisionCore`는 C ABI를 통해 첫 로드의 알림 억제, 새 질문·사라진 질문 판정, 일시적 사용 불가 시 마지막 정상 상태 보존을 요청한다. 서버 전환 시 상태를 초기화하고, 이전 서버에서 늦게 온 응답은 반영하지 않는다. HTTP 오류도 정상 상태로 처리하지 않는다.
+- **앱 복귀:** iPhone이 활성화되거나 Mac이 절전·비활성 상태에서 돌아오면 결정 감시 스트림을 새로 연결한다. 살아 있는 페이지에는 데이터 재연결을 요청하므로 열린 폼·영상·편집기를 다시 로드하지 않는다. 여러 Mac 창은 기존 공유 스트림 소유자에게 재연결을 요청한다. 일반 GET은 15초 제한을 두어 멈춘 요청이 후속 갱신을 계속 막지 않게 한다.
+- **WebView 복구:** WebKit 콘텐츠 프로세스가 종료되면 활성 화면은 현재 URL(선택한 화면·세션 경로 포함)을 다시 로드하고, 비활성 화면은 복귀할 때 복구한다. 1분 내 자동 복구는 3회로 제한하며 수동 새로 고침은 제한을 초기화한다. 문서 재로드이므로 메모리에만 있던 입력·스크롤 상태까지 복원하는 것은 아니다.
+- **Rust 빌드:** `apple/build.sh`가 `apple/build-rust.sh`를 먼저 실행해 macOS(arm64·x86_64), iPhone(arm64), 시뮬레이터(arm64·x86_64)를 각각 컴파일하고 `apple/build/AgentDashboardCore.xcframework`를 만든다. 기기와 시뮬레이터는 별도 플랫폼 슬라이스다. 생성물은 git에서 제외한다. Rust 빌드 캐시는 `.tools/apple-rust`에 둔다.
+
+```sh
+# 설치·배포 없이 공용 코어와 앱 복귀 동작을 확인한다.
+apple/build-rust.sh
+server/atest run --label "공용 앱 코어" -- server/cargo test --locked --manifest-path "$PWD/client-core/Cargo.toml"
+server/atest run --label "Swift·Rust·WebKit" -- apple/test-core.sh
+server/atest run --label "프론트 복귀" -- node --test tests/frontend/api-resume.test.cjs
+```
+
+Swift 검증은 테스트용 통신·저장을 주입한다. 실제 키체인·앱 설정을 수정하지 않으며, WebKit 검증은 임시 로컬 페이지만 읽는다. 전체 앱은 Mac, iOS 시뮬레이터, 실기기용 빌드로 확인한다. 실기기 실행은 기존 팀 서명·설치 절차가 필요하다.
+
 - 알림과 결정 감시는 앱이 떠 있을 때(iPhone 은 내려 둔 직후까지)만 돈다. 메트릭 서버 주소는 페이지의 서버 목록에서 받는다. 결정 감시는 `/events` 가 알릴 때마다 `/api/decisions`(질문과 그 질문을 낸 세션만, 수 KB)를 읽는다. 그것이 없는 옛 서버에서는 `/api/state` 를 읽는다.
 
 ## 플로팅 바 — 이동·필터·현황·설정
@@ -245,7 +311,7 @@ apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 �
 - 상태는 모션과 말풍선 기호로 읽는다: 실행 중 = 노트북 타자(말풍선에 지금 하는 일), 백그라운드 `◍` = 커피, 입력 대기 = 서 있기, 응답 없음 `!` = 머리 감싸 쥐기·식은땀(빛바램), 유휴 `z` = 졸기(흐림), 완료 `✓` = 브이, 결정 대기 `?` = 손 들기(노란 테두리).
 - **세션 상세에서도 같은 사람:** 캐릭터 모드나 홈 「사무실」을 쓰는 동안 세션 상세의 제목 옆에 사무실에서 그 세션을 맡은 사람이 같은 그림체·같은 포즈로 선다. 그 사람을 누르면 「캐릭터 고르기」가 열려 코디네이터·워커·드라이버 누구로든 바꿀 수 있고, 고른 사람은 사무실에서도 그대로 보인다(`adash.chpick`, 이 기기에만 저장. 「자동으로 되돌리기」로 자동 배정에 맡김).
 - **스크립트 드라이버도 사람으로:** 에이전트 세션이 아닌 스크립트 드라이버(티켓 드라이버 등, 코디네이터가 연 Orca 터미널)도 사무실에 드라이버 목록의 캐릭터로 선다(목록이 비면 워커 중에서, 터미널 핸들의 해시로 고정). 자리는 그 드라이버가 몰고 있는 티켓의 워크트리 방(없으면 연 코디네이터의 방)이고, 연 코디네이터의 팀 칩(◆)을 달며 다른 방이면 팀 선으로 이어진다(팀장 칩의 인원에는 세지 않는다). 상태는 워커들의 상태(`drvSt`), 말풍선은 태스크 완료/전체와 실행 중 워커 수, 이름표는 「⚙ 터미널 제목 · 스크립트 드라이버 · 맡은 티켓」과 워커 계획 막대다. 누르면 그 드라이버의 Run(없으면 연 세션)으로 간다. 「실행 중만」 필터에서는 걸러진 워커가 있는 드라이버만 남는다. 대화 탭에서도 드라이버 터미널은 같은 캐릭터로 그린다.
-- 캐릭터 그림은 `frontend/chars/<이름>-<full|bust>.webp`(SD 를 그릴 디자인 참조이자 「캐릭터」 탭의 베이스 일러스트, 프레임 32개(세트 A~D × 8)를 가로로 이은 투명 스트립)와 `<이름>-sd.png`·`<이름>-sd-bust.png`(사무실에 보이는 SD 픽셀 스트립, 전신·상반신). `scripts/char-gen.sh <이름> <full|bust|sd> [작업 폴더] [세트]` 가 Codex 이미지 생성으로 시트 4장을 만들고(세트 A 를 먼저, 이어 A 를 크기·생김새 참조로 B·C·D 를 동시에, 한 번에 수 분. bust·sd 는 같은 세트의 full 을 참조, hina 외의 sd 는 hina 의 sd 도 비율 템플릿으로 참조 — hina 를 먼저, `SD_TPL` 로 바꿈) `scripts/char-sprites.py` 로 배경을 지우고 B~D 를 A 의 크기·발 위치에 맞춰 한 스트립으로 자른다. 세트를 주면(예: `c`) 그 시트만 다시 그리고 네 장으로 다시 자른다. 출력한 프레임 크기는 `app.js` 의 `CH_ART` 에 넣는다.
+- 캐릭터 그림은 `frontend/chars/<이름>-<full|bust>.webp`(SD 를 그릴 디자인 참조이자 「캐릭터」 탭의 베이스 일러스트, 프레임 32개(세트 A~D × 8)를 가로로 이은 투명 스트립)와 `<이름>-sd.png`·`<이름>-sd-bust.png`(사무실에 보이는 SD 픽셀 스트립, 전신·상반신). `scripts/char-gen.sh <이름> <full|bust|sd> [작업 폴더] [세트]` 가 Codex 이미지 생성으로 시트 4장을 만들고(세트 A 를 먼저, 이어 A 를 크기·생김새 참조로 B·C·D 를 동시에, 한 번에 수 분. bust·sd 는 같은 세트의 full 을 참조, hina 외의 sd 는 hina 의 sd 도 비율 템플릿으로 참조 — hina 를 먼저, `SD_TPL` 로 바꿈) `scripts/char-sprites.py` 로 배경을 지우고 B~D 를 A 의 크기·발 위치에 맞춰 한 스트립으로 자른다. 세트를 주면(예: `c`) 그 시트만 다시 그리고 네 장으로 다시 자른다. 출력한 프레임 크기는 `frontend/chars/catalog.json`의 `chars.<id>.art` 에 넣는다.
 - **「새 캐릭터」(대시보드에서 만들기):** 「캐릭터」 탭의 「+ 새 캐릭터」로 여는 상자에 원본 그림 한 장(PNG·JPEG·WebP, 10MB 까지)과 표시 이름·영문 이름·역할(워커·코디네이터·스크립트 드라이버)을 넣고, 생김새·요청은 골라서 적는다. 「Orca 에 맡기기」를 누르면 메트릭 서버(`POST /api/chars/create`)가 `~/.cache/agent-dashboard/chars/<영문>-<시각>/` 에 원본과 브리프(`brief.md`)를 쓰고, Orca 에 등록된 이 저장소의 메인 워크트리에 에이전트(Claude·Codex)를 띄운다. 에이전트는 원본을 보고 영어 설명(`desc.txt`, 요청이 원본보다 우선, 사람 사진이면 얼굴은 닮게 그리지 않음)을 쓰고, `CHAR_REF=<원본> char-gen.sh <영문> full` 로 전신을, 이어서 상반신·SD 를 동시에 그려 확인한 뒤 `char-publish.py` 로 올린다. 저장소 파일은 고치지 않는다.
   - 아래 목록이 작업 폴더의 파일로 진행을 보여 준다: 원본 → 설명 → 전신 → 상반신 → SD → 게시(`.published`), 그린 시트 썸네일(누르면 크게), 「Orca 에서 보기」. 도는 작업이 있으면 5초마다 다시 읽고, 게시되면 곧바로 `chars.json` 을 다시 읽어 새 캐릭터가 목록과 사무실에 나타난다. 에이전트가 포기하면 `failed.txt` 의 이유, 터미널이 결과 없이 닫히면 그렇다고 보여 준다. 끝난 작업은 「목록에서 지우기」로, 아니면 14일 뒤 저절로 지워진다(올린 캐릭터는 남는다).
   - **삭제:** R2 에 올린 캐릭터(`chars.json` 에 있는 사람, 카드에 「R2」 표시)는 카드의 「삭제」로 내린다. 확인 뒤 메트릭 서버(`POST /api/chars/unpublish`)가 `char-publish.py <영문> --remove` 를 돌려 R2 의 목록 항목과 그림을 지우고, 이 페이지는 곧바로, 다른 기기는 1분 안에 그 사람을 뺀다(맡던 세션은 다른 캐릭터가 이어받음). 삭제는 영구적이다 — 메트릭 서버의 작업 폴더(원본·시트)도 함께 지운다. 기본 캐릭터도 카드의 「삭제」로 영구히 뺀다 — `--remove` 가 `chars.json` 의 `hidden` 목록에 이름을 적어 모든 기기의 목록·사무실에서 빠지고, 그 이름으로는 다시 올릴 수 없다(배포본의 그림 파일은 다음에 저장소에서 지운다). 되살리기는 없다. 코디네이터·워커 목록의 마지막 한 명은 지울 수 없다(드라이버 목록은 비어도 된다 — 드라이버는 워커 중에서 고른다). launchd 로 뜬 서버의 PATH 에는 nvm 의 node 가 없어서, `char-publish.py` 는 `npx` 가 안 보이면 `~/.nvm/versions/node/` 의 가장 새 버전을 쓴다.
@@ -468,7 +534,7 @@ atest run --expect-red --label "PSQ-1 red" -- npx jest src/...   # 일부러 빨
 ```
 
 - `run` 은 러너를 명령에서 알아낸다(`--kind` 로 지정 가능). RSpec 은 `SPEC_OPTS` 로 `server/atest-rspec.rb` 포매터를 붙여 예제마다 시작·결과·소요 시간·실패 메시지를 받는다(총 개수를 알아 남은 시간이 나온다. 다른 포매터가 지정돼 있지 않으면 `progress` 를 함께 단다). vitest·jest·`node`/`tsx --test`·playwright 는 테스트별 줄(✓·×)을 읽고, 그 줄이 나오도록 vitest 에는 `--reporter=verbose`, jest 에는 `--verbose`, node 에는 `--test-reporter=spec` 을 붙인다(이미 지정했으면 두고, `yarn <스크립트>` 처럼 러너가 명령에 직접 없으면 붙이지 않는다). 전체 출력은 `/private/tmp/agent-test-progress/logs/<key>.log`.
-- `run` 이 끝나면 종료 코드·케이스·출력으로 결과를 판정한다(`server/adash/features/tests/judge.py`). 종료 코드가 0 이 아니어도 실패 케이스가 없으면 실제 실패로 치지 않고 `verdict` 와 그 이유(`detail`)를 남긴다. 「테스트」 탭의 「확인·빨강·실행 오류」 필터가 이것들을 모아 보이고, 실패 건수와 통과율에서는 뺀다.
+- `run` 이 끝나면 종료 코드·케이스·출력으로 결과를 판정한다(`server/src/test_runs.rs`). 종료 코드가 0 이 아니어도 실패 케이스가 없으면 실제 실패로 치지 않고 `verdict` 와 그 이유(`detail`)를 남긴다. 「테스트」 탭의 「확인·빨강·실행 오류」 필터가 이것들을 모아 보이고, 실패 건수와 통과율에서는 뺀다.
   - `warn` 「통과 · 확인」 — 실행된 테스트가 모두 통과했는데 러너가 다른 이유로 실패를 냈다. 예: run-tc 가 요청한 ID 의 테스트를 못 찾음(종료 코드 2, `미발견 T-FC-17`), jest·vitest 의 다른 스위트가 로드되지 않음(`로드 실패 스위트 2개(…)`).
   - `red` 「의도한 빨강」 — 실패할 것을 확인하려고 돌린 실행. `--expect-red`, run-tc `--expect-red` 의 `빨강 판정: 합격`, 또는 라벨에 `red`·`빨강` 이 있을 때. 라벨로 추정하는 경우는 실패를 빨강으로 바꾸기만 하고 통과를 실패로 바꾸지는 않는다. `--expect-red` 를 줬는데 실패가 없으면 실패다.
   - `error` 「실행 오류」 — 테스트가 하나도 돌지 않았다(인자 오류, 빠진 설정, 브라우저 미설치 등). 출력의 첫 오류 줄을 이유로 남긴다. run-tc 자체 E2E 가 테스트 전에 `중단` 된 실행도 여기에 든다.
@@ -520,7 +586,7 @@ server/amedia prune              # 파일이 사라진 항목을 모두 내린�
     - **전체 화면 플레이어(스트리밍 앱식):** 영상은 검은 바탕에 가장자리까지 차고, 타임라인은 옆의 어두운 패널이 된다. 플레이어 기본 컨트롤은 끄고(그 전체 화면은 폴더블의 두 면을 다 차지하므로) 영상 위에 자체 컨트롤을 겹친다. 위에는 제목과 닫기, 가운데에는 10초 뒤로·재생·10초 앞으로, 아래에는 진행 바(타임라인 줄마다 장면 표시)와 시각·지금 장면이 있다. 화면을 누르면 나타나고, 재생 중이면 3초 뒤 사라진다. 키보드는 스페이스·K 로 재생과 일시 정지, ←·→ 로 10초씩 이동한다.
     - **반쯤 접으면 저절로:** 디자인 시스템이 반접힘을 알리면(`<html data-posture>`) 메뉴가 다른 쪽 절반에 펼쳐지듯 영상과 타임라인이 저절로 나뉜다. 다시 펴면 닫힌다(버튼으로 연 것은 그대로 둔다). WebKit 에는 viewport segments 가 없다. 그래서 iPhone Duo 앱에서는 앱이 경첩(`UIHingeInteraction`)을 `window.dsHalfFolded` 로 넘기고, 그때는 화면의 절반을 기준으로 나눈다. iPhone 기본 플레이어의 전체 화면은 곧바로 이 화면으로 바뀐다. 앱의 웹뷰는 `allowsInlineMediaPlayback` 을 켜서 영상을 페이지 안에서 재생한다(꺼져 있으면 재생과 동시에 iPhone 플레이어가 화면을 덮는다).
     - 고른 녹화와 두 토글은 기기마다 기억한다.
-- **종류 (QA · 학습):** 녹화마다 서버가 폴더로 종류를 붙인다 — `ego-record`·`aside-record` 는 브라우저 에이전트 실측 녹화라 **QA**, `explainer-video` 는 해설 영상이라 **학습**. 폴더는 녹화를 만든 스킬이 정하므로 영상이 생기는 순간 종류가 정해지고 손으로 붙일 것이 없다. 목록에 배지로 붙고, 목록 위 「전체 · QA · 학습」(개수 포함)으로 거른다(기기마다 기억). 검색어 「QA」·「학습」도 일치한다. `amedia ls` 도 종류를 보여 준다. 기준은 `adash/features/media/media.py` 의 `KIND` 이고, 공개 폴더를 더하면 종류도 같이 적어야 서버가 뜬다. 종류를 주지 않는 이전 서버의 녹화는 「전체」에만 나온다.
+- **종류 (QA · 학습):** 녹화마다 서버가 폴더로 종류를 붙인다 — `ego-record`·`aside-record` 는 브라우저 에이전트 실측 녹화라 **QA**, `explainer-video` 는 해설 영상이라 **학습**. 폴더는 녹화를 만든 스킬이 정하므로 영상이 생기는 순간 종류가 정해지고 손으로 붙일 것이 없다. 목록에 배지로 붙고, 목록 위 「전체 · QA · 학습」(개수 포함)으로 거른다(기기마다 기억). 검색어 「QA」·「학습」도 일치한다. `amedia ls` 도 종류를 보여 준다. 기준은 `server/src/media.rs`의 폴더별 종류 매핑 이고, 공개 폴더를 더하면 종류도 같이 적어야 서버가 뜬다. 종류를 주지 않는 이전 서버의 녹화는 「전체」에만 나온다.
 - **검색:** 목록 위 검색 칸. 공백으로 나눈 단어가 모두 녹화의 이름·시작 시각·폴더·타임라인·자막 어딘가에 있으면 그 녹화가 남는다(대소문자·한글 자모 조합 차이는 무시). 남은 녹화 아래에 단어가 든 줄이 시각순으로 5줄까지 나오고, 줄을 누르면 그 녹화를 열어 그 시각부터 재생한다(이미 연 녹화면 넘기기만). 오른쪽 목록에서도 단어를 표시하고 그 줄을 옅게 칠한다. 검색은 페이지가 서버마다 받은 목록으로 하므로 「합쳐 보기」에서 모든 서버의 녹화를 한 번에 찾는다. 검색어도 기기마다 기억한다.
 - **자막 (색인):** 설명 영상은 작업 폴더(`<제목> <시각>/`)의 `.srt` 나레이션을, 다른 녹화는 옆의 `<이름>.srt` 를 자막으로 읽어 `/api/media` 의 `captions[{t, text}]` 로 준다. 서버는 `.srt` 를 고친 시각(mtime)이 바뀔 때만 다시 읽는다. 타임라인과 자막이 다 있으면 오른쪽 목록 위에 「타임라인 · 자막」 탭이 생기고, 자막 줄을 검색 결과로 누르면 자막 탭으로 바뀐다. `.srt` 는 자막으로만 읽고 내보내지 않는다(작업 폴더는 여전히 404).
 - **전송:** `/api/media/file` 이 HTTP Range(206)로 보낸다. iOS 는 Range 가 없으면 영상을 재생하지도, 넘기지도 못한다.
@@ -712,14 +778,14 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 
 - `aplan` CLI 와 그 기록 형식 (`~/.agent-plans/*.jsonl`)
 - `bin/atest` CLI (위 「atest」 절의 명령)
-- `server/server.py` 실행 옵션과 `server/launchd/install.sh` 환경 변수
+- `server/run` 실행 옵션과 `server/launchd/install.sh` 환경 변수
 - 테스트 진행 파일 형식 — `/private/tmp/agent-test-progress/` 에 실행 하나당 JSON 하나를 원자적으로(임시 파일에 쓴 뒤 rename) 갱신한다. 필드: `label` `kind` `phase` `verdict`(선택, `warn`·`red`·`error` — 위 atest 절) `detail` `total` `done` `passed` `failed` `pending` `started_at` `updated_at` `eta_s` `log` `owner` `terminal` `session_id`, 선택 `cases` — `[{"id", "title", "status", "msg", "ms"}]`. `cases` 가 있으면 「테스트」의 실행 줄 아래 「케이스」 토글에 케이스 코드(`id`, 예: `TC-A-23`)와 그 케이스가 확인하는 내용(`title`), 통과·실패(`status`: `passed`·`failed`·`skipped` 등), 실패 메시지가 실패 먼저 나온다. run-tc 실행은 진행 파일 옆 `e2e-runs/<run>.tests.json` 에서 같은 목록을 읽는다(제목 앞의 `TC-…` 를 코드로 뗀다)
 
 - 프로젝트 진행 파일 형식 — `exports/project-progress.schema.json` (JSON Schema). 서버는 `--projects-dir` 아래에서 읽어 위 「프로젝트 진행 API」로 준다. 프로젝트마다 `progress.json` 하나에 흐름 단계(stage)와 단계마다 그 안의 작업(step — 날짜·상태 scheduling·pending·active·done·failed)만 담고, 단계 상태·기간·작업 수·진행률 같은 파생값은 대시보드가 계산한다.
 
 ## 로컬 상태 파일 (git 무시)
 
-서버가 쓰는 파일은 모두 **데이터 폴더** 한 곳에 쌓인다. 데이터 폴더는 `ADASH_DATA` 환경변수 → `server/data`(있으면) → `server/`(데이터 폴더 도입 전 위치) 순으로 정해진다. 서버·`aqa`·`ausage`·`adata`·`amedia` 가 같은 규칙(`adash/core/config.py` 의 `DATA`)을 쓴다. 파일 목록과 종류는 같은 파일의 `DATA_FILES` 가 정본이다.
+서버가 쓰는 파일은 모두 **데이터 폴더** 한 곳에 쌓인다. 데이터 폴더는 `ADASH_DATA` 환경변수 → `server/data`(있으면) → `server/`(데이터 폴더 도입 전 위치) 순으로 정해진다. 서버·`aqa`·`ausage`·`adata`·`amedia` 가 같은 규칙(`server/src/core.rs`의 `Config`)을 쓴다. 파일 목록과 종류는 같은 파일의 `DATA_FILES` 가 정본이다.
 
 | 종류 | 파일 | 옮길 때 |
 |---|---|---|

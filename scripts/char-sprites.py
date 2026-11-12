@@ -6,7 +6,7 @@ Drops the white backdrop (a flood from the cell edges, plus flat white gaps betw
 lines the frames up (a bust by its head, the others by their feet), sizes sheets B–D to A (full and sd: by the median
 height from head to feet), crops all frames with one shared box so a pose keeps its place, and scales them
 to 320 px (full) or 240 px (bust) high (the illustrations the SD is drawn from). Prints {w, h, frames: [{top}]} — w × h per frame, top = where the head
-starts as a share of h — which goes into CH_ART in frontend/app.js. An sd sheet (SD chibi pixel art, 「AI 생성」) is
+starts as a share of h — which goes into chars.<id>.art in frontend/chars/catalog.json. An sd sheet (SD chibi pixel art, 「AI 생성」) is
 snapped to a pixel grid (standing pose 80 rows high) and written as <out> itself (a .png), with {pw, ph} instead of {w, h},
 and its bust (head to waist, on a finer grid) as <out>-bust.png ({bust: {pw, ph, frames}}). More sd sheets after the four (the
 「실행 중」 and 「완료」 motions, char-gen.sh run and done; CHAR_EXTRA names them in order, e.g. run:4,done:1 — a name and

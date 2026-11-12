@@ -38,6 +38,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
     private var followed: String?  // the page's screen the selection last followed: a tab pressed on 더보기's list stays
 
     private var web: WKWebView!
+    private var recovery: PageRecovery!
     private let relay = Relay()
     private let pip = PipController()  // 녹화 영상 into Picture in Picture as the app is put away
     private var items: [DockBridge.Item] = []
@@ -57,7 +58,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         super.viewDidLoad()
         view.backgroundColor = Self.pageBackground
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.switchIcon() }
+            MainActor.assumeIsolated { self?.switchIcon(); self?.resume() }
         }
         let conf = WKWebViewConfiguration()
         // videos play in the page (playsinline), not in iPhone's own full-screen player: 녹화 영상 keeps its timeline beside
@@ -72,6 +73,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         web.backgroundColor = view.backgroundColor
         web.navigationDelegate = self
         web.uiDelegate = self
+        recovery = PageRecovery(web: web, home: Self.pageURL)
         web.allowsBackForwardNavigationGestures = true
         web.translatesAutoresizingMaskIntoConstraints = false
 
@@ -292,7 +294,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         m.items = moreItems
         m.onPick = { [weak self, weak m] it in
             guard let self else { return }
-            if it.key.isEmpty { web.reload(); m?.dismiss(animated: true); return }
+            if it.key.isEmpty { loaded = false; recovery.reload(); m?.dismiss(animated: true); return }
             press(it.key)
             if it.key.hasPrefix("#") || !(it.on || it.isToggle) { m?.dismiss(animated: true) }  // a screen or a panel: show it
         }
@@ -338,10 +340,18 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
+        recovery.finished()
         if let h = waiting { waiting = nil; go(h) }
         web.evaluateJavaScript("window.adashDock?.enable(\(!halfFolded))")
         tellFold()
         view.setNeedsLayout()
+    }
+
+    func resume() { if isViewLoaded { recovery.resume() } }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loaded = false
+        recovery.terminated(active: UIApplication.shared.applicationState == .active)
     }
 
     private func go(_ hash: String) {
@@ -375,7 +385,7 @@ final class DashboardController: UITabBarController, UITabBarControllerDelegate,
         let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
         return Set(((icons?["CFBundleAlternateIcons"] as? [String: Any]) ?? [:]).keys)
     }()
-    // the characters the 앱 아이콘 panel may offer (app.js): only those built in, a person put up later has none
+    // the characters the 앱 아이콘 panel may offer (Rust UI): only those built in, a person put up later has none
     static var facesScript: String {
         let faces = builtInIcons.filter { $0.hasPrefix("face-") }.map { "'\($0.dropFirst(5))'" }.sorted()
         return "window.adashFaces = [\(faces.joined(separator: ","))];"

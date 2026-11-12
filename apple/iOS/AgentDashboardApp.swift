@@ -20,7 +20,7 @@ struct AgentDashboardApp: App {
         // Coming to the front: the widgets read again, so one left at an old glance or an error after the phone was
         // offline catches up without waiting for WidgetKit's next turn.
         .onChange(of: phase) { _, now in
-            if now == .active { WidgetCenter.shared.reloadAllTimelines() }
+            if now == .active { delegate.resume(); WidgetCenter.shared.reloadAllTimelines() }
         }
     }
 }
@@ -55,4 +55,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // sound is playback, not ambient, so the silent switch and leaving the app do not stop it.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         return true
-    }}
+    }
+
+    func resume() {
+        watcher.resume()
+        Self.dashboard.resume()
+    }
+}

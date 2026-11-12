@@ -1,0 +1,1747 @@
+[
+  {
+    "sessions": [
+      {
+        "path": "w1",
+        "id": "w1",
+        "parent": null,
+        "state": "run",
+        "state_reason": "",
+        "task_id": "tw1",
+        "task_ids": [
+          "tw1"
+        ],
+        "started": "2027-01-15T03:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "w3",
+        "id": "w3",
+        "parent": null,
+        "state": "wait",
+        "state_reason": "",
+        "task_id": "tw3",
+        "task_ids": [
+          "tw3"
+        ],
+        "started": "2027-01-15T07:20:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "z",
+        "id": "z",
+        "parent": null,
+        "state": "stalled",
+        "state_reason": "턴이 열린 채 기록 없음",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:40:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      }
+    ],
+    "tasks": {
+      "run_a": [
+        {
+          "id": "tw1",
+          "run_id": "run_a",
+          "task_title": "S1#4 구현",
+          "display_name": "S1#4 구현",
+          "status": "dispatched",
+          "created_at": "2027-01-15 03:00:00",
+          "completed_at": null,
+          "deps": "[]"
+        },
+        {
+          "id": "tw3",
+          "run_id": "run_a",
+          "task_title": "S1#6 구현",
+          "display_name": "S1#6 구현",
+          "status": "dispatched",
+          "created_at": "2027-01-15 07:20:00",
+          "completed_at": null,
+          "deps": "[]"
+        }
+      ]
+    },
+    "plans": {},
+    "reviews": [],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "stall|z",
+        "rule": "stall",
+        "severity": "bad",
+        "session": "z",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": null,
+        "checkbox": null,
+        "run_id": null
+      }
+    ],
+    "ok": 0
+  },
+  {
+    "sessions": [
+      {
+        "path": "a",
+        "id": "a",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T01:00:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "b",
+        "id": "b",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "c",
+        "id": "c",
+        "parent": null,
+        "state": "run",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "d",
+        "id": "d",
+        "parent": null,
+        "state": "done",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "e",
+        "id": "e",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T06:30:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_e",
+        "orca_focus": "term_e"
+      },
+      {
+        "path": "f",
+        "id": "f",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:20:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_f",
+        "orca_focus": null
+      },
+      {
+        "path": "g",
+        "id": "g",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:20:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null
+      },
+      {
+        "path": "h",
+        "id": "h",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T01:00:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": null,
+        "orca_focus": null,
+        "decision": {
+          "id": "q"
+        }
+      },
+      {
+        "path": "i",
+        "id": "i",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_i",
+        "orca_focus": "term_i",
+        "manual_idle": true
+      }
+    ],
+    "tasks": {},
+    "plans": {
+      "a": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "b": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "c": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "d": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "skip",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "e": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "f": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "g": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "h": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      },
+      "i": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      }
+    },
+    "reviews": [],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "plan|a|2027-01-15T07:10:00Z",
+        "rule": "plan",
+        "severity": "warn",
+        "session": "a",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": null,
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "plan|d|2027-01-15T07:10:00Z",
+        "rule": "plan",
+        "severity": "warn",
+        "session": "d",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": null,
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "plan|f|2027-01-15T07:10:00Z",
+        "rule": "plan",
+        "severity": "warn",
+        "session": "f",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": null,
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "plan|i|2027-01-15T07:10:00Z",
+        "rule": "plan",
+        "severity": "warn",
+        "session": "i",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": null,
+        "checkbox": null,
+        "run_id": null
+      }
+    ],
+    "ok": 0
+  },
+  {
+    "sessions": [
+      {
+        "path": "f",
+        "id": "f",
+        "parent": null,
+        "state": "idle",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:20:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_f",
+        "orca_focus": null
+      }
+    ],
+    "tasks": {},
+    "plans": {
+      "f": {
+        "ts": "2027-01-15T07:10:00Z",
+        "steps": [
+          {
+            "t": "단계 1",
+            "st": "done",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 2",
+            "st": "run",
+            "ts0": null,
+            "ts1": null
+          },
+          {
+            "t": "단계 3",
+            "st": "todo",
+            "ts0": null,
+            "ts1": null
+          }
+        ]
+      }
+    },
+    "reviews": [],
+    "now": 1800000000.0,
+    "terms_known": false,
+    "prefs": {
+      "idle": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [],
+    "ok": 0
+  },
+  {
+    "sessions": [],
+    "tasks": {
+      "run_b": [
+        {
+          "id": "1i",
+          "run_id": "run_b",
+          "task_title": "S2#1 구현",
+          "display_name": "S2#1 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 06:20:00",
+          "completed_at": "2027-01-15 06:40:00",
+          "deps": "[]"
+        },
+        {
+          "id": "1rc",
+          "run_id": "run_b",
+          "task_title": "S2#1 리뷰 claude",
+          "display_name": "S2#1 리뷰 claude",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 06:47:00",
+          "deps": "[]"
+        },
+        {
+          "id": "1v",
+          "run_id": "run_b",
+          "task_title": "S2#1 판정",
+          "display_name": "S2#1 판정",
+          "status": "completed",
+          "created_at": "2027-01-15 06:42:00",
+          "completed_at": "2027-01-15 06:50:00",
+          "deps": "[]"
+        },
+        {
+          "id": "1rx",
+          "run_id": "run_b",
+          "task_title": "S2#1 리뷰 codex",
+          "display_name": "S2#1 리뷰 codex",
+          "status": "dispatched",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": null,
+          "deps": "[]"
+        },
+        {
+          "id": "2i",
+          "run_id": "run_b",
+          "task_title": "S2#2 구현",
+          "display_name": "S2#2 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 06:20:00",
+          "completed_at": "2027-01-15 06:40:00",
+          "deps": "[]"
+        },
+        {
+          "id": "2rc",
+          "run_id": "run_b",
+          "task_title": "S2#2 리뷰 claude",
+          "display_name": "S2#2 리뷰 claude",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 06:47:00",
+          "deps": "[]"
+        },
+        {
+          "id": "2v",
+          "run_id": "run_b",
+          "task_title": "S2#2 판정",
+          "display_name": "S2#2 판정",
+          "status": "completed",
+          "created_at": "2027-01-15 06:42:00",
+          "completed_at": "2027-01-15 06:50:00",
+          "deps": "[]"
+        },
+        {
+          "id": "2rx",
+          "run_id": "run_b",
+          "task_title": "S2#2 리뷰 codex",
+          "display_name": "S2#2 리뷰 codex",
+          "status": "cancelled",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": null,
+          "deps": "[]"
+        },
+        {
+          "id": "3i",
+          "run_id": "run_b",
+          "task_title": "S2#3 구현",
+          "display_name": "S2#3 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 06:20:00",
+          "completed_at": "2027-01-15 06:40:00",
+          "deps": "[]"
+        },
+        {
+          "id": "3rc",
+          "run_id": "run_b",
+          "task_title": "S2#3 리뷰 claude",
+          "display_name": "S2#3 리뷰 claude",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 06:47:00",
+          "deps": "[]"
+        },
+        {
+          "id": "3v",
+          "run_id": "run_b",
+          "task_title": "S2#3 판정",
+          "display_name": "S2#3 판정",
+          "status": "completed",
+          "created_at": "2027-01-15 06:42:00",
+          "completed_at": "2027-01-15 06:50:00",
+          "deps": "[]"
+        },
+        {
+          "id": "3rx",
+          "run_id": "run_b",
+          "task_title": "S2#3 리뷰 codex",
+          "display_name": "S2#3 리뷰 codex",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 06:45:00",
+          "deps": "[]"
+        },
+        {
+          "id": "4i",
+          "run_id": "run_b",
+          "task_title": "S2#4 구현",
+          "display_name": "S2#4 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 06:20:00",
+          "completed_at": "2027-01-15 06:40:00",
+          "deps": "[]"
+        },
+        {
+          "id": "4rc",
+          "run_id": "run_b",
+          "task_title": "S2#4 리뷰 claude",
+          "display_name": "S2#4 리뷰 claude",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 06:47:00",
+          "deps": "[]"
+        },
+        {
+          "id": "4v",
+          "run_id": "run_b",
+          "task_title": "S2#4 판정",
+          "display_name": "S2#4 판정",
+          "status": "completed",
+          "created_at": "2027-01-15 06:42:00",
+          "completed_at": "2027-01-15 06:50:00",
+          "deps": "[]"
+        },
+        {
+          "id": "4rx",
+          "run_id": "run_b",
+          "task_title": "S2#4 리뷰 codex",
+          "display_name": "S2#4 리뷰 codex",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 07:10:00",
+          "deps": "[]"
+        },
+        {
+          "id": "5i",
+          "run_id": "run_b",
+          "task_title": "S2#5 구현",
+          "display_name": "S2#5 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 06:20:00",
+          "completed_at": "2027-01-15 06:40:00",
+          "deps": "[]"
+        },
+        {
+          "id": "5rc",
+          "run_id": "run_b",
+          "task_title": "S2#5 리뷰 claude",
+          "display_name": "S2#5 리뷰 claude",
+          "status": "completed",
+          "created_at": "2027-01-15 06:41:00",
+          "completed_at": "2027-01-15 06:47:00",
+          "deps": "[]"
+        },
+        {
+          "id": "5v",
+          "run_id": "run_b",
+          "task_title": "S2#5 판정",
+          "display_name": "S2#5 판정",
+          "status": "completed",
+          "created_at": "2027-01-15 06:42:00",
+          "completed_at": "2027-01-15 06:50:00",
+          "deps": "[]"
+        }
+      ]
+    },
+    "plans": {},
+    "reviews": [],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "missing|1v",
+        "rule": "missing",
+        "severity": "bad",
+        "session": null,
+        "task_id": "1v",
+        "task_ids": [
+          "1v",
+          "1rx"
+        ],
+        "ticket": null,
+        "checkbox": "S2#1",
+        "run_id": "run_b"
+      },
+      {
+        "id": "missing|4v",
+        "rule": "missing",
+        "severity": "bad",
+        "session": null,
+        "task_id": "4v",
+        "task_ids": [
+          "4v",
+          "4rx"
+        ],
+        "ticket": null,
+        "checkbox": "S2#4",
+        "run_id": "run_b"
+      }
+    ],
+    "ok": 0
+  },
+  {
+    "sessions": [],
+    "tasks": {
+      "run_c": [
+        {
+          "id": "r0",
+          "run_id": "run_c",
+          "task_title": "S3#1 구현",
+          "display_name": "S3#1 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 03:00:00",
+          "completed_at": "2027-01-15 03:10:00",
+          "deps": "[]"
+        },
+        {
+          "id": "r1",
+          "run_id": "run_c",
+          "task_title": "S3#1 구현",
+          "display_name": "S3#1 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 03:30:00",
+          "completed_at": "2027-01-15 03:40:00",
+          "deps": "[]"
+        },
+        {
+          "id": "r2",
+          "run_id": "run_c",
+          "task_title": "S3#1 구현",
+          "display_name": "S3#1 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 04:00:00",
+          "completed_at": "2027-01-15 04:10:00",
+          "deps": "[]"
+        },
+        {
+          "id": "q0",
+          "run_id": "run_c",
+          "task_title": "S3#2 구현",
+          "display_name": "S3#2 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 03:00:00",
+          "completed_at": "2027-01-15 03:10:00",
+          "deps": "[]"
+        },
+        {
+          "id": "q1",
+          "run_id": "run_c",
+          "task_title": "S3#2 구현",
+          "display_name": "S3#2 구현",
+          "status": "completed",
+          "created_at": "2027-01-15 03:30:00",
+          "completed_at": "2027-01-15 03:40:00",
+          "deps": "[]"
+        }
+      ]
+    },
+    "plans": {},
+    "reviews": [],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "repeat|run_c|S3#1",
+        "rule": "repeat",
+        "severity": "warn",
+        "session": null,
+        "task_id": "r2",
+        "task_ids": [
+          "r0",
+          "r1",
+          "r2"
+        ],
+        "ticket": null,
+        "checkbox": "S3#1",
+        "run_id": "run_c"
+      }
+    ],
+    "ok": 0
+  },
+  {
+    "sessions": [
+      {
+        "path": "coord",
+        "id": "coord",
+        "parent": null,
+        "state": "run",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_x",
+        "orca_focus": null
+      }
+    ],
+    "tasks": {},
+    "plans": {},
+    "reviews": [
+      {
+        "tickets": [
+          {
+            "key": "Q-1",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-2",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-3",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": false,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-4",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "approved",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:50:00Z",
+                "approved": "2027-01-15T07:20:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-5",
+            "status": null,
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-6",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-7",
+            "status": "개발 완료",
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-8",
+            "status": "개발 완료",
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "MERGED"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-9",
+            "status": null,
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-10",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "selected": "2026-10-22 12:20:26",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "order|Q-1|gate|approved",
+        "rule": "order",
+        "severity": "bad",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-1",
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "order|Q-5|clean-open",
+        "rule": "order",
+        "severity": "bad",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-5",
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "order|Q-7|jira-open",
+        "rule": "order",
+        "severity": "warn",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-7",
+        "checkbox": null,
+        "run_id": null
+      }
+    ],
+    "ok": 0
+  },
+  {
+    "sessions": [
+      {
+        "path": "coord",
+        "id": "coord",
+        "parent": null,
+        "state": "run",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_x",
+        "orca_focus": null
+      }
+    ],
+    "tasks": {},
+    "plans": {},
+    "reviews": [
+      {
+        "tickets": [
+          {
+            "key": "Q-1",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-2",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-3",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": false,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-4",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "approved",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:50:00Z",
+                "approved": "2027-01-15T07:20:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-5",
+            "status": null,
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-6",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-7",
+            "status": "개발 완료",
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-8",
+            "status": "개발 완료",
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "MERGED"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-9",
+            "status": null,
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-10",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "selected": "2026-10-22 12:20:26",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {},
+      "flow_ok": {
+        "order|Q-1|gate|approved": {
+          "at": "2026-11-12T16:06:20.607952Z"
+        }
+      }
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "order|Q-5|clean-open",
+        "rule": "order",
+        "severity": "bad",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-5",
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "order|Q-7|jira-open",
+        "rule": "order",
+        "severity": "warn",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-7",
+        "checkbox": null,
+        "run_id": null
+      }
+    ],
+    "ok": 1
+  },
+  {
+    "sessions": [
+      {
+        "path": "coord",
+        "id": "coord",
+        "parent": null,
+        "state": "run",
+        "state_reason": "",
+        "task_id": null,
+        "task_ids": [],
+        "started": "2027-01-15T07:00:00Z",
+        "last_ts": "2027-01-15T07:59:00Z",
+        "model": "opus",
+        "last_action": null,
+        "plan": null,
+        "own_handle": "term_x",
+        "orca_focus": null
+      }
+    ],
+    "tasks": {},
+    "plans": {},
+    "reviews": [
+      {
+        "tickets": [
+          {
+            "key": "Q-1",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-2",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-3",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "delivered",
+              "driver": false,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-4",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "approved",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:50:00Z",
+                "approved": "2027-01-15T07:20:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-5",
+            "status": null,
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-6",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-7",
+            "status": "개발 완료",
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-8",
+            "status": "개발 완료",
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "MERGED"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-9",
+            "status": null,
+            "cat": null,
+            "repos": [
+              {
+                "repo": "web",
+                "pr": {
+                  "number": 7,
+                  "state": "OPEN"
+                }
+              }
+            ],
+            "qa": {
+              "stage": "delivered",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "committed": "2027-01-15T07:10:00Z",
+                "approved": "2027-01-15T07:20:00Z",
+                "delivered": "2027-01-15T07:30:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          },
+          {
+            "key": "Q-10",
+            "status": null,
+            "cat": null,
+            "repos": [],
+            "qa": {
+              "stage": "cleaned",
+              "driver": true,
+              "ignored": false,
+              "at": {
+                "selected": "2026-10-22 12:20:26",
+                "cleaned": "2027-01-15T07:55:00Z"
+              },
+              "handles": [
+                "term_x"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "now": 1800000000.0,
+    "terms_known": true,
+    "prefs": {
+      "idle": {},
+      "flow_ok": {}
+    },
+    "contract": "\n| 경로 | 쓰는 쪽 | 내용 |\n| --- | --- | --- |\n| `tickets/<KEY>.json` | 드라이버 | 기록 |\n| `handoffs/<KEY>-<이름>.md` | 코디네이터 | 인계 |\n| `ready/<KEY>.md` | 코디네이터 | 검토 완료 |\n| `approved/<KEY>.md` | 사용자(대시보드) | 반출 승인 |\n| `delivered/<KEY>.md` | 코디네이터 | PR 주소 |\n| `cleaned/<KEY>` | 드라이버 | 정리 |\n\n| 순서 | 단계 | 조건 |\n| --- | --- | --- |\n| 9 | `cleaned` 정리됨 | `cleaned/<KEY>` |\n| 8 | `delivered` 반출됨 | `delivered/<KEY>.md` |\n| 7 | `approved` 반출 승인 | `approved/<KEY>.md` |\n| 6 | `committed` 검토 완료 | `ready/<KEY>.md` |\n| 5 | `reviewing` 검토 중 | `handoffs/` 수 ≤ `done/` 수 |\n| 4 | `implementing` 구현 중 | `handoffs/` 에 이 티켓 파일 |\n| 3 | `analysis` 분석 중 | `tickets/<KEY>.json` 의 `coordinator` |\n| 2 | `worktree` 워크트리 준비 | `tickets/<KEY>.json` 에 `worktree` 만 |\n| 1 | `selected` 선별됨 | 그 밖 |\n",
+    "expected": [
+      {
+        "id": "order|Q-1|gate|approved",
+        "rule": "order",
+        "severity": "bad",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-1",
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "order|Q-5|clean-open",
+        "rule": "order",
+        "severity": "bad",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-5",
+        "checkbox": null,
+        "run_id": null
+      },
+      {
+        "id": "order|Q-7|jira-open",
+        "rule": "order",
+        "severity": "warn",
+        "session": "coord",
+        "task_id": null,
+        "task_ids": [],
+        "ticket": "Q-7",
+        "checkbox": null,
+        "run_id": null
+      }
+    ],
+    "ok": 0
+  }
+]

@@ -1,57 +1,14 @@
-#!/usr/bin/env python3
-"""decision-hook — show Claude Code's AskUserQuestion on the agent dashboard as well as in the terminal.
-
-A PreToolUse hook (matcher "AskUserQuestion"). It registers the question with the dashboard server and ends at once,
-printing nothing, so Claude opens the terminal picker as usual and the dashboard shows the same question as a card.
-An answer from the card is typed into that picker by the server (through the session's Orca terminal); an answer
-in the terminal closes the card once the transcript has the result. With the server unreachable it steps aside just
-the same, so the question is never lost.
-
-With 메일함 mode on (the dashboard's switch, kept by the server) the server files the question in its 메일함 and
-answers {"deny": reason}: the hook then denies the call (PreToolUse permissionDecision "deny"), so no picker opens and
-Claude reads the reason — go on with the recommended option and write down the pick — in place of an answer.
-
-  ~/.claude/settings.json → hooks.PreToolUse: [{"matcher": "AskUserQuestion",
-      "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
-
-As a PermissionRequest hook (matcher "Bash") it registers the Bash permission prompt the same way — a card with
-허용 / 거부 that the server presses into the prompt — and prints nothing, so the prompt opens as usual:
-
-  ~/.claude/settings.json → hooks.PermissionRequest: [{"matcher": "Bash",
-      "hooks": [{"type": "command", "command": "<this file>", "timeout": 10}]}]
-
-Environment: DASH_URL (default http://127.0.0.1:8787). ORCA_TERMINAL_HANDLE, set by Orca in its terminals, tells the
-server which terminal to type into.
-"""
-import json
-import os
-import sys
-from urllib.request import Request, urlopen
-
-URL = os.environ.get("DASH_URL", "http://127.0.0.1:8787").rstrip("/")
-
-
-def main():
-    try:
-        event = json.load(sys.stdin)
-        body = {"session_id": event.get("session_id"), "tool_use_id": event.get("tool_use_id"), "cwd": event.get("cwd"),
-                "terminal": os.environ.get("ORCA_TERMINAL_HANDLE")}
-        if event.get("hook_event_name") == "PermissionRequest":
-            if event.get("tool_name") != "Bash":
-                return
-            body["permission"] = {k: event["tool_input"].get(k) for k in ("command", "description")}
-        else:
-            body["questions"] = event["tool_input"]["questions"]
-        req = Request(URL + "/api/decision/ask", data=json.dumps(body).encode(),
-                      headers={"Content-Type": "application/json"}, method="POST")
-        with urlopen(req, timeout=3) as res:
-            reason = json.load(res).get("deny")  # never for a permission
-    except Exception:
-        return  # no dashboard: the terminal picker alone
-    if isinstance(reason, str) and reason:
-        json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-                                          "permissionDecisionReason": reason}}, sys.stdout, ensure_ascii=False)
-
-
-if __name__ == "__main__":
-    main()
+#!/bin/sh
+# Resolve public bin/ symlinks before locating the native dispatcher.
+set -eu
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+  HERE="$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+  TARGET="$(readlink "$SCRIPT")"
+  case "$TARGET" in /*) SCRIPT="$TARGET" ;; *) SCRIPT="$HERE/$TARGET" ;; esac
+done
+HERE="$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+# Hooks must fail open when the dashboard is not installed yet.
+BINARY="${ADASH_BINARY:-$HERE/target/release/agent-dashboard}"
+[ -x "$BINARY" ] || exit 0
+exec "$HERE/run" decision-hook "$@"

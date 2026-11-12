@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Keeps the dashboard server up across crashes and reboots. Template: launchd/install.sh fills in the label, python, bind addresses, allowed origins, project folders, directory and data folder, then installs the result.
+  Keeps the dashboard server up across crashes and reboots. Template: launchd/install.sh fills in the label, native executable, bind addresses, allowed origins, project folders, directory and data folder, then installs the result.
   Binding the Tailscale address fails until tailscaled is up; KeepAlive retries every ThrottleInterval.
 -->
 <plist version="1.0">
@@ -10,8 +10,7 @@
   <string>@LABEL@</string>
   <key>ProgramArguments</key>
   <array>
-    <string>@PYTHON@</string>
-    <string>server.py</string>
+    <string>@BINARY@</string>
 @HOSTS@
   </array>
   <key>WorkingDirectory</key>
@@ -21,9 +20,9 @@
     <!-- orca (Orca.app) and git are called as subprocesses -->
     <key>PATH</key>
     <string>/Applications/Orca.app/Contents/Resources/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-    <key>PYTHONUNBUFFERED</key>
-    <string>1</string>
-    <!-- the data folder (prefs.json, histories); launchd/install.sh resolves it like adash/core/config.py -->
+    <!-- the data folder (prefs.json, histories); launchd/install.sh resolves it like src/core.rs -->
+    <key>ADASH_SERVER_DIR</key>
+    <string>@DIR@</string>
     <key>ADASH_DATA</key>
     <string>@DATA@</string>
   </dict>

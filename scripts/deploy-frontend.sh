@@ -14,21 +14,31 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="${PAGES_PROJECT:-agent-dashboard}"
 BRANCH="${PAGES_BRANCH:-main}"
+if [ -n "${DEPLOY_OUT:-}" ] && [ -e "$DEPLOY_OUT" ]; then
+  echo "DEPLOY_OUT must point to a new directory: $DEPLOY_OUT" >&2; exit 1
+fi
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
+
+"$ROOT/scripts/build-web.sh"
 
 cp -R "$ROOT/frontend/." "$OUT/"
 mkdir "$OUT/ds" && cp -R "$ROOT/design-system/." "$OUT/ds/"
 build="$(git -C "$ROOT" rev-parse --short HEAD)"
-git -C "$ROOT" diff --quiet HEAD -- frontend design-system || build="$build-dirty"
+git -C "$ROOT" diff --quiet HEAD -- frontend design-system web-ui scripts/build-web.sh || build="$build-dirty"
 ver="$build-$(date +%Y%m%d%H%M%S)"
 printf '{"build": "%s"}\n' "$ver" > "$OUT/build.json"
 
-# the character pictures by content: app.js's CH_FILEV gets {file: hash} for frontend/chars, so a redrawn strip gets a
-# new URL (the zone's 4-hour cache would hand out the old one) and an unchanged one keeps its cache
-charv="$(cd "$ROOT/frontend/chars" && for f in *.webp *.png; do [ -f "$f" ] && printf '"%s":"%s",' "$f" "$(shasum "$f" | cut -c1-10)"; done)"
-CV="{${charv%,}}" perl -pi -e 's{/\*\@chars-v\*/\{\}/\*\@\*/}{$ENV{CV}}' "$OUT/app.js"
-grep -q '@chars-v' "$OUT/app.js" && { echo "app.js 의 CH_FILEV 를 채우지 못했습니다" >&2; exit 1; }
+# Only the current immutable WASM bundle is published. The glue and .wasm always travel together.
+python3 - "$OUT" <<'PYBUILD'
+import sys,pathlib,json,shutil,hashlib
+out=pathlib.Path(sys.argv[1]); manifest=json.loads((out/'wasm/manifest.json').read_text())
+for p in (out/'wasm').iterdir():
+    if p.is_dir() and p.name!=manifest['version']:shutil.rmtree(p)
+catalog=out/'chars/catalog.json';roster=json.loads(catalog.read_text());roster['files']={p.name:hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in (out/'chars').iterdir() if p.suffix in ('.webp','.png')};catalog.write_text(json.dumps(roster,ensure_ascii=False))
+for old in ('app.js','decision.js'):(out/old).unlink(missing_ok=True)
+sw=out/'sw.js';sw.write_text(sw.read_text().replace('adash-shell-rust-v1','adash-shell-rust-'+manifest['version']))
+PYBUILD
 # the design system's own pages (preview, stories and the story canvas) too, with their inline module imports
 V="$ver" perl -pi -e 's{\b((?:src|href)=")((?![a-z]+:|/|#)[^"?]+\.(?:js|css))"}{$1$2?v=$ENV{V}"}g' "$OUT/index.html" "$OUT"/ds/*.html
 find "$OUT" -name '*.css' -exec env V="$ver" perl -pi -e 's{(\@import\s+")([^"?]+\.css)"}{$1$2?v=$ENV{V}"}g' {} +

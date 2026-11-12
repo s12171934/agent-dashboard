@@ -46,7 +46,7 @@ const api = (() => {
   const ownerOf = (kind, key) => byId(owner[kind][key]) || (kind === 'path' && byId(refOwner[key])) || enabled()[0];
 
   const getJson = async (srv, path) => {
-    const res = await fetch(srv.url + path);
+    const res = await fetch(srv.url + path, { signal: AbortSignal.timeout(15000) });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`${path} → ${res.status}`);
     return res.json();
@@ -71,7 +71,7 @@ const api = (() => {
 
   // Per server, the last snapshot it sent: the next /api/state asks only for what changed since (?base=<its version>)
   // and the answer is a delta over it ({version, base, health, delta: {part: value | {upd, del, order?}}}, see the
-  // server's adash/http/snapshot.py, parts_delta). Lists come item by item, keyed as the server keys them (KEYED there).
+  // server's src/http.rs, delta). Lists come item by item, keyed as the server keys them (KEYED there).
   // The held snapshots are shared by every merge: views copy before they change anything (merge copies each item).
   let held = {};
   const PART_KEYS = { sessions: s => `${s.kind}:${s.id}`, ext_plans: p => p.path, 'tests.files': f => f.key };
@@ -198,6 +198,13 @@ const api = (() => {
   const lastProj = {};
   const onProjects = (id, v) => { lastProj[id] = v; handlers.projects?.(`${id}:${v}`); };
   const setLive = (id, live) => { setStatus(id, live ? { live, error: null } : { live }); handlers.change(); };
+  let resumedAt = 0;
+  function resumeSources() {
+    if (!handlers || Date.now() - resumedAt < 1000) return;
+    resumedAt = Date.now();
+    if (leader) openSources();
+    else { bc?.postMessage({ t: 'resume' }); bc?.postMessage({ t: 'hello' }); }
+  }
   function openSources() {
     sources.forEach(es => es.close());
     sources = enabled().map(srv => {
@@ -222,6 +229,7 @@ const api = (() => {
     bc = new BroadcastChannel('adash.events');
     bc.onmessage = ({ data: m }) => {
       if (leader) {  // a tab that just opened asks where things stand
+        if (m.t === 'resume') resumeSources();
         if (m.t === 'hello') {
           for (const srv of enabled()) bc.postMessage({ t: 'live', id: srv.id, live: !!status[srv.id]?.live });
           for (const [id, v] of Object.entries(lastVer)) bc.postMessage({ t: 'v', id, v });
@@ -242,6 +250,7 @@ const api = (() => {
   return {
     API_VERSION,
     DEFAULT,
+    resume: resumeSources,
     // The server list (copies) and each one's connection status.
     servers: () => servers.map(s => ({ ...s, ...status[s.id] })),
     server: id => byId(id),
@@ -600,3 +609,6 @@ const api = (() => {
     events: ({ version, change, projects }) => { handlers = { version, change, projects }; startEvents(); },
   };
 })();
+
+// Rust/WASM UI uses the same tested multi-server transport.
+window.adashTransport = api;

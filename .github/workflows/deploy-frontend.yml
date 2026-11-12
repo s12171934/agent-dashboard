@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - frontend/**
+      - web-ui/**
+      - client-core/**
+      - scripts/build-web.sh
       - design-system/**
       - functions/**
       - scripts/deploy-frontend.sh
@@ -29,6 +32,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web-ui
       - run: scripts/deploy-frontend.sh
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

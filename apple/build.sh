@@ -22,6 +22,7 @@ if [ "$what" = icons ] || [ ! -d iOS/Assets.xcassets ] || [ ! -d macOS/Assets.xc
   (cd .. && apple/build/make-icons)
   [ "$what" = icons ] && { echo "icons written"; exit 0; }
 fi
+./build-rust.sh
 xcodegen generate --quiet
 build() { xcodebuild -project AgentDashboard.xcodeproj -configuration Release -derivedDataPath "$dd" -quiet build "$@"; }
 # build, signed by the team when there is one

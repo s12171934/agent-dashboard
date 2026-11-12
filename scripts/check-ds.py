@@ -86,7 +86,7 @@ for name in components:
                 report('S1', where, 'id selector in a component')
 
 app_css = os.path.join(FRONT, 'app.css')
-for n, line in lines(read(app_css)):
+for n, line in lines(read(app_css) + '\n' + read(os.path.join(FRONT, 'rust-ui.css'))):
     where = f'{rel(app_css)}:{n}'
     if re.search(r'backdrop-filter\s*:(?!\s*var\()', line):
         report('M2', where, 'backdrop-filter must be a material token')
@@ -97,7 +97,7 @@ for n, line in lines(read(app_css)):
 
 # --- breakpoints (B1): every @media width in the design system and the page is one of the three in tokens.css
 BREAKPOINTS = {'500px', '700px', '900px'}
-css_files = [app_css] + [os.path.join(d, f) for d, _, fs in os.walk(DS) for f in fs if f.endswith('.css')]
+css_files = [app_css, os.path.join(FRONT, 'rust-ui.css')] + [os.path.join(d, f) for d, _, fs in os.walk(DS) for f in fs if f.endswith('.css')]
 for p in sorted(css_files):
     for n, line in lines(read(p)):
         for q in re.findall(r'@media[^{]*', line):

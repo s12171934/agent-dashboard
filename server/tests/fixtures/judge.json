@@ -1,0 +1,200 @@
+[
+  {
+    "code": 0,
+    "cases": [],
+    "log": "",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "done",
+      "verdict": null,
+      "detail": null,
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [],
+    "log": "Error: missing setup",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "failed",
+      "verdict": "error",
+      "detail": "Error: missing setup",
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [
+      {
+        "id": "a",
+        "status": "failed"
+      }
+    ],
+    "log": "",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "failed",
+      "verdict": null,
+      "detail": null,
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [
+      {
+        "id": "a",
+        "status": "failed"
+      }
+    ],
+    "log": "",
+    "label": "RED expected",
+    "red": false,
+    "expected": {
+      "phase": "done",
+      "verdict": "red",
+      "detail": "의도한 빨강 확인 · 실패 1",
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 0,
+    "cases": [
+      {
+        "id": "a",
+        "status": "passed"
+      }
+    ],
+    "log": "",
+    "label": "",
+    "red": true,
+    "expected": {
+      "phase": "failed",
+      "verdict": null,
+      "detail": "빨강이어야 하는데 실패 0",
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [
+      {
+        "id": "a",
+        "status": "passed"
+      }
+    ],
+    "log": " FAIL load.spec.ts\n Tests  1 passed (1)",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "done",
+      "verdict": "warn",
+      "detail": "로드 실패 스위트 1개(load.spec.ts) · 테스트는 전부 통과",
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [],
+    "log": "run-tc unit · 요청 2 ID · 통과 1 · 실패 0 · 로드 오류 0 · 미발견 1\n  TC-A: 통과 (통과 1 · 실패 0)\n  미발견: TC-B",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "done",
+      "verdict": "warn",
+      "detail": "미발견 TC-B · 나머지 통과 1",
+      "extra": [
+        {
+          "id": "TC-A",
+          "title": "통과 1",
+          "status": "passed"
+        },
+        {
+          "id": "TC-B",
+          "title": "테스트 미발견",
+          "status": "skipped",
+          "msg": "미발견"
+        }
+      ],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [],
+    "log": "run-tc unit · spec a · 통과 0 · 실패 1 · 로드 오류 0\n  TC-A: 실패 (통과 0 · 실패 1)",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "failed",
+      "verdict": null,
+      "detail": null,
+      "extra": [
+        {
+          "id": "TC-A",
+          "title": "실패 · 통과 0 · 실패 1",
+          "status": "failed",
+          "msg": "실패"
+        }
+      ],
+      "judged": true
+    }
+  },
+  {
+    "code": 1,
+    "cases": [],
+    "log": "빨강 판정: 합격 — expected failure",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "done",
+      "verdict": "red",
+      "detail": "의도한 빨강 확인 — expected failure",
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 0,
+    "cases": [],
+    "log": "빨강 판정: 불합격 — green",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "failed",
+      "verdict": null,
+      "detail": "빨강이어야 하는데 green",
+      "extra": [],
+      "judged": true
+    }
+  },
+  {
+    "code": 2,
+    "cases": [
+      {
+        "id": "x",
+        "status": "passed"
+      }
+    ],
+    "log": "other runner error",
+    "label": "",
+    "red": false,
+    "expected": {
+      "phase": "failed",
+      "verdict": null,
+      "detail": "종료 코드 2",
+      "extra": [],
+      "judged": true
+    }
+  }
+]

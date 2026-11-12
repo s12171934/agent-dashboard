@@ -7,7 +7,7 @@ import WebKit
 // - adash messages: {icon: url} from icon-boot.js (the 앱 아이콘 choice), {servers: json} from here (the page's server
 //   list, so the app watches the server the page uses), {dock: [items]} and {chrome: {theme, bg}} (the page's light /
 //   dark and background colour, which the bars around it follow) from the iPhone app's DockBridge, and {pip: {src, t,
-//   playing, rate, rect}} from the 녹화 영상 player (app.js mdPip), which the iPhone app's PipController mirrors so the
+//   playing, rate, rect}} from the 녹화 영상 player (web-ui/src/runtime.js videoBridge), which the iPhone app's PipController mirrors so the
 //   video goes on in Picture in Picture when the app is put away.
 enum PageBridge {
     static func install(on c: WKUserContentController, platform: String, handler: WKScriptMessageHandler) {
@@ -21,6 +21,17 @@ enum PageBridge {
               send(); setInterval(send, 30000); document.addEventListener('visibilitychange', send); })();
             """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     }
+
+    // New pages refresh their streams and state directly. An older deployment still gets its existing focus /
+    // online hooks, without forcing a reload that could discard an unfinished form.
+    static let resumeScript = """
+        if (window.adashNative?.resume) window.adashNative.resume();
+        else {
+            dispatchEvent(new Event('online'));
+            dispatchEvent(new Event('focus'));
+            if (typeof pump === 'function') pump(true);
+        }
+        """
 
     enum Message { case icon(URL), server(URL), dock([[String: Any]]), chrome(dark: Bool, bg: String), pip([String: Any]) }
 

@@ -5,13 +5,9 @@ import Foundation
 // notifications keep up with the page closed.
 @MainActor
 final class DecisionWatcher {
-    struct Option: Decodable { let label: String }
-    struct Question: Decodable { let header: String?; let question: String; let multiSelect: Bool?; let options: [Option] }
-    struct Pending: Decodable { let id: String; let agent: String?; let questions: [Question] }
-    private struct Ref: Decodable { let id: String }
-    private struct Session: Decodable { let path: String; let title: String?; let decision: Ref? }
-    private struct Decisions: Decodable { let available: Bool; let pending: [Pending] }
-    private struct State: Decodable { let sessions: [Session]?; let decisions: Decisions? }
+    typealias Option = DecisionCore.Option
+    typealias Question = DecisionCore.Question
+    typealias Pending = DecisionCore.Pending
 
     enum Link { case unknown, connected, down(String) }
 
@@ -21,8 +17,8 @@ final class DecisionWatcher {
 
     private(set) var link = Link.unknown
     private(set) var pending: [Pending] = []
-    private var sessionOf: [String: Session] = [:]  // question id -> the session it holds
-    private var primed = false  // what is pending at launch counts as seen, so a relaunch does not ring again
+    private var sessionOf: [String: DecisionCore.Session] = [:]  // question id -> the session it holds
+    private let core = DecisionCore()
     var onChange: (() -> Void)?
     var onNew: ((Pending) -> Void)?
     var onGone: (([String]) -> Void)?
@@ -30,24 +26,59 @@ final class DecisionWatcher {
     private var fetching = false, again = false
 
     private var listening: Task<Void, Never>?
+    private var fallback: Timer?
+    private var generation = 0
+    private let session: URLSession
+    private var currentServer: URL
+    private let persistServer: (URL) -> Void
 
-    func start() {
-        AppGroup.share(Self.serverURL)  // the widgets read the same server
-        listening = Task { await listen() }
-        // A fallback beat in case /events stays quiet or drops without an error.
-        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in Task { @MainActor in await self.refresh() } }
+    init(session: URLSession = .shared, initialServer: URL = DecisionWatcher.serverURL,
+         persistServer: @escaping (URL) -> Void = { url in
+             UserDefaults.standard.set(url.absoluteString, forKey: "serverURL")
+             AppGroup.share(url)
+         }) {
+        self.session = session
+        self.currentServer = initialServer
+        self.persistServer = persistServer
     }
 
-    // The server changed (the page's server list): drop the old stream and what it had, listen to the new one.
-    func use(_ url: URL) {
-        guard url != Self.serverURL else { return }
-        UserDefaults.standard.set(url.absoluteString, forKey: "serverURL")
-        AppGroup.share(url)
+    func start() {
+        guard listening == nil else { return }
+        persistServer(currentServer)
+        reconnect()
+        fallback = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.refresh() }
+        }
+    }
+
+    func stop() {
+        generation += 1
         listening?.cancel()
+        listening = nil
+        fallback?.invalidate()
+        fallback = nil
+        again = false
+    }
+
+    // Resuming from suspension or system sleep needs a fresh stream, while keeping notification priming.
+    func resume() { if listening != nil { reconnect() } else { start() } }
+
+    private func reconnect() {
+        generation += 1
+        listening?.cancel()
+        listening = Task { [weak self] in await self?.listen() }
+    }
+
+    func use(_ url: URL) {
+        guard url != currentServer else { return }
+        currentServer = url
+        core.reset()
+        if !pending.isEmpty { onGone?(pending.map(\.id)) }
         pending = []
-        primed = false
+        sessionOf = [:]
         set(.unknown)
-        listening = Task { await listen() }
+        if listening == nil { start() }
+        else { persistServer(url); reconnect() }
     }
 
     func sessionPath(of id: String) -> String? { sessionOf[id]?.path }
@@ -60,53 +91,64 @@ final class DecisionWatcher {
     private func listen() async {
         while !Task.isCancelled {
             await refresh()
+            if Task.isCancelled { return }
+            let revision = generation
             do {
-                var req = URLRequest(url: Self.serverURL.appending(path: "events"))
-                req.timeoutInterval = 60  // the server pings well inside this
-                let (bytes, _) = try await URLSession.shared.bytes(for: req)
+                var req = URLRequest(url: currentServer.appending(path: "events"))
+                req.timeoutInterval = 60
+                let (bytes, response) = try await session.bytes(for: req)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
                 for try await line in bytes.lines where line.hasPrefix("data:") {
-                    if Task.isCancelled { return }
+                    if Task.isCancelled || revision != generation { return }
                     await refresh()
                 }
             } catch {
+                if Task.isCancelled || revision != generation { return }
                 set(.down(error.localizedDescription))
             }
+            if Task.isCancelled { return }
             try? await Task.sleep(for: .seconds(3))
         }
     }
 
-    // One read at a time; a change that lands mid-read gets one more read after it, not one per event.
+    // Coalesce reads. An old server's response can never replace the new server's state.
     func refresh() async {
         if fetching { again = true; return }
         fetching = true
-        defer { fetching = false }
-        repeat {
-            again = false
-            do {
-                // /api/decisions is the few KB of this State; a server older than it (404) is read the old way.
-                var (data, res) = try await URLSession.shared.data(from: Self.serverURL.appending(path: "api/decisions"))
-                if (res as? HTTPURLResponse)?.statusCode == 404 {
-                    (data, _) = try await URLSession.shared.data(from: Self.serverURL.appending(path: "api/state"))
-                }
-                apply(try JSONDecoder().decode(State.self, from: data))
-            } catch {
-                set(.down(error.localizedDescription))
+        defer {
+            fetching = false
+            if again {
+                again = false
+                Task { [weak self] in await self?.refresh() }
             }
-            if again { try? await Task.sleep(for: .seconds(1)) }  // at most one read a second
+        }
+        repeat {
+            if Task.isCancelled { return }
+            again = false
+            let revision = generation, server = currentServer
+            do {
+                var request = URLRequest(url: server.appending(path: "api/decisions"))
+                request.timeoutInterval = 15
+                var (data, response) = try await session.data(for: request)
+                if (response as? HTTPURLResponse)?.statusCode == 404 {
+                    request.url = server.appending(path: "api/state")
+                    (data, response) = try await session.data(for: request)
+                }
+                guard revision == generation, !Task.isCancelled else { continue }
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+                apply(try core.apply(data))
+            } catch {
+                if revision == generation && !Task.isCancelled { set(.down(error.localizedDescription)) }
+            }
+            if again { try? await Task.sleep(for: .seconds(1)) }
         } while again
     }
 
-    private func apply(_ s: State) {
-        sessionOf = [:]
-        for x in s.sessions ?? [] { if let d = x.decision { sessionOf[d.id] = x } }
-        if let d = s.decisions, d.available {  // decisions unavailable: keep what was seen, as the page does
-            let old = Set(pending.map(\.id)), now = Set(d.pending.map(\.id))
-            if primed { for q in d.pending where !old.contains(q.id) { onNew?(q) } }
-            let gone = old.subtracting(now)
-            if !gone.isEmpty { onGone?(Array(gone)) }
-            pending = d.pending
-            primed = true
-        }
+    private func apply(_ update: DecisionCore.Update) {
+        sessionOf = update.sessions
+        pending = update.pending
+        for id in update.new_ids { if let q = pending.first(where: { $0.id == id }) { onNew?(q) } }
+        if !update.gone_ids.isEmpty { onGone?(update.gone_ids) }
         set(.connected)
     }
 
@@ -115,12 +157,12 @@ final class DecisionWatcher {
     // Puts one answer per question into the session's terminal, as the page's 결정 버튼 does. nil when it went in,
     // else the server's error.
     func answer(_ id: String, _ answers: [String]) async -> String? {
-        var req = URLRequest(url: Self.serverURL.appending(path: "api/decision/answer"))
+        var req = URLRequest(url: currentServer.appending(path: "api/decision/answer"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["id": id, "answers": answers])
         do {
-            let (data, res) = try await URLSession.shared.data(for: req)
+            let (data, res) = try await session.data(for: req)
             if (res as? HTTPURLResponse)?.statusCode == 200 { await refresh(); return nil }
             let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             return body?["error"] as? String ?? "응답하지 못했습니다"

@@ -13,6 +13,9 @@ final class DashboardWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWin
     let window: NSWindow
     let web: WKWebView
     private let home: URL
+    private var recovery: PageRecovery!
+    private var loaded = false
+    private var waiting: String?
     private var titleWatch: NSKeyValueObservation?
     var onClose: ((DashboardWindow) -> Void)?
     var onNewTab: ((URL) -> Void)?
@@ -38,6 +41,7 @@ final class DashboardWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWin
         relay.owner = self
         web.navigationDelegate = self
         web.uiDelegate = self
+        recovery = PageRecovery(web: web, home: url ?? home)
         window.delegate = self
         window.title = "Agent Dashboard"
         window.isReleasedWhenClosed = false
@@ -73,10 +77,24 @@ final class DashboardWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWin
 
     func open(sessionPath: String?) {
         show()
-        web.evaluateJavaScript("location.hash = \(jsString(sessionHash(sessionPath)))")
+        let hash = sessionHash(sessionPath)
+        if loaded { web.evaluateJavaScript("location.hash = \(jsString(hash))") }
+        else { waiting = hash }
     }
 
-    func reload() { web.reload() }
+    func reload() { loaded = false; recovery.reload() }
+    func resume() { if NSApp.isActive && window.isVisible { recovery.resume() } }
+    func windowDidBecomeKey(_ notification: Notification) { resume() }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loaded = true
+        recovery.finished()
+        if let hash = waiting { waiting = nil; web.evaluateJavaScript("location.hash = \(jsString(hash))") }
+    }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loaded = false
+        recovery.terminated(active: NSApp.isActive && window.isVisible)
+    }
 
     // Links out of the page (PRs, Jira, vscode://) go to the default browser or app, not into this window.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

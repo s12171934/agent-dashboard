@@ -1,97 +1,11 @@
-#!/usr/bin/env python3
-"""ausage — which dashboard screens and controls get used in which environment, from usage.jsonl in the server data folder.
-
-The page's usage hook (frontend/usage.js) posts every control it sees clicked and every screen it shows, with the
-environment it runs in; the server appends them to usage.jsonl (adash/features/usage). This tallies them.
-
-  ausage [--days N] [--by app|form|both] [--top N] [--rare N] [--json]
-
-  --days   only the last N days (default 30; 0 = all)
-  --by     what an environment is: app (macos, ios, pwa, web), form (phone, narrow, tablet, desktop, with a fold
-           posture), or both (default: app/form)
-  --top    controls listed per environment (default 15)
-  --rare   a control used at most this many times in an environment counts as rarely used there (default 1)
-  --json   the tallies as JSON instead of tables
-
-The same tallies, drawn as a page: /usage on the metrics server (http://127.0.0.1:8787/usage).
-
-Sections: environments (devices, clicks, screen time), screens (opens and share of screen time per environment, every
-screen listed even if never opened), most used controls per environment, and the rarely used ones: controls used in
-other environments but rarely or never in this one, and controls rarely used anywhere.
-"""
-import argparse
-import json
-import os
-import sys
-import unicodedata
-
-HERE = os.path.dirname(os.path.realpath(__file__))
-sys.path.insert(0, HERE)
-from adash.features.usage.report import BY, LOG, load, tally  # noqa: E402  (the server's package, next to this file)
-
-
-def width(s):
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
-
-
-def pad(s, n, right=False):
-    s = str(s)
-    gap = " " * max(0, n - width(s))
-    return gap + s if right else s + gap
-
-
-def table(head, rows, right_from=1):
-    cols = [max([width(str(h))] + [width(str(r[i])) for r in rows]) for i, h in enumerate(head)]
-    line = lambda r: "  ".join(pad(c, cols[i], i >= right_from) for i, c in enumerate(r)).rstrip()
-    print(line(head))
-    print("  ".join("-" * c for c in cols))
-    for r in rows:
-        print(line(r))
-
-
-def hms(secs):
-    if secs < 60:
-        return f"{secs}s"
-    h, m = divmod(round(secs / 60), 60)
-    return f"{h}h{m:02d}m" if h else f"{m}m"
-
-
-def main():
-    ap = argparse.ArgumentParser(description="dashboard feature usage per environment")
-    ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--by", choices=BY, default="both")
-    ap.add_argument("--top", type=int, default=15)
-    ap.add_argument("--rare", type=int, default=1)
-    ap.add_argument("--json", action="store_true")
-    a = ap.parse_args()
-    rows = load(a.days, a.by)
-    if rows is None:
-        sys.exit(f"ausage: {LOG} 가 없습니다 — 페이지에서 사용 기록이 아직 오지 않았습니다")
-    if not rows:
-        sys.exit("ausage: 그 기간에 기록이 없습니다")
-    t = tally(rows, a.top, a.rare)
-    if a.json:
-        return print(json.dumps(t, ensure_ascii=False, indent=1))
-    envs = [x["env"] for x in t["envs"]]
-    span = f"최근 {a.days}일" if a.days else "전체"
-    print(f"# 환경별 대시보드 사용 ({span}, 기록 {len(rows)}건)\n")
-    table(["환경", "기기", "클릭", "화면 시간"], [[x["env"], x["devices"], x["clicks"], hms(x["screen_secs"])] for x in t["envs"]])
-    print("\n## 화면 — 연 횟수 · 화면 시간 비율\n")
-    table(["화면", *envs], [[s["view"], *(f"{s[e]['opens']} · {s[e]['share']:.0%}" if s[e]["opens"] or s[e]["secs"] else "-"
-                                         for e in envs)] for s in t["screens"]])
-    for e in envs:
-        print(f"\n## {e} — 많이 쓰는 기능\n")
-        total = next(x["clicks"] for x in t["envs"] if x["env"] == e) or 1
-        table(["기능 (화면 · 컨트롤)", "횟수", "비율"], [[f, n, f"{n / total:.0%}"] for f, n in t["top"][e]] or [["(클릭 없음)", "", ""]])
-    print(f"\n## 다른 환경에선 쓰는데 여기선 거의 안 쓰는 기능 (여기 ≤{a.rare}회, 다른 곳 ≥3회)\n")
-    rows = [[e, f, n, m] for e in envs for f, n, m in t["rare_here"][e]]
-    table(["환경", "기능", "여기", "다른 곳"], rows or [["-", "(없음)", "", ""]], right_from=2)
-    print(f"\n## 모든 환경에서 드문 기능 (합계 ≤{a.rare}회)\n")
-    for f, n in t["rare_everywhere"]:
-        print(f"- {f} ({n})")
-    if not t["rare_everywhere"]:
-        print("(없음)")
-
-
-if __name__ == "__main__":
-    main()
+#!/bin/sh
+# Resolve public bin/ symlinks before locating the native dispatcher.
+set -eu
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+  HERE="$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+  TARGET="$(readlink "$SCRIPT")"
+  case "$TARGET" in /*) SCRIPT="$TARGET" ;; *) SCRIPT="$HERE/$TARGET" ;; esac
+done
+HERE="$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+exec "$HERE/run" ausage "$@"

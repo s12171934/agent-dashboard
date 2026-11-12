@@ -19,7 +19,7 @@ history-cache.json
 bak-archive-*.tar.gz
 .wrangler/
 design-refs.json
-# web VS Code: serve-web's data and the relay's secret (review/vscode_web.py)
+# web VS Code: serve-web's data and the relay's secret (server/src/vscode.rs)
 vscode-web/
 plan-usage.json
 qa-sheets.json
@@ -27,3 +27,10 @@ review-gone.json
 worktree-notes.json
 usage.jsonl
 media.json
+# Rust build and local toolchain artifacts
+server/target/
+.tools/
+client-core/target/
+web-ui/target/
+frontend/wasm/
+frontend/rust-ui.js

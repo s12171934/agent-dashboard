@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let watcher = DecisionWatcher()
     private var item: NSStatusItem!
     private var notifier: DecisionNotifier!
+    private var wakeObserver: NSObjectProtocol?
 
     static func main() {
         let app = NSApplication.shared
@@ -39,6 +40,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watcher.onGone = { [weak self] in self?.notifier.gone($0) }
         update()
         watcher.start()
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resume() }
+            }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) { resume() }
+
+    private func resume() {
+        watcher.resume()
+        windows.forEach { $0.resume() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
