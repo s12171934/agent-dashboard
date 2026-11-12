@@ -2,7 +2,7 @@
 // - adash.icon = <concept>-<colour> (default grid-blue). Each icon is a folder of icons/app/ with its own manifest
 //   (scripts/make-icons.py makes them; the default lives in icons/ and manifest.webmanifest). APP_ICONS lists them.
 // - adash.icon = face-<who>: a character's SD face, chars/<who>-icon-*.png with chars/<who>-icon.json (scripts/char-icons.py;
-//   a person put up without a deploy has theirs in R2, behind functions/chars). Any name is taken here — the Rust UI lists
+//   a person put up without a deploy has theirs in R2, behind functions/chars). Any name is taken here — app.js lists
 //   the people — and one taken down only loses the picture.
 // - applyIcon(id) swaps the manifest, favicon, apple-touch-icon and the header logo. An installed app takes the new
 //   icon when the browser next checks the manifest (Chrome on Android and desktop may ask first); iOS keeps the icon

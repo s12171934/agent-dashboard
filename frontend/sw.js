@@ -1,8 +1,8 @@
 // Service worker: makes the page installable (PWA) and opens it offline. Only this origin's page files go through
 // it, network first: a new deployment shows at once, and the cache answers only when the network does not. The
 // metric servers (other origins: /api/*, /events) and build.json, which spots new deployments, are never touched.
-const CACHE = 'adash-shell-rust-v1';
-const SHELL = ['./', 'index.html', 'app.css', 'api.js', 'rust-ui.js', 'rust-ui.css', 'usage.js', 'icon-boot.js', 'manifest.webmanifest',
+const CACHE = 'adash-shell-v20';
+const SHELL = ['./', 'index.html', 'app.css', 'api.js', 'decision.js', 'app.js', 'usage.js', 'icon-boot.js', 'manifest.webmanifest',
   'ds/ds.css', 'ds/ds.js', 'ds/foundations/tokens.css', 'ds/foundations/base.css', 'ds/foundations/theme.js', 'ds/foundations/fold.js',
   'ds/materials/glass.css', 'ds/materials/matte.css',
   ...['surface', 'icon', 'dot', 'badge', 'pill', 'chip', 'button', 'segmented', 'bar', 'heading', 'box', 'card',
@@ -12,7 +12,7 @@ const SHELL = ['./', 'index.html', 'app.css', 'api.js', 'rust-ui.js', 'rust-ui.c
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(fetch('./wasm/manifest.json', {cache:'no-store'}).then(r => { if(!r.ok) throw new Error('WASM manifest'); return r.json(); }).then(m => caches.open(CACHE).then(c => c.addAll([...SHELL, 'wasm/manifest.json', ...m.files]))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

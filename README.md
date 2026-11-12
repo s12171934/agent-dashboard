@@ -18,14 +18,14 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 
 | 폴더 | 무엇 | 어디서 도는가 |
 | --- | --- | --- |
-| `frontend/` | Rust/WASM 빌드 결과·정적 셸·전송 계층 | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
-| `web-ui/` | Leptos CSR 화면·라우팅·폼·상태. `scripts/build-web.sh`로 WASM 빌드 | macOS·iPhone WebKit, 브라우저 |
+| `frontend/` | 기존 JavaScript UI·정적 셸·전송 계층 (WASM 전환 롤백) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
+| `web-ui/` | 미적용 Rust/WASM UI 시도. 운영 화면·배포에서 제외 | macOS·iPhone WebKit, 브라우저 |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (`src/main.rs` → `src/http.rs`, REST `/api/*` + SSE `/events`; `server/run`으로 실행), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `adata`, `amedia`, `launchd/` | 로컬 Mac |
 | `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-impl-progress.py` — 「구현 ① 티켓 진행」의 맵·장부 파서를 가짜 입력으로 확인, `check-server.py` — Rust 컴파일·Clippy 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `check-own-handle.py` — 코디네이터의 자기 터미널(own_handle) 추론(run-create·worker-start 만으로 만든 Run·`--from` 드라이버 제외) 확인, `check-snapshot-cost.py` — 스냅숏 delta의 항목 식별 규약 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `apple/` | macOS·iPhone 앱(네이티브 UI·Rust 공용 상태·WebView)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
-| `client-core/` | 서버·WASM UI·Apple 앱이 공유하는 Rust 결정 응답 타입, 알림 상태 판정과 C ABI | 서버, macOS, iPhone |
+| `client-core/` | 서버·Apple 앱이 공유하는 Rust 결정 응답 타입, 알림 상태 판정과 C ABI | 서버, macOS, iPhone |
 | `bin/` | 공개 CLI 진입점 — `atest`(→ `server/atest`). 다른 저장소(스킬 등)는 이 경로로 부른다 | 로컬 Mac |
 | `exports/` | 공개 스키마 | |
 
@@ -79,7 +79,7 @@ server/run --origin https://dashboard.s-dante.com --origin https://agent-dashboa
 tailscale serve --bg 8787                                                  # 다른 기기용 https 주소 (선택)
 ```
 
-로컬에서 먼저 `scripts/build-web.sh`로 Rust UI를 빌드한 뒤 `python3 scripts/dev-frontend.py` 로 띄우고 `http://127.0.0.1:5500` 을 연다(`--port` 로 바꿀 수 있다). Rust 코드를 바꾸면 `scripts/build-web.sh`를 다시 실행한다. `frontend/` 의 파일을 저장하면 열린 탭이 저절로 따라온다: CSS 는 새로 고치지 않고 그 자리에서 바뀌고, 나머지는 페이지를 새로 고친다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다. 디스크에 없는 `/chars/*`(`chars.json`·R2 에 올린 캐릭터)는 배포 사이트에서 받아 준다.
+로컬에서 `python3 scripts/dev-frontend.py` 로 띄우고 `http://127.0.0.1:5500` 을 연다(`--port` 로 바꿀 수 있다). `frontend/` 의 파일을 저장하면 열린 탭이 저절로 따라온다: CSS 는 새로 고치지 않고 그 자리에서 바뀌고, 나머지는 페이지를 새로 고친다. `http://localhost:*`·`http://127.0.0.1:*` 출처는 `--origin` 없이 허용된다. 디스크에 없는 `/chars/*`(`chars.json`·R2 에 올린 캐릭터)는 배포 사이트에서 받아 준다.
 
 | 옵션 | 기본값 | 뜻 |
 | --- | --- | --- |
@@ -93,23 +93,11 @@ tailscale serve --bg 8787                                                  # 다
 | `--design-dir` | 없음 | 설계문서 폴더. `prefs.json` 의 `design_dirs` 에 더해진다. 여러 번 줄 수 있다. 둘 다 없고 외부 계획에 `design_root` 도 없으면 「설계문서」 기능이 꺼진다 |
 | `--design-days` | `14` | `--hours` 밖의 세션 로그에서 설계문서 참조를 찾는 기간(일). 한 번 읽은 로그는 바뀌기 전까지 다시 읽지 않는다 |
 
-## Rust/WASM UI 개발
+## 운영 UI 롤백
 
-현재 화면의 17개 경로(홈·에이전트·세션·Run·드라이버·QA·프로젝트·테스트·결정함·사용량·비교·상호작용·설계·영상·캔버스·워크트리·캐릭터)는 `web-ui/src/views`에서 그린다. 이전 `app.js`·`decision.js` 진입점은 제거했다. `frontend/api.js`는 기존 다중 서버 HTTP/SSE 전송을, 디자인 시스템은 스타일·웹 컴포넌트를 담당한다. `web-ui/src/runtime.js`는 저장소·파일·영상·네이티브 메시지 등 브라우저 연결만 맡는다.
+화면 구성과 조작 방식의 변화가 커 Rust/WASM UI 전환을 롤백했다. 운영 화면·스타일·서비스 워커와 배포 경로는 `a1addd8`의 기존 UI를 따른다. `main`의 프론트엔드 변경은 GitHub Actions가 정적 파일로 배포하며 WASM을 빌드하거나 로드하지 않는다.
 
-```sh
-scripts/build-web.sh
-python3 scripts/dev-frontend.py --port 5500
-# Rust 수정 후 같은 build-web.sh를 다시 실행
-server/atest run --label "Rust UI" -- server/cargo test --locked --manifest-path "$PWD/web-ui/Cargo.toml"
-server/atest run --label "전송 복귀" -- node --test tests/frontend/api-resume.test.cjs
-```
-
-빌드에는 Rust의 `wasm32-unknown-unknown` 타깃과 wasm-bindgen CLI **0.2.130**을 쓴다(스크립트가 맞는 CLI를 준비). 생성된 JS·WASM·연결 모듈은 `frontend/wasm/<내용 해시>/`에 함께 들어가고 `frontend/rust-ui.js`가 로드한다. 생성물은 git에 넣지 않는다. 배포 스크립트와 CI도 먼저 빌드하며, PWA 캐시는 해당 번들의 manifest 전체를 보관한다. 공개 배포를 하지 않고 준비 결과만 확인하려면 `DEPLOY_OUT=/tmp/adash-preview scripts/deploy-frontend.sh`를 쓴다.
-
-화면별 레코드는 안정적인 키와 별도 Rust signal을 갖는다. 수치 갱신 때 결정 입력·워크트리 메모·열린 iframe·영상 노드를 유지한다. 결정 초안은 화면을 옮겨도 보관한다. 네이티브 탭의 기존 DOM 키, 앱 복귀 `adashNative.resume`, 영상 `adashPip` 계약을 유지하며 캐릭터 애니메이션은 화면 안에 있는 항목만 갱신하고 백그라운드·동작 줄이기 설정에서는 멈춘다. 프로젝트·설계·QA 화면은 작은 화면에서 한 열로 접힌다.
-
-합성 데이터로 실제 WASM 번들을 검증하는 서버는 `python3 tests/frontend/fixture-server.py 5517`이다. 이 서버는 메트릭 서버·Orca로 요청을 보내지 않는다. 띄운 뒤 `server/atest run --label "WebKit UI" -- apple/test-web-ui.sh`로 17개 경로·입력 보존·영상·실행/전송·iPhone 탭 브리지를 검사한다. `tests/frontend/ui-checks.js`는 Chromium에서도 같은 검사에 사용한다. 기존 README의 세부 화면 배치 설명은 이전 UI의 참고이며, 현재 레이아웃과 컨트롤 구성은 Rust 컴포넌트를 기준으로 한다.
+Rust 서버·CLI·Apple 공용 코어와 앱 복귀 처리는 유지한다. 브라우저 전송 계층의 읽기 시간 제한·다중 창 SSE 복구도 유지한다. `web-ui/`와 Rust UI 빌드·검증 도구는 기록으로 남겼으며 운영 배포에 연결하지 않는다. 현재 UI는 `frontend/app.js`·`decision.js`·`app.css`가 기준이다.
 
 ## Rust 서버 개발·전환
 
@@ -311,7 +299,7 @@ Swift 검증은 테스트용 통신·저장을 주입한다. 실제 키체인·�
 - 상태는 모션과 말풍선 기호로 읽는다: 실행 중 = 노트북 타자(말풍선에 지금 하는 일), 백그라운드 `◍` = 커피, 입력 대기 = 서 있기, 응답 없음 `!` = 머리 감싸 쥐기·식은땀(빛바램), 유휴 `z` = 졸기(흐림), 완료 `✓` = 브이, 결정 대기 `?` = 손 들기(노란 테두리).
 - **세션 상세에서도 같은 사람:** 캐릭터 모드나 홈 「사무실」을 쓰는 동안 세션 상세의 제목 옆에 사무실에서 그 세션을 맡은 사람이 같은 그림체·같은 포즈로 선다. 그 사람을 누르면 「캐릭터 고르기」가 열려 코디네이터·워커·드라이버 누구로든 바꿀 수 있고, 고른 사람은 사무실에서도 그대로 보인다(`adash.chpick`, 이 기기에만 저장. 「자동으로 되돌리기」로 자동 배정에 맡김).
 - **스크립트 드라이버도 사람으로:** 에이전트 세션이 아닌 스크립트 드라이버(티켓 드라이버 등, 코디네이터가 연 Orca 터미널)도 사무실에 드라이버 목록의 캐릭터로 선다(목록이 비면 워커 중에서, 터미널 핸들의 해시로 고정). 자리는 그 드라이버가 몰고 있는 티켓의 워크트리 방(없으면 연 코디네이터의 방)이고, 연 코디네이터의 팀 칩(◆)을 달며 다른 방이면 팀 선으로 이어진다(팀장 칩의 인원에는 세지 않는다). 상태는 워커들의 상태(`drvSt`), 말풍선은 태스크 완료/전체와 실행 중 워커 수, 이름표는 「⚙ 터미널 제목 · 스크립트 드라이버 · 맡은 티켓」과 워커 계획 막대다. 누르면 그 드라이버의 Run(없으면 연 세션)으로 간다. 「실행 중만」 필터에서는 걸러진 워커가 있는 드라이버만 남는다. 대화 탭에서도 드라이버 터미널은 같은 캐릭터로 그린다.
-- 캐릭터 그림은 `frontend/chars/<이름>-<full|bust>.webp`(SD 를 그릴 디자인 참조이자 「캐릭터」 탭의 베이스 일러스트, 프레임 32개(세트 A~D × 8)를 가로로 이은 투명 스트립)와 `<이름>-sd.png`·`<이름>-sd-bust.png`(사무실에 보이는 SD 픽셀 스트립, 전신·상반신). `scripts/char-gen.sh <이름> <full|bust|sd> [작업 폴더] [세트]` 가 Codex 이미지 생성으로 시트 4장을 만들고(세트 A 를 먼저, 이어 A 를 크기·생김새 참조로 B·C·D 를 동시에, 한 번에 수 분. bust·sd 는 같은 세트의 full 을 참조, hina 외의 sd 는 hina 의 sd 도 비율 템플릿으로 참조 — hina 를 먼저, `SD_TPL` 로 바꿈) `scripts/char-sprites.py` 로 배경을 지우고 B~D 를 A 의 크기·발 위치에 맞춰 한 스트립으로 자른다. 세트를 주면(예: `c`) 그 시트만 다시 그리고 네 장으로 다시 자른다. 출력한 프레임 크기는 `frontend/chars/catalog.json`의 `chars.<id>.art` 에 넣는다.
+- 캐릭터 그림은 `frontend/chars/<이름>-<full|bust>.webp`(SD 를 그릴 디자인 참조이자 「캐릭터」 탭의 베이스 일러스트, 프레임 32개(세트 A~D × 8)를 가로로 이은 투명 스트립)와 `<이름>-sd.png`·`<이름>-sd-bust.png`(사무실에 보이는 SD 픽셀 스트립, 전신·상반신). `scripts/char-gen.sh <이름> <full|bust|sd> [작업 폴더] [세트]` 가 Codex 이미지 생성으로 시트 4장을 만들고(세트 A 를 먼저, 이어 A 를 크기·생김새 참조로 B·C·D 를 동시에, 한 번에 수 분. bust·sd 는 같은 세트의 full 을 참조, hina 외의 sd 는 hina 의 sd 도 비율 템플릿으로 참조 — hina 를 먼저, `SD_TPL` 로 바꿈) `scripts/char-sprites.py` 로 배경을 지우고 B~D 를 A 의 크기·발 위치에 맞춰 한 스트립으로 자른다. 세트를 주면(예: `c`) 그 시트만 다시 그리고 네 장으로 다시 자른다. 출력한 프레임 크기는 `app.js`의 `CH_ART` 에 넣는다.
 - **「새 캐릭터」(대시보드에서 만들기):** 「캐릭터」 탭의 「+ 새 캐릭터」로 여는 상자에 원본 그림 한 장(PNG·JPEG·WebP, 10MB 까지)과 표시 이름·영문 이름·역할(워커·코디네이터·스크립트 드라이버)을 넣고, 생김새·요청은 골라서 적는다. 「Orca 에 맡기기」를 누르면 메트릭 서버(`POST /api/chars/create`)가 `~/.cache/agent-dashboard/chars/<영문>-<시각>/` 에 원본과 브리프(`brief.md`)를 쓰고, Orca 에 등록된 이 저장소의 메인 워크트리에 에이전트(Claude·Codex)를 띄운다. 에이전트는 원본을 보고 영어 설명(`desc.txt`, 요청이 원본보다 우선, 사람 사진이면 얼굴은 닮게 그리지 않음)을 쓰고, `CHAR_REF=<원본> char-gen.sh <영문> full` 로 전신을, 이어서 상반신·SD 를 동시에 그려 확인한 뒤 `char-publish.py` 로 올린다. 저장소 파일은 고치지 않는다.
   - 아래 목록이 작업 폴더의 파일로 진행을 보여 준다: 원본 → 설명 → 전신 → 상반신 → SD → 게시(`.published`), 그린 시트 썸네일(누르면 크게), 「Orca 에서 보기」. 도는 작업이 있으면 5초마다 다시 읽고, 게시되면 곧바로 `chars.json` 을 다시 읽어 새 캐릭터가 목록과 사무실에 나타난다. 에이전트가 포기하면 `failed.txt` 의 이유, 터미널이 결과 없이 닫히면 그렇다고 보여 준다. 끝난 작업은 「목록에서 지우기」로, 아니면 14일 뒤 저절로 지워진다(올린 캐릭터는 남는다).
   - **삭제:** R2 에 올린 캐릭터(`chars.json` 에 있는 사람, 카드에 「R2」 표시)는 카드의 「삭제」로 내린다. 확인 뒤 메트릭 서버(`POST /api/chars/unpublish`)가 `char-publish.py <영문> --remove` 를 돌려 R2 의 목록 항목과 그림을 지우고, 이 페이지는 곧바로, 다른 기기는 1분 안에 그 사람을 뺀다(맡던 세션은 다른 캐릭터가 이어받음). 삭제는 영구적이다 — 메트릭 서버의 작업 폴더(원본·시트)도 함께 지운다. 기본 캐릭터도 카드의 「삭제」로 영구히 뺀다 — `--remove` 가 `chars.json` 의 `hidden` 목록에 이름을 적어 모든 기기의 목록·사무실에서 빠지고, 그 이름으로는 다시 올릴 수 없다(배포본의 그림 파일은 다음에 저장소에서 지운다). 되살리기는 없다. 코디네이터·워커 목록의 마지막 한 명은 지울 수 없다(드라이버 목록은 비어도 된다 — 드라이버는 워커 중에서 고른다). launchd 로 뜬 서버의 PATH 에는 nvm 의 node 가 없어서, `char-publish.py` 는 `npx` 가 안 보이면 `~/.nvm/versions/node/` 의 가장 새 버전을 쓴다.

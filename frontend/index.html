@@ -23,14 +23,86 @@
 <script type="module" src="ds/ds.js"></script>
 <link rel="stylesheet" href="ds/ds.css">
 <link rel="stylesheet" href="app.css">
-<link rel="stylesheet" href="rust-ui.css">
 </head>
 <body>
-<div id="wasm-loading" class="empty" role="status">화면을 불러오는 중…</div>
-<noscript>Agent Dashboard를 사용하려면 JavaScript와 WebAssembly를 허용하세요.</noscript>
+<!-- the floating bar (<ds-dock>): tabs | view filters | 현황 (the figures, connection and errors — there is no page
+     header), metric servers and display settings; data-tip names each.
+     The bar adds its own 설정 button beside it (position, size, which items stay on the bar, hiding the bar); the
+     data-more items start in its menu instead of on the bar; 새 에이전트 (data-fab) sits beside 설정, off both.
+     Like the App Store's tab bar it keeps five screens (data-name: named under the icon) — 홈, 에이전트, QA, 프로젝트,
+     테스트; the rest sit in 설정 grouped under the separators' data-label, on a phone too. -->
+<ds-dock id="dock">
+  <a href="#home" data-v="home" data-tip="홈" data-name="홈" aria-label="홈"><ds-icon name="home"></ds-icon><b class="dn" id="k-home" hidden>0</b></a>
+  <a href="#agents" data-v="agents" data-tip="에이전트" data-name="에이전트" aria-label="에이전트"><ds-icon name="users"></ds-icon></a>
+  <a href="#worktrees" data-v="worktrees" data-tip="QA · 워크트리 리뷰" data-name="QA" aria-label="QA: 워크트리 리뷰"><ds-icon name="layers"></ds-icon></a>
+  <a href="#projects" data-v="projects" data-tip="프로젝트" data-name="프로젝트" aria-label="프로젝트"><ds-icon name="flow"></ds-icon></a>
+  <a href="#tests" data-v="tests" data-tip="테스트" data-name="테스트" aria-label="테스트"><ds-icon name="flask"></ds-icon><b class="dn" id="k-tests" hidden>0</b></a>
+  <i class="dock-sep" data-more data-label="화면"></i>
+  <a href="#decide" data-more data-v="decide" data-tip="결정 대기" data-name="결정 대기" aria-label="결정 대기: 에이전트가 답을 기다리는 질문과 메일함"><ds-icon name="help"></ds-icon><b class="dn" id="k-dec-n" hidden>0</b></a>
+  <a href="#usage" data-more data-v="usage" data-tip="플랜 사용량" aria-label="플랜 사용량: 구독 계정별 5시간·주간 한도와 초과 크레딧"><ds-icon name="zap"></ds-icon><b class="dn" id="k-usage" hidden></b></a>
+  <a href="#compare" data-more data-v="compare" data-tip="비교" aria-label="비교"><ds-icon name="chart"></ds-icon></a>
+  <a href="#talk" data-more data-v="talk" data-tip="상호작용" aria-label="상호작용"><ds-icon name="chat"></ds-icon></a>
+  <a href="#designs" data-more data-v="designs" data-tip="설계문서" aria-label="설계문서"><ds-icon name="book"></ds-icon></a>
+  <a href="#media" data-more data-v="media" data-tip="녹화 영상" aria-label="녹화 영상: 각 맥이 공개한 녹화와 타임라인"><ds-icon name="play"></ds-icon></a>
+  <a href="#canvas" data-more data-v="canvas" data-tip="워크플로 캔버스" aria-label="워크플로 캔버스: workflow-canvas 를 대시보드 안에서 봄"><ds-icon name="monitor"></ds-icon></a>
+  <a href="#trees" data-more data-v="trees" data-tip="워크트리" aria-label="워크트리: 이 맥의 모든 git 워크트리와 에디터로 열기"><ds-icon name="branch"></ds-icon></a>
+  <button class="dock-btn" id="launch-btn" data-fab data-tip="새 에이전트" aria-label="새 에이전트: 워크트리·에이전트를 띄우거나 에이전트에 프롬프트를 보냄"><ds-icon name="plus"></ds-icon></button>
+  <i class="dock-sep" data-more data-label="보기"></i>
+  <label class="dock-btn" data-more data-tip="실행 중만" aria-label="실행 중만"><input type="checkbox" id="only-live"><ds-icon name="pulse"></ds-icon></label>
+  <label class="dock-btn" data-more data-tip="Orca 에 열린 것만" aria-label="Orca 에 열린 것만: Orca 에 연결된 터미널에서 돌고 있는 에이전트(「Orca 에서 열기」가 되는 것)만"><input type="checkbox" id="only-orca"><ds-icon name="terminal"></ds-icon></label>
+  <label class="dock-btn" id="dz-pane-btn" data-more data-tip="읽은 세션 보기" aria-label="읽은 세션 보기: 설계문서 오른쪽의 섹션을 읽은 세션 목록" hidden><input type="checkbox" id="dz-pane-chk"><ds-icon name="users"></ds-icon></label>
+  <button class="dock-btn ch-dock" id="zoom-btn" data-more data-tip="확대 비율 · 누르면 맞춤" aria-label="사무실 확대 비율: 누르면 모든 방이 한눈에 들어오게 맞춤" aria-pressed="false" hidden><span id="k-zoom">100%</span></button>
+  <button class="dock-btn ch-dock" id="chsort-btn" data-more data-tip="방 정렬 · 누르면 팀순·프로젝트별 전환" aria-label="사무실 방 정렬: 누르면 팀순과 프로젝트별을 바꿈" aria-pressed="false" hidden><span id="k-chsort">팀순</span></button>
+  <i class="dock-sep" data-more data-label="상태"></i>
+  <button class="dock-btn" id="stat-btn" data-more data-tip="현황" aria-label="현황: 실행 중·비용·토큰 같은 합계, 결정 대기, 연결과 수집 오류"><ds-icon name="gauge"></ds-icon><i class="srv-dot"></i></button>
+  <label class="dock-btn" id="inbox-mode-btn" data-more data-tip="메일함 모드" aria-label="메일함 모드: 자리를 비운 동안 질문을 메일함에 쌓고 에이전트는 권장안으로 진행" hidden><input type="checkbox" id="inbox-mode"><ds-icon name="mail"></ds-icon></label>
+  <i class="dock-sep" data-more data-label="캐릭터"></i>
+  <label class="dock-btn" data-more data-tip="캐릭터 모드" aria-label="캐릭터 모드: 에이전트 탭과 홈을 캐릭터가 책상에서 일하는 사무실 그림으로 봄"><input type="checkbox" id="char-mode"><ds-icon name="smile"></ds-icon></label>
+  <button class="dock-btn" id="char-btn" data-more data-tip="캐릭터 설정" aria-label="캐릭터 설정: 그림체와 상반신·전신, 캐릭터 그림 관리"><ds-icon name="image"></ds-icon></button>
+  <i class="dock-sep" data-more data-label="모양"></i>
+  <ds-theme-toggle id="theme" button-class="dock-btn" data-more></ds-theme-toggle>
+  <button class="dock-btn" id="theme-edit" data-more data-tip="색 편집" aria-label="색 편집: 재질과 지금 테마(라이트 또는 다크)의 색을 바꿈"><ds-icon name="palette"></ds-icon></button>
+  <button class="dock-btn" id="icon-btn" data-more data-tip="앱 아이콘" aria-label="앱 아이콘: 홈 화면·작업 표시줄에 보일 아이콘을 고름"><ds-icon name="grid"></ds-icon></button>
+  <i class="dock-sep" data-more data-label="연결"></i>
+  <button class="dock-btn" id="srv-btn" data-more data-tip="메트릭 서버" aria-label="메트릭 서버: 연결할 서버와 보기 방식"><ds-icon name="server"></ds-icon><i class="srv-dot"></i></button>
+  <button class="dock-btn" id="editor-btn" data-more data-tip="에디터" aria-label="에디터: 「… 로 열기」가 여는 데스크톱 에디터(VS Code 또는 Zed)를 고름"><ds-icon name="code"></ds-icon></button>
+  <i class="dock-sep" data-more data-label="개발"></i>
+  <a href="ds/stories.html" data-more data-tip="디자인 시스템" aria-label="디자인 시스템: 컴포넌트를 상황별로 보고 점검"><ds-icon name="shapes"></ds-icon></a>
+</ds-dock>
+<ds-theme-editor id="theme-panel" class="popover dock-pop" hidden></ds-theme-editor>
+<div id="stat-panel" class="popover dock-pop" hidden>
+  <div class="pop-h"><b>현황</b><span class="st">켜진 서버 전체</span><div class="conn" id="conn"><i></i><span>연결 중</span></div></div>
+  <div class="kpis-h">
+    <div class="stat"><i class="gi"><ds-icon name="play"></ds-icon></i><b id="k-live">–</b><span>실행 중</span></div>
+    <div class="stat" id="k-bg-wrap" hidden><i class="gi"><ds-icon name="layers"></ds-icon></i><b id="k-bg">0</b><span>백그라운드</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="bot"></ds-icon></i><b id="k-agents">–</b><span>에이전트</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="dollar"></ds-icon></i><b id="k-cost">–</b><span>추정 비용</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="hash"></ds-icon></i><b id="k-tokens">–</b><span>처리 토큰</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="repeat"></ds-icon></i><b id="k-turns">–</b><span>총 턴</span></div>
+    <div class="stat"><i class="gi"><ds-icon name="zap"></ds-icon></i><b id="k-runs">–</b><span>진행 Run</span></div>
+    <div class="stat dec" id="k-dec-wrap" hidden><i class="gi"><ds-icon name="help"></ds-icon></i><b><em id="k-dec">0</em><em id="k-mail" hidden></em></b><span id="k-dec-l">결정 대기</span></div>
+  </div>
+  <div class="health" id="health" hidden></div>
+</div>
+<div id="server-panel" class="popover dock-pop" data-sticky hidden></div>
+<div id="icon-panel" class="popover dock-pop" hidden></div>
+<div id="editor-panel" class="popover dock-pop" hidden></div>
+<div id="launch-panel" class="popover dock-pop" hidden></div>
+<div id="char-panel" class="popover dock-pop" hidden></div>
+<div id="dec-alert" hidden></div>
+<div id="decide-head" hidden></div>
+<div id="decisions" hidden></div>
+<div id="inbox" hidden></div>
+<main id="view"><div class="empty">불러오는 중…</div></main>
+<ds-tooltip id="tip"></ds-tooltip>
+<ds-toast id="toast"></ds-toast>
 <script src="api.js"></script>
+<script src="decision.js"></script>
+<script src="app.js"></script>
 <script src="usage.js"></script>
-<script type="module" src="rust-ui.js"></script>
-<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(console.error);</script>
+<script>
+// Service worker for the PWA install and offline open; a page served without one (http other than localhost) skips it.
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
 </body>
 </html>

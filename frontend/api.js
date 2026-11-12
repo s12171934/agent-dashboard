@@ -609,6 +609,3 @@ const api = (() => {
     events: ({ version, change, projects }) => { handlers = { version, change, projects }; startEvents(); },
   };
 })();
-
-// Rust/WASM UI uses the same tested multi-server transport.
-window.adashTransport = api;

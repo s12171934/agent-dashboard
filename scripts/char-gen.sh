@@ -16,7 +16,7 @@
 # page's icons from it, and apple/build.sh icons the iPhone app's face-<name>.
 # bust and sd (the chibi pixel sheet) take the full sheets as their reference, so make full first. Each call takes about
 # 20 minutes (A, then the other three at once); several run side by side. The frame sizes char-sprites.py prints go
-# into chars.<id>.art in frontend/chars/catalog.json.
+# into CH_ART in frontend/app.js.
 # A name not listed below is a new character: describe them in CHAR_DESC (English, like the lines below); the strips go
 # to the work dir instead of frontend/chars, and scripts/char-publish.py puts them online without a deploy.
 #   CHAR_DESC='young woman ..., short red hair, ...' scripts/char-gen.sh mio full ~/chars-work
@@ -34,7 +34,7 @@ CHARS=(
   hina  'young woman designer, long pinkish-brown hair in a high ponytail with a red ribbon, green eyes, white blouse with beige knit vest, red plaid skirt, white socks, brown loafers'
   kaede 'team leader woman, long straight black hair, violet eyes, black wireless gaming headset with a small boom microphone worn on her head, dark charcoal blazer over white shirt, black slacks, low black heels'
   nova  'humanoid android robot with a human-like body shape and height, glossy white ceramic armor panels over a slim dark graphite bodysuit, a rounded white helmet-like head with a smooth black glass visor for a face showing two glowing cyan LED eyes that change shape with its mood (closing to thin lines when it blinks), small round cyan light units at the ears, a thin glowing cyan line down the chest, dark gray mechanical joints at the shoulders, elbows and knees, white gloves, white boots with cyan soles, no hair, no headset'
-  # 운영실 staff (catalog.json): one a screen, dressed for the job
+  # 운영실 staff (HUB in app.js): one a screen, dressed for the job
   sera   'young woman executive secretary, dark brown hair in a neat low bun with a slim gold hairpin, warm brown eyes, small pearl earrings, fitted navy blazer and navy pencil skirt over a white blouse with a soft bow at the collar, a thin gold wristwatch, navy low heels'
   daichi 'young man office manager, short dark brown undercut hair swept to one side, amber eyes, white dress shirt with the sleeves rolled to the elbows, dark gray waistcoat, a blue ID badge on a lanyard round the neck, a silver wristwatch, charcoal trousers, brown oxford shoes'
   mina   'young woman quality inspector, short teal bob with a side-swept fringe, sharp teal eyes, a white inspector coat over a black turtleneck, a red armband on the left sleeve, a small brass jeweller loupe hanging on a cord round the neck, a green check-mark badge pinned to the chest, black trousers, white sneakers'
