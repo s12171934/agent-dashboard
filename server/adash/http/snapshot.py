@@ -46,7 +46,8 @@ state_cache = {"v": -1, "at": 0.0, "parts": None, "sig": None, "cv": 0, "full": 
 STATE_CACHE_SECONDS = 5  # health.now and the age-based states move without a version bump
 SIG_KEEP = 40  # content versions a page may still hold and get a delta from
 sig_history = collections.OrderedDict()  # content version -> signature, oldest first
-EVENTS_BUILD_GAP = 1.5  # /events builds at most this often to see whether the content moved
+EVENTS_BUILD_GAP = 4  # /events builds at most this often to see whether the content moved (a build summarises
+# a couple of thousand sessions; while agents write, the version moves every second)
 
 # Bumped when a change to /api/* or /events would break a page built for the old shape; the page compares it
 # with the one it was built for and says so instead of rendering garbage.
@@ -71,10 +72,22 @@ SELF_SORTED = {"sessions"}
 VOLATILE = ("version", "health")
 
 
+# Parts whose value is the same object while it shows the same thing and is never edited in place (lite_orca): their
+# bytes are reused while the object is. The Orca part is megabytes and changes far less often than a build runs.
+SAME_OBJECT_PARTS = {"orca"}
+encoded_parts = {}  # part name -> (value, its bytes)
+
+
 def parts_split(snap, encode):
     """Snapshot dict -> {part name: ("obj", bytes) | ("list", [(key, bytes)])}. tests.files is its own part."""
     parts = {}
     for name, val in snap.items():
+        if name in SAME_OBJECT_PARTS:
+            hit = encoded_parts.get(name)
+            if not hit or hit[0] is not val:
+                hit = encoded_parts[name] = (val, encode(val))
+            parts[name] = ("obj", hit[1])
+            continue
         if name == "tests":
             parts["tests"] = ("obj", encode({k: v for k, v in val.items() if k != "files"}))
             name, val = "tests.files", val.get("files") or []

@@ -8,6 +8,7 @@
 - lite_orca: the same object while orca_state holds the same lists, a new one equal to a fresh build once one is rebound.
 - collect_tests: an unchanged progress file keeps its entry (not normalised again), a rewritten one gets a new entry;
   lite_test is reused for the same entry and made again for a new one.
+- parts_split reuses the Orca part's bytes while lite_orca hands back the same object.
 - save_json writes what json.dump wrote.
 Exits 1 if any check fails. Standard library only; touches only a temporary folder.
 """
@@ -127,6 +128,26 @@ b = lite.lite_orca(o2)
 check("lite_orca: 리스트가 바뀌면 새로 만듦", b is not a and b["tasks"]["run_1"][0]["status"] == "failed", b)
 o3 = {**o2, "terminals": [{"handle": "term_9"}]}  # terminals/close.py rebinds only the terminals
 check("lite_orca: terminals 만 바꿔 끼워도 새로 만듦", lite.lite_orca(o3)["terminals"] == [{"handle": "term_9"}])
+
+# ---------- parts_split: the Orca part's bytes ----------
+from adash.http import snapshot  # noqa: E402
+
+enc_calls = []
+
+
+def encode(v):
+    enc_calls.append(v)
+    return json.dumps(v, ensure_ascii=False, default=str).encode()
+
+
+lo = lite.lite_orca(o3)
+p1 = snapshot.parts_split({"orca": lo, "flow": {"x": 1}}, encode)
+n1 = len(enc_calls)
+p2 = snapshot.parts_split({"orca": lo, "flow": {"x": 1}}, encode)
+check("parts_split: 같은 lite_orca 객체면 Orca 바이트를 다시 인코딩하지 않음", p2["orca"] == p1["orca"] and len(enc_calls) == n1 + 1
+      and json.loads(p2["orca"][1]) == json.loads(json.dumps(lo)), len(enc_calls) - n1)
+p3 = snapshot.parts_split({"orca": {**lo, "error": "x"}, "flow": {"x": 1}}, encode)
+check("parts_split: 다른 객체면 새로 인코딩", json.loads(p3["orca"][1])["error"] == "x")
 
 # ---------- collect_tests / lite_test ----------
 tests.TEST_DIR = os.path.join(TMP, "progress")
