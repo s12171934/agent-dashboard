@@ -47,6 +47,8 @@ main.py     명령행 인자, 수집 스레드와 HTTP 서버 시작
 
 - 수집 스레드와 요청 스레드가 같은 dict 를 고친다. 읽기·쓰기는 `core.state.lock` 안에서 한다.
 - 화면에 보일 변화가 있으면 `core.state.bump()` 로 변경 번호를 올린다. 서버는 그 번호가 움직이면 스냅숏을 다시 만든다. 내용이 실제로 바뀌었을 때만 `/events` 로 내용 버전을 알리고, 페이지는 `/api/state?base=` 로 바뀐 것만 받는다(`http/snapshot.py` 의 `parts_*`, 저장소 README 「실시간 갱신」). 한 번의 수집에서 여러 곳을 고쳐도 `bump()` 는 끝에 한 번만 부른다.
+- 스냅숏은 에이전트가 기록을 쓰는 동안 몇 초마다 다시 만들어진다(세션 2천여 개). 세션마다 Orca 워커·태스크 전체를 훑지 말고 `orca_runs.store.orca_index()` 를 쓴다. 이 색인과 `lite_orca` 는 `orca_state` 의 리스트가 같은 객체인 동안 다시 만들지 않으므로, `orca_state` 의 리스트는 제자리에서 고치지 말고 새 리스트로 바꿔 끼운다. 테스트 진행 파일은 mtime 이 그대로면 앞서 만든 항목을 그대로 쓴다.
+- 큰 JSON 파일은 `json.dump(…, f)` 가 아니라 `json.dumps` 로 만든 문자열을 쓴다(`core.files.save_json`). `json.dump` 는 순수 Python 인코더로 돌아 수십 MB 에서 몇 초씩 걸린다.
 - 스냅숏에 싣는 값은 화면 목록이 쓰는 것만이다. 펼쳐야 보이는 큰 목록(끝난 테스트의 케이스 등)은 따로 엔드포인트를 두고 펼칠 때 읽게 한다.
 - 모듈 전역을 통째로 바꾸는 값(`global x; x = …`)은 다른 모듈에서 `from … import x` 로 받으면 옛 값에 묶인다. 그런 값은 모듈째 import 해서 `모듈.x` 로 읽는다. 예: `core_state.version`, `designs_store.design`, `terminals_targets.focus_handles`. dict·list 를 제자리에서 고치는 값은 그냥 import 해도 된다.
 - 새 엔드포인트는 그 기능의 `api.py` 에 `def get_…(h, url)` / `def post_…(h, url)` 로 두고 `http/routes.py` 에 경로를 등록한다. `h` 는 요청 핸들러다(`h.send_json`, `h.send_body`, `h.encode`, `h.rfile`, `h.headers`).
