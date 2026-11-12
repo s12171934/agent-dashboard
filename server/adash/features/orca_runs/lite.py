@@ -24,7 +24,24 @@ def lite_task(t):
             "outcome": outcome}
 
 
+# The last lite_orca: the values it was made from (held, so a new list never passes for the old one by reusing its
+# id) and the result. The collector rebinds orca_state's lists when Orca's answer changes (orca_state.update) and never
+# edits them in place, while a snapshot is built every few seconds: the thousands of task specs are scanned once.
+_last = {"key": None, "lite": None}
+
+
 def lite_orca(o):
+    """The snapshot form of orca_state, the same object while orca_state holds the same values. Callers must not edit it."""
+    key = tuple(o.get(k) for k in ("runs", "tasks", "workers", "terminals", "error", "updated"))
+    last = _last
+    if last["key"] is not None and len(last["key"]) == len(key) and all(a is b for a, b in zip(last["key"], key)):
+        return last["lite"]
+    lite = _lite_orca(o)
+    globals()["_last"] = {"key": key, "lite": lite}
+    return lite
+
+
+def _lite_orca(o):
     prov = lambda w: (w.get("projection") or {}).get("provider") or {}
     return {"runs": [{k: r.get(k) for k in ("id", "objective", "coordinator_handle", "created_at")} for r in o.get("runs", [])],
             "tasks": {rid: [lite_task(t) for t in ts] for rid, ts in o.get("tasks", {}).items()},

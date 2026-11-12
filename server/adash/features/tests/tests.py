@@ -76,6 +76,11 @@ def norm_cases(raw):
 
 cases_cache = {}  # tests.json path -> (mtime, cases); a finished run's file is written once
 judged_files = {}  # progress file path -> (mtime, the file judged by judge.py), for runs atest did not judge
+# progress file path -> (mtime, its entry in test_progress["files"]). collect_tests runs every few seconds over a
+# day of runs with hundreds of cases each; only a file that was written again is normalised again. Entries are shared
+# with the snapshot and the history and never edited in place.
+file_entries = {}
+lite_tests = {}  # run key -> (its entry, lite_test of it), while that entry is the current one
 
 
 def run_tc_cases(progress, run):
@@ -112,10 +117,15 @@ def lite_test(f):
     cases for the chips and ▶."""
     if f.get("phase") not in ("done", "failed") or not f.get("cases"):
         return f
+    hit = lite_tests.get(f.get("key"))
+    if hit and hit[0] is f:
+        return hit[1]
     cases = f["cases"]
-    return {**{k: v for k, v in f.items() if k != "cases"}, "hist_id": file_run_id(f),
+    lite = {**{k: v for k, v in f.items() if k != "cases"}, "hist_id": file_run_id(f),
             "case_counts": {"n": len(cases), "bad": sum(c.get("status") in CASE_BAD for c in cases),
                             "ok": sum(c.get("status") == "passed" for c in cases)}}
+    lite_tests[f.get("key")] = (f, lite)
+    return lite
 
 
 def archive_tests(files, run_tc):
@@ -172,6 +182,10 @@ def collect_tests():
         mtime = e2e_cache[p][0]
         if not d or not mtime or now - mtime > TEST_KEEP_S:
             continue
+        hit = file_entries.get(p)
+        if hit and hit[0] == mtime:  # unchanged since the last pass: the same entry, not normalised again
+            files.append(hit[1])
+            continue
         if not d.get("phase") and d.get("status"):  # a hand-written file: {"status", "exit", "summary", "task"}
             st = str(d["status"])
             d = {**d, "phase": "failed" if st == "failed" or (st == "done" and d.get("exit")) else st,
@@ -184,16 +198,21 @@ def collect_tests():
             d = hit[1]
         fails = [{"id": short(str(f.get("id") or ""), 200), "msg": short(str(f.get("msg") or ""), 300)}
                  for f in (d.get("failures") or [])[:20] if isinstance(f, dict)] if isinstance(d.get("failures"), list) else []
-        files.append({**{k: d.get(k) for k in TEST_FIELDS}, "key": n[:-5], "mtime": mtime, "failures": fails,
-                      "cases": norm_cases(d.get("cases"))})
+        entry = {**{k: d.get(k) for k in TEST_FIELDS}, "key": n[:-5], "mtime": mtime, "failures": fails,
+                 "cases": norm_cases(d.get("cases"))}
+        file_entries[p] = (mtime, entry)
+        files.append(entry)
     for p in [p for p in e2e_cache if p.startswith(TEST_DIR + "/") and os.path.basename(p) not in names]:
         e2e_cache.pop(p, None)  # a removed run file
         judged_files.pop(p, None)
+        file_entries.pop(p, None)
     paths = set(RUN_TC_PROGRESS) | {t["e2e_progress"] for plan in list(ext_plans.values())
                                     for t in plan["tickets"] if isinstance(t.get("e2e_progress"), str)}
     run_tc = {p: d for p in sorted(paths) if (d := read_json_cached(p))}
     global test_history_judged
     with lock:
+        for k in set(lite_tests) - {f["key"] for f in files}:
+            del lite_tests[k]
         archived = archive_tests(files, run_tc)
         if not test_history_judged:
             for k, r in list(test_history.items()):

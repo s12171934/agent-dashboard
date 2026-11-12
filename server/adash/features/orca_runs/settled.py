@@ -31,6 +31,7 @@ def record_settled(workers, tasks=()):
 
 def save_settled():
     tmp = SETTLED_PATH + ".tmp"
+    body = json.dumps(settled_store)  # see core/files.save_json
     with open(tmp, "w") as f:
-        json.dump(settled_store, f)
+        f.write(body)
     os.replace(tmp, SETTLED_PATH)

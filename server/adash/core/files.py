@@ -11,8 +11,9 @@ from adash.core.state import report_failure
 
 def save_json(p, data):
     tmp = p + ".tmp"
+    body = json.dumps(data)  # dumps, not dump: json.dump streams through the pure-Python encoder, many times slower
     with open(tmp, "w") as f:
-        json.dump(data, f)
+        f.write(body)
     os.replace(tmp, p)
 
 

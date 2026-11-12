@@ -10,7 +10,7 @@ import time
 from adash.core.util import epoch, short
 from adash.features.decisions.store import INBOX_PICK
 from adash.features.designs.refs import DesignReads, note_design_stats
-from adash.features.orca_runs.store import orca_state
+from adash.features.orca_runs.store import orca_index, orca_state
 from adash.features.sessions.config import (CHAT_CHARS, CHAT_LIMIT, CLAUDE_CTX_WINDOW, LOG_LIMIT, LONG_CTX_MODELS,
     SELF_CLOSE_SECONDS, STALL_SECONDS, WAIT_SECONDS, hooks)
 from adash.features.sessions.patterns import (APLAN_CMD, APLAN_SET, APLAN_TOKEN, BG_END, BG_KIND, BG_MAX_SECONDS,
@@ -576,11 +576,9 @@ class Session:
     def work_dir(self):
         """Orca's recorded worktree for a worker wins; otherwise the directory the agent was launched in."""
         if self.task_id:
-            for w in orca_state.get("workers") or []:
-                if w.get("taskId") == self.task_id:
-                    wt = ((w.get("resource") or {}).get("worktreeId") or "").split("::", 1)[-1]
-                    if wt:
-                        return wt
+            wt = orca_index()["wt_by_task"].get(self.task_id)
+            if wt:
+                return wt
         return self.launch_cwd
 
     def placement(self):
@@ -595,7 +593,8 @@ class Session:
         cur = self.task_id
         handles = {h for h in [self.own_handle, *self.prior_handles] if h}
         if handles:
-            ds = [w for w in orca_state.get("workers") or [] if w.get("agentTerminalHandle") in handles and w.get("taskId")]
+            idx = orca_index()
+            ds = [w for _, w in sorted((x for h in handles for x in idx["by_handle"].get(h, ())), key=lambda x: x[0])]
             for w in ds:
                 if w["taskId"] not in ids:
                     ids.append(w["taskId"])
@@ -603,7 +602,7 @@ class Session:
             if open_:
                 cur = open_[-1]
             elif len(ids) > 1:  # all settled: the latest task it took is the one it is "on"
-                created = {t["id"]: t.get("created_at") or "" for ts in (orca_state.get("tasks") or {}).values() for t in ts}
+                created = idx["created"]
                 cur = max(ids, key=lambda i: (created.get(i) or "", ids.index(i)))  # ties: the later one taken
         return cur, ids
 
