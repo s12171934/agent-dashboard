@@ -1388,7 +1388,8 @@ const liveNow = s => agg(s).live || status(s) === 'bg' || Date.now() - Math.max(
 // A subagent runs in its parent's terminal.
 const inOrca = s => !!(s.orca_focus || (s.parent && IX.byId[s.parent]?.orca_focus));
 const filtering = () => onlyLive || onlyOrca;
-const liveSess = w => w.pinned || (!onlyLive || liveNow(w)) && (!onlyOrca || inOrca(w));
+// A pin keeps a session visible in the live view, but still requires an open terminal in the Orca view.
+const liveSess = w => (!onlyOrca || inOrca(w)) && (w.pinned || !onlyLive || liveNow(w));
 // Pinned first: a family holding a pinned session (any depth), and a pinned session among its siblings.
 const famPinned = f => f.members.some(m => m.pinned);
 const PIN_LEAD = 100, pinnedR = r => r < -PIN_LEAD / 2;  // an order rank lowered by PIN_LEAD (ranks run from -1)
