@@ -185,6 +185,50 @@ fn round(v: f64) -> f64 {
 }
 
 #[derive(Clone)]
+pub struct CodexAsk {
+    pub questions: Vec<Value>,
+    pub created_at: f64,
+    pub asynchronous: bool,
+    pub closed: bool,
+    answered: BTreeSet<usize>,
+}
+
+fn codex_questions(input: &Value) -> Vec<Value> {
+    array(&input["questions"])
+        .iter()
+        .filter_map(|q| {
+            let question = q["question"].as_str().or(q["title"].as_str())?;
+            if question.trim().is_empty() {
+                return None;
+            }
+            let options = array(&q["options"])
+                .iter()
+                .filter_map(|o| {
+                    let label = o.as_str().or(o["label"].as_str())?;
+                    Some(json!({"label":label,"description":o["description"].as_str().unwrap_or("")}))
+                })
+                .collect::<Vec<_>>();
+            Some(json!({"question":question,"header":q["header"].as_str().unwrap_or(""),"multiSelect":false,"preview":false,"options":options}))
+        })
+        .collect()
+}
+
+fn quoted_questions(s: &str) -> Vec<String> {
+    let mut quotes = Vec::new();
+    let mut block = String::new();
+    for line in s.lines().chain(std::iter::once("")) {
+        if let Some(quote) = line.strip_prefix("> ") {
+            block.push_str(quote);
+            block.push('\n');
+        } else if !block.is_empty() {
+            quotes.push(block.split_whitespace().collect::<Vec<_>>().join(" "));
+            block.clear();
+        }
+    }
+    quotes
+}
+
+#[derive(Clone)]
 pub struct Session {
     pub path: String,
     pub kind: String,
@@ -197,6 +241,7 @@ pub struct Session {
     pub events: BTreeMap<String, (String, Value)>,
     pub prompts: Vec<(String, String)>,
     pub asks: HashMap<String, Value>,
+    pub codex_asks: HashMap<String, CodexAsk>,
     pub inbox_picks: HashMap<String, String>,
     pub reads: Vec<Value>,
     keys: HashMap<String, usize>,
@@ -239,6 +284,7 @@ impl Session {
             events: BTreeMap::new(),
             prompts: vec![],
             asks: HashMap::new(),
+            codex_asks: HashMap::new(),
             inbox_picks: HashMap::new(),
             reads: vec![],
             keys: HashMap::new(),
@@ -860,6 +906,23 @@ impl Session {
                     } else {
                         &p["arguments"]
                     };
+                    let tool = name.rsplit('.').next().unwrap_or(name);
+                    if matches!(tool, "request_user_input" | "request_user_input_async") {
+                        let parsed = input
+                            .as_str()
+                            .and_then(|s| serde_json::from_str::<Value>(s).ok());
+                        let qs = codex_questions(parsed.as_ref().unwrap_or(input));
+                        let id = text(&p["call_id"]);
+                        if !qs.is_empty() && !id.is_empty() {
+                            self.codex_asks.entry(id.into()).or_insert(CodexAsk {
+                                questions: qs,
+                                created_at: epoch(ts).unwrap_or(0.),
+                                asynchronous: tool == "request_user_input_async",
+                                closed: false,
+                                answered: BTreeSet::new(),
+                            });
+                        }
+                    }
                     let cmd = input
                         .as_str()
                         .map(str::to_owned)
@@ -881,6 +944,12 @@ impl Session {
                         .as_str()
                         .map(str::to_owned)
                         .unwrap_or_else(|| p["output"].to_string());
+                    if let Some(ask) = self.codex_asks.get_mut(text(&p["call_id"])) {
+                        let accepted =
+                            serde_json::from_str::<Value>(&s).is_ok_and(|v| v["accepted"] == true);
+                        // Async calls return before the user answers. Only their receipt stays open.
+                        ask.closed |= !ask.asynchronous || !accepted;
+                    }
                     self.result(text(&p["call_id"]), &s, ts);
                     self.add_log(
                         ts,
@@ -894,6 +963,23 @@ impl Session {
                 "message" => {
                     let s = content(&p["content"]);
                     let role = text(&p["role"]);
+                    if role == "user" {
+                        // Codex delivers async answers as a user message quoting the question title.
+                        let quoted = quoted_questions(&s);
+                        for ask in self.codex_asks.values_mut().filter(|q| q.asynchronous) {
+                            for (i, q) in ask.questions.iter().enumerate() {
+                                if quoted.contains(
+                                    &text(&q["question"])
+                                        .split_whitespace()
+                                        .collect::<Vec<_>>()
+                                        .join(" "),
+                                ) {
+                                    ask.answered.insert(i);
+                                }
+                            }
+                            ask.closed |= ask.answered.len() == ask.questions.len();
+                        }
+                    }
                     if role == "assistant" && !s.trim().is_empty() {
                         self.add_log(ts, role, &s, true, true, obj());
                     } else if role == "user"
@@ -916,6 +1002,13 @@ impl Session {
             _ => {
                 if pt.contains("compact") {
                     self.compact(ts);
+                }
+            }
+        }
+        if typ == "event_msg" && matches!(pt, "task_complete" | "turn_aborted") {
+            for ask in self.codex_asks.values_mut() {
+                if !ask.asynchronous || pt == "turn_aborted" {
+                    ask.closed = true;
                 }
             }
         }

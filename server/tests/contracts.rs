@@ -42,6 +42,177 @@ fn codex_cache_tokens_are_separated() {
     assert_eq!(s.turns[0]["input"], 70.);
     assert_eq!(s.turns[0]["ctx"], 150.);
 }
+
+fn codex_question(asynchronous: bool, ts: &str) -> Session {
+    let mut s = Session::new("/fixture/rollout-codex.jsonl", "codex");
+    s.feed(&json!({"type":"session_meta","timestamp":ts,"payload":{"id":"codex-fixture","cwd":"/fixture"}}));
+    let (name, questions) = if asynchronous {
+        (
+            "request_user_input_async",
+            json!([{"title":"진행할까요?","options":["진행","보류"]},{"title":"추가 의견은?"}]),
+        )
+    } else {
+        (
+            "functions.request_user_input",
+            json!([{"id":"proceed","question":"진행할까요?","header":"확인","options":[{"label":"진행","description":"계속"},{"label":"보류","description":"기다림"}]}]),
+        )
+    };
+    s.feed(&json!({"type":"response_item","timestamp":ts,"payload":{"type":"function_call","name":name,"call_id":"ask-1","arguments":json!({"questions":questions}).to_string()}}));
+    s
+}
+
+#[test]
+fn codex_sync_questions_close_on_tool_result() {
+    let mut s = codex_question(false, &iso());
+    let ask = &s.codex_asks["ask-1"];
+    assert!(!ask.closed);
+    assert_eq!(ask.questions[0]["header"], "확인");
+    assert_eq!(ask.questions[0]["options"][0]["description"], "계속");
+    s.feed(&json!({"type":"response_item","payload":{"type":"function_call_output","call_id":"ask-1","output":"{\"answers\":{\"proceed\":{\"answers\":[\"진행\"]}}}"}}));
+    assert!(s.codex_asks["ask-1"].closed);
+}
+
+#[test]
+fn codex_async_receipt_and_turn_end_wait_for_the_quoted_answer() {
+    let mut s = codex_question(true, &iso());
+    let receipt = json!({"type":"response_item","payload":{"type":"function_call_output","call_id":"ask-1","output":"{\"accepted\":true}"}});
+    s.feed(&receipt);
+    s.feed(&json!({"type":"event_msg","payload":{"type":"task_complete"}}));
+    for text in [
+        "다른 수정도 진행해",
+        "> 진행할까요? 다시 검토\n\n진행",
+        "> 진행할까요?\n\n진행",
+    ] {
+        s.feed(&json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":text}]}}));
+        assert!(!s.codex_asks["ask-1"].closed);
+    }
+    assert_eq!(
+        s.codex_asks["ask-1"].questions[0]["options"][0]["label"],
+        "진행"
+    );
+    assert_eq!(s.codex_asks["ask-1"].questions[1]["options"], json!([]));
+    s.feed(&json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"> 진행할까요?\n\n진행\n\n> 추가 의견은?\n\n없음"}]}}));
+    assert!(s.codex_asks["ask-1"].closed);
+    s.feed(&receipt);
+    assert!(s.codex_asks["ask-1"].closed);
+}
+
+#[test]
+fn codex_questions_close_on_errors_and_abort_and_ignore_invalid_calls() {
+    for asynchronous in [false, true] {
+        let mut s = codex_question(asynchronous, &iso());
+        s.feed(&json!({"type":"event_msg","payload":{"type":"turn_aborted"}}));
+        assert!(s.codex_asks["ask-1"].closed);
+        let mut s = codex_question(asynchronous, &iso());
+        s.feed(&json!({"type":"response_item","payload":{"type":"function_call_output","call_id":"ask-1","output":"request_user_input is unavailable in Default mode"}}));
+        assert!(s.codex_asks["ask-1"].closed);
+    }
+    let mut s = Session::new("/fixture/invalid.jsonl", "codex");
+    for arguments in ["{", "{}", "{\"questions\":[{\"title\":\" \"}]}"] {
+        s.feed(&json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":"invalid","arguments":arguments}}));
+    }
+    assert!(s.codex_asks.is_empty());
+}
+
+#[test]
+fn codex_decisions_reach_session_and_native_contract_and_close_on_answer() {
+    let d = tempfile::tempdir().unwrap();
+    let a = App::new(Config {
+        data: d.path().into(),
+        vault: d.path().join("none"),
+        ..Config::default()
+    });
+    let ts = chrono::DateTime::from_timestamp((now() - 120.) as i64, 0)
+        .unwrap()
+        .to_rfc3339();
+    let s = codex_question(false, &ts);
+    {
+        let mut state = a.state.write().unwrap();
+        state.scan_ready = true;
+        state
+            .sessions
+            .insert(s.path.clone(), std::sync::Arc::new(s.clone()));
+        // The same rollout can also be discovered through an Orca account's session directory.
+        state
+            .sessions
+            .insert("/orca/duplicate.jsonl".into(), std::sync::Arc::new(s));
+    }
+    for _ in 0..2 {
+        decisions::sweep(&a).unwrap();
+    }
+    // The incremental scanner temporarily removes a session while reading its new records.
+    let held = std::mem::take(&mut a.state.write().unwrap().sessions);
+    decisions::sweep(&a).unwrap();
+    assert_eq!(
+        array(&a.state.read().unwrap().decisions["pending"]).len(),
+        1
+    );
+    a.state.write().unwrap().sessions = held;
+    a.build_snapshot().unwrap();
+    let snapshot = a.state.read().unwrap().snapshot.clone();
+    let card = snapshot["decisions"]["pending"][0].clone();
+    assert_eq!(array(&snapshot["decisions"]["pending"]).len(), 1);
+    assert_eq!(snapshot["sessions"][0]["decision"]["id"], card["id"]);
+    let payload: agent_dashboard_client_core::DecisionsPayload =
+        serde_json::from_value(snapshot).unwrap();
+    assert_eq!(
+        payload.decisions.pending[0].questions[0].question,
+        "진행할까요?"
+    );
+    assert_eq!(
+        decisions::post(&a, "answer", &json!({"id":card["id"],"answers":["진행"]})).0,
+        409
+    );
+    {
+        let mut state = a.state.write().unwrap();
+        for sess in state.sessions.values_mut() {
+            std::sync::Arc::make_mut(sess).feed(&json!({"type":"response_item","payload":{"type":"function_call_output","call_id":"ask-1","output":"{}"}}));
+        }
+    }
+    decisions::sweep(&a).unwrap();
+    assert!(array(&a.state.read().unwrap().decisions["pending"]).is_empty());
+}
+
+#[test]
+fn codex_dismissal_survives_sweeps_and_restart() {
+    let d = tempfile::tempdir().unwrap();
+    let config = Config {
+        data: d.path().into(),
+        vault: d.path().join("none"),
+        ..Config::default()
+    };
+    let s = codex_question(true, &iso());
+    let a = App::new(config.clone());
+    a.state
+        .write()
+        .unwrap()
+        .sessions
+        .insert(s.path.clone(), std::sync::Arc::new(s.clone()));
+    decisions::sweep(&a).unwrap();
+    let id = a.state.read().unwrap().decisions["pending"][0]["id"].clone();
+    assert_eq!(decisions::post(&a, "dismiss", &json!({"id":id})).0, 200);
+    a.state.write().unwrap().pending["items"][0]["settled"] = json!(now() - 600.);
+    decisions::sweep(&a).unwrap();
+    let restarted = App::new(config);
+    restarted
+        .state
+        .write()
+        .unwrap()
+        .sessions
+        .insert(s.path.clone(), std::sync::Arc::new(s));
+    decisions::sweep(&restarted).unwrap();
+    assert!(array(&restarted.state.read().unwrap().decisions["pending"]).is_empty());
+    let mut expired = codex_question(true, "2020-01-01T00:00:00Z");
+    expired.data["id"] = json!("expired");
+    restarted
+        .state
+        .write()
+        .unwrap()
+        .sessions
+        .insert("expired".into(), std::sync::Arc::new(expired));
+    decisions::sweep(&restarted).unwrap();
+    assert!(array(&restarted.state.read().unwrap().decisions["pending"]).is_empty());
+}
 #[test]
 fn incomplete_jsonl_record_is_retained() {
     let d = tempfile::tempdir().unwrap();

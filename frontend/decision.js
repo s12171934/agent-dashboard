@@ -7,6 +7,8 @@
 // PermissionRequest hook) is a card too: its command in a block and 허용 / 거부, which the server presses as Yes / No.
 // A workflow-canvas user decision (r.kind 'canvas': a gate or a user-judged branch a run waits on) is a card with its
 // outputs as options; a pick is registered on the canvas, as its own card does, and the coordinator takes it from there.
+// Codex questions (r.kind 'codex') come from the transcript. Async replies are sent as quoted user messages;
+// synchronous replies use the Codex terminal picker after checking its question and options.
 // Cards live in #decisions, outside #view, which every refresh rebuilds. A card is built once per request id and
 // later refreshes only touch its meta and status lines, so picks, typed text, focus and an IME composition
 // survive (a periodic re-render wiping input is the bug the 8799 page hit first).
@@ -27,7 +29,7 @@ const decisions = (() => {
     const st = c.el.querySelector('.dc-status');
     st.textContent = text || '';
     st.classList.toggle('err', !!err);
-    c.el.querySelector('.dc-del').hidden = !err;
+    c.el.querySelector('.dc-del').hidden = !err && c.r.kind !== 'codex';
   }
 
   async function dismiss(c) {
@@ -83,9 +85,9 @@ const decisions = (() => {
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
         ${q.multiSelect || r.kind === 'permission' || r.kind === 'canvas' ? '' : `<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"><button>${needsSubmit(r) ? '입력' : '보내기'}</button></form>`}
       </div>`).join('')}
-      <p class="dc-hint">${r.kind === 'canvas' ? '워크플로 캔버스의 결정 대기 카드와 같습니다. 여기서 고르면 캔버스에 판정을 등록하고, 코디네이터가 다음 확인 때 반영합니다.' : r.kind === 'permission' ? '터미널에도 같은 권한 요청이 떠 있습니다. 여기서 고르면 터미널에서 Yes / No 를 대신 누릅니다.' : '터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.'}</p>
+      <p class="dc-hint">${r.kind === 'codex' ? '여기서 답하면 연결된 Codex 세션에 전달합니다. Codex에서 직접 답해도 이 카드가 사라집니다.' : r.kind === 'canvas' ? '워크플로 캔버스의 결정 대기 카드와 같습니다. 여기서 고르면 캔버스에 판정을 등록하고, 코디네이터가 다음 확인 때 반영합니다.' : r.kind === 'permission' ? '터미널에도 같은 권한 요청이 떠 있습니다. 여기서 고르면 터미널에서 Yes / No 를 대신 누릅니다.' : '터미널에도 같은 선택지가 떠 있습니다. 여기서 고르면 터미널에 대신 입력합니다.'}</p>
       ${needsSubmit(r) ? '<div class="dc-actions"><button class="dc-submit" disabled>답 보내기</button></div>' : ''}
-      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden title="${r.kind === 'canvas' ? '대시보드에서만 치웁니다. 캔버스의 결정 대기 카드는 그대로입니다' : '대시보드에서만 치웁니다. 터미널의 선택기는 그대로입니다'}">카드 삭제</button></div>`;
+      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden title="${r.kind === 'codex' ? '대시보드에서만 치웁니다. Codex의 질문은 그대로입니다' : r.kind === 'canvas' ? '대시보드에서만 치웁니다. 캔버스의 결정 대기 카드는 그대로입니다' : '대시보드에서만 치웁니다. 터미널의 선택기는 그대로입니다'}">카드 삭제</button></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}), sentAt: 0 };
     el.querySelectorAll('.dc-q').forEach(qel => {
       const qi = +qel.dataset.qi, q = r.questions[qi];

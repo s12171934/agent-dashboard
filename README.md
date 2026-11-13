@@ -60,7 +60,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | Orca Run·터미널 | `orca` CLI 호출 |
 | 작업 계획 | `~/.agent-plans/<session>.jsonl` (`aplan` 이 기록) |
 | 테스트 진행 | `/private/tmp/agent-test-progress/*.json`, run-tc 진행 파일과 그 옆 `e2e-runs/<run>.tests.json`(케이스별 제목·결과) |
-| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문과 Bash 권한 요청. 터미널 선택기·권한 프롬프트와 같은 것이다 (아래 「결정 버튼」). 워크플로 캔버스(`http://127.0.0.1:4318`, `WORKFLOW_CANVAS_PORT`)의 `GET /api/decisions` — 실행이 기다리는 사용자 결정 (아래 「워크플로 캔버스 결정」) |
+| 결정 대기 | `server/decision-hook` 이 등록한 AskUserQuestion 질문과 Bash 권한 요청, Codex 세션 로그의 `request_user_input`·`request_user_input_async` 질문 (아래 「결정 버튼」). 워크플로 캔버스(`http://127.0.0.1:4318`, `WORKFLOW_CANVAS_PORT`)의 `GET /api/decisions` — 실행이 기다리는 사용자 결정 (아래 「워크플로 캔버스 결정」) |
 | 프로젝트 진행 | `--projects-dir` 로 준 폴더마다 `<프로젝트 폴더>/progress.json` (아래 「프로젝트 진행 API」, 지정하지 않으면 읽지 않음) |
 | 설계문서 | `prefs.json` 의 `design_dirs`·`--design-dir` 로 준 폴더(예: `<저장소>/feature-designs`)와 그 저장소의 다른 git 워크트리에 있는 같은 폴더, 외부 계획의 `design_root` — `.md`·그림(svg·png·jpg·gif·webp)·PDF. 조회 전용 (아래 「설계문서」) |
 | 워크트리 리뷰 | `prefs.json` 의 `qa_sets` 마다 Jira 에픽의 하위 이슈(읽기), `orca worktree list`, 워크트리의 git·`gh pr list`, 볼트 프로젝트의 `progress.json` 과 스텝 노트 frontmatter, 데이터 폴더의 `qa-sheets.json`(`aqa` 가 기록하는 TC 시트 진행) (아래 「워크트리 리뷰」, `qa_sets` 가 없으면 읽지 않음) |
@@ -426,6 +426,15 @@ Swift 검증은 테스트용 통신·저장을 주입한다. 실제 키체인·�
 - 대기 카드는 데이터 폴더의 `pending.json` 에도 보관해 서버를 다시 띄워도 남는다(훅은 질문을 한 번만 등록하므로, 예전에는 선택기가 열린 동안 재시작하면 카드가 사라졌다). 그사이 답했거나 취소된 질문은 평소처럼 트랜스크립트를 보고 치운다.
 - 메트릭 서버에 닿지 않으면 훅은 바로 비켜선다. 터미널 선택기만 뜬다. 메일함 모드가 켜져 있어도 마찬가지다.
 - 환경 변수: `DASH_URL` (기본 `http://127.0.0.1:8787`).
+
+### Codex 질문
+
+- `request_user_input`·`request_user_input_async` 호출을 세션 로그에서 읽어 결정 대기 카드로 올린다. 별도 훅 설치 없이 세션 강조·배지·앱 알림에도 전파된다.
+- 동기 질문은 도구 결과가 기록되면 닫는다. 비동기 질문의 `accepted: true` 는 접수 확인이므로 카드를 유지하고, 질문 제목을 인용한 사용자 답변이 모두 기록되면 닫는다. 비동기 질문은 턴이 끝나도 유지한다.
+- 취소된 턴·실패한 호출·2시간이 지난 질문은 닫는다. 같은 세션·호출을 여러 경로에서 수집해도 카드는 하나다.
+- 대시보드·앱 알림·위젯에서 답하면 연결된 Orca Codex 터미널로 전달한다. 비동기 질문은 질문 제목을 인용한 사용자 메시지로 보내고, 동기 질문은 질문·선택지를 확인한 뒤 Codex 선택기에 입력한다. 터미널을 찾지 못하거나 사용자가 입력 중이면 카드를 유지하고 오류를 알린다.
+- 「카드 삭제」는 Codex 질문을 취소하지 않으며 서버를 다시 띄워도 삭제 상태를 유지한다.
+- 메일함 모드에서도 Codex 질문은 결정 대기로 표시한다. 로그 수집은 질문 호출을 중단하거나 권장 답으로 대신 진행시키지 않는다.
 
 ### Bash 권한 대기
 

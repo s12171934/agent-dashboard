@@ -29,6 +29,18 @@ if [ -n "${ORCA_TERMINAL_HANDLE:-}${ORCA_PANE_KEY:-}" ]; then echo '{"ok":false,
 case "$1 $2" in
  'repo list') echo '{"ok":true,"result":{"repos":[]}}' ;;
  'worktree list') echo '{"ok":true,"result":{"worktrees":[]}}' ;;
+ 'terminal list')
+   if [ -f "$HOME/terminals.json" ]; then cat "$HOME/terminals.json"; else echo '{"ok":true,"result":{"terminals":[]}}'; fi ;;
+ 'terminal read') cat "$HOME/terminal-screen.json" ;;
+ 'terminal show') cat "$HOME/terminal-info.json" ;;
+ 'terminal send')
+   printf '%s\0' "$@" >> "$HOME/terminal-input"
+   codex_step=0
+   if [ -f "$HOME/codex-step" ]; then codex_step=$(cat "$HOME/codex-step"); fi
+   codex_step=$((codex_step + 1))
+   printf '%s' "$codex_step" > "$HOME/codex-step"
+   if [ -f "$HOME/terminal-screen-$codex_step.json" ]; then cp "$HOME/terminal-screen-$codex_step.json" "$HOME/terminal-screen.json"; fi
+   echo '{"ok":true,"result":{"accepted":true,"prompt":{"stages":["input_accepted"]}}}' ;;
  'orchestration inbox') echo '{"ok":true,"result":{"messages":[]}}' ;;
  'orchestration run-list'|'orchestration task-list'|'orchestration worker-list')
    case " $* " in *' --full '*) ;; *) echo '{"ok":false,"error":"missing --full"}'; exit 1 ;; esac
@@ -265,6 +277,85 @@ fn active_collectors_read_only_new_transcript_records() {
 }
 
 #[test]
+fn codex_ask_is_collected_and_removed_after_its_async_answer() {
+    let server = server_with_collect(true);
+    let transcript = server
+        ._temp
+        .path()
+        .join(".codex/sessions/rollout-fixture.jsonl");
+    fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    fs::write(&transcript, format!("{}\n{}\n{}\n",
+        json!({"type":"session_meta","timestamp":iso(),"payload":{"id":"codex-http-fixture","cwd":"/fixture"}}),
+        json!({"type":"response_item","timestamp":iso(),"payload":{"type":"function_call","name":"request_user_input_async","call_id":"codex-ask","arguments":"{\"questions\":[{\"title\":\"어디까지 진행할까요?\",\"options\":[\"여기까지\",\"계속\"]}]}"}}),
+        json!({"type":"response_item","timestamp":iso(),"payload":{"type":"function_call_output","call_id":"codex-ask","output":"{\"accepted\":true}"}})
+    )).unwrap();
+    let client = reqwest::blocking::Client::new();
+    let decisions = || {
+        client
+            .get(format!("{}/api/decisions", server.base))
+            .send()
+            .unwrap()
+            .json::<Value>()
+            .unwrap()
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let pending = loop {
+        let d = decisions();
+        if !array(&d["decisions"]["pending"]).is_empty() && !array(&d["sessions"]).is_empty() {
+            break d;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Codex ask was not collected: {d}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let mut core = agent_dashboard_client_core::DecisionStore::default();
+    let update = core.apply(&serde_json::to_vec(&pending).unwrap()).unwrap();
+    assert_eq!(
+        update.pending[0].questions[0].question,
+        "어디까지 진행할까요?"
+    );
+    assert_eq!(pending["decisions"]["pending"][0]["kind"], "codex");
+    assert_eq!(
+        pending["sessions"][0]["decision"]["id"],
+        pending["decisions"]["pending"][0]["id"]
+    );
+    let glance: Value = client
+        .get(format!("{}/api/glance", server.base))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(
+        glance["decisions"][0]["options"],
+        json!(["여기까지", "계속"])
+    );
+    let answer = json!({"type":"response_item","timestamp":iso(),"payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"> 어디까지 진행할까요?\n\n계속"}]}});
+    use std::io::Write;
+    writeln!(
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&transcript)
+            .unwrap(),
+        "{answer}"
+    )
+    .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let d = decisions();
+        if array(&d["decisions"]["pending"]).is_empty() {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Codex answer did not close the card: {d}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[test]
 fn native_decisions_contract_is_shared_with_the_client_core() {
     let server = server();
     let client = reqwest::blocking::Client::new();
@@ -285,4 +376,178 @@ fn native_decisions_contract_is_shared_with_the_client_core() {
         raw["decisions"]["pending"][0]["questions"][0]["options"][0]["description"],
         "다음 단계로"
     );
+}
+
+fn codex_reply_fixture(server: &Server, asynchronous: bool, questions: Value) -> Value {
+    let home = server._temp.path();
+    let terminal = "term_aaaaaaaa-0000-0000-0000-000000000001";
+    save_json(home.join("terminals.json"), &json!({"ok":true,"result":{"terminals":[{"handle":terminal,"connected":true,"tabId":"fixture-tab","leafId":"fixture-leaf","agentIdentity":"codex"}]}})).unwrap();
+    let hooks = home.join("Library/Application Support/orca/agent-hooks/last-status.json");
+    save_json(hooks, &json!({"entries":{"fixture":{"providerSession":{"id":"codex-reply-fixture"},"payload":{"state":"working"},"receivedAt":now()*1000.,"paneKey":"fixture-tab:fixture-leaf"}}})).unwrap();
+    let transcript = home.join(".codex/sessions/rollout-reply.jsonl");
+    fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    let name = if asynchronous {
+        "request_user_input_async"
+    } else {
+        "request_user_input"
+    };
+    fs::write(transcript, format!("{}\n{}\n",
+        json!({"type":"session_meta","timestamp":iso(),"payload":{"id":"codex-reply-fixture","cwd":"/fixture"}}),
+        json!({"type":"response_item","timestamp":iso(),"payload":{"type":"function_call","name":name,"call_id":"codex-reply","arguments":json!({"questions":questions}).to_string()}})
+    )).unwrap();
+    let client = reqwest::blocking::Client::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let d: Value = client
+            .get(format!("{}/api/state", server.base))
+            .send()
+            .unwrap()
+            .json()
+            .unwrap();
+        if array(&d["sessions"])
+            .iter()
+            .any(|s| s["id"] == "codex-reply-fixture" && s["orca_focus"] == terminal)
+        {
+            if let Some(card) = array(&d["decisions"]["pending"]).first() {
+                return card.clone();
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Codex reply fixture not linked"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+fn terminal_screen(server: &Server, filename: &str, lines: &[&str]) {
+    save_json(
+        server._temp.path().join(filename),
+        &json!({"ok":true,"result":{"terminal":{"source":"screen","tail":lines}}}),
+    )
+    .unwrap();
+}
+fn reply(server: &Server, card: &Value, answers: Value) -> reqwest::blocking::Response {
+    reqwest::blocking::Client::new()
+        .post(format!("{}/api/decision/answer", server.base))
+        .json(&json!({"id":card["id"],"answers":answers}))
+        .send()
+        .unwrap()
+}
+
+#[test]
+fn codex_async_reply_is_submitted_once_without_overwriting_a_draft() {
+    let server = server_with_collect(true);
+    let card = codex_reply_fixture(
+        &server,
+        true,
+        json!([{"title":"진행할까요?","options":["진행","보류"]},{"title":"추가 의견은?"}]),
+    );
+    terminal_screen(
+        &server,
+        "terminal-screen.json",
+        &["› 사용자가 작성 중인 초안", "GPT-6.1", "? for shortcuts"],
+    );
+    assert_eq!(
+        reply(&server, &card, json!(["진행", "상세 의견"])).status(),
+        409
+    );
+    assert!(!server._temp.path().join("terminal-input").exists());
+    save_json(server._temp.path().join("terminal-screen.json"),&json!({"ok":true,"result":{"terminal":{"source":"screen","tail":["Working"],"draft":"Orca UI 초안"}}})).unwrap();
+    assert_eq!(
+        reply(&server, &card, json!(["진행", "상세 의견"])).status(),
+        409
+    );
+    assert!(!server._temp.path().join("terminal-input").exists());
+    terminal_screen(&server, "terminal-screen.json", &["Working"]);
+    save_json(server._temp.path().join("terminal-info.json"),&json!({"ok":true,"result":{"terminal":{"agentIdentity":"codex","connected":true,"writable":true}}})).unwrap();
+    assert_eq!(
+        reply(&server, &card, json!(["진행", "상세 의견"])).status(),
+        200
+    );
+    let input = fs::read_to_string(server._temp.path().join("terminal-input")).unwrap();
+    assert!(input.contains("> 진행할까요?\n\n진행\n\n> 추가 의견은?\n\n상세 의견"));
+    assert_eq!(
+        reply(&server, &card, json!(["진행", "상세 의견"])).status(),
+        409
+    );
+    assert_eq!(
+        fs::read_to_string(server._temp.path().join("terminal-input")).unwrap(),
+        input
+    );
+}
+
+#[test]
+fn codex_sync_reply_checks_question_before_typing_the_choice() {
+    let server = server_with_collect(true);
+    let card = codex_reply_fixture(
+        &server,
+        false,
+        json!([{"id":"proceed","question":"진행할까요?","header":"확인","options":[{"label":"진행"},{"label":"보류"}]}]),
+    );
+    terminal_screen(
+        &server,
+        "terminal-screen.json",
+        &[
+            "Question 1/1 (1 unanswered)",
+            "다른 질문",
+            "› 1. 진행",
+            "  2. 보류",
+            "enter to submit answer · esc to interrupt",
+        ],
+    );
+    assert_eq!(reply(&server, &card, json!(["보류"])).status(), 409);
+    assert!(!server._temp.path().join("terminal-input").exists());
+    terminal_screen(
+        &server,
+        "terminal-screen.json",
+        &[
+            "Question 1/1 (1 unanswered)",
+            "진행할까요?",
+            "› 1. 진행",
+            "  2. 보류",
+            "enter to submit answer · esc to interrupt",
+        ],
+    );
+    terminal_screen(
+        &server,
+        "terminal-screen-1.json",
+        &["› Ask Codex to do anything", "? for shortcuts"],
+    );
+    assert_eq!(reply(&server, &card, json!(["보류"])).status(), 200);
+    let input = fs::read_to_string(server._temp.path().join("terminal-input")).unwrap();
+    assert!(input.contains("--text\0"));
+    assert!(input.contains("2\0"));
+    assert!(!input.contains("--enter"));
+}
+
+#[test]
+fn codex_sync_freeform_uses_bracketed_paste_and_then_submits() {
+    let server = server_with_collect(true);
+    let card = codex_reply_fixture(
+        &server,
+        false,
+        json!([{"id":"notes","question":"추가 의견은?","header":"의견","options":null}]),
+    );
+    terminal_screen(
+        &server,
+        "terminal-screen.json",
+        &[
+            "Question 1/1 (1 unanswered)",
+            "추가 의견은?",
+            "› Type your answer (optional)",
+            "enter to submit answer · esc to interrupt",
+        ],
+    );
+    terminal_screen(
+        &server,
+        "terminal-screen-2.json",
+        &["› Ask Codex to do anything", "? for shortcuts"],
+    );
+    assert_eq!(
+        reply(&server, &card, json!(["직접 입력한 의견입니다"])).status(),
+        200
+    );
+    let input = fs::read_to_string(server._temp.path().join("terminal-input")).unwrap();
+    assert!(input.contains("\x1b[200~직접 입력한 의견입니다\x1b[201~\0"));
+    assert!(input.contains("\r\0"));
 }

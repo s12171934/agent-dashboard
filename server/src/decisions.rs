@@ -4,8 +4,10 @@ use crate::{
     sessions::{rx, valid_handle},
 };
 use serde_json::{Value, json};
+use sha1::{Digest, Sha1};
 use std::{collections::BTreeMap, time::Duration};
 pub type Response = (u16, Value);
+const MAX_PENDING_AGE: f64 = 7200.;
 fn error(code: u16, s: impl Into<String>) -> Response {
     (code, json!({"error":s.into()}))
 }
@@ -79,7 +81,8 @@ pub fn publish(app: &App) -> Result<()> {
         .collect::<Vec<_>>();
     inbox.sort_by(|a, b| number(&b["created_at"]).total_cmp(&number(&a["created_at"])));
     s.decisions = json!({"available":true,"pending":pending,"inbox":inbox,"inbox_mode":s.prefs["decision_inbox"]==true});
-    let pending = json!({"items":array(&s.pending["items"]).iter().filter(|d|d["state"].is_null()||d["state"]=="pending").map(|d|json!({"card":d["card"],"terminal":d["terminal"]})).collect::<Vec<_>>()});
+    // Transcript-derived cards need dismissal tombstones so a restart does not recreate them.
+    let pending = json!({"items":array(&s.pending["items"]).iter().filter(|d|d["card"]["kind"]=="codex"||d["state"].is_null()||d["state"]=="pending").map(|d|json!({"card":d["card"],"terminal":d["terminal"],"state":d["state"],"settled":d["settled"]})).collect::<Vec<_>>()});
     let inbox = s.inbox.clone();
     drop(s);
     if read_json(app.config.data.join("pending.json")) != pending {
@@ -96,17 +99,56 @@ pub fn sweep(app: &App) -> Result<()> {
     let known = s
         .sessions
         .values()
-        .filter(|x| x.kind == "claude")
         .map(|x| x.id().to_owned())
         .collect::<std::collections::HashSet<_>>();
     let ready = s.scan_ready;
     let mut answered = vec![];
+    let mut codex = BTreeMap::<String, (Value, bool)>::new();
     for sess in s.sessions.values() {
         for (id, pick) in &sess.inbox_picks {
             picks.insert(id.clone(), pick.clone());
         }
         for (id, q) in &sess.asks {
             answered.push((sess.id().to_owned(), id.clone(), q.clone()));
+        }
+        for (call_id, ask) in &sess.codex_asks {
+            let id = format!(
+                "qx{:x}",
+                Sha1::digest(format!("{}:{call_id}", sess.id()).as_bytes())
+            );
+            let cwd = text(&sess.data["cwd"]);
+            let card = json!({"id":id,"kind":"codex","asynchronous":ask.asynchronous,"session_id":sess.id(),"tool_use_id":call_id,"agent":std::path::Path::new(cwd).file_name().map(|s|s.to_string_lossy()).unwrap_or("Codex".into()),"cwd":cwd,"created_at":ask.created_at,"questions":ask.questions,"context":"Codex 질문 · 답변을 연결된 Codex 세션으로 전달합니다"});
+            codex
+                .entry(id)
+                .and_modify(|(_, closed)| *closed |= ask.closed)
+                .or_insert((card, ask.closed));
+        }
+    }
+    if !s.pending.is_object() {
+        s.pending = json!({"items":[]});
+    }
+    if !s.pending["items"].is_array() {
+        s.pending["items"] = json!([]);
+    }
+    for (id, (card, closed)) in &codex {
+        if let Some(d) = s.pending["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|d| d["card"]["id"] == *id)
+        {
+            d["card"] = card.clone();
+        }
+        if !closed
+            && now() - number(&card["created_at"]) <= MAX_PENDING_AGE
+            && !array(&s.pending["items"])
+                .iter()
+                .any(|d| d["card"]["id"] == *id)
+        {
+            s.pending["items"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"card":card,"terminal":null,"state":"pending"}));
         }
     }
     if let Some(items) = s.pending["items"].as_array_mut() {
@@ -136,9 +178,11 @@ pub fn sweep(app: &App) -> Result<()> {
                     })
                     .is_some_and(|(_, _, q)| q[2] == true)
             };
-            if now() - number(&c["created_at"]) > 7200.
+            if now() - number(&c["created_at"]) > MAX_PENDING_AGE
                 || stale
+                || codex.get(text(&c["id"])).is_some_and(|(_, closed)| *closed)
                 || ready
+                    && c["kind"] != "codex"
                     && !known.contains(text(&c["session_id"]))
                     && now() - number(&c["created_at"]) > 90.
             {
@@ -149,7 +193,13 @@ pub fn sweep(app: &App) -> Result<()> {
             }
         }
         items.retain(|d| {
-            d["state"].is_null() || d["state"] == "pending" || now() - number(&d["settled"]) < 300.
+            if d["card"]["kind"] == "codex" {
+                now() - number(&d["card"]["created_at"]) <= MAX_PENDING_AGE
+            } else {
+                d["state"].is_null()
+                    || d["state"] == "pending"
+                    || now() - number(&d["settled"]) < 300.
+            }
         });
     }
     if let Some(items) = s.inbox["items"].as_array_mut() {
@@ -562,6 +612,9 @@ fn screen(h: &str) -> Result<Vec<String>> {
     })
 }
 pub fn picker_state(lines: &[String], card: &Value) -> Value {
+    if card["kind"] == "codex" {
+        return codex_picker_state(lines, card);
+    }
     if lines
         .iter()
         .rev()
@@ -640,6 +693,179 @@ fn rows(lines: &[String]) -> (Value, Option<u64>) {
     }
     (rows, cursor)
 }
+
+pub fn codex_picker_state(lines: &[String], card: &Value) -> Value {
+    let progress = rx(r"Question (\d+)/(\d+)(?: \((\d+) unanswered\))?");
+    let Some((head, cap)) = lines
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(i, line)| progress.captures(line).map(|c| (i, c)))
+    else {
+        return json!({"kind":"gone"});
+    };
+    let qi = cap[1].parse::<usize>().unwrap_or(0).saturating_sub(1);
+    let count = cap[2].parse::<usize>().unwrap_or(0);
+    let body = &lines[head + 1..];
+    let footer = body
+        .iter()
+        .position(|s| s.contains("to submit answer") || s.contains("to submit all"));
+    let Some(footer) = footer else {
+        return json!({"kind":"other"});
+    };
+    let body = &body[..footer];
+    let q = &card["questions"][qi];
+    if count != array(&card["questions"]).len()
+        || q.is_null()
+        || !compact(&body.join("\n")).contains(&compact(text(&q["question"])))
+    {
+        return json!({"kind":"other"});
+    }
+    let mut rows = obj();
+    let mut cursor = None;
+    for line in body {
+        if let Some(c) = rx(r"^\s*(›)?\s*(\d)\.\s+(.*)$").captures(line) {
+            rows[&c[2]] = json!(c[3].trim());
+            if c.get(1).is_some() {
+                cursor = c[2].parse::<usize>().ok();
+            }
+        }
+    }
+    let valid = array(&q["options"])
+        .iter()
+        .enumerate()
+        .all(|(i, o)| rows[&(i + 1).to_string()] == o["label"]);
+    if !valid {
+        return json!({"kind":"other"});
+    }
+    let notes = body.iter().any(|s| {
+        s.contains("Type your answer (optional)")
+            || s.contains("Add notes")
+            || s.contains("Add details (optional)")
+    });
+    let draft = !notes
+        && (array(&q["options"]).is_empty()
+            || lines[head..].iter().any(|s| s.contains("to clear notes")));
+    json!({"kind":"question","qi":qi,"unanswered":cap.get(3).and_then(|s|s.as_str().parse::<usize>().ok()).unwrap_or(0),"rows":rows,"cursor":cursor,"notes":notes,"draft":draft})
+}
+
+fn codex_followup(h: &str, card: &Value, answers: &Value) -> Result<()> {
+    let view = orca(&["terminal", "read", "--terminal", h, "--screen"])?;
+    let view = &view["terminal"];
+    if view["source"] != "screen" {
+        return Err("Codex 터미널 화면을 읽지 못했습니다".into());
+    }
+    let draft = view["draft"]
+        .as_str()
+        .or(view["draft"]["text"].as_str())
+        .unwrap_or("");
+    if !draft.trim().is_empty() {
+        return Err("Codex 입력칸에 작성 중인 초안이 있습니다".into());
+    }
+    let lines = array(&view["tail"]);
+    let prompt = lines
+        .iter()
+        .rev()
+        .take(8)
+        .find_map(|s| text(s).trim().strip_prefix('›').map(str::trim));
+    if prompt.is_some() && !matches!(prompt, Some("" | "Ask Codex to do anything")) {
+        return Err("Codex 입력칸이 비어 있지 않거나 다른 선택기가 열려 있습니다".into());
+    }
+    if prompt.is_none() {
+        // A working Codex TUI can hide its composer. Check the live agent before Orca's
+        // guarded, bracketed-paste prompt submission in that state.
+        let info = orca(&["terminal", "show", "--terminal", h])?;
+        let info = &info["terminal"];
+        if info["agentIdentity"] != "codex" || info["connected"] != true || info["writable"] != true
+        {
+            return Err("입력 가능한 Codex 세션을 확인하지 못했습니다".into());
+        }
+    }
+    let message = array(&card["questions"])
+        .iter()
+        .zip(array(answers))
+        .map(|(q, a)| {
+            format!(
+                "> {}\n\n{}",
+                text(&q["question"]).replace('\n', "\n> "),
+                text(a)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let sent = orca(&[
+        "terminal",
+        "send",
+        "--terminal",
+        h,
+        "--text",
+        &message,
+        "--enter",
+    ])?;
+    let sent = sent.get("send").unwrap_or(&sent);
+    if sent["accepted"] != true
+        && !array(&sent["prompt"]["stages"]).contains(&json!("input_accepted"))
+    {
+        return Err("Codex 터미널이 답변 입력을 받지 않았습니다".into());
+    }
+    Ok(())
+}
+
+fn codex_type_answers(h: &str, card: &Value, answers: &Value) -> Result<()> {
+    let initial = picker_state(&screen(h)?, card);
+    if initial["kind"] == "gone" {
+        return Err("gone:터미널에 이 Codex 질문의 선택기가 없습니다".into());
+    }
+    if initial["kind"] != "question"
+        || initial["qi"] != 0
+        || initial["unanswered"] != array(&card["questions"]).len()
+        || initial["draft"] == true
+        || initial["cursor"].as_u64().is_some_and(|n| n != 1)
+    {
+        return Err("Codex에서 이미 답하기 시작했거나 다른 질문입니다".into());
+    }
+    for (i, (q, answer)) in array(&card["questions"])
+        .iter()
+        .zip(array(answers))
+        .enumerate()
+    {
+        let st = picker_state(&screen(h)?, card);
+        if st["kind"] != "question" || st["qi"] != i || st["draft"] == true {
+            return Err("Codex 질문 선택기가 바뀌었습니다".into());
+        }
+        let labels = array(&q["options"]);
+        if let Some(n) = labels.iter().position(|o| o["label"] == *answer) {
+            press(h, &(n + 1).to_string())?;
+        } else {
+            if !labels.is_empty() {
+                let other = (labels.len() + 1).to_string();
+                if st["rows"][&other] != "None of the above" || st["cursor"] != 1 {
+                    return Err("Codex에서 직접 입력을 시작할 수 없습니다".into());
+                }
+                for _ in 0..labels.len() {
+                    press(h, "\x1b[B")?;
+                }
+                press(h, "\r")?;
+                until(h, card, |s| {
+                    s["kind"] == "question" && s["qi"] == i && s["notes"] == true
+                })?;
+            } else if st["notes"] != true {
+                return Err("Codex 직접 입력칸이 비어 있지 않습니다".into());
+            }
+            press(h, &format!("\x1b[200~{}\x1b[201~", text(answer)))?;
+            press(h, "\r")?;
+        }
+        let last = i + 1 == array(&card["questions"]).len();
+        until(h, card, |s| {
+            if last {
+                s["kind"] == "gone"
+            } else {
+                s["kind"] == "question" && s["qi"] == i + 1
+            }
+        })?;
+    }
+    Ok(())
+}
 fn press(h: &str, key: &str) -> Result<()> {
     orca(&["terminal", "send", "--terminal", h, "--text", key])?;
     std::thread::sleep(Duration::from_millis(150));
@@ -659,6 +885,13 @@ fn until(h: &str, card: &Value, p: impl Fn(&Value) -> bool) -> Result<Value> {
     }
 }
 fn type_answers(h: &str, card: &Value, answers: &Value) -> Result<()> {
+    if card["kind"] == "codex" {
+        return if card["asynchronous"] == true {
+            codex_followup(h, card, answers)
+        } else {
+            codex_type_answers(h, card, answers)
+        };
+    }
     let st = picker_state(&screen(h)?, card);
     if st["kind"] == "gone" {
         return Err("gone:터미널에 이 질문의 선택기가 없습니다".into());
