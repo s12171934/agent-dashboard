@@ -497,7 +497,7 @@ async function renderView(navigated) {
   if (r.v !== 'trees') { trMounted = false; trEdit = null; }
   if (r.v !== 'chars') chxMounted = false;
   if (r.v !== 'designs') dzMounted = null;
-  if (r.v !== 'media') { mdMounted = false; mdFull(false); }
+  if (r.v !== 'media') { mdMounted = false; mdFull(false); mdCleanup(); }
   if (r.v !== 'canvas') cvMounted = false;
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
@@ -7325,12 +7325,13 @@ async function renderCanvas(reload) {
 // publishes: a player, and the recording's timeline (ego-record's .timeline.txt) whose times seek the player. Their
 // notes' file:// links open only on that Mac; this is how a device on the tailnet watches them. The view is built once
 // (mdMounted): live updates must not rebuild the <video> and stop it.
-// Split view: the player stays put (sticky) while the timeline beside it scrolls on its own and follows the playing
-// line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
+// Each pane owns its scroll area. In a narrow layout the player and timeline share a bounded grid, so the picture
+// can never cover a timeline row. Reading elsewhere pauses following until the reader asks for the current scene.
 let mdMounted = false, mdData = null;
+let mdCleanup = () => {};
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
 const MD_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4];
-let md = { fold: false, side: 'tl', q: '', kind: '', sw: {}, closed: [], rate: 1 };  // adash.media.view: list, search, player layout, collapsed groups and playback speed
+let md = { fold: matchMedia('(max-width: 700px)').matches, side: 'tl', q: '', kind: '', project: '', order: 'recent', follow: true, sw: {}, closed: [], rate: 1 };
 try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
 if (!Array.isArray(md.closed)) md.closed = [];
 md.rate = MD_RATES.includes(md.rate) ? md.rate : 1;
@@ -7365,9 +7366,10 @@ function mdPip(video) {
 addEventListener('ds-posture', () => { if (route().v === 'media') mdPosture(); });
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => mdFsChange());
 addEventListener('keydown', e => {
-  if (!document.querySelector('.md-full') || e.target.closest?.('input:not(.md-seek), select, textarea, [contenteditable]')) return;
-  if (e.key === 'Escape') mdFull(false);
-  else if (mdKeys(e.key)) e.preventDefault();
+  if (!document.querySelector('.md-full')) return;
+  if (e.key === 'Escape') { mdFull(false); return; }
+  if (e.target.closest?.('input:not(.md-seek), select, textarea, button, .md-lines, [contenteditable]')) return;
+  if (mdKeys(e.key)) e.preventDefault();
 });
 let mdKeys = () => false;  // the full-screen player's keys (mdPlay): space, ←, →
 let mdSide = () => {}, mdSeek = () => {};  // the shown recording's side list redrawn (a new search), and a seek in it (mdPlay)
@@ -7414,43 +7416,61 @@ const MD_ICON = {
 const mdKey = v => v.server + '\n' + v.path;
 const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 const mdSize = n => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
+const mdProject = v => v.project || (v.kind === 'learn' ? '학습 영상' : '프로젝트 미분류');
+const mdRecent = v => Date.parse(v.started?.replace(' ', 'T')) / 1000 || Number(v.mtime) || 0;
 async function renderMedia(reload) {
   if (mdMounted && !reload) return;
-  if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 서버 데이터 폴더 <code>media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
-    <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
+  if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>영상을 찾고, 타임라인에서 원하는 장면으로 이동하세요.</span></div>
+    <div class="controls md-tools"><button class="act big" id="md-reload">새로 고침</button>
       <span class="seg" id="md-kind"></span>
       <input type="search" id="md-q" class="md-q" placeholder="검색 — 프로젝트·티켓·이름·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
+      <select class="field" id="md-project" aria-label="영상 프로젝트"></select>
+      <select class="field" id="md-order" aria-label="영상 정렬"><option value="recent">최근 영상순</option><option value="name">이름순</option><option value="group">프로젝트·티켓별</option></select>
       <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
   mdMounted = true;
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
   $('#md-fold').onchange = e => { md.fold = e.target.checked; mdSave(); $('#md-body .md-wrap')?.classList.toggle('md-folded', md.fold); };
-  $('#md-kind').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; md.kind = b.dataset.k; mdSave(); mdDrawList(); };
-  $('#md-q').oninput = e => { md.q = e.target.value; mdSave(); mdDrawList(); mdSide(); };
+  const showList = () => { md.fold = false; $('#md-fold').checked = false; $('#md-body .md-wrap')?.classList.remove('md-folded'); };
+  $('#md-kind').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; md.kind = b.dataset.k; showList(); mdSave(); mdDrawList(); };
+  $('#md-q').oninput = e => { md.q = e.target.value; showList(); mdSave(); mdDrawList(); mdSide(); };
+  $('#md-project').onchange = e => { md.project = e.target.value; showList(); mdSave(); mdDrawList(); };
+  $('#md-order').value = ['recent', 'name', 'group'].includes(md.order) ? md.order : 'recent';
+  $('#md-order').onchange = e => { md.order = e.target.value; showList(); mdSave(); mdDrawList(); };
   try { mdData = await api.media(); } catch { mdData = null; }
   if (route().v !== 'media') return;
   const vs = mdData?.videos || [];
+  const projects = [...new Set(vs.map(mdProject))].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
+  if (!projects.includes(md.project)) md.project = '';
+  $('#md-project').innerHTML = `<option value="">모든 프로젝트</option>` + projects.map(p => `<option value="${esc(p)}"${md.project === p ? ' selected' : ''}>${esc(p)}</option>`).join('');
   $('#md-sum').textContent = `${vs.length}개${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
   if (!vs.length) {
     $('#md-body').innerHTML = `<div class="empty">공개한 녹화가 없습니다. 영상이 있는 맥의 서버 데이터 폴더 <code>media.json</code> 에 <code>{"published": ["ego-record/&lt;파일 이름&gt;.mp4"]}</code> 처럼 적으면 여기에 나옵니다.</div>`
       + (mdData?.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
     return;
   }
-  const cur = vs.find(v => mdKey(v) === mdSel) || vs[0];
+  const cur = vs.find(v => mdKey(v) === mdSel) || [...vs].sort((a, b) => mdRecent(b) - mdRecent(a))[0];
   mdSel = mdKey(cur);
   $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" aria-label="프로젝트·티켓별 녹화 목록"></div>
     <div class="md-main" id="md-main"></div></div>`
     + (mdData.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
   // a recording opens it; a hit under it opens it at that line (or only seeks when it is already the one shown)
+  const focusPlayer = () => {
+    if (!matchMedia('(max-width: 700px)').matches) return;
+    md.fold = true; $('#md-fold').checked = true; mdSave();
+    $('#md-body .md-wrap').classList.add('md-folded');
+    $('#md-main').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
   $('#md-body').querySelector('.md-list').onclick = e => {
     const b = e.target.closest('.md-item, .md-hit');
     if (!b) return;
     const v = vs.find(x => mdKey(x) === b.dataset.k), t = b.dataset.t == null ? null : +b.dataset.t;
     if (b.dataset.side) md.side = b.dataset.side;
-    if (mdSel === b.dataset.k && $('#md-main .md-video')) { if (t != null) { mdSide(); mdSeek(t); } return; }
+    if (mdSel === b.dataset.k && $('#md-main .md-video')) { if (t != null) { mdSide(); mdSeek(t); } focusPlayer(); return; }
     mdSel = b.dataset.k;
     try { localStorage.setItem('adash.media', mdSel); } catch {}
-    $('#md-body').querySelectorAll('.md-item').forEach(x => x.classList.toggle('on', x.dataset.k === mdSel));
+    $('#md-body').querySelectorAll('.md-item').forEach(x => { const on = x.dataset.k === mdSel; x.classList.toggle('on', on); x.setAttribute('aria-current', on ? 'true' : 'false'); });
     mdPlay(v, t);
+    focusPlayer();
   };
   $('#md-body .md-list').addEventListener('toggle', e => {
     const key = e.target.dataset.group;
@@ -7491,31 +7511,41 @@ function mdDrawList() {
   if (!box) return;
   const all = mdData?.videos || [], multi = new Set(all.map(v => v.server)).size > 1, terms = mdTerms();
   $('#md-kind').innerHTML = [['', '전체'], ...Object.entries(MD_KINDS)].map(([k, l]) => `<button data-k="${k}"${k === md.kind ? ' class="on"' : ''} aria-pressed="${k === md.kind}">${l} ${k ? all.filter(v => v.kind === k).length : all.length}</button>`).join('');
-  const vs = md.kind ? all.filter(v => v.kind === md.kind) : all;
-  const found = vs.map(v => ({ v, f: terms.length ? mdFind(v, terms) : null })).filter(x => !terms.length || x.f);
+  const vs = all.filter(v => (!md.kind || v.kind === md.kind) && (!md.project || mdProject(v) === md.project));
+  const found = vs.map(v => ({ v, f: terms.length ? mdFind(v, terms) : null })).filter(x => !terms.length || x.f)
+    .sort((a, b) => md.order === 'name' ? a.v.name.localeCompare(b.v.name, 'ko', { numeric: true }) : mdRecent(b.v) - mdRecent(a.v));
   const n = found.reduce((a, x) => a + (x.f?.lines.length || 0), 0);
   $('#md-sum').textContent = `${terms.length ? `${vs.length}개 중 ${found.length}개 일치 · ${n}줄` : vs.length + '개'}${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
   const entryHtml = ({ v, f }) => {
     const k = esc(mdKey(v)), lines = f?.lines || [];
-    return `<div class="md-entry" role="listitem"><button class="md-item${mdKey(v) === mdSel ? ' on' : ''}" data-k="${k}">
-      <b>${MD_KINDS[v.kind] ? `<span class="md-kind k-${v.kind}">${MD_KINDS[v.kind]}</span> ` : ''}${mdMark(v.name, terms)}</b><span class="st">${mdMark(v.started || '', terms)} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}${v.captions?.length ? ' · 자막' : ''}</span></button>
+    const on = mdKey(v) === mdSel, date = v.started || (mdRecent(v) ? new Date(mdRecent(v) * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+    return `<div class="md-entry" role="listitem"><button class="md-item${on ? ' on' : ''}" data-k="${k}" aria-current="${on}">
+      <span class="md-item-context">${MD_KINDS[v.kind] ? `<span class="md-kind k-${v.kind}">${MD_KINDS[v.kind]}</span>` : ''}<span>${mdMark(v.ticket || mdProject(v), terms)}</span><span class="md-selected">선택한 영상</span></span>
+      <b>${mdMark(v.name, terms)}</b><span class="st">${mdMark(date, terms)}${date ? ' · ' : ''}${v.timeline.length}개 장면${v.captions?.length ? ' · 자막' : ''}${multi ? ' · ' + esc(srvName(v.server)) : ''}</span></button>
       ${lines.length ? `<div class="md-hits">${lines.slice(0, MD_HITS).map(l => `<button class="md-hit" data-k="${k}" data-t="${l.t}" data-side="${l.side}">
         <span class="md-t">${mdClock(Math.floor(l.t))}</span><span class="md-x">${l.side === 'cap' ? '' : `<span class="md-k">${esc(l.kind)}</span> `}${mdMark(l.text, terms)}</span></button>`).join('')}
         ${lines.length > MD_HITS ? `<span class="st md-more">외 ${lines.length - MD_HITS}줄 — 열면 옆 목록에 표시됩니다</span>` : ''}</div>` : ''}</div>`;
   };
   const groupHtml = (key, name, entries, body, cls, extra = '') => `<details class="${cls}" data-group="${esc(key)}"${terms.length || !md.closed.includes(key) ? ' open' : ''}>
     <summary><span>${mdMark(name, terms)}${extra}</span><span class="md-count">${entries.length}개</span></summary>${body}</details>`;
-  box.innerHTML = found.length ? mdGroups(found).map(g => {
+  box.innerHTML = !found.length ? `<div class="empty">${terms.length ? `「${esc(md.q.trim())}」와 일치하는 ` : ''}녹화가 없습니다.<button class="act md-reset">필터 초기화</button></div>` : md.order !== 'group'
+    ? `<div class="md-entries" role="list">${found.map(entryHtml).join('')}</div>` : mdGroups(found).map(g => {
     const body = g.qa ? [...g.tickets].sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true })).map(([ticket, entries]) =>
       groupHtml(JSON.stringify([g.key, ticket]), ticket, entries, `<div class="md-entries" role="list">${entries.map(entryHtml).join('')}</div>`, 'md-ticket')).join('')
       : `<div class="md-entries" role="list">${g.entries.map(entryHtml).join('')}</div>`;
     return groupHtml(g.key, g.name, g.entries, `<div class="md-group-body">${body}</div>`, 'md-group', multi ? `<small class="st">${esc(srvName(g.server))}</small>` : '');
-  }).join('') : `<div class="empty">${terms.length ? `「${esc(md.q.trim())}」와 일치하는 ` : ''}${md.kind ? MD_KINDS[md.kind] + ' ' : ''}녹화가 없습니다.</div>`;
+  }).join('');
+  box.querySelector('.md-reset')?.addEventListener('click', () => {
+    md.q = ''; md.kind = ''; md.project = ''; $('#md-q').value = ''; $('#md-project').value = '';
+    mdSave(); mdDrawList(); mdSide();
+  });
 }
 function mdPlay(v, startAt) {
+  mdCleanup();
   const box = $('#md-main');
   const speedControl = () => `<label class="md-rate">배속 <select class="field md-speed" aria-label="재생 속도">${MD_RATES.map(rate => `<option value="${rate}"${rate === md.rate ? ' selected' : ''}>${rate}×</option>`).join('')}</select></label>`;
-  box.innerHTML = `<div class="md-duo"><div class="md-stage">
+  box.innerHTML = `<div class="md-context"><div><span class="st">${esc(mdProject(v))}${v.ticket ? ' · ' + esc(v.ticket) : ''}</span><h3 class="md-title">${esc(v.name)}</h3></div><span class="st">${v.timeline.length}개 장면${v.captions?.length ? ' · 자막 포함' : ''}</span></div>
+    <div class="md-duo"><div class="md-stage">
       <video class="md-video" controls playsinline controlslist="nofullscreen" preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
       <div class="md-ov"><div class="md-ov-top"><b class="md-ov-title">${esc(v.name)}</b>${speedControl()}<button class="md-ov-x" aria-label="전체 화면 닫기">${MD_ICON.x}</button></div>
         <div class="md-ov-mid"><button class="md-ov-skip" data-skip="-10" aria-label="10초 뒤로">${MD_ICON.back}<b>10</b></button>
@@ -7523,7 +7553,7 @@ function mdPlay(v, startAt) {
           <button class="md-ov-skip" data-skip="10" aria-label="10초 앞으로">${MD_ICON.fwd}<b>10</b></button></div>
         <div class="md-ov-bot"><div class="md-ov-track"><input type="range" class="md-seek" min="0" max="1000" step="1" value="0" aria-label="재생 위치"></div>
           <div class="md-ov-info"><span class="md-ov-time">00:00 / 00:00</span><span class="md-ov-scene"></span></div></div></div>
-      <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3>${speedControl()}<button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
+      <div class="md-bar">${speedControl()}<button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
     <div class="md-grip" role="separator" aria-orientation="vertical" aria-label="타임라인 너비 — 끌어서 조절, 두 번 누르면 처음대로" tabindex="0" hidden></div>
     <div class="md-side"></div></div>`;
   const video = box.querySelector('video'), side = box.querySelector('.md-side');
@@ -7542,7 +7572,7 @@ function mdPlay(v, startAt) {
     mdSave();
   });
   mdPip(video);
-  let rows = [];
+  let rows = [], pausedFollow = false;
   // The side list: the timeline, or the captions (the narration, one line a cue) when there are any — a tab each when
   // both are there. The search's words are marked in it, and its lines that hold one are tinted.
   mdSide = () => {
@@ -7551,39 +7581,39 @@ function mdPlay(v, startAt) {
     const list = kind === 'cap' ? caps : v.timeline, terms = mdTerms();
     const tab = (k, label, n) => `<button class="md-tab${k === kind ? ' on' : ''}" data-side="${k}" aria-pressed="${k === kind}">${label} ${n}</button>`;
     const head = v.timeline.length && caps.length ? tab('tl', '타임라인', v.timeline.length) + tab('cap', '자막', caps.length) : `${kind === 'cap' ? '자막' : '타임라인'} ${list.length}줄`;
-    side.innerHTML = list.length ? `<div class="md-side-h st">${head} · 줄을 누르면 그 장면으로</div>
-      <ol class="md-tl${kind === 'cap' ? ' md-cap' : ''}">${list.map(r => `<li data-t="${r.t}"${terms.length && terms.some(w => mdNorm((r.kind || '') + ' ' + r.text).includes(w)) ? ' class="md-hit-on"' : ''}><button class="md-t" data-t="${r.t}">${mdClock(Math.floor(r.t))}</button>${kind === 'cap' ? '' : `<span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span>`}<span class="md-x">${mdMark(r.text, terms)}</span></li>`).join('')}</ol>`
-      : '<div class="st">이 녹화에는 타임라인 초안(.timeline.txt)도 자막(.srt)도 없습니다.</div>';
+    side.innerHTML = `<div class="md-side-h"><div class="md-side-tabs">${head}</div>
+      <div class="md-position"><span class="md-position-time">00:00 / 00:00</span><span class="md-position-index"></span></div>
+      <div class="md-current-scene">재생할 장면을 선택하세요</div>
+      <div class="md-follow-tools"><label><input type="checkbox" class="md-follow"${md.follow ? ' checked' : ''}> 재생 위치 따라가기</label><button class="act md-locate">현재 위치로</button></div><span class="md-follow-state st"></span></div>
+      <div class="md-lines" tabindex="0" aria-label="${kind === 'cap' ? '자막' : '타임라인'} 스크롤 영역">${list.length ? `<ol class="md-tl${kind === 'cap' ? ' md-cap' : ''}">${list.map(r => `<li${terms.length && terms.some(w => mdNorm((r.kind || '') + ' ' + r.text).includes(w)) ? ' class="md-hit-on"' : ''}><button class="md-line" data-t="${r.t}"><span class="md-t">${mdClock(Math.floor(r.t))}</span><span class="md-x">${kind === 'cap' ? '' : `<span class="md-k k-${esc(r.kind)}">${esc(r.kind)}</span>`}${mdMark(r.text, terms)}</span><span class="md-playing">현재</span></button></li>`).join('')}</ol>`
+      : '<div class="empty">이 영상에는 타임라인이나 자막이 없습니다.</div>'}</div>`;
     rows = [...side.querySelectorAll('.md-tl li')];
+    side.querySelector('.md-follow').onchange = e => { md.follow = e.target.checked; pausedFollow = false; mdSave(); video.ontimeupdate?.(); if (md.follow) follow(rows[at]); };
+    side.querySelector('.md-lines').addEventListener('wheel', pauseFollow, { passive: true });
+    side.querySelector('.md-lines').addEventListener('touchstart', pauseFollow, { passive: true });
+    side.querySelector('.md-lines').addEventListener('pointerdown', pauseFollow, { passive: true });
+    side.querySelector('.md-lines').addEventListener('keydown', e => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) pauseFollow(); });
     at = -1;
-    if (video.readyState) video.ontimeupdate?.();
+    video.ontimeupdate?.();
   };
   // a tab switches the list; a whole line seeks (a bigger target than its time on a phone), and the player keeps playing from there
   side.addEventListener('click', e => {
     const tb = e.target.closest('.md-tab');
     if (tb) { md.side = tb.dataset.side; mdSave(); mdSide(); return; }
-    const li = e.target.closest('li[data-t]');
-    if (!li || getSelection()?.toString()) return;  // selecting a line's text to copy it is not a seek
-    video.currentTime = +li.dataset.t;
-    video.play().catch(() => {});
+    if (e.target.closest('.md-locate')) { pausedFollow = false; video.ontimeupdate?.(); follow(rows[at]); return; }
+    const line = e.target.closest('.md-line');
+    if (!line || getSelection()?.toString()) return;
+    pausedFollow = false;
+    mdSeek(+line.dataset.t);
   });
-  // Bringing a line into view — only for a search hit picked by hand (mdSeek). Playback itself never scrolls the
-  // timeline: the playing line is only marked (.md-now), so the reader's scroll stays where they left it. It is
-  // scrolled into the timeline's own box, never the page (on a phone the box is the page, so it is scrolled only when
-  // the line has left the screen below the pinned player).
+  // Scroll only the timeline's body, never the document. Manual reading suspends following explicitly.
   let at = -1;
-  const own = () => getComputedStyle(side).overflowY === 'auto';
+  const pauseFollow = () => { pausedFollow = true; video.ontimeupdate?.(); };
   const follow = li => {
     if (!li) return;
-    if (own()) {
-      const top = li.offsetTop - side.offsetTop, h = side.clientHeight;
-      if (top < side.scrollTop + 30 || top > side.scrollTop + h - 60) { side.scrollTo({ top: Math.max(0, top - h / 3), behavior: 'smooth' }); }
-    } else {
-      // pin: where the pinned player ends once pinned (its height, not where it sits now: before the page has scrolled
-      // it is still in the flow, lower down); 90px at the bottom is the floating bar
-      const r = li.getBoundingClientRect(), pin = box.querySelector('.md-stage').offsetHeight;
-      if (r.top < pin || r.bottom > innerHeight - 90) window.scrollTo({ top: scrollY + r.top - pin - (innerHeight - pin) / 3, behavior: 'smooth' });
-    }
+    const lines = side.querySelector('.md-lines'), r = li.getBoundingClientRect(), viewport = lines.getBoundingClientRect();
+    if (r.top < viewport.top + 8 || r.bottom > viewport.bottom - 8)
+      lines.scrollTo({ top: Math.max(0, lines.scrollTop + r.top - viewport.top - lines.clientHeight / 3), behavior: 'auto' });
   };
   // Full screen with the timeline: the player's own full screen (dropped from its controls) shows the video alone, so
   // the pair (.md-duo.md-full) covers the page instead — beside each other when wide, the video on top when tall, and
@@ -7654,7 +7684,7 @@ function mdPlay(v, startAt) {
     const d = video.duration;
     if (startAt != null) { video.currentTime = startAt; startAt = null; video.play().catch(() => {}); }
     if (d) seek.parentElement.insertAdjacentHTML('beforeend', v.timeline.filter(r => r.t > 0 && r.t < d).map(r => `<i class="md-tick" style="left:${(r.t / d * 100).toFixed(2)}%"></i>`).join(''));
-    paint();
+    video.ontimeupdate?.();
   });
   video.addEventListener('play', () => { ppIcon(); if (ov.classList.contains('on')) ovShow(true); });
   video.addEventListener('pause', () => { ppIcon(); if (duo.classList.contains('md-full')) ovShow(true); });
@@ -7686,7 +7716,8 @@ function mdPlay(v, startAt) {
   mdSeek = t => {
     video.currentTime = t;
     video.play().catch(() => {});
-    requestAnimationFrame(() => follow(rows.find(li => Math.abs(+li.dataset.t - t) < 0.01)));
+    video.ontimeupdate?.();
+    requestAnimationFrame(() => follow(rows.find(li => Math.abs(+li.querySelector('.md-line').dataset.t - t) < 0.01)));
   };
   // The timeline's width beside the video (an iPhone held sideways, full screen or not; any wide screen too): the grip
   // between them drags it, a double tap puts the layout's own width back, ← → on the focused grip step it. Kept as a
@@ -7702,11 +7733,15 @@ function mdPlay(v, startAt) {
   };
   const gripPlace = () => {
     if (!duo.isConnected) return;
+    const wrap = box.closest('.md-wrap');
+    if (matchMedia('(max-width: 700px)').matches) wrap.style.removeProperty('--md-room');
+    else wrap.style.setProperty('--md-room', Math.max(280, innerHeight - (box.getBoundingClientRect().top + scrollY) - box.querySelector('.md-context').offsetHeight - 112) + 'px');
     swSet(md.sw?.[swKey()]);
     const beside = side.offsetLeft > stage.offsetLeft + 40 && side.offsetTop < stage.offsetTop + stage.offsetHeight
       && !root.dataset.posture && !matchMedia('(horizontal-viewport-segments: 2)').matches;
     grip.hidden = !beside;
     if (beside) grip.style.left = (stage.offsetLeft + stage.offsetWidth + side.offsetLeft) / 2 + 'px';
+    if (md.follow && !pausedFollow) requestAnimationFrame(() => follow(rows[at]));
   };
   const swSave = px => { md.sw = { ...md.sw, [swKey()]: px / duo.clientWidth }; mdSave(); gripPlace(); };
   grip.addEventListener('pointerdown', e => {
@@ -7728,20 +7763,32 @@ function mdPlay(v, startAt) {
     e.preventDefault(); e.stopPropagation();  // not the full-screen player's 10-second skip
     swSave(side.offsetWidth + n);
   });
-  new ResizeObserver(gripPlace).observe(duo);
-  new MutationObserver(gripPlace).observe(duo, { attributes: true, attributeFilter: ['class'] });
+  const resize = new ResizeObserver(gripPlace), mutation = new MutationObserver(gripPlace);
+  resize.observe(box);
+  mutation.observe(duo, { attributes: true, attributeFilter: ['class'] });
+  addEventListener('resize', gripPlace);
+  mdCleanup = () => { resize.disconnect(); mutation.disconnect(); removeEventListener('resize', gripPlace); clearTimeout(ovT); };
   gripPlace();
   mdPosture();  // half folded already: open the pair now (after the controls above exist)
   // the line now playing: the last one whose time has passed
   video.ontimeupdate = () => {
     paint();
     let now = -1;
-    rows.forEach((li, i) => { if (+li.dataset.t <= video.currentTime + 0.25) now = i; });
+    rows.forEach((li, i) => { if (+li.querySelector('.md-line').dataset.t <= video.currentTime + 0.01) now = i; });
+    const current = rows[now];
+    side.querySelector('.md-position-time').textContent = otime.textContent;
+    side.querySelector('.md-position-index').textContent = `${now + 1} / ${rows.length}`;
+    const text = current?.querySelector('.md-x'), tag = text?.querySelector('.md-k')?.textContent || '';
+    side.querySelector('.md-current-scene').textContent = text ? text.textContent.slice(tag.length) : rows.length ? '첫 장면 전' : '장면 정보 없음';
+    side.querySelector('.md-follow-state').textContent = pausedFollow && md.follow ? '다른 구간을 읽는 중 · 현재 위치로 누르면 다시 따라갑니다' : md.follow ? '재생 위치를 따라갑니다' : '자유롭게 타임라인을 탐색합니다';
+    scene.textContent = v.timeline.filter(r => r.t <= video.currentTime + 0.01).pop()?.text || '';
     if (now === at) return;
     rows[at]?.classList.remove('md-now');
-    rows[now]?.classList.add('md-now');
+    rows[at]?.querySelector('.md-line').removeAttribute('aria-current');
+    current?.classList.add('md-now');
+    current?.querySelector('.md-line').setAttribute('aria-current', 'step');
     at = now;
-    scene.textContent = v.timeline.filter(r => r.t <= video.currentTime + 0.25).pop()?.text || '';
+    if (md.follow && !pausedFollow) follow(current);
   };
   mdSide();
 }
