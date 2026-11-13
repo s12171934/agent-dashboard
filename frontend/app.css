@@ -2373,8 +2373,8 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 .md-ov-time { font-variant-numeric: tabular-nums; flex: none; }
 .md-ov-scene { min-width: 0; color: rgba(255,255,255,.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Half folded as the design system reports it (<html data-posture>, fold.js; the iPhone app passes its hinge there):
-   the halves the page and the dock's sheet use, the video filling the first. Viewport segments below, where the
-   browser has them, place the hinge exactly. The gap over the hinge stays black. */
+   the halves the page and the dock's sheet use, the video filling the first. The design system's segment and gap
+   tokens keep the panes clear of a hardware hinge. The gap over the hinge stays black. */
 :root[data-posture="laptop"] .md-duo.md-full { row-gap: var(--pane-gap);
   grid-template-columns: minmax(0, 1fr); grid-template-rows: calc(50% - var(--pane-gap) / 2) minmax(0, 1fr); }
 :root[data-posture="book"] .md-duo.md-full { column-gap: var(--pane-gap);
@@ -2383,16 +2383,9 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 :root[data-posture] .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
 :root[data-posture] .md-duo.md-full .md-side { border-width: 0; padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 6px; }
 :root[data-posture] .md-duo.md-full .md-side-h { top: calc(-1 * max(6px, env(safe-area-inset-top))); }
-@media (vertical-viewport-segments: 2) {
-  .md-duo.md-full { row-gap: calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0));
-    grid-template-columns: minmax(0, 1fr); grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr); }
-  .md-duo.md-full .md-stage { padding-top: 0; }
-  .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
-  .md-duo.md-full .md-side { border-width: 0; }
-}
 @media (horizontal-viewport-segments: 2) {
-  .md-duo.md-full { column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
-    grid-template-rows: minmax(0, 1fr); grid-template-columns: env(viewport-segment-width 0 0) minmax(0, 1fr); }
+  .md-duo.md-full { column-gap: var(--pane-gap);
+    grid-template-rows: minmax(0, 1fr); grid-template-columns: var(--seg-w) minmax(0, 1fr); }
   .md-duo.md-full .md-video { height: 100%; max-height: none; aspect-ratio: auto; }
   .md-duo.md-full .md-side { border-width: 0; }
 }
