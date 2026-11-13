@@ -593,3 +593,103 @@ fn orca_cli_response_envelope_is_unwrapped_and_errors_are_rejected() {
     assert!(decode_orca(r#"{"ok":true}"#).is_err());
     assert!(decode_orca("invalid json").is_err());
 }
+
+fn placement_orca() -> Value {
+    json!({
+        "runs":[],"tasks":{},"workers":[],"terminals":[],
+        "repos":[{"id":"project-1","path":"/fixture/repo-folder","displayName":"Shared project"}],
+        "worktrees":[
+            {"id":"project-1::main","repoId":"project-1","path":"/fixture/repo-folder","displayName":"Main workspace","branch":"refs/heads/main","isMainWorktree":true},
+            {"id":"project-1::task","repoId":"project-1","path":"/fixture/task-folder","displayName":"Login improvements","branch":"refs/heads/feature/login","isMainWorktree":false}
+        ]
+    })
+}
+
+#[test]
+fn managed_placement_uses_project_and_worktree_names_inside_subfolders() {
+    use agent_dashboard::app::managed_place;
+    let orca = placement_orca();
+    let p = managed_place("/fixture/task-folder/packages/web/src", &orca).unwrap();
+    assert_eq!(p["project"], "Shared project");
+    assert_eq!(p["worktree"], "Login improvements");
+    assert_eq!(p["project_id"], "project-1");
+    assert_eq!(p["path"], "/fixture/task-folder");
+    assert_eq!(p["sub"], "packages/web/src");
+    assert_eq!(p["branch"], "feature/login");
+    assert_eq!(p["main"], false);
+    assert!(managed_place("/fixture/task-folder-other", &orca).is_none());
+    assert!(managed_place("", &orca).is_none());
+    let main = managed_place("/fixture/repo-folder", &orca).unwrap();
+    assert_eq!(main["worktree"], "Main workspace");
+    assert_eq!(main["main"], true);
+}
+
+#[test]
+fn managed_placement_selects_nested_projects_and_keeps_same_branch_worktrees_separate() {
+    use agent_dashboard::app::managed_place;
+    let mut orca = placement_orca();
+    orca["repos"].as_array_mut().unwrap().push(json!({"id":"nested","path":"/fixture/repo-folder/tools/dashboard","displayName":"Dashboard"}));
+    orca["worktrees"].as_array_mut().unwrap().extend([
+        json!({"id":"nested::main","repoId":"nested","path":"/fixture/repo-folder/tools/dashboard","displayName":"Dashboard main","isMainWorktree":true}),
+        json!({"id":"project-1::other","repoId":"project-1","path":"/fixture/other-folder","displayName":"Other workspace","branch":"refs/heads/feature/login"}),
+        json!({"id":"project-1::archived","repoId":"project-1","path":"/fixture/task-folder/packages","displayName":"Archived","isArchived":true})
+    ]);
+    let nested = managed_place("/fixture/repo-folder/tools/dashboard/src", &orca).unwrap();
+    assert_eq!(nested["project"], "Dashboard");
+    assert_eq!(nested["worktree"], "Dashboard main");
+    let a = managed_place("/fixture/task-folder/packages", &orca).unwrap();
+    let b = managed_place("/fixture/other-folder", &orca).unwrap();
+    assert_eq!(a["branch"], b["branch"]);
+    assert_ne!(a["path"], b["path"]);
+    assert_ne!(a["worktree_id"], b["worktree_id"]);
+    assert_eq!(a["worktree"], "Login improvements");
+}
+
+#[test]
+fn snapshot_placement_refreshes_names_and_places_new_terminal_agents() {
+    let d = tempfile::tempdir().unwrap();
+    let a = App::new(Config {
+        data: d.path().into(),
+        vault: d.path().join("none"),
+        ..Config::default()
+    });
+    let cwd = "/fixture/task-folder/packages/web";
+    let mut s = session();
+    s.data["launch_cwd"] = json!(cwd);
+    {
+        let mut state = a.state.write().unwrap();
+        state.orca = placement_orca();
+        state.orca["terminals"] = json!([{"handle":"new-agent","connected":true,"agentIdentity":"codex","worktreePath":cwd,"title":"New agent"}]);
+        state
+            .sessions
+            .insert(s.path.clone(), std::sync::Arc::new(s));
+        state
+            .places
+            .insert(cwd.into(), json!({"project":"old folder","path":cwd}));
+    }
+    a.build_snapshot().unwrap();
+    {
+        let state = a.state.read().unwrap();
+        assert_eq!(state.summaries.len(), 2);
+        for sm in &state.summaries {
+            assert_eq!(sm["place"]["project"], "Shared project");
+            assert_eq!(sm["place"]["worktree"], "Login improvements");
+            assert_eq!(sm["place"]["path"], "/fixture/task-folder");
+        }
+        assert!(state.snapshot["orca"]["repos"].is_null());
+        assert!(state.snapshot["orca"]["worktrees"].is_null());
+    }
+    {
+        let mut state = a.state.write().unwrap();
+        state.orca["repos"][0]["displayName"] = json!("Renamed project");
+        state.orca["worktrees"][1]["displayName"] = json!("Renamed workspace");
+        state.orca["worktrees"][1]["branch"] = json!("refs/heads/another-branch");
+    }
+    a.build_snapshot().unwrap();
+    for sm in &a.state.read().unwrap().summaries {
+        assert_eq!(sm["place"]["project"], "Renamed project");
+        assert_eq!(sm["place"]["worktree"], "Renamed workspace");
+        assert_eq!(sm["place"]["path"], "/fixture/task-folder");
+        assert_eq!(sm["place"]["branch"], "another-branch");
+    }
+}

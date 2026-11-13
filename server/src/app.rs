@@ -369,6 +369,8 @@ impl App {
             workers.extend(ws);
         }
         let terms = orca(&["terminal", "list"])?;
+        let repos = orca(&["repo", "list"])?;
+        let worktrees = orca(&["worktree", "list", "--limit", "10000"])?;
         let terminals: Vec<_> = array(&terms["terminals"])
             .iter()
             .map(|t| {
@@ -389,8 +391,7 @@ impl App {
                 out
             })
             .collect();
-        let mut next =
-            json!({"runs":runs,"tasks":tasks,"workers":workers,"terminals":terminals,"error":null});
+        let mut next = json!({"runs":runs,"tasks":tasks,"workers":workers,"terminals":terminals,"repos":repos["repos"],"worktrees":worktrees["worktrees"],"error":null});
         let mut state = self.state.write().unwrap();
         let mut old = state.orca.clone();
         let updated = old
@@ -524,14 +525,7 @@ impl App {
         let mut summaries = vec![];
         for sess in by.values() {
             let cwd = text(&sess.data["launch_cwd"]);
-            let place = if cwd.is_empty() {
-                Value::Null
-            } else {
-                places
-                    .entry(cwd.into())
-                    .or_insert_with(|| place_of(cwd, &self.config))
-                    .clone()
-            };
+            let place = snapshot_place(cwd, &self.config, &orca, &mut places);
             summaries.push(sess.summary(&hooks, &orca, &prefs, &pricing, &place));
         }
         let connected: HashMap<String, &Value> = array(&orca["terminals"])
@@ -566,7 +560,9 @@ impl App {
             let a = &t["agentIdentity"];
             if !a.is_null() {
                 let path = format!("orca-terminal:{h}");
-                summaries.push(json!({"id":h,"path":path,"kind":a.as_str().unwrap_or("claude"),"title":t["title"],"cwd":t["worktreePath"],"role":"solo","parent":null,"state":"wait","state_reason":"프롬프트 입력 대기","live":false,"pending":true,"orca_focus":h,"orca_close_tree":[],"last_ts":null,"started":null,"tokens":{"input":0,"cache_read":0,"cache_write":0,"output":0},"turns":0,"tool_calls":0,"ctx_now":0,"ctx_peak":0,"slots":{},"skill_use":{},"mcp_use":{},"use_tok":{},"cost":null,"char":prefs["chars"][&path],"pinned":false,"plan":null,"task_ids":[],"made_terms":[]}));
+                let place =
+                    snapshot_place(text(&t["worktreePath"]), &self.config, &orca, &mut places);
+                summaries.push(json!({"id":h,"path":path,"kind":a.as_str().unwrap_or("claude"),"title":t["title"],"cwd":t["worktreePath"],"place":place,"role":"solo","parent":null,"state":"wait","state_reason":"프롬프트 입력 대기","live":false,"pending":true,"orca_focus":h,"orca_close_tree":[],"last_ts":null,"started":null,"tokens":{"input":0,"cache_read":0,"cache_write":0,"output":0},"turns":0,"tool_calls":0,"ctx_now":0,"ctx_peak":0,"slots":{},"skill_use":{},"mcp_use":{},"use_tok":{},"cost":null,"char":prefs["chars"][&path],"pinned":false,"plan":null,"task_ids":[],"made_terms":[]}));
             }
         }
         let mut plans = self.state.read().unwrap().plans.clone();
@@ -652,6 +648,63 @@ pub fn orca_all(field: &str, args: &[&str]) -> Result<Vec<Value>> {
     }
     Ok(out)
 }
+fn snapshot_place(
+    cwd: &str,
+    config: &Config,
+    orca: &Value,
+    places: &mut HashMap<String, Value>,
+) -> Value {
+    if cwd.is_empty() {
+        return Value::Null;
+    }
+    // Resolve names afresh from Orca so renames and newly registered worktrees do not
+    // get stuck in the Git fallback cache. The longest enclosing workspace wins.
+    managed_place(cwd, orca).unwrap_or_else(|| {
+        places
+            .entry(cwd.into())
+            .or_insert_with(|| place_of(cwd, config))
+            .clone()
+    })
+}
+pub fn managed_place(cwd: &str, orca: &Value) -> Option<Value> {
+    if cwd.is_empty() {
+        return None;
+    }
+    let cwd = real(cwd);
+    let (w, top, repo) = array(&orca["worktrees"])
+        .iter()
+        .filter(|w| w["isArchived"] != true && !text(&w["path"]).is_empty())
+        .filter_map(|w| {
+            let top = real(text(&w["path"]));
+            let repo = array(&orca["repos"])
+                .iter()
+                .find(|r| r["id"] == w["repoId"])?;
+            cwd.starts_with(&top).then_some((w, top, repo))
+        })
+        .max_by_key(|(_, top, _)| top.components().count())?;
+    let name = |v: &Value, path: &Path| {
+        v["displayName"]
+            .as_str()
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                path.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+    };
+    Some(json!({
+        "project":name(repo, Path::new(text(&repo["path"]))),
+        "project_id":repo["id"],
+        "worktree":name(w, &top),
+        "worktree_id":w["id"],
+        "main":w["isMainWorktree"] == true,
+        "branch":w["branch"].as_str().map(|s|s.trim_start_matches("refs/heads/")).filter(|s|!s.is_empty()),
+        "sub":cwd.strip_prefix(&top).ok().filter(|s|!s.as_os_str().is_empty()),
+        "path":top
+    }))
+}
 pub fn place_of(cwd: &str, config: &Config) -> Value {
     let p = Path::new(cwd);
     if let Ok(top) = git(p, &["rev-parse", "--show-toplevel"]) {
@@ -668,6 +721,10 @@ pub fn place_of(cwd: &str, config: &Config) -> Value {
 }
 fn lite_orca(o: &Value) -> Value {
     let mut o = o.clone();
+    // Placement metadata has already been resolved into each session's place.
+    for key in ["repos", "worktrees"] {
+        o.as_object_mut().unwrap().remove(key);
+    }
     for r in o["runs"].as_array_mut().unwrap() {
         r.as_object_mut().unwrap().retain(|k, _| {
             ["id", "objective", "coordinator_handle", "created_at"].contains(&k.as_str())

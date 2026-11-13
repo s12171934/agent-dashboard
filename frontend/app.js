@@ -3987,7 +3987,7 @@ function teamName(c, qh, fallback) {
 let chFam = new Map(), chLinkList = [];
 let famShown = new Set(), famSlot = new Map();  // coordinator path → its colour slot in FAM_TEAM, kept across renders and reloads
 try { famSlot = new Map(JSON.parse(localStorage.getItem('adash.famslot')) || []); } catch {}
-const roomName = p => !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
+const roomName = p => p?.worktree || p?.project || '위치 미상';
 function officeRooms(people) {
   const up = coordOf(families().fams), by = new Map(), on = new Set(people.map(s => s.path)), fams = new Map(), pairs = [];
   for (const s of people) { const k = wtKey(s); (by.get(k) || by.set(k, []).get(k)).push(s); }
@@ -4039,7 +4039,7 @@ function officeRooms(people) {
   // the server goes with each room, so renderOffice can put each server's rooms in its own company
   return order.map(k => {
     const ms = by.get(k).sort((x, y) => isBoss(y) - isBoss(x) || sessRank(x) - sessRank(y) || byStart(x, y)), p = ms.find(m => m.place)?.place, name = roomName(p);
-    return { srv: ms[0].server || '', proj: p?.project || '', ms, html: roomBox(`▣ ${esc(name)}`, k, ms, `${p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : ''}${p?.branch && p.branch !== name ? `<span class="st">⎇ ${esc(cut(p.branch, 40))}</span>` : ''}`, p?.project) };
+    return { srv: ms[0].server || '', proj: p?.project || '', ms, html: roomBox(`<span title="${esc(placeLabel(p))}">▣ ${esc(name)}</span>`, k, ms, p?.project && p.project !== name ? `<span class="st">${esc(p.project)}</span>` : '', p?.project) };
   });
 }
 // A person's family chips (charHtml): as a coordinator, then as a worker (a sub-coordinator wears both).
@@ -5165,7 +5165,7 @@ function wtSec({ key, items }, drivers = []) {
   const cnt = {}; arr.forEach(s => { const st = status(s); cnt[st] = (cnt[st] || 0) + 1; });
   const nc = arr.filter(s => s.role === 'coordinator').length, nw = arr.filter(s => s.role === 'worker').length, ns = arr.length - nc - nw;
   const cross = items.filter(it => it.list).reduce((a, it) => a + it.list.filter(x => !x.d).length, 0);
-  const name = !p ? '위치 미상' : p.worktree && p.worktree !== p.project ? p.worktree : p.main && p.branch ? '메인' : p.project;
+  const name = roomName(p);
   const body = min ? '' : drivers.map(d => ticketsHtml(d, filtering())).join('') + grid(items, true);
   const html = `<section class="wt-sec st-${famStatus(arr.map(m => ({ st: status(m) })))}" id="${wtId(key)}" data-wtkey="${esc(key)}">
     <div class="wt-h" title="${esc(p?.path || '')}"><span class="wt-proj">${esc(p?.project || '')}</span><h3>▣ ${esc(name)}</h3>${p?.branch && p.branch !== name ? `<span class="wt-br">⎇ ${esc(p.branch)}</span>` : ''}${srvBadge(arr[0])}
