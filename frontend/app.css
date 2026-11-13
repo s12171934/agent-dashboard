@@ -2254,6 +2254,17 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-wrap.md-folded { grid-template-columns: minmax(0, 1fr); }
 .md-wrap.md-folded .md-list { display: none; }
 .md-list { display: grid; gap: 6px; }
+.md-group, .md-ticket { min-width: 0; }
+.md-group > summary, .md-ticket > summary { display: flex; align-items: center; gap: 6px; min-height: 44px; box-sizing: border-box; padding: 8px 4px; cursor: pointer; font-weight: 600; overflow-wrap: anywhere; list-style: none; }
+.md-group > summary::-webkit-details-marker, .md-ticket > summary::-webkit-details-marker { display: none; }
+.md-group > summary::before, .md-ticket > summary::before { content: '▸'; flex: none; color: var(--muted); }
+.md-group[open] > summary::before, .md-ticket[open] > summary::before { content: '▾'; }
+.md-group > summary > span:first-of-type, .md-ticket > summary > span:first-of-type { min-width: 0; flex: 1; }
+.md-group summary small { display: block; font-weight: 400; }
+.md-count { flex: none; font-size: 12px; font-weight: 400; color: var(--muted); }
+.md-group-body { display: grid; gap: 6px; padding-left: 8px; border-left: 1px solid var(--line); }
+.md-ticket > summary { font-size: 12px; }
+.md-entries { display: grid; gap: 6px; }
 .md-item { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
 .md-item b { font-weight: 600; overflow-wrap: anywhere; }
 .md-item.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
@@ -2283,8 +2294,10 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-duo:has(.md-grip.on) { cursor: col-resize; user-select: none; -webkit-user-select: none; }
 .md-stage { position: sticky; top: 12px; min-width: 0; }
 .md-video { display: block; width: 100%; max-height: 72vh; background: #000; border-radius: var(--radius); }
-.md-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.md-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
 .md-title { margin: 0; font-size: 15px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.md-rate { display: inline-flex; flex: none; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+.md-speed { width: auto; min-width: 76px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .md-fs { flex: none; }
 .md-side { min-width: 0; max-height: calc(100vh - 210px); overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .md-side-h { position: sticky; top: 0; z-index: 1; padding: 8px 6px 6px; background: var(--panel); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
@@ -2341,6 +2354,7 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 .md-ov svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .md-ov-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .md-ov-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000; }
+.md-ov .md-speed { color: var(--text); background-color: var(--panel); }
 .md-ov-x { width: 34px; height: 34px; padding: 5px !important; flex: none; }
 .md-ov-mid { display: flex; align-items: center; justify-content: center; gap: clamp(24px, 9%, 64px); }
 .md-ov-skip { position: relative; width: 44px; height: 44px; }

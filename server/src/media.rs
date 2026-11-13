@@ -1,6 +1,7 @@
-use crate::{core::*, sessions::rx};
+use crate::{app::App, core::*, sessions::rx};
 use serde_json::{Value, json};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -83,7 +84,58 @@ pub fn captions(path: &Path) -> Vec<Value> {
         })
         .collect()
 }
-pub fn list(config: &Config) -> Value {
+/// Associate QA recordings with known projects without guessing from a Jira prefix.
+pub fn classify(videos: &mut [Value], projects: &Value, reviews: &Value) {
+    let keys = |s: &str| {
+        rx(r"\b[A-Z][A-Z0-9]*-\d+\b")
+            .find_iter(s)
+            .map(|m| m.as_str().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let mut index: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for p in array(&projects["list"]) {
+        let name = text(&p["name"]);
+        if name.is_empty() {
+            continue;
+        }
+        for key in keys(name).into_iter().chain(
+            array(&p["stages"])
+                .iter()
+                .flat_map(|s| array(&s["steps"]))
+                .flat_map(|s| keys(text(&s["path"]))),
+        ) {
+            index.entry(key).or_default().insert(name.to_owned());
+        }
+    }
+    for set in array(&reviews["sets"]) {
+        let name = text(&set["project"])
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("");
+        if name.is_empty() {
+            continue;
+        }
+        for key in std::iter::once(text(&set["epic"]))
+            .chain(array(&set["tickets"]).iter().map(|t| text(&t["key"])))
+            .filter(|k| !k.is_empty())
+        {
+            index
+                .entry(key.to_owned())
+                .or_default()
+                .insert(name.to_owned());
+        }
+    }
+    for v in videos.iter_mut().filter(|v| v["kind"] == "qa") {
+        let ticket = keys(text(&v["name"])).into_iter().next();
+        let candidates = ticket.as_ref().and_then(|t| index.get(t));
+        let project = candidates.filter(|c| c.len() == 1).and_then(|c| c.first());
+        v["ticket"] = json!(ticket);
+        v["project"] = json!(project);
+    }
+}
+pub fn list(app: &App) -> Value {
+    let config = &app.config;
     let mut videos = vec![];
     let mut missing = vec![];
     let published = read_json(config.data.join("media.json"));
@@ -113,6 +165,8 @@ pub fn list(config: &Config) -> Value {
             .unwrap_or(&stem);
         videos.push(json!({"path":rel,"root":root,"name":name,"started":started,"size":fs::metadata(&p).map(|s|s.len()).unwrap_or(0),"mtime":mtime(&p),"kind":if root=="explainer-video"{"learn"}else{"qa"},"timeline":timeline(&p),"captions":captions(&p)}));
     }
+    let state = app.state.read().unwrap();
+    classify(&mut videos, &state.projects, &state.reviews);
     json!({"videos":videos,"missing":missing})
 }
 pub fn byte_range(size: u64, header: Option<&str>) -> Result<(u64, u64, u16)> {

@@ -7329,8 +7329,11 @@ async function renderCanvas(reload) {
 // line; on a narrow screen the timeline goes under the player, which stays pinned at the top.
 let mdMounted = false, mdData = null;
 let mdSel = null;  // adash.media: the recording last opened, server + '\n' + path
-let md = { fold: false, side: 'tl', q: '', kind: '', sw: {} };  // adash.media.view: the recording list folded away, the side list (timeline or captions), the search, the kind shown ('' all), the timeline's width dragged beside the video (a share of the pair's width, per layout: page | full)
+const MD_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4];
+let md = { fold: false, side: 'tl', q: '', kind: '', sw: {}, closed: [], rate: 1 };  // adash.media.view: list, search, player layout, collapsed groups and playback speed
 try { mdSel = localStorage.getItem('adash.media'); Object.assign(md, JSON.parse(localStorage.getItem('adash.media.view') || '{}')); } catch {}
+if (!Array.isArray(md.closed)) md.closed = [];
+md.rate = MD_RATES.includes(md.rate) ? md.rate : 1;
 // full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
 let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () => {};
 // iPhone app: Picture in Picture as the app is put away. The app's own muted player follows the video shown here
@@ -7362,7 +7365,7 @@ function mdPip(video) {
 addEventListener('ds-posture', () => { if (route().v === 'media') mdPosture(); });
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => mdFsChange());
 addEventListener('keydown', e => {
-  if (!document.querySelector('.md-full') || e.target.closest?.('input:not(.md-seek), textarea, [contenteditable]')) return;
+  if (!document.querySelector('.md-full') || e.target.closest?.('input:not(.md-seek), select, textarea, [contenteditable]')) return;
   if (e.key === 'Escape') mdFull(false);
   else if (mdKeys(e.key)) e.preventDefault();
 });
@@ -7378,7 +7381,7 @@ const MD_KINDS = { qa: 'QA', learn: '학습' };
 const mdNorm = s => String(s || '').normalize('NFC').toLowerCase();
 const mdTerms = () => [...new Set(mdNorm(md.q).split(/\s+/).filter(Boolean))];
 function mdFind(v, terms) {
-  const head = mdNorm([v.name, v.started, v.root, MD_KINDS[v.kind]].join(' '));
+  const head = mdNorm([v.name, v.project, v.ticket, v.started, v.root, MD_KINDS[v.kind]].join(' '));
   const lines = [...v.timeline.map(r => ({ ...r, side: 'tl', s: mdNorm(r.kind + ' ' + r.text) })),
     ...(v.captions || []).map(r => ({ ...r, side: 'cap', s: mdNorm(r.text) }))];
   if (!terms.every(w => head.includes(w) || lines.some(l => l.s.includes(w)))) return null;
@@ -7416,7 +7419,7 @@ async function renderMedia(reload) {
   if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>각 맥의 서버 데이터 폴더 <code>media.json</code> 에 올린 녹화만 보입니다. 타임라인의 시각을 누르면 그 장면으로 갑니다.</span></div>
     <div class="controls"><button class="act big" id="md-reload">새로 고침</button>
       <span class="seg" id="md-kind"></span>
-      <input type="search" id="md-q" class="md-q" placeholder="검색 — 이름·날짜·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
+      <input type="search" id="md-q" class="md-q" placeholder="검색 — 프로젝트·티켓·이름·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
       <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
   mdMounted = true;
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
@@ -7425,7 +7428,7 @@ async function renderMedia(reload) {
   $('#md-q').oninput = e => { md.q = e.target.value; mdSave(); mdDrawList(); mdSide(); };
   try { mdData = await api.media(); } catch { mdData = null; }
   if (route().v !== 'media') return;
-  const vs = mdData?.videos || [], multi = new Set(vs.map(v => v.server)).size > 1;
+  const vs = mdData?.videos || [];
   $('#md-sum').textContent = `${vs.length}개${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
   if (!vs.length) {
     $('#md-body').innerHTML = `<div class="empty">공개한 녹화가 없습니다. 영상이 있는 맥의 서버 데이터 폴더 <code>media.json</code> 에 <code>{"published": ["ego-record/&lt;파일 이름&gt;.mp4"]}</code> 처럼 적으면 여기에 나옵니다.</div>`
@@ -7434,7 +7437,7 @@ async function renderMedia(reload) {
   }
   const cur = vs.find(v => mdKey(v) === mdSel) || vs[0];
   mdSel = mdKey(cur);
-  $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" role="list"></div>
+  $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" aria-label="프로젝트·티켓별 녹화 목록"></div>
     <div class="md-main" id="md-main"></div></div>`
     + (mdData.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
   // a recording opens it; a hit under it opens it at that line (or only seeks when it is already the one shown)
@@ -7449,12 +7452,40 @@ async function renderMedia(reload) {
     $('#md-body').querySelectorAll('.md-item').forEach(x => x.classList.toggle('on', x.dataset.k === mdSel));
     mdPlay(v, t);
   };
+  $('#md-body .md-list').addEventListener('toggle', e => {
+    const key = e.target.dataset.group;
+    if (!key || mdTerms().length) return;
+    md.closed = md.closed.filter(k => k !== key);
+    if (!e.target.open) md.closed.push(key);
+    mdSave();
+  }, true);
   mdDrawList();
   mdPlay(cur);
 }
 // The recording list, narrowed by the search: each match with up to MD_HITS of its lines (time and text, the words
 // marked) to open it at, and how many more there are.
 const MD_HITS = 5;
+// Keep server identity in every group: two Macs may publish the same project/ticket names.
+function mdGroups(found) {
+  const groups = new Map();
+  for (const entry of found) {
+    const v = entry.v, qa = v.kind === 'qa';
+    const project = qa ? v.project || '프로젝트 미분류' : MD_KINDS[v.kind] ? '학습 영상' : '기타 녹화';
+    const key = JSON.stringify([v.server, v.kind || '', project]);
+    if (!groups.has(key)) groups.set(key, { key, name: project, server: v.server, qa, entries: [], tickets: new Map() });
+    const group = groups.get(key);
+    group.entries.push(entry);
+    if (qa) {
+      // Older servers can still separate recordings by the ticket in their title.
+      const ticket = v.ticket || v.name.match(/\b[A-Z][A-Z0-9]*-\d+\b/)?.[0] || '티켓 미분류';
+      if (!group.tickets.has(ticket)) group.tickets.set(ticket, []);
+      group.tickets.get(ticket).push(entry);
+    }
+  }
+  const byName = (a, b) => a.localeCompare(b, 'ko', { numeric: true });
+  const recent = g => Math.max(...g.entries.map(({ v }) => v.mtime || 0));
+  return [...groups.values()].sort((a, b) => Number(b.qa) - Number(a.qa) || recent(b) - recent(a) || byName(a.name, b.name));
+}
 function mdDrawList() {
   const box = $('#md-body .md-list');
   if (!box) return;
@@ -7464,29 +7495,52 @@ function mdDrawList() {
   const found = vs.map(v => ({ v, f: terms.length ? mdFind(v, terms) : null })).filter(x => !terms.length || x.f);
   const n = found.reduce((a, x) => a + (x.f?.lines.length || 0), 0);
   $('#md-sum').textContent = `${terms.length ? `${vs.length}개 중 ${found.length}개 일치 · ${n}줄` : vs.length + '개'}${mdData?.missing?.length ? ` · 찾을 수 없음 ${mdData.missing.length}개` : ''}${mdData?.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
-  box.innerHTML = found.length ? found.map(({ v, f }) => {
+  const entryHtml = ({ v, f }) => {
     const k = esc(mdKey(v)), lines = f?.lines || [];
     return `<div class="md-entry" role="listitem"><button class="md-item${mdKey(v) === mdSel ? ' on' : ''}" data-k="${k}">
       <b>${MD_KINDS[v.kind] ? `<span class="md-kind k-${v.kind}">${MD_KINDS[v.kind]}</span> ` : ''}${mdMark(v.name, terms)}</b><span class="st">${mdMark(v.started || '', terms)} · ${esc(v.root)} · ${mdSize(v.size)}${multi ? ' · ' + esc(srvName(v.server)) : ''}${v.captions?.length ? ' · 자막' : ''}</span></button>
       ${lines.length ? `<div class="md-hits">${lines.slice(0, MD_HITS).map(l => `<button class="md-hit" data-k="${k}" data-t="${l.t}" data-side="${l.side}">
         <span class="md-t">${mdClock(Math.floor(l.t))}</span><span class="md-x">${l.side === 'cap' ? '' : `<span class="md-k">${esc(l.kind)}</span> `}${mdMark(l.text, terms)}</span></button>`).join('')}
         ${lines.length > MD_HITS ? `<span class="st md-more">외 ${lines.length - MD_HITS}줄 — 열면 옆 목록에 표시됩니다</span>` : ''}</div>` : ''}</div>`;
+  };
+  const groupHtml = (key, name, entries, body, cls, extra = '') => `<details class="${cls}" data-group="${esc(key)}"${terms.length || !md.closed.includes(key) ? ' open' : ''}>
+    <summary><span>${mdMark(name, terms)}${extra}</span><span class="md-count">${entries.length}개</span></summary>${body}</details>`;
+  box.innerHTML = found.length ? mdGroups(found).map(g => {
+    const body = g.qa ? [...g.tickets].sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true })).map(([ticket, entries]) =>
+      groupHtml(JSON.stringify([g.key, ticket]), ticket, entries, `<div class="md-entries" role="list">${entries.map(entryHtml).join('')}</div>`, 'md-ticket')).join('')
+      : `<div class="md-entries" role="list">${g.entries.map(entryHtml).join('')}</div>`;
+    return groupHtml(g.key, g.name, g.entries, `<div class="md-group-body">${body}</div>`, 'md-group', multi ? `<small class="st">${esc(srvName(g.server))}</small>` : '');
   }).join('') : `<div class="empty">${terms.length ? `「${esc(md.q.trim())}」와 일치하는 ` : ''}${md.kind ? MD_KINDS[md.kind] + ' ' : ''}녹화가 없습니다.</div>`;
 }
 function mdPlay(v, startAt) {
   const box = $('#md-main');
+  const speedControl = () => `<label class="md-rate">배속 <select class="field md-speed" aria-label="재생 속도">${MD_RATES.map(rate => `<option value="${rate}"${rate === md.rate ? ' selected' : ''}>${rate}×</option>`).join('')}</select></label>`;
   box.innerHTML = `<div class="md-duo"><div class="md-stage">
       <video class="md-video" controls playsinline controlslist="nofullscreen" preload="metadata" src="${esc(api.mediaFile(v.server, v.path))}"></video>
-      <div class="md-ov"><div class="md-ov-top"><b class="md-ov-title">${esc(v.name)}</b><button class="md-ov-x" aria-label="전체 화면 닫기">${MD_ICON.x}</button></div>
+      <div class="md-ov"><div class="md-ov-top"><b class="md-ov-title">${esc(v.name)}</b>${speedControl()}<button class="md-ov-x" aria-label="전체 화면 닫기">${MD_ICON.x}</button></div>
         <div class="md-ov-mid"><button class="md-ov-skip" data-skip="-10" aria-label="10초 뒤로">${MD_ICON.back}<b>10</b></button>
           <button class="md-ov-pp" aria-label="재생">${MD_ICON.play}</button>
           <button class="md-ov-skip" data-skip="10" aria-label="10초 앞으로">${MD_ICON.fwd}<b>10</b></button></div>
         <div class="md-ov-bot"><div class="md-ov-track"><input type="range" class="md-seek" min="0" max="1000" step="1" value="0" aria-label="재생 위치"></div>
           <div class="md-ov-info"><span class="md-ov-time">00:00 / 00:00</span><span class="md-ov-scene"></span></div></div></div>
-      <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3><button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
+      <div class="md-bar"><h3 class="md-title">${esc(v.name)}</h3>${speedControl()}<button class="act md-fs" aria-pressed="false">타임라인과 함께 전체 화면</button></div></div>
     <div class="md-grip" role="separator" aria-orientation="vertical" aria-label="타임라인 너비 — 끌어서 조절, 두 번 누르면 처음대로" tabindex="0" hidden></div>
     <div class="md-side"></div></div>`;
   const video = box.querySelector('video'), side = box.querySelector('.md-side');
+  video.defaultPlaybackRate = video.playbackRate = md.rate;
+  const speeds = box.querySelectorAll('.md-speed');
+  speeds.forEach(select => select.addEventListener('change', () => {
+    const rate = +select.value;
+    if (MD_RATES.includes(rate)) video.defaultPlaybackRate = video.playbackRate = rate;
+  }));
+  // Native player controls can also change speed. Keep both menus and the saved preference in sync.
+  video.addEventListener('ratechange', () => {
+    const rate = video.playbackRate;
+    if (!MD_RATES.includes(rate)) return;
+    speeds.forEach(select => { select.value = rate; });
+    md.rate = rate;
+    mdSave();
+  });
   mdPip(video);
   let rows = [];
   // The side list: the timeline, or the captions (the narration, one line a cue) when there are any — a tab each when
@@ -7581,8 +7635,12 @@ function mdPlay(v, startAt) {
   function ovShow(on) {
     clearTimeout(ovT);
     ov.classList.toggle('on', on);
-    if (on && !video.paused) ovT = setTimeout(() => ov.classList.remove('on'), 3000);
+    if (on && !video.paused && !ov.querySelector('select:focus')) ovT = setTimeout(() => ov.classList.remove('on'), 3000);
   }
+  ov.addEventListener('focusin', () => ovShow(true));
+  ov.addEventListener('focusout', () => setTimeout(() => ovShow(ov.classList.contains('on')), 0));
+  ov.addEventListener('pointerdown', e => { if (e.target.closest('select')) clearTimeout(ovT); });
+  ov.addEventListener('change', () => ovShow(true));
   const paint = () => {
     const d = video.duration || 0, p = d ? video.currentTime / d : 0;
     if (!dragging) seek.value = Math.round(p * 1000);
@@ -7602,7 +7660,7 @@ function mdPlay(v, startAt) {
   video.addEventListener('pause', () => { ppIcon(); if (duo.classList.contains('md-full')) ovShow(true); });
   // a tap on the picture (not on a control): show the controls, or hide them when they are up and it plays
   box.querySelector('.md-stage').addEventListener('click', e => {
-    if (!duo.classList.contains('md-full') || e.target.closest('.md-ov button, .md-ov input')) return;
+    if (!duo.classList.contains('md-full') || e.target.closest('button, input, select, label')) return;
     ovShow(!ov.classList.contains('on') || video.paused);
   });
   ov.addEventListener('click', e => {

@@ -235,7 +235,7 @@ fn dispatch(
  "/api/decision/mode"=>json(json!({"inbox":app.state.read().unwrap().prefs["decision_inbox"]==true})),
  "/api/projects"=>{let s=app.state.read().unwrap();let mut p=s.projects.clone();p["projects"]=json!(array(&p["list"]).iter().cloned().map(projects::lite).collect::<Vec<_>>());p.as_object_mut().unwrap().remove("list");json(p)},
  "/api/project"|"/api/project/note"=>{let s=app.state.read().unwrap();let p=array(&s.projects["list"]).iter().find(|p|p["name"]==q(qs,"name")&&(q(qs,"dir").is_empty()||p["dir"]==q(qs,"dir"))).cloned();drop(s);if let Some(p)=p{if path.ends_with("/note"){match projects::note(&p,q(qs,"path")){Ok(v)=>json(v),Err(e)=>err(if e=="not found"{404}else{400},&e)}}else{json(p)}}else{err(404,"not found")}},
- "/api/media"=>json(media::list(&app.config)),
+ "/api/media"=>json(media::list(app)),
  "/api/usage/report"=>{let n=|k,default|q(qs,k).parse::<u64>().unwrap_or(default);let days=n("days",30);let top=n("top",15);let rare=n("rare",1);let by=if q(qs,"by").is_empty(){"both"}else{q(qs,"by")};if days>3650||!(1..=200).contains(&top)||rare>100||!["app","form","both"].contains(&by){err(400,"bad request")}else{json(usage::report(&app.config,days,by,top as usize,rare))}},
  "/usage"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8"),(header::CONTENT_SECURITY_POLICY,"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'")],include_str!("../assets/usage.html")).into_response(),
  _=>err(404,"not found")}

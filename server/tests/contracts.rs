@@ -274,6 +274,48 @@ fn help_does_not_claim_coordinator() {
     assert!(summary(&s)["own_handle"].is_null());
 }
 #[test]
+fn qa_media_uses_project_steps_and_review_tickets() {
+    let projects = json!({"list":[
+        {"name":"PRD-7 모바일 개선","stages":[{"steps":[{"path":"일정/PRD-7 5.01 DEV-12 구현.md"}]}]},
+        {"name":"PRD-8 가입 개선","stages":[]}
+    ]});
+    let reviews = json!({"sets":[{"project":"10_Projects/PRD-8 가입 개선","epic":"QA-20","tickets":[{"key":"QA-21"}]}]});
+    let mut videos = vec![
+        json!({"kind":"qa","name":"DEV-12 모바일 재촬영"}),
+        json!({"kind":"qa","name":"PRD-7 데스크톱"}),
+        json!({"kind":"qa","name":"QA-21 회귀"}),
+        json!({"kind":"qa","name":"QA-20 전체"}),
+        json!({"kind":"learn","name":"DEV-12 설계 해설"}),
+    ];
+    media::classify(&mut videos, &projects, &reviews);
+    assert_eq!(videos[0]["project"], "PRD-7 모바일 개선");
+    assert_eq!(videos[0]["ticket"], "DEV-12");
+    assert_eq!(videos[1]["project"], "PRD-7 모바일 개선");
+    assert_eq!(videos[2]["project"], "PRD-8 가입 개선");
+    assert_eq!(videos[3]["project"], "PRD-8 가입 개선");
+    assert!(videos[4].get("project").is_none());
+    assert!(videos[4].get("ticket").is_none());
+}
+
+#[test]
+fn qa_media_keeps_unknown_and_ambiguous_projects_unclassified() {
+    let projects = json!({"list":[
+        {"name":"PRD-7 모바일 개선","stages":[{"steps":[{"path":"DEV-12.md"}]}]},
+        {"name":"PRD-8 가입 개선","stages":[{"steps":[{"path":"DEV-12.md"}]}]}
+    ]});
+    let mut videos = vec![
+        json!({"kind":"qa","name":"DEV-12 공통 화면"}),
+        json!({"kind":"qa","name":"DEV-99 알 수 없는 티켓"}),
+        json!({"kind":"qa","name":"티켓 없는 녹화"}),
+    ];
+    media::classify(&mut videos, &projects, &json!({"sets":[]}));
+    assert!(videos.iter().all(|v| v["project"].is_null()));
+    assert_eq!(videos[0]["ticket"], "DEV-12");
+    assert_eq!(videos[1]["ticket"], "DEV-99");
+    assert!(videos[2]["ticket"].is_null());
+}
+
+#[test]
 fn range_requests_cover_seek_and_suffix() {
     assert_eq!(
         media::byte_range(100, Some("bytes=10-19")).unwrap(),
