@@ -2247,13 +2247,13 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 /* a long press opens the chat: no text selection or callout under the finger */
 @media (pointer: coarse) { .card[data-path], .ch[data-path] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
 
-/* 녹화 영상 (#media): the recording list, then the player and its timeline side by side (a split view). The player
-   stays put while the timeline scrolls on its own; when the space is narrow the timeline goes under the player, which
-   stays pinned to the top of the screen. */
-.md-wrap { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 14px; align-items: start; }
+/* Media panes own their scroll areas; the stacked player never floats over timeline text. */
+.md-wrap { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 18px; align-items: start; --md-room: clamp(420px, calc(100dvh - 235px), 1000px); }
 .md-wrap.md-folded { grid-template-columns: minmax(0, 1fr); }
 .md-wrap.md-folded .md-list { display: none; }
-.md-list { display: grid; gap: 6px; }
+.md-list { display: grid; gap: 6px; max-height: var(--md-room); overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px 8px 2px; scrollbar-gutter: stable; }
+.md-tools { align-items: center; }
+.md-tools .field { width: auto; max-width: 210px; min-width: 0; }
 .md-group, .md-ticket { min-width: 0; }
 .md-group > summary, .md-ticket > summary { display: flex; align-items: center; gap: 6px; min-height: 44px; box-sizing: border-box; padding: 8px 4px; cursor: pointer; font-weight: 600; overflow-wrap: anywhere; list-style: none; }
 .md-group > summary::-webkit-details-marker, .md-ticket > summary::-webkit-details-marker { display: none; }
@@ -2265,9 +2265,15 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-group-body { display: grid; gap: 6px; padding-left: 8px; border-left: 1px solid var(--line); }
 .md-ticket > summary { font-size: 12px; }
 .md-entries { display: grid; gap: 6px; }
-.md-item { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.md-item { display: grid; gap: 7px; width: 100%; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.md-item:hover { background: var(--panel2); border-color: var(--accent); }
+.md-item-context { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; color: var(--muted); }
+.md-item-context > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-selected { display: none; color: var(--accent); font-size: 10px; white-space: nowrap; margin-left: auto; }
+.md-item.on .md-selected { display: inline; }
 .md-item b { font-weight: 600; overflow-wrap: anywhere; }
-.md-item.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.md-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
+.md-reset { display: block; margin: 12px auto 0; }
 .md-q { flex: 1 1 220px; min-width: 0; max-width: 360px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; }
 .md-kind { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 999px; vertical-align: 1px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .md-kind.k-learn { color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); }
@@ -2280,10 +2286,14 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-wrap mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
 .md-tab { font: inherit; font-size: 12px; padding: 2px 8px; margin-right: 4px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted); cursor: pointer; }
 .md-tab.on { border-color: var(--accent); color: var(--text); }
-.md-tl.md-cap li { grid-template-columns: auto minmax(0, 1fr); }
+.md-tl.md-cap .md-line { grid-template-columns: 46px minmax(0, 1fr) auto; }
 .md-tl li.md-hit-on:not(.md-now) { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .md-main { min-width: 0; container-type: inline-size; }
-.md-duo { position: relative; display: grid; grid-template-columns: minmax(0, 1.7fr) var(--md-sw, minmax(260px, 1fr)); gap: 14px; align-items: start; }
+.md-context { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 12px; min-width: 0; }
+.md-context > div { min-width: 0; }
+.md-context > .st { flex: none; padding-top: 3px; font-size: 11px; }
+.md-context .md-title { margin-top: 4px; font-size: 18px; }
+.md-duo { position: relative; display: grid; grid-template-columns: minmax(0, 1.4fr) var(--md-sw, minmax(280px, 1fr)); gap: 14px; align-items: start; height: var(--md-room); min-height: 0; }
 /* the grip between the video and the timeline when they sit side by side (placed by mdPlay): a wide touch target,
    a thin line that shows while hovered, focused or dragged */
 .md-grip { position: absolute; top: 0; bottom: 0; z-index: 3; width: 24px; margin-left: -12px; cursor: col-resize; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -2292,31 +2302,56 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-grip:hover::after, .md-grip:focus-visible::after, .md-grip.on::after { background: var(--accent); height: 72px; }
 .md-grip:focus-visible { outline: none; }
 .md-duo:has(.md-grip.on) { cursor: col-resize; user-select: none; -webkit-user-select: none; }
-.md-stage { position: sticky; top: 12px; min-width: 0; }
-.md-video { display: block; width: 100%; max-height: 72vh; background: #000; border-radius: var(--radius); }
+.md-stage { min-width: 0; min-height: 0; max-height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.md-video { display: block; width: 100%; height: 100%; max-height: calc(var(--md-room) - 70px); aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: var(--radius); }
 .md-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
 .md-title { margin: 0; font-size: 15px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .md-rate { display: inline-flex; flex: none; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .md-speed { width: auto; min-width: 76px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .md-fs { flex: none; }
-.md-side { min-width: 0; max-height: calc(100vh - 210px); overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
-.md-side-h { position: sticky; top: 0; z-index: 1; padding: 8px 6px 6px; background: var(--panel); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.md-side { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; min-width: 0; overflow: hidden; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.md-side-h { padding: 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
+.md-side-tabs { font-size: 12px; font-weight: 600; }
+.md-position { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; font-size: 12px; margin-top: 12px; }
+.md-position-time { font-weight: 650; color: var(--accent); }
+.md-position-index { color: var(--muted); }
+.md-current-scene { font-size: 13px; font-weight: 600; margin-top: 5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.md-follow-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-top: 8px; font-size: 11px; }
+.md-follow-tools label { display: inline-flex; align-items: center; gap: 4px; min-height: var(--tap, 28px); cursor: pointer; }
+.md-follow-tools .act { font-size: 11px; }
+.md-follow-state { display: block; font-size: 10px; margin-top: 4px; }
+.md-lines { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px; scrollbar-gutter: stable; }
 .md-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
-.md-tl li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+.md-tl li { min-width: 0; border-radius: 6px; }
+.md-line { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; width: 100%; min-height: var(--tap, 36px); box-sizing: border-box; padding: 10px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .md-tl li:hover { background: var(--panel2); }
-.md-tl li.md-now { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
+.md-tl li.md-now { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
+.md-playing { visibility: hidden; font-size: 10px; color: var(--accent); font-weight: 700; }
+.md-now .md-playing { visibility: visible; }
 .md-t { font: inherit; font-variant-numeric: tabular-nums; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
-.md-k { color: var(--muted); font-size: 12px; }
+.md-k { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
 .md-k.k-오류, .md-k.k-위반 { color: var(--bad); }
 .md-k.k-말 { color: var(--run); }
 .md-x { overflow-wrap: anywhere; }
-@media (max-width: 700px) { .md-wrap { grid-template-columns: minmax(0, 1fr); } }
-@container (max-width: 640px) {
-  .md-duo { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .md-stage { top: 0; z-index: 2; padding: 6px 0; background: var(--bg); }
-  .md-bar { margin-top: 6px; }
+@media (max-width: 900px) { .md-wrap { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); } }
+@media (max-width: 700px) {
+  .md-wrap { grid-template-columns: minmax(0, 1fr); --md-room: max(440px, calc(100dvh - 155px)); }
+  .md-list { max-height: 38dvh; }
+  .md-tools .md-q { max-width: none; flex-basis: 100%; }
+  .md-context .md-title { font-size: 15px; }
+  .md-context > .st { display: none; }
+}
+@container (max-width: 560px) {
+  .md-duo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .9fr) minmax(220px, 1.1fr); gap: 10px; }
+  .md-stage { height: 100%; }
+  .md-video { min-height: 0; max-height: 100%; aspect-ratio: auto; }
+  .md-bar { margin-top: 4px; gap: 6px; }
+  .md-bar .act, .md-rate { font-size: 11px; }
   .md-title { font-size: 14px; }
-  .md-side { max-height: none; overflow: visible; }
+  .md-side-h { padding: 8px 10px; }
+  .md-position { margin-top: 7px; }
+  .md-current-scene { -webkit-line-clamp: 1; }
+  .md-follow-state { display: none; }
 }
 /* 타임라인과 함께 전체 화면, as a streaming app plays: the video runs edge to edge on black under its own controls
    (.md-ov: title and close on top, back 10 s · play · forward 10 s in the middle, the bar with the timeline's scenes
@@ -2324,21 +2359,22 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
    Wide → side by side, tall → video on top; half folded, the video fills one half and the timeline the other. The
    player's own controls (and their full screen, which would take both halves) are off meanwhile. */
 html.md-lock, html.md-lock body { overflow: hidden; }
-.md-duo.md-full { position: fixed; inset: 0; z-index: 1000; margin: 0; gap: 0; box-sizing: border-box; background: #000; color-scheme: dark;
+.md-duo.md-full { position: fixed; inset: 0; height: auto; z-index: 1000; margin: 0; gap: 0; box-sizing: border-box; background: #000; color-scheme: dark;
   --bg: #000; --panel: #141414; --panel2: #262626; --line: #2a2a2a; --text: #e8e8e8; --muted: #a3a3a3; color: var(--text);
   grid-template-columns: minmax(0, 1fr) var(--md-sw, minmax(260px, 32%)); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
-.md-duo.md-full .md-stage { position: relative; top: auto; z-index: auto; padding: 0; min-height: 0; background: #000; overflow: hidden; }
+.md-duo.md-full .md-stage { display: block; position: relative; top: auto; z-index: auto; padding: 0; min-height: 0; background: #000; overflow: hidden; }
 .md-duo.md-full .md-video { width: 100%; height: 100%; max-height: none; object-fit: contain; border-radius: 0; }
 .md-duo.md-full .md-bar { display: none; }
-.md-duo.md-full .md-side { max-height: none; min-height: 0; overflow-y: auto; border-radius: 0; border-width: 0 0 0 1px;
+.md-duo.md-full .md-side { max-height: none; min-height: 0; overflow: hidden; border-radius: 0; border-width: 0 0 0 1px;
   padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 6px; }
 .md-duo.md-full .md-side-h { top: calc(-1 * max(6px, env(safe-area-inset-top))); }
 .md-duo.md-full .md-tl { font-size: 14px; }
-.md-duo.md-full .md-tl li { padding: 8px; }
+.md-duo.md-full .md-line { padding: 12px 8px; }
 @media (orientation: portrait) {
   .md-duo.md-full { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .md-duo.md-full .md-stage { padding-top: env(safe-area-inset-top); }
-  .md-duo.md-full .md-video { height: auto; max-height: 50vh; aspect-ratio: 16 / 9; }
+  .md-duo.md-full .md-stage { height: auto; }
+  .md-duo.md-full .md-video { height: min(35dvh, 300px); max-height: 35dvh; aspect-ratio: 16 / 9; }
   .md-duo.md-full .md-side { border-width: 1px 0 0; padding-top: 0; padding-left: max(6px, env(safe-area-inset-left)); }
   .md-duo.md-full .md-side-h { top: 0; }
 }
