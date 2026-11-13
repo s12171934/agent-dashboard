@@ -2349,7 +2349,6 @@ html.md-lock, html.md-lock body { overflow: hidden; }
   opacity: 0; pointer-events: none; transition: opacity .25s; -webkit-tap-highlight-color: transparent; }
 .md-duo.md-full .md-ov { display: grid; }
 .md-ov.on { opacity: 1; pointer-events: auto; }
-.md-duo.md-full .md-stage:has(.md-ov:not(.on)) { cursor: none; }
 .md-ov button { display: grid; place-items: center; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; font: inherit; }
 .md-ov svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .md-ov-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
