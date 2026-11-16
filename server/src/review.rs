@@ -1155,7 +1155,7 @@ pub fn collect(app: &App) -> Result<()> {
             let mut t = child.clone();
             merge(
                 &mut t,
-                &json!({"repos":repos,"gone":gone_rows,"review":review,"review_at":fm["review_at"],"review_sha":fm["review_sha"],"review_round":fm["review_round"],"step":note.map(|n|&n.0),"step_status":fm["status"],"notes":note.map(|n|&n.1),"test":test,"ship":app.state.read().unwrap().ship_jobs[key],"qa":qa}),
+                &json!({"repos":repos,"gone":gone_rows,"review":review,"review_at":fm["review_at"],"review_sha":if fm["review_sha"].is_object(){fm["review_sha"].clone()}else{json!({})},"review_round":fm["review_round"],"step":note.map(|n|&n.0),"step_status":fm["status"],"notes":note.map_or(json!([]),|n|json!(n.1)),"test":test,"ship":app.state.read().unwrap().ship_jobs[key],"qa":qa}),
             );
             if let Some(q) = t["qa"].as_object_mut() {
                 q.insert(
