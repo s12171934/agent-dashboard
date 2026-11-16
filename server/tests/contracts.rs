@@ -334,6 +334,62 @@ fn range_requests_cover_seek_and_suffix() {
     assert!(media::byte_range(100, Some("bytes=0-1,3-4")).is_err());
 }
 #[test]
+fn media_lead_reads_the_video_tracks_opening_empty_edit() {
+    fn mp4box(kind: &[u8], body: &[u8]) -> Vec<u8> {
+        let mut b = ((body.len() + 8) as u32).to_be_bytes().to_vec();
+        b.extend_from_slice(kind);
+        b.extend_from_slice(body);
+        b
+    }
+    let mut mvhd = vec![0u8; 12];
+    mvhd.extend_from_slice(&1000u32.to_be_bytes());
+    mvhd.extend_from_slice(&[0; 84]);
+    let elst = |entries: &[(u32, i32)]| {
+        let mut b = vec![0u8; 4];
+        b.extend_from_slice(&(entries.len() as u32).to_be_bytes());
+        for (d, m) in entries {
+            b.extend_from_slice(&d.to_be_bytes());
+            b.extend_from_slice(&m.to_be_bytes());
+            b.extend_from_slice(&[0, 1, 0, 0]);
+        }
+        mp4box(b"edts", &mp4box(b"elst", &b))
+    };
+    let trak = |handler: &[u8], edts: Vec<u8>| {
+        let mut hdlr = vec![0u8; 8];
+        hdlr.extend_from_slice(handler);
+        hdlr.extend_from_slice(&[0; 13]);
+        let mut t = edts;
+        t.extend(mp4box(b"mdia", &mp4box(b"hdlr", &hdlr)));
+        mp4box(b"trak", &t)
+    };
+    let file = |traks: Vec<Vec<u8>>| {
+        let mut moov = mp4box(b"mvhd", &mvhd);
+        traks.into_iter().for_each(|t| moov.extend(t));
+        let mut f = mp4box(b"ftyp", b"isom\0\0\0\0");
+        f.extend(mp4box(b"moov", &moov));
+        f.extend(mp4box(b"mdat", &[0; 32]));
+        f
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let write = |name: &str, bytes: Vec<u8>| {
+        let p = dir.path().join(name);
+        std::fs::write(&p, bytes).unwrap();
+        p
+    };
+    // audio first with its own gap, then the video's 115.2 s empty edit before its frames
+    let gap = write(
+        "gap.mp4",
+        file(vec![
+            trak(b"soun", elst(&[(500, -1), (900, 0)])),
+            trak(b"vide", elst(&[(115_200, -1), (113_200, 0)])),
+        ]),
+    );
+    assert_eq!(media::lead(&gap), 115.2);
+    let plain = write("plain.mp4", file(vec![trak(b"vide", elst(&[(57_600, 0)]))]));
+    assert_eq!(media::lead(&plain), 0.0);
+    assert_eq!(media::lead(&write("junk.mp4", b"not an mp4".to_vec())), 0.0);
+}
+#[test]
 fn host_and_origin_boundary() {
     let mut c = Config::default();
     c.origins.push("https://example.pages.dev".into());

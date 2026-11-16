@@ -7558,6 +7558,14 @@ function mdPlay(v, startAt) {
     <div class="md-side"></div></div>`;
   const video = box.querySelector('video'), side = box.querySelector('.md-side');
   video.defaultPlaybackRate = video.playbackRate = md.rate;
+  // A recording whose clock started before its first frame opens with an empty edit (the server's lead, seconds):
+  // the player shows nothing for that long, so it starts at the first frame and never goes back before it.
+  const lead = v.lead > 0.05 ? v.lead : 0;
+  if (lead) {
+    const clamp = () => { if (video.currentTime < lead - 0.05) video.currentTime = lead; };
+    video.addEventListener('seeked', clamp);
+    video.addEventListener('play', clamp);
+  }
   const speeds = box.querySelectorAll('.md-speed');
   speeds.forEach(select => select.addEventListener('change', () => {
     const rate = +select.value;
@@ -7682,7 +7690,10 @@ function mdPlay(v, startAt) {
   const skip = n => { video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + n)); };
   video.addEventListener('loadedmetadata', () => {
     const d = video.duration;
-    if (startAt != null) { video.currentTime = startAt; startAt = null; video.play().catch(() => {}); }
+    // the stacked layout sizes the picture's row by the recording's own shape (a phone recording stands tall)
+    if (video.videoWidth && video.videoHeight) duo.style.setProperty('--md-ar', (video.videoHeight / video.videoWidth).toFixed(4));
+    if (startAt != null) { video.currentTime = Math.max(startAt, lead); startAt = null; video.play().catch(() => {}); }
+    else if (lead && video.currentTime < lead) video.currentTime = lead;
     if (d) seek.parentElement.insertAdjacentHTML('beforeend', v.timeline.filter(r => r.t > 0 && r.t < d).map(r => `<i class="md-tick" style="left:${(r.t / d * 100).toFixed(2)}%"></i>`).join(''));
     video.ontimeupdate?.();
   });
@@ -7733,9 +7744,18 @@ function mdPlay(v, startAt) {
   };
   const gripPlace = () => {
     if (!duo.isConnected) return;
-    const wrap = box.closest('.md-wrap');
-    if (matchMedia('(max-width: 700px)').matches) wrap.style.removeProperty('--md-room');
-    else wrap.style.setProperty('--md-room', Math.max(280, innerHeight - (box.getBoundingClientRect().top + scrollY) - box.querySelector('.md-context').offsetHeight - 112) + 'px');
+    const wrap = box.closest('.md-wrap'), list = wrap.querySelector('.md-list');
+    if (matchMedia('(max-width: 700px)').matches) { wrap.style.removeProperty('--md-room'); wrap.style.removeProperty('--md-list-room'); }
+    else {
+      // Down to what covers the page's bottom: the web bar when it sits there, or the app's own tab bar
+      // (--native-bar), never a fixed guess, so the player and the list both end where the screen ends.
+      const dock = document.getElementById('dock'), dr = dock && getComputedStyle(dock).display !== 'none' ? dock.getBoundingClientRect() : null;
+      let reserve = Math.max(12, parseFloat(getComputedStyle(root).getPropertyValue('--native-bar')) || 0);
+      if (dr?.height && dr.top > innerHeight / 2) reserve = Math.max(reserve, innerHeight - dr.top + 8);
+      const room = el => Math.max(280, Math.floor(innerHeight - reserve - (el.getBoundingClientRect().top + scrollY))) + 'px';
+      wrap.style.setProperty('--md-room', room(duo));
+      wrap.style.setProperty('--md-list-room', room(list));
+    }
     swSet(md.sw?.[swKey()]);
     const beside = side.offsetLeft > stage.offsetLeft + 40 && side.offsetTop < stage.offsetTop + stage.offsetHeight
       && !root.dataset.posture && !matchMedia('(horizontal-viewport-segments: 2)').matches;
