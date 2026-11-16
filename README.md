@@ -211,6 +211,7 @@ apple/build.sh icons           # 앱 아이콘을 frontend/icons 에서 다시 �
 - **위젯(iPhone):** 결정 대기(선택지가 하나인 질문은 위젯 버튼으로 답함)·에이전트(상태별 수와 최근 에이전트)·테스트(실행 중인 테스트의 진행). 홈 화면과 잠금 화면에 둘 수 있다. 메트릭 서버의 `/api/glance`(수 KB 요약)를 읽고, 서버 주소는 앱이 키체인 공유 그룹으로 넘긴다(무료 팀은 App Group 을 쓸 수 없다). 누르면 앱이 `agentdash://` 로 그 화면이나 세션을 연다.
 - **공용 상태:** 서버의 `/api/decisions` 응답과 앱의 소비자가 같은 Rust 타입을 쓴다. Swift의 `DecisionCore`는 C ABI를 통해 첫 로드의 알림 억제, 새 질문·사라진 질문 판정, 일시적 사용 불가 시 마지막 정상 상태 보존을 요청한다. 서버 전환 시 상태를 초기화하고, 이전 서버에서 늦게 온 응답은 반영하지 않는다. HTTP 오류도 정상 상태로 처리하지 않는다.
 - **앱 복귀:** iPhone이 활성화되거나 Mac이 절전·비활성 상태에서 돌아오면 결정 감시 스트림을 새로 연결한다. 살아 있는 페이지에는 데이터 재연결을 요청하므로 열린 폼·영상·편집기를 다시 로드하지 않는다. 여러 Mac 창은 기존 공유 스트림 소유자에게 재연결을 요청한다. 일반 GET은 15초 제한을 두어 멈춘 요청이 후속 갱신을 계속 막지 않게 한다.
+- **iPhone 영상·PiP:** 앱 안에서는 WebKit 영상만 재생하고 PiP용 네이티브 플레이어는 일시정지 상태로 위치·배속을 준비한다. 앱이 비활성화되어 PiP가 시작할 때 재생을 넘기며, 복귀할 때는 네이티브 재생을 먼저 멈춘 뒤 웹 영상으로 돌려준다. 영상 변경·화면 이탈 시 기존 브리지와 PiP 준비를 해제한다.
 - **WebView 복구:** WebKit 콘텐츠 프로세스가 종료되면 활성 화면은 현재 URL(선택한 화면·세션 경로 포함)을 다시 로드하고, 비활성 화면은 복귀할 때 복구한다. 1분 내 자동 복구는 3회로 제한하며 수동 새로 고침은 제한을 초기화한다. 문서 재로드이므로 메모리에만 있던 입력·스크롤 상태까지 복원하는 것은 아니다.
 - **Rust 빌드:** `apple/build.sh`가 `apple/build-rust.sh`를 먼저 실행해 macOS(arm64·x86_64), iPhone(arm64), 시뮬레이터(arm64·x86_64)를 각각 컴파일하고 `apple/build/AgentDashboardCore.xcframework`를 만든다. 기기와 시뮬레이터는 별도 플랫폼 슬라이스다. 생성물은 git에서 제외한다. Rust 빌드 캐시는 `.tools/apple-rust`에 둔다.
 
@@ -220,6 +221,7 @@ apple/build-rust.sh
 server/atest run --label "공용 앱 코어" -- server/cargo test --locked --manifest-path "$PWD/client-core/Cargo.toml"
 server/atest run --label "Swift·Rust·WebKit" -- apple/test-core.sh
 server/atest run --label "프론트 복귀" -- node --test tests/frontend/api-resume.test.cjs
+server/atest run --label "영상 PiP 브리지" -- node --test tests/frontend/media-pip.test.cjs
 ```
 
 Swift 검증은 테스트용 통신·저장을 주입한다. 실제 키체인·앱 설정을 수정하지 않으며, WebKit 검증은 임시 로컬 페이지만 읽는다. 전체 앱은 Mac, iOS 시뮬레이터, 실기기용 빌드로 확인한다. 실기기 실행은 기존 팀 서명·설치 절차가 필요하다.
