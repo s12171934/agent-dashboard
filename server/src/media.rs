@@ -43,6 +43,114 @@ pub fn timeline(path: &Path) -> Vec<Value> {
         })
         .collect()
 }
+// The child boxes of an MP4 box's payload: (type, payload)
+fn boxes(b: &[u8]) -> Vec<(&[u8], &[u8])> {
+    let mut out = vec![];
+    let mut i = 0;
+    while i + 8 <= b.len() {
+        let size = u32::from_be_bytes(b[i..i + 4].try_into().unwrap()) as usize;
+        let (head, size) = match size {
+            1 if i + 16 <= b.len() => (
+                16,
+                u64::from_be_bytes(b[i + 8..i + 16].try_into().unwrap()) as usize,
+            ),
+            0 => (8, b.len() - i),
+            n => (8, n),
+        };
+        if size < head || i + size > b.len() {
+            break;
+        }
+        out.push((&b[i + 4..i + 8], &b[i + head..i + size]));
+        i += size;
+    }
+    out
+}
+fn child<'a>(b: &'a [u8], kind: &[u8]) -> Option<&'a [u8]> {
+    boxes(b)
+        .into_iter()
+        .find(|(k, _)| *k == kind)
+        .map(|(_, v)| v)
+}
+fn be(b: &[u8], at: usize, n: usize) -> Option<u64> {
+    let s = b.get(at..at + n)?;
+    Some(s.iter().fold(0u64, |a, &x| a << 8 | x as u64))
+}
+// Seconds of picture-less time before a recording's first frame: its video track's edit list may open with an empty
+// edit (a recorder whose clock started before its first frame), and players show nothing for that long.
+pub fn lead(path: &Path) -> f64 {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = fs::File::open(path) else {
+        return 0.0;
+    };
+    let mut moov = None;
+    let mut head = [0u8; 16];
+    while f.read_exact(&mut head[..8]).is_ok() {
+        let mut size = u32::from_be_bytes(head[..4].try_into().unwrap()) as u64;
+        let mut skip = 8;
+        if size == 1 {
+            if f.read_exact(&mut head[8..16]).is_err() {
+                break;
+            }
+            size = u64::from_be_bytes(head[8..16].try_into().unwrap());
+            skip = 16;
+        }
+        if &head[4..8] == b"moov" {
+            if size < skip || size - skip > 64 << 20 {
+                break;
+            }
+            let mut b = vec![0; (size - skip) as usize];
+            if f.read_exact(&mut b).is_ok() {
+                moov = Some(b);
+            }
+            break;
+        }
+        if size < skip || f.seek(SeekFrom::Current((size - skip) as i64)).is_err() {
+            break;
+        }
+    }
+    let Some(moov) = moov else {
+        return 0.0;
+    };
+    let scale = child(&moov, b"mvhd")
+        .and_then(|m| be(m, if m[0] == 1 { 20 } else { 12 }, 4))
+        .unwrap_or(0);
+    if scale == 0 {
+        return 0.0;
+    }
+    for (_, trak) in boxes(&moov).into_iter().filter(|(k, _)| *k == b"trak") {
+        let video = child(trak, b"mdia")
+            .and_then(|m| child(m, b"hdlr"))
+            .is_some_and(|h| h.get(8..12) == Some(b"vide"));
+        if !video {
+            continue;
+        }
+        let Some(elst) = child(trak, b"edts").and_then(|e| child(e, b"elst")) else {
+            return 0.0;
+        };
+        let wide = elst.first() == Some(&1);
+        let (n, step) = (
+            be(elst, 4, 4).unwrap_or(0) as usize,
+            if wide { 20 } else { 12 },
+        );
+        let mut empty = 0u64;
+        for i in 0..n {
+            let at = 8 + i * step;
+            let dur = be(elst, at, if wide { 8 } else { 4 });
+            let media = be(
+                elst,
+                at + if wide { 8 } else { 4 },
+                if wide { 8 } else { 4 },
+            );
+            let none = if wide { u64::MAX } else { u32::MAX as u64 };
+            match (dur, media) {
+                (Some(d), Some(m)) if m == none => empty += d,
+                _ => break,
+            }
+        }
+        return (empty as f64 / scale as f64 * 1000.0).round() / 1000.0;
+    }
+    0.0
+}
 pub fn captions(path: &Path) -> Vec<Value> {
     let mut p = path.with_extension("srt");
     if !p.is_file() {
@@ -163,7 +271,7 @@ pub fn list(app: &App) -> Value {
             .as_ref()
             .map(|m| &stem[..m.get(0).unwrap().start()])
             .unwrap_or(&stem);
-        videos.push(json!({"path":rel,"root":root,"name":name,"started":started,"size":fs::metadata(&p).map(|s|s.len()).unwrap_or(0),"mtime":mtime(&p),"kind":if root=="explainer-video"{"learn"}else{"qa"},"timeline":timeline(&p),"captions":captions(&p)}));
+        videos.push(json!({"path":rel,"root":root,"name":name,"started":started,"size":fs::metadata(&p).map(|s|s.len()).unwrap_or(0),"mtime":mtime(&p),"kind":if root=="explainer-video"{"learn"}else{"qa"},"timeline":timeline(&p),"captions":captions(&p),"lead":lead(&p)}));
     }
     let state = app.state.read().unwrap();
     classify(&mut videos, &state.projects, &state.reviews);

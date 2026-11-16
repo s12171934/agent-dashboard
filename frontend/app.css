@@ -2251,7 +2251,7 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 .md-wrap { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 18px; align-items: start; --md-room: clamp(420px, calc(100dvh - 235px), 1000px); }
 .md-wrap.md-folded { grid-template-columns: minmax(0, 1fr); }
 .md-wrap.md-folded .md-list { display: none; }
-.md-list { display: grid; gap: 6px; max-height: var(--md-room); overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px 8px 2px; scrollbar-gutter: stable; }
+.md-list { display: grid; gap: 6px; max-height: var(--md-list-room, var(--md-room)); overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px 8px 2px; scrollbar-gutter: stable; }
 .md-tools { align-items: center; }
 .md-tools .field { width: auto; max-width: 210px; min-width: 0; }
 .md-group, .md-ticket { min-width: 0; }
@@ -2342,7 +2342,10 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
   .md-context > .st { display: none; }
 }
 @container (max-width: 560px) {
-  .md-duo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .9fr) minmax(220px, 1.1fr); gap: 10px; }
+  /* the picture's row is as tall as the recording's shape needs at this width (--md-ar, height / width; the bar
+     under it 44px), up to 58% of the pair, and the timeline takes the rest — a short screen held sideways keeps a
+     usable picture instead of a sliver */
+  .md-duo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, min(calc(100cqw * var(--md-ar, .5625) + 44px), 58%)) minmax(160px, 1fr); gap: 10px; }
   .md-stage { height: 100%; }
   .md-video { min-height: 0; max-height: 100%; aspect-ratio: auto; }
   .md-bar { margin-top: 4px; gap: 6px; }
