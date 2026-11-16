@@ -2341,6 +2341,9 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
   .md-context .md-title { font-size: 15px; }
   .md-context > .st { display: none; }
 }
+/* a wide but short screen (the list starts folded there, MD_SHORT): the picture is held by its width, so the timeline
+   beside it is narrower and the picture taller */
+@media (min-width: 701px) and (max-height: 760px) { .md-duo { grid-template-columns: minmax(0, 1fr) var(--md-sw, minmax(260px, 32%)); } }
 @container (max-width: 560px) {
   /* the picture's row is as tall as the recording's shape needs at this width (--md-ar, height / width; the bar
      under it 44px), up to 58% of the pair, and the timeline takes the rest (210px at least: its head and a line or two) — a short screen held sideways keeps a
