@@ -165,32 +165,75 @@ fn hook(name: &str) -> Result<()> {
     }
     Ok(())
 }
+// The Summary tab of a QA test-case sheet. Two layouts are read:
+// - label/value pairs across a row (`버전,1.2,단말,iOS` · `총 TC,120,Pass,100`), the first of each label kept;
+// - a per-device table: a header row whose later cell is 「합계」 (`구분,Desktop,Mobile iOS Safari,합계`), then rows
+//   led by a label (`총 수행 건수,0,743,1486`) whose 합계 column is the value. The devices are the header's columns
+//   between the first and 합계. A blank row ends the table.
+// A cell that is itself a label is never taken as a value (a later table's header such as `우선순위,총 수행 건수,Pass,Fail`).
 pub fn parse_sheet(s: &str) -> Result<Value> {
     let labels = [
         ("버전", "version"),
         ("단말", "device"),
         ("작성자", "author"),
         ("테스터", "tester"),
+        ("담당 테스터", "tester"),
         ("테스트 일자", "period"),
         ("배포 내역", "release"),
         ("총 TC", "total"),
+        ("총 수행 건수", "total"),
         ("Pass", "pass"),
         ("Fail", "fail"),
         ("Blocked", "blocked"),
         ("Dropped", "dropped"),
         ("N-Test", "ntest"),
     ];
+    let field = |cell: &str| {
+        labels
+            .iter()
+            .find(|(label, _)| *label == cell.trim())
+            .map(|(_, f)| *f)
+    };
     let mut got = obj();
+    let mut sum_col: Option<usize> = None;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
         .from_reader(s.trim_start_matches('\u{feff}').as_bytes());
     for row in reader.records() {
         let row = row.map_err(|e| e.to_string())?;
-        for pair in row.iter().collect::<Vec<_>>().chunks_exact(2) {
-            if let Some((_, field)) = labels.iter().find(|(label, _)| *label == pair[0].trim()) {
-                if got[*field].is_null() {
-                    got[*field] = json!(pair[1].trim());
+        let cells = row.iter().map(str::trim).collect::<Vec<_>>();
+        if cells.iter().all(|c| c.is_empty()) {
+            sum_col = None;
+            continue;
+        }
+        if let Some(i) = cells
+            .iter()
+            .skip(1)
+            .position(|c| *c == "합계")
+            .map(|i| i + 1)
+        {
+            sum_col = Some(i);
+            let devices = cells[1..i]
+                .iter()
+                .filter(|c| !c.is_empty())
+                .copied()
+                .collect::<Vec<_>>();
+            if got["device"].is_null() && !devices.is_empty() {
+                got["device"] = json!(devices.join(" · "));
+            }
+            continue;
+        }
+        if let (Some(col), Some(f)) = (sum_col, field(cells[0])) {
+            if got[f].is_null() {
+                got[f] = json!(cells.get(col).copied().unwrap_or(""));
+            }
+            continue;
+        }
+        for pair in cells.chunks_exact(2) {
+            if let Some(f) = field(pair[0]) {
+                if got[f].is_null() && field(pair[1]).is_none() {
+                    got[f] = json!(pair[1]);
                 }
             }
         }

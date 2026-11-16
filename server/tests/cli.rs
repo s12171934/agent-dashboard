@@ -144,6 +144,69 @@ fn sheet_parser_handles_quoted_cells() {
     assert_eq!(p["device"], "phone, tablet");
 }
 #[test]
+fn sheet_parser_reads_pair_layout_without_taking_labels_as_values() {
+    // the older Summary tab (PSQ-1096): label/value pairs, 「총 TC」
+    let s = "Test Summary,,,\n버전,2.3,배포 내역,웹 정식\n테스트 일자,26.10.01~26.10.05,작성자,kim\n단말,iOS,테스터,lee\n총 TC,320,Pass,300\nFail,5,Blocked,5\nDropped,0,N-Test,10\n,,,\n우선순위,총 TC,Pass,Fail\nP0,40,40,0\n";
+    let p = agent_dashboard::cli::parse_sheet(s).unwrap();
+    assert_eq!(
+        (
+            p["total"].clone(),
+            p["pass"].clone(),
+            p["fail"].clone(),
+            p["blocked"].clone(),
+            p["dropped"].clone(),
+            p["ntest"].clone()
+        ),
+        (
+            json!(320),
+            json!(300),
+            json!(5),
+            json!(5),
+            json!(0),
+            json!(10)
+        )
+    );
+    assert_eq!(p["version"], "2.3");
+    assert_eq!(p["release"], "웹 정식");
+    assert_eq!(p["period"], "26.10.01~26.10.05");
+    assert_eq!(p["author"], "kim");
+    assert_eq!(p["device"], "iOS");
+    assert_eq!(p["tester"], "lee");
+}
+#[test]
+fn sheet_parser_reads_per_device_table_by_its_total_column() {
+    // the PSQ-1224 Summary tab: 「총 수행 건수」 in a per-device table whose 합계 column holds the value
+    let s = "Test Summary,,,,\n,,,,\n1. 테스트 개요,,,,\n버전,\"[PRD 31, 49, 50, 48]\",배포 내역,가이디드·iBT TOEFL 모바일,\n테스트 일자,26.11.17~26.11.25,작성자,jero,\n,,,,\n2. 테스트 결과 요약,,,,\n구분,Desktop,Mobile iOS Safari,Mobile AOS Chrome,합계\n담당 테스터,,,,\n총 수행 건수,0,743,743,1486\nPass,0,0,0,0\nFail,0,0,0,0\nBlocked,0,0,0,0\nDropped,0,0,0,0\nN-Test,0,743,743,1486\n수행률,-,0.00%,0.00%,0.00%\n,,,,\n3. 우선순위별 결과 (TC 기준),,,,\n우선순위,총 수행 건수,Pass,Fail,미완료 (Blocked·N-Test)\nP0,168,0,0,168\n합계,1486,0,0,1486\n";
+    let p = agent_dashboard::cli::parse_sheet(s).unwrap();
+    assert_eq!(
+        (
+            p["total"].clone(),
+            p["pass"].clone(),
+            p["fail"].clone(),
+            p["blocked"].clone(),
+            p["dropped"].clone(),
+            p["ntest"].clone()
+        ),
+        (
+            json!(1486),
+            json!(0),
+            json!(0),
+            json!(0),
+            json!(0),
+            json!(1486)
+        )
+    );
+    assert_eq!(p["version"], "[PRD 31, 49, 50, 48]");
+    assert_eq!(p["release"], "가이디드·iBT TOEFL 모바일");
+    assert_eq!(p["period"], "26.11.17~26.11.25");
+    assert_eq!(p["author"], "jero");
+    assert_eq!(p["tester"], "");
+    assert_eq!(
+        p["device"],
+        "Desktop · Mobile iOS Safari · Mobile AOS Chrome"
+    );
+}
+#[test]
 fn data_export_import_retains_state_and_backs_up() {
     let d = tempfile::tempdir().unwrap();
     let root = d.path();
