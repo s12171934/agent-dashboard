@@ -2662,7 +2662,7 @@ function wtActs(t, set) {
 function wtTicket(t, set, ro) {
   const [cls, lbl] = WT_REVIEW[t.review];
   const live = state.sessions.filter(s => OPEN(status(s)) && t.repos.some(r => s.place?.path === r.path));
-  const notes = t.notes.map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
+  const notes = (t.notes || []).map(p => `<a href="${obsLink(p)}" title="${esc(p.split('/').pop())}">${esc(cut(p.split('/').pop().replace(/\.md$/, '').replace(/^.*\b[A-Z]+-\d+\s*/, ''), 30) || '노트')}</a>`).join(' · ');
   return `<div class="rv-tk ${t.review}" data-wt-tk="${esc(t.key)}">
     <div class="rv-head">
       <span class="tkc ${cls}"><i>${TK_IC[cls]}</i>${lbl}${t.review_at && t.review !== 'pending' ? ' · ' + esc(t.review_at) : ''}${t.review === 'reopened' ? `<span title="리뷰 뒤 드라이버가 재오픈으로 ${t.qa?.round}회차를 기동했습니다"> (${t.review_round ? esc(t.review_round) + '회차' : '이전 회차'} 리뷰)</span>` : ''}</span>
@@ -7337,7 +7337,7 @@ if (!Array.isArray(md.closed)) md.closed = [];
 md.rate = MD_RATES.includes(md.rate) ? md.rate : 1;
 // full screen with the timeline (mdPlay sets them for the recording shown): mdFull(on), and the fullscreenchange handler
 let mdFull = () => {}, mdFsChange = () => {}, mdFsWas = false, mdPosture = () => {};
-// iPhone app: Picture in Picture as the app is put away. The app's own muted player follows the video shown here
+// iPhone app: Picture in Picture as the app is put away. The app's own paused player follows the video shown here
 // (mdPip, {pip} messages) and AVKit starts PiP from it; it calls adashPip('start') to pause this one while PiP plays,
 // and adashPip('stop', t, playing) when the app is back (or PiP closed) to go on from PiP's position.
 let mdPipVideo = null;
@@ -7350,7 +7350,7 @@ window.adashPip = (what, t, playing) => {
 };
 function mdPip(video) {
   const post = window.webkit?.messageHandlers?.adash;
-  if (window.adashApp !== 'ios' || !post) return;
+  if (window.adashApp !== 'ios' || !post) return () => {};
   mdPipVideo = video;
   let sent = 0;
   // removed from the page (another recording, the list rebuilt) the video pauses: src '' then lets the app's go
@@ -7359,8 +7359,17 @@ function mdPip(video) {
     const r = video.getBoundingClientRect(), on = video.isConnected;
     try { post.postMessage({ pip: { src: on ? video.currentSrc : '', t: video.currentTime, playing: on && !video.paused && !video.ended, rate: video.playbackRate, rect: [r.x, r.y, r.width, r.height] } }); } catch {}
   };
-  for (const ev of ['loadedmetadata', 'play', 'pause', 'seeked', 'ratechange', 'ended']) video.addEventListener(ev, tell);
-  video.addEventListener('timeupdate', () => { if (Date.now() - sent > 1000) tell(); });
+  const events = ['loadedmetadata', 'play', 'pause', 'seeked', 'ratechange', 'ended'];
+  const time = () => { if (Date.now() - sent > 1000) tell(); };
+  for (const ev of events) video.addEventListener(ev, tell);
+  video.addEventListener('timeupdate', time);
+  return () => {
+    for (const ev of events) video.removeEventListener(ev, tell);
+    video.removeEventListener('timeupdate', time);
+    if (mdPipVideo !== video) return;
+    mdPipVideo = null;
+    try { post.postMessage({ pip: { src: '', t: 0, playing: false, rate: 1, rect: [0, 0, 0, 0] } }); } catch {}
+  };
 }
 // half folded (<html data-posture>, ds fold.js — on iPhone Duo the app passes the hinge, WebKit has no viewport segments)
 addEventListener('ds-posture', () => { if (route().v === 'media') mdPosture(); });
@@ -7579,7 +7588,7 @@ function mdPlay(v, startAt) {
     md.rate = rate;
     mdSave();
   });
-  mdPip(video);
+  const pipCleanup = mdPip(video);
   let rows = [], pausedFollow = false;
   // The side list: the timeline, or the captions (the narration, one line a cue) when there are any — a tab each when
   // both are there. The search's words are marked in it, and its lines that hold one are tinted.
@@ -7787,7 +7796,7 @@ function mdPlay(v, startAt) {
   resize.observe(box);
   mutation.observe(duo, { attributes: true, attributeFilter: ['class'] });
   addEventListener('resize', gripPlace);
-  mdCleanup = () => { resize.disconnect(); mutation.disconnect(); removeEventListener('resize', gripPlace); clearTimeout(ovT); };
+  mdCleanup = () => { pipCleanup(); resize.disconnect(); mutation.disconnect(); removeEventListener('resize', gripPlace); clearTimeout(ovT); };
   gripPlace();
   mdPosture();  // half folded already: open the pair now (after the controls above exist)
   // the line now playing: the last one whose time has passed
