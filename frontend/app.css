@@ -2343,9 +2343,9 @@ dialog.dialog.chat-dlg { width: min(560px, calc(100% - 2 * var(--gutter))); max-
 }
 @container (max-width: 560px) {
   /* the picture's row is as tall as the recording's shape needs at this width (--md-ar, height / width; the bar
-     under it 44px), up to 58% of the pair, and the timeline takes the rest — a short screen held sideways keeps a
+     under it 44px), up to 58% of the pair, and the timeline takes the rest (210px at least: its head and a line or two) — a short screen held sideways keeps a
      usable picture instead of a sliver */
-  .md-duo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, min(calc(100cqw * var(--md-ar, .5625) + 44px), 58%)) minmax(160px, 1fr); gap: 10px; }
+  .md-duo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, min(calc(100cqw * var(--md-ar, .5625) + 44px), 58%, calc(100% - 220px))) minmax(210px, 1fr); gap: 10px; }
   .md-stage { height: 100%; }
   .md-video { min-height: 0; max-height: 100%; aspect-ratio: auto; }
   .md-bar { margin-top: 4px; gap: 6px; }
