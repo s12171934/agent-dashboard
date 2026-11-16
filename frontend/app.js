@@ -9,7 +9,8 @@ const narrow = () => innerWidth <= 700 && !isFold();
 // Reuse Intl formatters: constructing one for every card dominated large mobile refreshes.
 const timeFmt = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const dateTimeFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-const hhmm = ts => ts ? timeFmt.format(new Date(ts)) : '';
+// '' for a missing or unparsable time: a bad value in one row must not throw the whole screen's render
+const hhmm = ts => { const d = ts ? new Date(ts) : null; return d && !isNaN(d) ? timeFmt.format(d) : ''; };
 const ago = ts => { if (!ts) return ''; const s = (Date.now() - new Date(ts)) / 1000; return s < 60 ? Math.max(0, Math.round(s)) + '초 전' : s < 3600 ? Math.round(s / 60) + '분 전' : s < 86400 ? Math.round(s / 3600) + '시간 전' : Math.round(s / 86400) + '일 전'; };
 const toDate = a => new Date(a.includes('T') ? a : a.replace(' ', 'T') + 'Z');
 const human = sec => sec < 60 ? Math.round(sec) + '초' : sec < 3600 ? Math.round(sec / 60) + '분' : sec < 86400 ? `${Math.floor(sec / 3600)}시간 ${Math.round(sec % 3600 / 60)}분` : `${Math.floor(sec / 86400)}일 ${Math.round(sec % 86400 / 3600)}시간`;
@@ -2618,7 +2619,7 @@ function qaMore(t, set) {
   return items ? `<details class="qa-more"><summary class="act big" title="코디네이터 제어">⋯</summary><div>${items}</div></details>` : '';
 }
 function wtRepo(t, r) {
-  const rs = t.review_sha[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
+  const rs = (t.review_sha || {})[r.repo], moved = t.review !== 'pending' && rs && r.head && !r.head.startsWith(rs);
   const pr = r.pr ? ` <a href="${esc(r.pr.url)}" target="_blank" rel="noopener" title="PR ${esc(r.pr.state || '')}">#${r.pr.number}</a>` : '';
   const diff = r.ahead != null ? `<span><b>+${r.ahead}</b> 커밋 · <b>${r.files}</b> 파일 <span class="rv-ins">+${r.ins}</span> <span class="rv-del">−${r.dels}</span></span>` : '<span class="st">비교 불가 (베이스 없음)</span>';
   return `<div class="rv-repo">
@@ -2681,7 +2682,7 @@ function wtTicket(t, set, ro) {
   </div>`;
 }
 async function renderWorktrees() {
-  if (wtData.at !== state.reviews_at) { try { const r = await api.reviews(); wtData = { at: state.reviews_at, sets: r?.sets || [], jira: r?.jira || '' }; } catch { wtData.at = undefined; } }
+  if (wtData.at !== state.reviews_at) { try { const r = await api.reviews(); wtData = { at: state.reviews_at, sets: r?.sets || [], jira: r?.jira || '', updated: r?.updated || null }; } catch { wtData.at = undefined; } }
   const save = () => { try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} };
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
@@ -2738,7 +2739,7 @@ async function renderWorktrees() {
   const tip = $('#tip');
   $('#wt-body').querySelectorAll('.qa-stats').forEach(d => { const days = qaStatsDays[d.dataset.set] || [];
     d.querySelectorAll('[data-qs]').forEach(c => { c.onmousemove = e => tip.show(days[+c.dataset.qs], e); c.onmouseleave = () => tip.hide(); }); });
-  if (wtData.at) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.at)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
+  if (wtData.updated) $('#wt-body').insertAdjacentHTML('beforeend', `<div class="st" style="margin-top:10px">갱신 ${hhmm(wtData.updated)} · 워크트리·git 30초, Jira 5분, PR 10분마다. 베이스는 로컬에 받아 둔 origin 브랜치 기준입니다 (fetch 하지 않음).</div>`);
 }
 async function qaClick(b) {
   const { qaAuto, qaTk, qaSet, epic, srv, id, key } = b.dataset, txt = b.textContent;
@@ -3096,7 +3097,7 @@ let rvLoad = null, rvFailed = null;
 function needReviews() {
   if (wtData.at === state.reviews_at || rvLoad || rvFailed === state.reviews_at) return;
   const want = state.reviews_at;
-  rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '' }; })
+  rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '', updated: r?.updated || null }; })
     .catch(() => { rvFailed = want; })
     .finally(() => { rvLoad = null; if (route().v === 'home' || route().v === 'agents' && (charMode || ['map', 'tl'].includes(agView))) render(); });
 }
@@ -7427,6 +7428,10 @@ const mdClock = t => `${t >= 3600 ? Math.floor(t / 3600) + ':' : ''}${String(Mat
 const mdSize = n => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
 const mdProject = v => v.project || (v.kind === 'learn' ? '학습 영상' : '프로젝트 미분류');
 const mdRecent = v => Date.parse(v.started?.replace(' ', 'T')) / 1000 || Number(v.mtime) || 0;
+// A wide but short screen (a foldable opened and held sideways, a tablet in landscape): beside the list the player
+// and the timeline stack in what height is left under the page's head, and the picture shrinks to a strip. Such a
+// screen opens with the list folded, as a phone does, so the two sit side by side and the picture takes the height.
+const MD_SHORT = matchMedia('(min-width: 701px) and (max-height: 760px)');
 async function renderMedia(reload) {
   if (mdMounted && !reload) return;
   if (!mdMounted) $('#view').innerHTML = `<div class="sec-h"><h2>녹화 영상</h2><span>영상을 찾고, 타임라인에서 원하는 장면으로 이동하세요.</span></div>
@@ -7435,7 +7440,7 @@ async function renderMedia(reload) {
       <input type="search" id="md-q" class="md-q" placeholder="검색 — 프로젝트·티켓·이름·타임라인·자막" aria-label="녹화 검색" value="${esc(md.q)}">
       <select class="field" id="md-project" aria-label="영상 프로젝트"></select>
       <select class="field" id="md-order" aria-label="영상 정렬"><option value="recent">최근 영상순</option><option value="name">이름순</option><option value="group">프로젝트·티켓별</option></select>
-      <label class="st"><input type="checkbox" id="md-fold"${md.fold ? ' checked' : ''}> 목록 접기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
+      <label class="st"><input type="checkbox" id="md-fold"${md.fold || MD_SHORT.matches ? ' checked' : ''}> 목록 접기</label><span class="st" id="md-sum"></span></div><div id="md-body"><div class="empty">불러오는 중…</div></div>`;
   mdMounted = true;
   $('#md-reload').onclick = async e => { e.target.disabled = true; await renderMedia(true); e.target.disabled = false; };
   $('#md-fold').onchange = e => { md.fold = e.target.checked; mdSave(); $('#md-body .md-wrap')?.classList.toggle('md-folded', md.fold); };
@@ -7459,15 +7464,17 @@ async function renderMedia(reload) {
   }
   const cur = vs.find(v => mdKey(v) === mdSel) || [...vs].sort((a, b) => mdRecent(b) - mdRecent(a))[0];
   mdSel = mdKey(cur);
-  $('#md-body').innerHTML = `<div class="md-wrap${md.fold ? ' md-folded' : ''}"><div class="md-list" aria-label="프로젝트·티켓별 녹화 목록"></div>
+  const folded = md.fold || $('#md-fold').checked;
+  $('#md-body').innerHTML = `<div class="md-wrap${folded ? ' md-folded' : ''}"><div class="md-list" aria-label="프로젝트·티켓별 녹화 목록"></div>
     <div class="md-main" id="md-main"></div></div>`
     + (mdData.missing || []).map(m => `<div class="rv-err">찾을 수 없음: ${esc(m.path)}</div>`).join('');
   // a recording opens it; a hit under it opens it at that line (or only seeks when it is already the one shown)
   const focusPlayer = () => {
-    if (!matchMedia('(max-width: 700px)').matches) return;
+    const phone = matchMedia('(max-width: 700px)').matches;
+    if (!phone && !MD_SHORT.matches) return;
     md.fold = true; $('#md-fold').checked = true; mdSave();
     $('#md-body .md-wrap').classList.add('md-folded');
-    $('#md-main').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (phone) $('#md-main').scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
   $('#md-body').querySelector('.md-list').onclick = e => {
     const b = e.target.closest('.md-item, .md-hit');
