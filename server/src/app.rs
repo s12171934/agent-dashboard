@@ -222,14 +222,13 @@ impl App {
             self.state.write().unwrap().sessions.insert(p, session);
         }
         let mut hooks = obj();
-        let raw =
-            read_json(home().join("Library/Application Support/orca/agent-hooks/last-status.json"));
-        if let Some(entries) = raw["entries"].as_object() {
-            for e in entries.values() {
-                let id = text(&e["providerSession"]["id"]);
-                if !id.is_empty() && e["payload"]["state"].is_string() {
-                    hooks[id] = json!({"state":e["payload"]["state"],"mode":e["payload"]["workingMode"],"at":number(&e["receivedAt"])/1000.,"pane":e["paneKey"]});
-                }
+        let mut entries =
+            orca_hook_entries(&home().join("Library/Application Support/orca/agent-hooks"));
+        entries.sort_by(|a, b| number(&a["receivedAt"]).total_cmp(&number(&b["receivedAt"])));
+        for e in &entries {
+            let id = text(&e["providerSession"]["id"]);
+            if !id.is_empty() && e["payload"]["state"].is_string() {
+                hooks[id] = json!({"state":e["payload"]["state"],"mode":e["payload"]["workingMode"],"at":number(&e["receivedAt"])/1000.,"pane":e["paneKey"]});
             }
         }
         let mut s = self.state.write().unwrap();
@@ -769,4 +768,72 @@ fn lite_orca(o: &Value) -> Value {
         *w = json!({"taskId":w["taskId"],"runId":w["runId"],"dispatchStatus":w["dispatchStatus"],"model":w["projection"]["provider"]["model"].as_str().or(w["projection"]["provider"]["id"].as_str())});
     }
     o
+}
+/// Orca's latest hook status per pane. Orca 1.x keeps it in `last-status.db`
+/// (rows keyed `entry\0<paneKey>`); older builds wrote `last-status.json`.
+/// Losing this source unlinks sessions from their terminals, which then show up
+/// as duplicate "프롬프트 입력 대기" rows while the agent is actually working.
+pub(crate) fn orca_hook_entries(dir: &Path) -> Vec<Value> {
+    let mut out = vec![];
+    let db = dir.join("last-status.db");
+    if db.is_file() {
+        match command(
+            "sqlite3",
+            &[
+                "-readonly",
+                "-json",
+                &db.to_string_lossy(),
+                "select value from rows where key like 'entry%'",
+            ],
+            None,
+            5,
+        ) {
+            Ok(s) if !s.trim().is_empty() => {
+                let rows: Value = serde_json::from_str(&s).unwrap_or(Value::Null);
+                out.extend(
+                    array(&rows)
+                        .iter()
+                        .filter_map(|r| serde_json::from_str::<Value>(text(&r["value"])).ok()),
+                );
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("orca hook status: {e}"),
+        }
+    }
+    let raw = read_json(dir.join("last-status.json"));
+    if let Some(entries) = raw["entries"].as_object() {
+        out.extend(entries.values().cloned());
+    }
+    out
+}
+#[cfg(test)]
+mod hook_tests {
+    use super::*;
+    #[test]
+    fn reads_hook_entries_from_sqlite_and_legacy_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = json!({"paneKey":"tab:leaf","providerSession":{"id":"s1"},"payload":{"state":"working"},"receivedAt":1000});
+        let sql = format!(
+            "create table rows(key text primary key, seq integer not null, value text not null);\
+             insert into rows values('entry' || char(0) || 'tab:leaf', 1, '{}');\
+             insert into rows values('commitment' || char(0) || 'tab:leaf', 2, '{{}}');",
+            entry.to_string().replace('\'', "''")
+        );
+        command(
+            "sqlite3",
+            &[&dir.path().join("last-status.db").to_string_lossy(), &sql],
+            None,
+            5,
+        )
+        .unwrap();
+        save_json(
+            dir.path().join("last-status.json"),
+            &json!({"entries":{"x":{"providerSession":{"id":"s2"},"payload":{"state":"done"}}}}),
+        )
+        .unwrap();
+        let got = orca_hook_entries(dir.path());
+        let ids: Vec<_> = got.iter().map(|e| text(&e["providerSession"]["id"])).collect();
+        assert_eq!(ids, ["s1", "s2"]);
+        assert_eq!(got[0]["paneKey"], "tab:leaf");
+    }
 }
