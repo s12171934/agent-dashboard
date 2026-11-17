@@ -294,7 +294,7 @@ fn media_entry(arg: &str) -> Option<String> {
         let p = real(arg);
         let parent = p.parent()?;
         let movie = home().join("Movies");
-        let root = ["ego-record", "aside-record", "explainer-video"]
+        let root = crate::media::ROOTS
             .into_iter()
             .find(|r| real(movie.join(r)) == parent)?;
         format!("{root}/{}", p.file_name()?.to_string_lossy())
@@ -302,7 +302,7 @@ fn media_entry(arg: &str) -> Option<String> {
         arg.into()
     };
     let (root, name) = rel.split_once('/')?;
-    if !["ego-record", "aside-record", "explainer-video"].contains(&root)
+    if !crate::media::ROOTS.contains(&root)
         || !name.ends_with(".mp4")
         || name.contains('/')
         || name.starts_with('.')
