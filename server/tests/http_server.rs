@@ -65,9 +65,17 @@ esac
     let movie = d.path().join("Movies/ego-record");
     fs::create_dir_all(&movie).unwrap();
     fs::write(movie.join("fixture.mp4"), b"0123456789").unwrap();
+    let mobile = d.path().join("Movies/mobile-record");
+    fs::create_dir_all(&mobile).unwrap();
+    fs::write(mobile.join("PSQ-1 iOS S1 20261117-1546.mp4"), b"mobile").unwrap();
+    fs::write(
+        mobile.join("PSQ-1 iOS S1 20261117-1546.timeline.txt"),
+        "# 머리말\n00:05 tap\n01:02 S1 입력란 탭\nS2 위로 스와이프 9s\n",
+    )
+    .unwrap();
     save_json(
         data.join("media.json"),
-        &json!({"published":["ego-record/fixture.mp4"]}),
+        &json!({"published":["ego-record/fixture.mp4","mobile-record/PSQ-1 iOS S1 20261117-1546.mp4"]}),
     )
     .unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_agent-dashboard"));
@@ -201,6 +209,44 @@ fn media_stream_supports_ranges_and_rejects_escape() {
         .send()
         .unwrap();
     assert_eq!(r.status(), 404);
+}
+#[test]
+fn media_lists_and_streams_mobile_recordings() {
+    let s = server();
+    let client = reqwest::blocking::Client::new();
+    let list: Value = client
+        .get(format!("{}/api/media", s.base))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    let v = list["videos"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["root"] == "mobile-record")
+        .expect("mobile-record video listed");
+    assert_eq!(v["name"], "PSQ-1 iOS S1");
+    assert_eq!(v["started"], "2026-11-17 15:46:00");
+    assert_eq!(v["kind"], "qa");
+    assert_eq!(
+        v["timeline"],
+        json!([
+            {"t":5,"kind":"tap","text":""},
+            {"t":62,"kind":"S1","text":"입력란 탭"},
+            {"t":9,"kind":"S2","text":"위로 스와이프"}
+        ])
+    );
+    assert_eq!(list["missing"], json!([]));
+    let r = client
+        .get(format!(
+            "{}/api/media/file?path=mobile-record%2FPSQ-1%20iOS%20S1%2020261117-1546.mp4",
+            s.base
+        ))
+        .send()
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.bytes().unwrap().as_ref(), b"mobile");
 }
 #[test]
 fn state_delta_and_flow_acknowledgement() {

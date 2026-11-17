@@ -6,6 +6,14 @@ use std::{
     path::{Path, PathBuf},
 };
 use unicode_normalization::UnicodeNormalization;
+// The ~/Movies folders whose recordings media.json may publish: the record skills' (ego-record, aside-record,
+// mobile-record) and the explainer videos.
+pub const ROOTS: [&str; 4] = [
+    "ego-record",
+    "aside-record",
+    "mobile-record",
+    "explainer-video",
+];
 pub fn resolve(config: &Config, rel: &str) -> Option<PathBuf> {
     let rel = rel.nfc().collect::<String>();
     let rel = rel.as_str();
@@ -17,7 +25,7 @@ pub fn resolve(config: &Config, rel: &str) -> Option<PathBuf> {
         return None;
     }
     let (root, name) = rel.split_once('/')?;
-    if !["ego-record", "aside-record", "explainer-video"].contains(&root)
+    if !ROOTS.contains(&root)
         || name.contains('/')
         || name.starts_with('.')
         || !name.ends_with(".mp4")
@@ -28,18 +36,25 @@ pub fn resolve(config: &Config, rel: &str) -> Option<PathBuf> {
     let p = real(base.join(name));
     (p.parent() == Some(base.as_path()) && p.is_file()).then_some(p)
 }
+// A recording's .timeline.txt: "[H:]MM:SS kind text" lines (the text may be absent: mobile-record's runner writes
+// one word per action), or "kind text Ns" with the seconds at the end (hand-written retake notes).
 pub fn timeline(path: &Path) -> Vec<Value> {
     fs::read_to_string(path.with_extension("timeline.txt"))
         .unwrap_or_default()
         .lines()
         .filter_map(|s| {
-            let c = rx(r"^(?:(\d+):)?(\d{1,2}):(\d{2})\s+(\S+)\s+(.*)$").captures(s.trim())?;
-            let n = |i| {
-                c.get(i)
-                    .and_then(|m| m.as_str().parse::<u64>().ok())
-                    .unwrap_or(0)
-            };
-            Some(json!({"t":n(1)*3600+n(2)*60+n(3),"kind":&c[4],"text":c[5].trim()}))
+            let s = s.trim();
+            if let Some(c) = rx(r"^(?:(\d+):)?(\d{1,2}):(\d{2})\s+(\S+)(?:\s+(.*))?$").captures(s) {
+                let n = |i| {
+                    c.get(i)
+                        .and_then(|m| m.as_str().parse::<u64>().ok())
+                        .unwrap_or(0)
+                };
+                let text = c.get(5).map_or("", |m| m.as_str().trim());
+                return Some(json!({"t":n(1)*3600+n(2)*60+n(3),"kind":&c[4],"text":text}));
+            }
+            let c = rx(r"^(\S+)\s+(.*?)\s+(\d+)s$").captures(s)?;
+            Some(json!({"t":c[3].parse::<u64>().ok()?,"kind":&c[1],"text":c[2].trim()}))
         })
         .collect()
 }
@@ -255,16 +270,18 @@ pub fn list(app: &App) -> Value {
         };
         let root = rel.split('/').next().unwrap();
         let stem = p.file_stem().unwrap_or_default().to_string_lossy();
-        let m = rx(r"\s(\d{8}-\d{6})(?:-\d+)?$").captures(&stem);
+        // "<name> YYYYmmdd-HHMMSS" (mobile-record leaves the seconds out: "YYYYmmdd-HHMM")
+        let m = rx(r"\s(\d{8}-\d{4}(?:\d{2})?)(?:-\d+)?$").captures(&stem);
         let started = m.as_ref().map(|m| {
+            let t = &m[1];
             format!(
                 "{}-{}-{} {}:{}:{}",
-                &m[1][..4],
-                &m[1][4..6],
-                &m[1][6..8],
-                &m[1][9..11],
-                &m[1][11..13],
-                &m[1][13..]
+                &t[..4],
+                &t[4..6],
+                &t[6..8],
+                &t[9..11],
+                &t[11..13],
+                if t.len() > 13 { &t[13..] } else { "00" }
             )
         });
         let name = m
