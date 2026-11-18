@@ -156,7 +156,7 @@ const decisions = (() => {
 // the recommended option (or its own call) and was asked to write its pick down; the server shows that line once the
 // transcript has it (r.chosen), else the recommended options it worked out (r.recommended). 「확인」 marks an item
 // read. Picking other answers and 「세션에 바꾸라고 알리기」 has the server send the session a follow-up message
-// (api.inbox) and drop the item; an item whose send failed can be deleted. Cards are built once per item, like the
+// (api.inbox) and drop the item; 「삭제」 drops an item from the 메일함 straight away. Cards are built once per item, like the
 // 결정 버튼 cards.
 const inbox = (() => {
   const box = document.getElementById('inbox');
@@ -170,7 +170,6 @@ const inbox = (() => {
     const st = c.el.querySelector('.dc-status');
     st.textContent = text || '';
     st.classList.toggle('err', !!err);
-    c.el.querySelector('.dc-del').hidden = !err;
   }
 
   async function act(c, action) {
@@ -217,8 +216,8 @@ const inbox = (() => {
           ${o.description ? `<span class="dc-desc">${esc(o.description)}</span>` : ''}</button>`).join('')}</div>
         ${q.multiSelect ? '' : '<form class="dc-other"><input placeholder="직접 입력 (기타)" autocomplete="off"></form>'}
       </div>`).join('')}
-      <div class="dc-actions"><button class="dc-submit" disabled>세션에 바꾸라고 알리기</button><button class="dc-release ib-read"></button></div>
-      <div class="dc-foot"><div class="dc-status"></div><button class="dc-release dc-del" hidden>메일함에서 삭제</button></div>`;
+      <div class="dc-actions"><button class="dc-submit" disabled>세션에 바꾸라고 알리기</button><button class="dc-release ib-read"></button><button class="dc-release dc-del">삭제</button></div>
+      <div class="dc-status"></div>`;
     const c = { el, r, ans: r.questions.map(q => q.multiSelect ? new Set() : {}) };
     el.querySelectorAll('.dc-q').forEach(qel => {
       const qi = +qel.dataset.qi, q = r.questions[qi];
