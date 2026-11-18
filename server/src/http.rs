@@ -2,7 +2,7 @@ use crate::{
     app::App,
     archive, chars,
     core::*,
-    decisions, designs, glance, impl_progress, interactions, media, projects, review,
+    decisions, designs, devices, glance, impl_progress, interactions, media, projects, review,
     sessions::{Session, rx},
     terminals, usage, vscode, worktrees,
 };
@@ -57,9 +57,21 @@ pub fn local(h: &HeaderMap) -> bool {
         && !h.contains_key("x-forwarded-for")
 }
 pub fn router(app: App) -> Router {
+    use tower_http::compression::Predicate;
     Router::new()
         .fallback(handle)
-        .layer(tower_http::compression::CompressionLayer::new().gzip(true))
+        // the device screen (multipart/x-mixed-replace) must reach the viewer frame by frame, not gzip-buffered
+        .layer(
+            tower_http::compression::CompressionLayer::new()
+                .gzip(true)
+                .compress_when(
+                    tower_http::compression::predicate::DefaultPredicate::new().and(
+                        tower_http::compression::predicate::NotForContentType::const_new(
+                            "multipart/x-mixed-replace",
+                        ),
+                    ),
+                ),
+        )
         .with_state(app)
 }
 fn reply(code: u16, v: Value) -> Response {
@@ -149,6 +161,8 @@ async fn handle(State(app): State<App>, request: Request) -> Response {
             .into_response()
     } else if path.starts_with("/vscode/") {
         vscode::proxy(&app, request).await
+    } else if method == "GET" && path == "/api/devices/stream" {
+        devices::stream(&app, q(&qs, "id")).await
     } else if method == "GET" && path == "/api/media/file" {
         media_response(&app, q(&qs, "path"), &headers).await
     } else {
@@ -236,6 +250,7 @@ fn dispatch(
  "/api/projects"=>{let s=app.state.read().unwrap();let mut p=s.projects.clone();p["projects"]=json!(array(&p["list"]).iter().cloned().map(projects::lite).collect::<Vec<_>>());p.as_object_mut().unwrap().remove("list");json(p)},
  "/api/project"|"/api/project/note"=>{let s=app.state.read().unwrap();let p=array(&s.projects["list"]).iter().find(|p|p["name"]==q(qs,"name")&&(q(qs,"dir").is_empty()||p["dir"]==q(qs,"dir"))).cloned();drop(s);if let Some(p)=p{if path.ends_with("/note"){match projects::note(&p,q(qs,"path")){Ok(v)=>json(v),Err(e)=>err(if e=="not found"{404}else{400},&e)}}else{json(p)}}else{err(404,"not found")}},
  "/api/media"=>json(media::list(app)),
+ "/api/devices"=>json(devices::list(app)),
  "/api/usage/report"=>{let n=|k,default|q(qs,k).parse::<u64>().unwrap_or(default);let days=n("days",30);let top=n("top",15);let rare=n("rare",1);let by=if q(qs,"by").is_empty(){"both"}else{q(qs,"by")};if days>3650||!(1..=200).contains(&top)||rare>100||!["app","form","both"].contains(&by){err(400,"bad request")}else{json(usage::report(&app.config,days,by,top as usize,rare))}},
  "/usage"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8"),(header::CONTENT_SECURITY_POLICY,"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'")],include_str!("../assets/usage.html")).into_response(),
  _=>err(404,"not found")}

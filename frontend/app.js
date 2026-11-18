@@ -293,6 +293,115 @@ function buildFamilies() {
   return { fams, solos };
 }
 
+// ---------- 실기기 (#devices) ----------
+// The real test devices each Mac has (the mobile-record skill's locks and processes, read by /api/devices): which
+// session — and which Orca terminal, worktree, branch — operates each, and the device's screen live. A card's screen
+// is an <img> on the server's multipart feed (one upstream per device, shared by every viewer); it is kept across the
+// 3-second refreshes (only the text beside it is redrawn), dropped when the tab is left or the page hidden, and
+// retried a few seconds after it breaks (a runner restarting, the cable pulled).
+const DV_ROLE = { runner: 'DeviceKit 러너', record: '녹화 중', hold: '점유', process: '기기 프로세스' };
+let dvTimer = null, dvData = null, dvMounted = false;
+let dvLive = (() => { try { return localStorage.getItem('adash.devices.live') !== '0'; } catch { return true; } })();
+const dvKey = d => d.server + '\n' + d.id;
+function dvStop() {
+  clearInterval(dvTimer); dvTimer = null; dvMounted = false;
+  document.querySelectorAll('.dv-img').forEach(img => { img.removeAttribute('src'); });  // closes the stream
+}
+const dvBranch = b => String(b || '').replace(/^refs\/heads\//, '');
+const dvBase = p => String(p || '').split('/').filter(Boolean).pop() || '';
+function dvWho(u) {
+  const s = u.session, t = u.terminal;
+  const known = s?.path && state?.all?.find(x => x.path === s.path);
+  const name = s?.title ? esc(s.title) : s?.id ? `세션 ${esc(s.id.slice(0, 8))}` : u.label ? esc(u.label) : '세션 미상';
+  const head = known ? `<a href="#s=${encodeURIComponent(s.path)}">${name}</a>` : `<b>${name}</b>`;
+  const st = s?.state ? pill(s.state, s) : '';
+  const roles = u.roles.map(r => `<span class="badge dv-role dv-${r}">${DV_ROLE[r] || esc(r)}</span>`).join('');
+  const orca = t ? `<div class="dv-orca"><ds-icon name="terminal"></ds-icon> <span title="${esc(t.handle)}">${esc(t.title || 'Orca 터미널')}</span>${t.connected == null && !t.title ? ' <i>(목록에 없음 — 닫힌 터미널)</i>' : ''}${t.worktree ? ` · ▣ ${esc(dvBase(t.worktree))}` : ''}${t.branch ? ` · ${esc(dvBranch(t.branch))}` : ''}${t.connected === false ? ' · <i>연결 끊김</i>' : ''}${t.connected ? ' ' + focusBtn(t.handle) : ''}</div>`
+    : s?.place ? `<div class="dv-orca">▣ ${esc(placeLabel(s.place))} <i>· Orca 터미널 아님</i></div>` : '';
+  const procs = u.procs.length ? `<details class="dv-procs"><summary>프로세스 ${u.procs.length}개</summary>${u.procs.map(p => `<code>${p.pid} ${esc(p.command)}</code>`).join('')}</details>` : '';
+  return `<div class="dv-user"><div class="dv-uh">${head}${u.label && s?.title ? ` <span class="badge">${esc(u.label)}</span>` : ''} ${st}</div><div class="dv-roles">${roles}</div>${orca}${procs}</div>`;
+}
+function dvInfo(d) {
+  const plat = d.platform === 'ios' ? 'iOS' : 'Android';
+  const busy = !d.free;
+  return `<div class="dv-h"><b>${esc(d.name)}</b>${d.model && d.model !== d.name ? `<span class="st">${esc(d.model)}</span>` : ''}
+      <span class="badge">${plat}${d.os ? ' ' + esc(d.os) : ''}</span><span class="badge">${d.transport === 'wired' ? '유선' : d.transport === 'network' || d.transport === 'localNetwork' ? '네트워크' : esc(d.transport || '')}</span>${srvBadge(d)}
+      <ds-pill state="${busy ? 'run' : 'idle'}">${busy ? '사용 중' : '비어 있음'}</ds-pill>${d.recording ? '<span class="badge dv-rec">● 녹화 중</span>' : ''}</div>
+    <div class="dv-id" title="기기 ID">${d.ids.map(esc).join(' · ')}</div>
+    ${d.users.length ? d.users.map(dvWho).join('') : '<div class="empty dv-none">이 기기를 쓰는 세션이 없습니다.</div>'}`;
+}
+function dvScreen(card, d) {
+  const box = card.querySelector('.dv-screen');
+  const want = dvLive && d.stream?.ok ? api.deviceStream(d.server, d.id) : '';
+  if (box.dataset.src === want) return;
+  box.dataset.src = want;
+  if (!want) {
+    box.innerHTML = `<div class="dv-off">${!dvLive ? '화면 라이브 꺼짐' : esc(d.stream?.reason || '화면을 받을 수 없습니다')}</div>`;
+    return;
+  }
+  box.innerHTML = `<img class="dv-img" alt="${esc(d.name)} 화면" src="${esc(want)}"><div class="dv-off dv-wait">화면 받는 중…</div>`;
+  const img = box.querySelector('img'), wait = box.querySelector('.dv-wait');
+  img.onload = () => { wait.hidden = true; };
+  img.onerror = () => {
+    wait.hidden = false; wait.textContent = '화면이 끊겼습니다 — 다시 연결하는 중…';
+    setTimeout(() => { if (img.isConnected && box.dataset.src === want && dvMounted) img.src = want + '&r=' + Date.now(); }, 4000);
+  };
+  img.onclick = () => card.classList.toggle('dv-big');
+}
+function dvDraw() {
+  const body = $('#dv-body');
+  if (!body || !dvData) return;
+  const ds = dvData.devices;
+  $('#dv-sum').textContent = `기기 ${ds.length}대 · 사용 중 ${ds.filter(d => !d.free).length}대${dvData.queue.length ? ` · 대기 ${dvData.queue.length}` : ''}${dvData.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
+  if (!ds.length) {
+    body.innerHTML = `<div class="empty">연결된 실기기가 없습니다. iOS 는 <code>xcrun devicectl list devices</code>, Android 는 <code>adb devices</code> 에 보이는 실기기(에뮬레이터 제외)가 여기에 나옵니다.</div>`;
+  } else {
+    body.querySelector(':scope > .empty')?.remove();
+    const keep = new Set(ds.map(dvKey));
+    body.querySelectorAll('.dv-card').forEach(c => { if (!keep.has(c.dataset.k)) c.remove(); });
+    for (const d of [...ds].sort((a, b) => a.free - b.free || a.name.localeCompare(b.name, 'ko'))) {
+      let card = [...body.querySelectorAll('.dv-card')].find(c => c.dataset.k === dvKey(d));
+      if (!card) {
+        card = document.createElement('section');
+        card.className = 'dv-card';
+        card.dataset.k = dvKey(d);
+        card.innerHTML = '<div class="dv-screen"></div><div class="dv-info"></div>';
+      }
+      body.appendChild(card);  // keeps the sorted order; moving an <img> does not restart its stream
+      card.classList.toggle('dv-busy', !d.free);
+      const info = card.querySelector('.dv-info'), html = dvInfo(d);
+      if (info.dataset.html !== html) { info.dataset.html = html; info.innerHTML = html; }
+      dvScreen(card, d);
+    }
+  }
+  const q = dvData.queue;
+  $('#dv-queue').innerHTML = (q.length ? `<h3>기기를 기다리는 세션</h3>` + q.map((w, i) => `<div class="dv-user dv-wait-row"><span class="badge">${i + 1}</span> ${dvWho({ ...w, roles: [], procs: [], label: w.label })}<span class="st">${w.platform === 'any' ? '아무 기기' : w.platform === 'ios' ? 'iOS' : 'Android'}${w.since ? ' · ' + ago(w.since * 1000) + '부터' : ''}</span></div>`).join('') : '')
+    + (dvData.errors || []).map(e => `<div class="rv-err">${esc(srvName(e.server))}: ${esc(e.error)}</div>`).join('');
+}
+async function dvPoll() {
+  try { dvData = await api.devices(); } catch { return; }
+  if (route().v !== 'devices' || !dvMounted) return;
+  dvDraw();
+}
+async function renderDevices() {
+  if (dvMounted) return;
+  $('#view').innerHTML = `<div class="sec-h"><h2>실기기</h2><span>실측 기기를 어느 세션·Orca 터미널이 쓰고 있는지, 기기 화면이 지금 어떤지 봅니다.</span></div>
+    <div class="controls"><label class="st"><input type="checkbox" id="dv-live"${dvLive ? ' checked' : ''}> 화면 라이브</label><span class="st" id="dv-sum"></span></div>
+    <div id="dv-body" class="dv-grid"><div class="empty">불러오는 중…</div></div><div id="dv-queue" class="dv-queue"></div>`;
+  dvMounted = true;
+  $('#dv-live').onchange = e => { dvLive = e.target.checked; try { localStorage.setItem('adash.devices.live', dvLive ? '1' : '0'); } catch {} dvDraw(); };
+  if (dvData) dvDraw();
+  await dvPoll();
+  clearInterval(dvTimer);
+  dvTimer = setInterval(() => { if (!document.hidden) dvPoll(); }, 3000);
+}
+// A hidden page lets go of the device streams; coming back picks them up again.
+document.addEventListener('visibilitychange', () => {
+  if (route().v !== 'devices' || !dvMounted) return;
+  if (document.hidden) document.querySelectorAll('.dv-screen').forEach(b => { b.querySelector('img')?.removeAttribute('src'); b.dataset.src = ''; });
+  else dvPoll();
+});
+
 // ---------- routing ----------
 function route() {
   const h = decodeURIComponent(location.hash.slice(1) || 'home');
@@ -302,7 +411,7 @@ function route() {
   if (h.startsWith('s=')) return { v: 'session', id: h.slice(2) };
   if (h.startsWith('r=')) return { v: 'run', id: h.slice(2) };
   if (h.startsWith('dr=')) return { v: 'driver', id: h.slice(3) };
-  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage', 'media', 'canvas'].includes(h) ? h : 'home' };
+  return { v: ['home', 'agents', 'compare', 'talk', 'tests', 'worktrees', 'trees', 'decide', 'chars', 'usage', 'media', 'devices', 'canvas'].includes(h) ? h : 'home' };
 }
 // 결정 대기 (#decide) with nothing waiting (no pending question, no unread 메일함 item) is not opened: a toast says so
 // and the screen stays as it was. Opened, it remembers the screen it came from (decFrom), and goes back there once
@@ -500,6 +609,7 @@ async function renderView(navigated) {
   if (r.v !== 'designs') dzMounted = null;
   if (r.v !== 'media') { mdMounted = false; mdFull(false); mdCleanup(); }
   if (r.v !== 'canvas') cvMounted = false;
+  if (r.v !== 'devices') dvStop();
   $('#dz-pane-btn').hidden = r.v !== 'designs';
   $('#dz-pane-chk').checked = dz.pane;
   const office = (r.v === 'agents' || r.v === 'home') && charMode;
@@ -520,6 +630,7 @@ async function renderView(navigated) {
   else if (r.v === 'designs') await renderDesigns();
   else if (r.v === 'media') await renderMedia();
   else if (r.v === 'canvas') renderCanvas();
+  else if (r.v === 'devices') await renderDevices();
   else if (r.v === 'run') { const data = await api.run(r.id); if (hash !== location.hash) return; runFull = data; renderRun(r.id); }
   else if (r.v === 'driver') renderDriver(r.id);
   else if (r.v === 'session') {

@@ -563,6 +563,24 @@ const api = (() => {
       }));
       return { videos: parts.flatMap(p => p.videos), missing: parts.flatMap(p => p.missing), old };
     },
+    // Real test devices each server's Mac has (/api/devices): {devices[{server, id, ids, platform 'ios'|'android', name, model,
+    // os, transport, free, recording, stream{kind 'mjpeg'|'screencap', ok, reason}, users[{session{id, path, kind, title,
+    // state, state_reason, last_ts, place}|null, terminal{handle, title, worktree, branch, connected}|null,
+    // roles['runner'|'record'|'hold'|'process'], label, procs[{pid, command}]}]}], queue[{server, pid, platform, label,
+    // since, session, terminal}], errors[{server, error}], old (a server without it)}.
+    devices: async () => {
+      let old = false;
+      const parts = await Promise.all(enabled().map(async srv => {
+        try {
+          const d = await getJson(srv, '/api/devices');
+          if (!d) { old = true; return { devices: [], queue: [] }; }
+          return { devices: tag(d.devices, srv.id), queue: tag(d.queue, srv.id) };
+        } catch (e) { return { devices: [], queue: [], error: { server: srv.id, error: String(e.message || e) } }; }
+      }));
+      return { devices: parts.flatMap(p => p.devices), queue: parts.flatMap(p => p.queue), errors: parts.map(p => p.error).filter(Boolean), old };
+    },
+    // A device's live screen (multipart/x-mixed-replace, for <img>); its server fans one feed out to every viewer.
+    deviceStream: (server, id) => (byId(server)?.url || '') + '/api/devices/stream?id=' + encodeURIComponent(id),
     // workflow-canvas as each server's Mac offers it to this device (/api/canvas): [{server, name, url, up, error}];
     // url is the loopback on that Mac and its tailscale serve https address elsewhere, null when it cannot be reached.
     canvas: () => Promise.all(enabled().map(async srv => {
