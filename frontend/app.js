@@ -299,7 +299,11 @@ function buildFamilies() {
 // is an <img> on the server's multipart feed (one upstream per device, shared by every viewer); it is kept across the
 // 3-second refreshes (only the text beside it is redrawn), dropped when the tab is left or the page hidden, and
 // retried a few seconds after it breaks (a runner restarting, the cable pulled).
-const DV_ROLE = { runner: 'DeviceKit 러너', record: '녹화 중', hold: '점유', process: '기기 프로세스' };
+const DV_ROLE = { runner: 'DeviceKit 러너', record: '녹화 중', hold: '점유', process: '기기 프로세스', boot: '띄운 세션' };
+// Real devices first, then the booted iOS simulators and Android emulators — both on one screen, each under its own head.
+const DV_KINDS = [['real', '실기기', '연결된 실기기가 없습니다. iOS 는 <code>xcrun devicectl list devices</code>, Android 는 <code>adb devices</code> 에 보이는 실기기가 여기에 나옵니다.'],
+  ['virtual', '에뮬레이터 · 시뮬레이터', '부팅된 iOS 시뮬레이터(<code>xcrun simctl list devices booted</code>)나 실행 중인 Android 에뮬레이터(<code>adb devices</code> 의 <code>emulator-*</code>)가 없습니다.']];
+const DV_TRANSPORT = { wired: '유선', network: '네트워크', localNetwork: '네트워크', emulator: '에뮬레이터', simulator: '시뮬레이터' };
 let dvTimer = null, dvData = null, dvMounted = false;
 let dvLive = (() => { try { return localStorage.getItem('adash.devices.live') !== '0'; } catch { return true; } })();
 const dvKey = d => d.server + '\n' + d.id;
@@ -325,7 +329,7 @@ function dvInfo(d) {
   const plat = d.platform === 'ios' ? 'iOS' : 'Android';
   const busy = !d.free;
   return `<div class="dv-h"><b>${esc(d.name)}</b>${d.model && d.model !== d.name ? `<span class="st">${esc(d.model)}</span>` : ''}
-      <span class="badge">${plat}${d.os ? ' ' + esc(d.os) : ''}</span><span class="badge">${d.transport === 'wired' ? '유선' : d.transport === 'network' || d.transport === 'localNetwork' ? '네트워크' : esc(d.transport || '')}</span>${srvBadge(d)}
+      <span class="badge">${plat}${d.os ? ' ' + esc(d.os) : ''}</span><span class="badge">${esc(DV_TRANSPORT[d.transport] || d.transport || '')}</span>${srvBadge(d)}
       <ds-pill state="${busy ? 'run' : 'idle'}">${busy ? '사용 중' : '비어 있음'}</ds-pill>${d.recording ? '<span class="badge dv-rec">● 녹화 중</span>' : ''}</div>
     <div class="dv-id" title="기기 ID">${d.ids.map(esc).join(' · ')}</div>
     ${d.users.length ? d.users.map(dvWho).join('') : '<div class="empty dv-none">이 기기를 쓰는 세션이 없습니다.</div>'}`;
@@ -352,14 +356,20 @@ function dvDraw() {
   const body = $('#dv-body');
   if (!body || !dvData) return;
   const ds = dvData.devices;
-  $('#dv-sum').textContent = `기기 ${ds.length}대 · 사용 중 ${ds.filter(d => !d.free).length}대${dvData.queue.length ? ` · 대기 ${dvData.queue.length}` : ''}${dvData.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
-  if (!ds.length) {
-    body.innerHTML = `<div class="empty">연결된 실기기가 없습니다. iOS 는 <code>xcrun devicectl list devices</code>, Android 는 <code>adb devices</code> 에 보이는 실기기(에뮬레이터 제외)가 여기에 나옵니다.</div>`;
-  } else {
-    body.querySelector(':scope > .empty')?.remove();
-    const keep = new Set(ds.map(dvKey));
-    body.querySelectorAll('.dv-card').forEach(c => { if (!keep.has(c.dataset.k)) c.remove(); });
-    for (const d of [...ds].sort((a, b) => a.free - b.free || a.name.localeCompare(b.name, 'ko'))) {
+  const real = ds.filter(d => (d.kind || 'real') === 'real').length;
+  $('#dv-sum').textContent = `실기기 ${real}대 · 에뮬레이터 ${ds.length - real}대 · 사용 중 ${ds.filter(d => !d.free).length}대${dvData.queue.length ? ` · 대기 ${dvData.queue.length}` : ''}${dvData.old ? ' · 이 기능이 없는 서버 있음' : ''}`;
+  if (!body.querySelector('.dv-sec')) body.innerHTML = DV_KINDS.map(([k, title]) =>
+    `<section class="dv-sec" data-kind="${k}"><div class="dv-sec-h"><h3>${title}</h3><span class="st"></span></div><div class="dv-grid"></div></section>`).join('');
+  const keep = new Set(ds.map(dvKey));
+  body.querySelectorAll('.dv-card').forEach(c => { if (!keep.has(c.dataset.k)) c.remove(); });
+  for (const [kind, , none] of DV_KINDS) {
+    const sec = body.querySelector(`.dv-sec[data-kind="${kind}"]`), grid = sec.querySelector('.dv-grid');
+    // a server from before kinds sends none: everything it has is a real device
+    const list = ds.filter(d => (d.kind || 'real') === kind).sort((a, b) => a.free - b.free || a.name.localeCompare(b.name, 'ko'));
+    sec.querySelector('.dv-sec-h .st').textContent = list.length ? `${list.length}대 · 사용 중 ${list.filter(d => !d.free).length}대` : '';
+    grid.querySelector(':scope > .empty')?.remove();
+    if (!list.length) { grid.innerHTML = `<div class="empty">${none}</div>`; continue; }
+    for (const d of list) {
       let card = [...body.querySelectorAll('.dv-card')].find(c => c.dataset.k === dvKey(d));
       if (!card) {
         card = document.createElement('section');
@@ -367,7 +377,7 @@ function dvDraw() {
         card.dataset.k = dvKey(d);
         card.innerHTML = '<div class="dv-screen"></div><div class="dv-info"></div>';
       }
-      body.appendChild(card);  // keeps the sorted order; moving an <img> does not restart its stream
+      grid.appendChild(card);  // keeps the sorted order; moving an <img> does not restart its stream
       card.classList.toggle('dv-busy', !d.free);
       const info = card.querySelector('.dv-info'), html = dvInfo(d);
       if (info.dataset.html !== html) { info.dataset.html = html; info.innerHTML = html; }
@@ -385,9 +395,9 @@ async function dvPoll() {
 }
 async function renderDevices() {
   if (dvMounted) return;
-  $('#view').innerHTML = `<div class="sec-h"><h2>실기기</h2><span>실측 기기를 어느 세션·Orca 터미널이 쓰고 있는지, 기기 화면이 지금 어떤지 봅니다.</span></div>
+  $('#view').innerHTML = `<div class="sec-h"><h2>실기기 · 에뮬레이터</h2><span>실측 기기와 에뮬레이터·시뮬레이터를 어느 세션·Orca 터미널이 쓰고 있는지, 화면이 지금 어떤지 봅니다.</span></div>
     <div class="controls"><label class="st"><input type="checkbox" id="dv-live"${dvLive ? ' checked' : ''}> 화면 라이브</label><span class="st" id="dv-sum"></span></div>
-    <div id="dv-body" class="dv-grid"><div class="empty">불러오는 중…</div></div><div id="dv-queue" class="dv-queue"></div>`;
+    <div id="dv-body"><div class="empty">불러오는 중…</div></div><div id="dv-queue" class="dv-queue"></div>`;
   dvMounted = true;
   $('#dv-live').onchange = e => { dvLive = e.target.checked; try { localStorage.setItem('adash.devices.live', dvLive ? '1' : '0'); } catch {} dvDraw(); };
   if (dvData) dvDraw();

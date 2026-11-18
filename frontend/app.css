@@ -2482,6 +2482,10 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 .dv-procs summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .dv-procs code { display: block; font-size: 11px; overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 4px; }
 .dv-none { padding: 8px 0; }
+.dv-sec + .dv-sec { margin-top: 22px; }
+.dv-sec-h { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.dv-sec-h h3 { margin: 0; font-size: 15px; }
+.badge.dv-boot { border-style: dashed; }
 .dv-queue { margin-top: 18px; display: grid; gap: 8px; }
 .dv-queue h3 { margin: 0; font-size: 14px; }
 .dv-wait-row { flex-direction: row; flex-wrap: wrap; align-items: center; }
