@@ -7,6 +7,7 @@ pub mod core;
 pub mod data;
 pub mod decisions;
 pub mod designs;
+pub mod devices;
 pub mod flow;
 pub mod glance;
 pub mod http;
