@@ -1,4 +1,5 @@
-//! 실기기 탭: 이 맥에 연결된 실측 기기(iOS·Android)와 그 기기를 쓰는 세션, 기기 화면 라이브.
+//! 실기기 탭: 이 맥에 연결된 실측 기기(iOS·Android)와 부팅된 iOS 시뮬레이터·Android 에뮬레이터, 그 기기를 쓰는
+//! 세션, 기기 화면 라이브. 각 기기의 `kind` 는 `real`(실기기)·`virtual`(시뮬레이터·에뮬레이터)이다.
 //!
 //! 점유는 mobile-record 스킬(`free_devices.py`·`launch_runner.py`·`mobile_record.py`)의 규약을 그대로 읽는다.
 //! - 사용자 임시 폴더의 `mobile-{runner,record,hold}-<sha256(id)[..16]>.lock` 에 flock 이 잡혀 있으면 사용 중
@@ -95,10 +96,52 @@ fn ios_devices() -> Vec<Value> {
             ids.retain(|s| !s.is_empty());
             ids.sort();
             ids.dedup();
-            json!({"platform":"ios","name":d["deviceProperties"]["name"],"os":d["deviceProperties"]["osVersionNumber"],
+            json!({"platform":"ios","kind":"real","name":d["deviceProperties"]["name"],"os":d["deviceProperties"]["osVersionNumber"],
                 "model":d["hardwareProperties"]["marketingName"],"transport":d["connectionProperties"]["transportType"],"ids":ids})
         })
         .collect()
+}
+
+/// adb 로 기기 하나에 묻는다. 기기 ID 는 인자 대신 ANDROID_SERIAL 로 (모듈 머리말)
+fn adb_ask(adb: &Path, serial: &str, args: &[&str]) -> Option<String> {
+    command_full(
+        &adb.to_string_lossy(),
+        args,
+        None,
+        5,
+        &[("ANDROID_SERIAL".into(), serial.into())],
+    )
+    .ok()
+    .filter(|(code, _, _)| *code == 0)
+    .map(|(_, o, _)| o.trim().to_owned())
+}
+
+/// (Android 버전, AVD 이름)
+type AndroidProps = (Option<String>, Option<String>);
+/// 바뀌지 않는 기기 속성(Android 버전·AVD 이름)은 기기마다 한 번만 묻는다
+fn android_props(adb: &Path, serial: &str) -> AndroidProps {
+    static CACHE: OnceLock<Mutex<HashMap<String, AndroidProps>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(v) = cache.lock().unwrap().get(serial) {
+        return v.clone();
+    }
+    let os = adb_ask(
+        adb,
+        serial,
+        &["shell", "getprop", "ro.build.version.release"],
+    )
+    .filter(|s| !s.is_empty());
+    let avd = serial
+        .starts_with("emulator-")
+        .then(|| adb_ask(adb, serial, &["emu", "avd", "name"]))
+        .flatten()
+        .and_then(|s| s.lines().next().map(|l| l.trim().to_owned()))
+        .filter(|s| !s.is_empty() && s != "OK");
+    let v = (os, avd);
+    if v.0.is_some() {
+        cache.lock().unwrap().insert(serial.to_owned(), v.clone());
+    }
+    v
 }
 
 fn android_devices() -> Vec<Value> {
@@ -110,16 +153,52 @@ fn android_devices() -> Vec<Value> {
         .skip(1)
         .filter_map(|line| {
             let f: Vec<&str> = line.split_whitespace().collect();
-            if f.len() < 2 || f[1] != "device" || f[0].starts_with("emulator-") {
+            if f.len() < 2 || f[1] != "device" {
                 return None;
             }
             let model = f
                 .iter()
                 .find_map(|x| x.strip_prefix("model:"))
                 .unwrap_or(f[0]);
-            Some(json!({"platform":"android","name":model,"os":null,"model":model,"transport":if f[0].contains(':'){"network"}else{"wired"},"ids":[f[0]]}))
+            let (os, avd) = android_props(&adb, f[0]);
+            let virt = f[0].starts_with("emulator-");
+            let transport = if virt { "emulator" } else if f[0].contains(':') { "network" } else { "wired" };
+            Some(json!({"platform":"android","kind":if virt{"virtual"}else{"real"},"name":avd.clone().unwrap_or_else(||model.replace('_'," ")),
+                "os":os,"model":model,"avd":avd,"transport":transport,"ids":[f[0]]}))
         })
         .collect()
+}
+
+/// 부팅된 iOS 시뮬레이터 (simctl). 런타임 키 `…SimRuntime.iOS-27-2` → `27.2`
+fn ios_simulators() -> Vec<Value> {
+    let Ok(out) = command(
+        "/usr/bin/xcrun",
+        &["simctl", "list", "devices", "booted", "-j"],
+        None,
+        15,
+    ) else {
+        return vec![];
+    };
+    let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
+    let mut list = vec![];
+    for (runtime, devs) in v["devices"].as_object().into_iter().flatten() {
+        let tail = runtime.rsplit('.').next().unwrap_or("");
+        let os = tail
+            .split_once('-')
+            .map(|(_, ver)| ver.splitn(3, '-').take(2).collect::<Vec<_>>().join("."));
+        for d in array(devs) {
+            if d["state"] != "Booted" {
+                continue;
+            }
+            let model = text(&d["deviceTypeIdentifier"])
+                .rsplit('.')
+                .next()
+                .unwrap_or("")
+                .replace('-', " ");
+            list.push(json!({"platform":"ios","kind":"virtual","name":d["name"],"os":os,"model":model,"transport":"simulator","ids":[d["udid"]]}));
+        }
+    }
+    list
 }
 
 struct Proc {
@@ -279,6 +358,7 @@ fn scan(app: &App) -> Value {
     let tmp = temp_dir();
     let mut devices = ios_devices();
     devices.extend(android_devices());
+    devices.extend(ios_simulators());
     let mut env_cache: HashMap<u32, (Option<String>, Option<String>)> = HashMap::new();
     let mut owner = |pid: u32| {
         env_cache
@@ -302,10 +382,37 @@ fn scan(app: &App) -> Value {
             }
         }
         for (pid, p) in &ps {
-            if *pid == me || p.ppid == me || !ids.iter().any(|id| p.command.contains(id.as_str())) {
+            // 시뮬레이터 자신의 프로세스(launchd_sim, 기기 폴더 안의 실행 파일)는 UDID 를 품고 있지만 사용자가 아니다
+            let sim_internal = p.command.contains("CoreSimulator/Devices/")
+                || p.command.starts_with("launchd_sim");
+            if *pid == me
+                || p.ppid == me
+                || sim_internal
+                || !ids.iter().any(|id| p.command.contains(id.as_str()))
+            {
                 continue;
             }
-            uses.push((*pid, "process"));
+            // 그 기기를 녹화하는 프로세스 (simctl io … recordVideo, adb shell screenrecord)
+            let role = if p.command.contains("recordVideo") || p.command.contains("screenrecord") {
+                "record"
+            } else {
+                "process"
+            };
+            uses.push((*pid, role));
+        }
+        // Android 에뮬레이터를 띄운 프로세스 (qemu: -port <콘솔 포트> 또는 -avd <이름>) — 띄운 세션이지 지금 쓰는 세션은 아니다
+        if let Some(port) = ids.first().and_then(|id| id.strip_prefix("emulator-")) {
+            let avd = text(&d["avd"]).to_owned();
+            for (pid, p) in &ps {
+                let qemu =
+                    p.command.contains("qemu-system") || p.command.contains("/emulator/emulator");
+                if qemu
+                    && (arg_after(&p.command, "-port") == Some(port)
+                        || (!avd.is_empty() && arg_after(&p.command, "-avd") == Some(avd.as_str())))
+                {
+                    uses.push((*pid, "boot"));
+                }
+            }
         }
         // 같은 세션(없으면 같은 터미널, 그것도 없으면 프로세스)끼리 묶는다
         let mut groups: Vec<(String, Value)> = vec![];
@@ -342,7 +449,9 @@ fn scan(app: &App) -> Value {
                     .push(json!({"pid":pid,"command":short(&cmd, 240)}));
             }
         }
-        let busy = !groups.is_empty();
+        let busy = groups
+            .iter()
+            .any(|(_, g)| array(&g["roles"]).iter().any(|r| r != "boot"));
         let runner = groups
             .iter()
             .any(|(_, g)| array(&g["roles"]).iter().any(|r| r == "runner"));
@@ -355,6 +464,8 @@ fn scan(app: &App) -> Value {
         }
         let stream = if d["platform"] == "android" {
             json!({"kind":"screencap","ok":true})
+        } else if d["kind"] == "virtual" {
+            json!({"kind":"simctl","ok":true})
         } else if runner {
             json!({"kind":"mjpeg","ok":true})
         } else {
@@ -519,23 +630,44 @@ async fn run_ios(feed: Arc<Feed>, ids: Vec<String>) {
     }
 }
 
-async fn run_android(feed: Arc<Feed>, serial: String) {
+/// 스크린샷을 되풀이해 찍는 화면: Android(실기기·에뮬레이터)는 `adb exec-out screencap -p`,
+/// iOS 시뮬레이터는 `xcrun simctl io <udid> screenshot <임시 파일>` (도움말과 달리 `-` 를 주면 `-` 라는 파일에 쓴다).
+async fn run_shots(feed: Arc<Feed>, id: String, simulator: bool) {
     use tokio::process::Command;
-    let Some(adb) = adb() else { return };
+    let shooter = if simulator {
+        Some(PathBuf::from("/usr/bin/xcrun"))
+    } else {
+        adb()
+    };
+    let Some(shooter) = shooter else { return };
     let ff = ffmpeg();
+    let shot_file = std::env::temp_dir().join(format!("adash-sim-{}.png", lock_key(&id)));
     while feed.tx.receiver_count() > 0 {
         let started = std::time::Instant::now();
+        let mut cmd = Command::new(&shooter);
+        if simulator {
+            cmd.args(["simctl", "io", &id, "screenshot", "--type=png"])
+                .arg(&shot_file);
+        } else {
+            cmd.env("ANDROID_SERIAL", &id)
+                .args(["exec-out", "screencap", "-p"]);
+        }
         let shot = tokio::time::timeout(
             Duration::from_secs(10),
-            Command::new(&adb)
-                .env("ANDROID_SERIAL", &serial)
-                .args(["exec-out", "screencap", "-p"])
+            cmd.stderr(std::process::Stdio::null())
                 .kill_on_drop(true)
                 .output(),
         )
         .await;
         let png = match shot {
-            Ok(Ok(o)) if o.status.success() && o.stdout.starts_with(b"\x89PNG") => o.stdout,
+            Ok(Ok(o)) if o.status.success() && simulator => {
+                tokio::fs::read(&shot_file).await.unwrap_or_default()
+            }
+            Ok(Ok(o)) if o.status.success() => o.stdout,
+            _ => vec![],
+        };
+        let png = match png {
+            p if p.starts_with(b"\x89PNG") => p,
             _ => {
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
@@ -594,6 +726,7 @@ async fn run_android(feed: Arc<Feed>, serial: String) {
             tokio::time::sleep(Duration::from_millis(700) - spent).await;
         }
     }
+    let _ = std::fs::remove_file(&shot_file);
 }
 
 /// GET /api/devices/stream?id=<기기 ID> — multipart/x-mixed-replace 로 화면을 흘린다 (<img src> 로 본다)
@@ -634,8 +767,8 @@ pub async fn stream(app: &App, id: &str) -> Response {
                 .iter()
                 .map(|x| text(x).to_owned())
                 .collect();
-            if dev["platform"] == "android" {
-                tokio::spawn(run_android(f.clone(), key.clone()));
+            if dev["platform"] == "android" || dev["kind"] == "virtual" {
+                tokio::spawn(run_shots(f.clone(), key.clone(), dev["platform"] == "ios"));
             } else {
                 tokio::spawn(run_ios(f.clone(), ids));
             }

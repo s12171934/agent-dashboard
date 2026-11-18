@@ -68,7 +68,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 설계문서 참조 | 위 세션 로그의 도구 호출(Read·Grep·셸 명령)에서 설계 폴더를 읽은 것. `--hours` 밖이어도 `--design-days`(기본 14일) 안의 로그는 한 번씩 읽는다 |
 | 볼트 노트 | `--vault` 폴더의 `**/*.md` 프론트매터 (아래 「세션이 만든 볼트 문서」, 폴더가 없으면 읽지 않음) |
 | 녹화 영상 | 데이터 폴더의 `media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record`·`~/Movies/mobile-record`·`~/Movies/explainer-video` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
-| 실기기 | `xcrun devicectl list devices`·`adb devices -l` 의 실기기(에뮬레이터 제외), 사용자 임시 폴더의 mobile-record 락(`mobile-{runner,record,hold}-*.lock`)과 대기열(`mobile-device-queue/`), 기기 ID 를 든 프로세스와 그 환경 변수(`ps -E`) (아래 「실기기」) |
+| 실기기·에뮬레이터 | `xcrun devicectl list devices`·`adb devices -l` 의 실기기와 에뮬레이터(`emulator-*`), `xcrun simctl list devices booted` 의 시뮬레이터, 사용자 임시 폴더의 mobile-record 락(`mobile-{runner,record,hold}-*.lock`)과 대기열(`mobile-device-queue/`), 기기 ID 를 든 프로세스와 그 환경 변수(`ps -E`) (아래 「실기기」) |
 
 - **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다. 워커 계획 바(조율자 상세·사무실 이름표)에는 아예 그리지 않고 범례에 「취소 N」 글자만 남긴다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
 
@@ -596,15 +596,17 @@ server/amedia prune              # 파일이 사라진 항목을 모두 내린�
 - **자막 (색인):** 설명 영상은 작업 폴더(`<제목> <시각>/`)의 `.srt` 나레이션을, 다른 녹화는 옆의 `<이름>.srt` 를 자막으로 읽어 `/api/media` 의 `captions[{t, text}]` 로 준다. 서버는 `.srt` 를 고친 시각(mtime)이 바뀔 때만 다시 읽는다. 타임라인과 자막이 다 있으면 오른쪽 목록 위에 「타임라인 · 자막」 탭이 생기고, 자막 줄을 검색 결과로 누르면 자막 탭으로 바뀐다. `.srt` 는 자막으로만 읽고 내보내지 않는다(작업 폴더는 여전히 404).
 - **전송:** `/api/media/file` 이 HTTP Range(206)로 보낸다. iOS 는 Range 가 없으면 영상을 재생하지도, 넘기지도 못한다.
 
-## 실기기 — 실측 기기를 쓰는 세션과 화면 라이브 (`#devices`)
+## 실기기 · 에뮬레이터 — 실측 기기를 쓰는 세션과 화면 라이브 (`#devices`)
 
-설정 메뉴의 「실기기」 탭. 이 맥에 연결된 iOS·Android 실기기마다 누가 쓰고 있는지와 기기 화면을 실시간으로 보여 준다. 3초마다 갱신한다.
+설정 메뉴의 「실기기 · 에뮬레이터」 탭. 이 맥에 연결된 iOS·Android 실기기와 부팅된 iOS 시뮬레이터·실행 중인 Android 에뮬레이터를 「실기기」·「에뮬레이터 · 시뮬레이터」 두 구획으로 한 화면에 나눠, 기기마다 누가 쓰고 있는지와 화면을 실시간으로 보여 준다. 3초마다 갱신한다. API 의 기기마다 `kind` 가 `real`·`virtual` 이다.
 
 - **점유 판정**은 mobile-record 스킬(`free_devices.py`)과 같다: 사용자 임시 폴더의 `mobile-runner-`(DeviceKit 러너)·`mobile-record-`(녹화)·`mobile-hold-`(`--hold`·`--acquire` 점유) 락에 flock 이 잡혀 있거나, 기기 ID 를 인자로 든 프로세스(xcodebuild·`adb -s` 등)가 있으면 사용 중이다.
 - **누가 쓰나:** 락을 쥔 프로세스(`lsof`)와 기기 ID 를 든 프로세스의 환경(`ps -E`)에서 `CLAUDE_CODE_SESSION_ID`·`CODEX_THREAD_ID`·`ORCA_TERMINAL_HANDLE` 을 찾는다(없으면 부모 쪽으로 올라가며, Claude 본체의 `~/.claude/sessions/<pid>.json` 도 본다). 세션별로 묶어 세션 제목·상태(세션 상세 링크), Orca 터미널 제목·워크트리·브랜치(「Orca 에서 열기」), 역할(러너·녹화·점유·기기 프로세스), `--label`(티켓 키)을 보여 준다. `--acquire` 로 기기를 기다리는 세션은 아래 「기기를 기다리는 세션」에 순서대로 나온다.
 - **화면 라이브:** `GET /api/devices/stream?id=<기기 ID>` 가 `multipart/x-mixed-replace` 로 프레임을 흘리고, 화면은 `<img>` 로 받는다. 서버는 기기마다 원본을 한 번만 받아 보는 사람 모두에게 나눠 주고, 아무도 보지 않으면 멈춘다. 탭을 떠나거나 페이지가 숨겨지면 연결을 끊는다. 「화면 라이브」 체크로 끌 수 있다(기기마다 기억). 화면을 누르면 크게 본다.
   - iOS: 실행 중인 DeviceKit 러너의 `/mjpeg`(3fps·40%). 러너 주소는 `launch_runner.py --out` 폴더의 `endpoint.txt`, 없으면 페어링 터널 주소의 `:12004`. 러너가 없으면 화면이 없다. 다른 세션의 녹화와 동시에 받아도 된다.
-  - Android: `adb exec-out screencap -p` 를 약 0.7초마다, ffmpeg 가 있으면 가로 540 JPEG 로 줄여서. 기기 ID 는 인자 대신 `ANDROID_SERIAL` 로 넘긴다 — 인자에 ID 가 보이면 다른 세션의 `free_devices.py` 가 그 기기를 사용 중으로 판정하기 때문이다.
+  - iOS 시뮬레이터: `xcrun simctl io <udid> screenshot <임시 파일>` 을 약 0.7초마다 (도움말과 달리 `-` 를 주면 표준 출력이 아니라 `-` 라는 파일에 쓴다).
+  - Android(실기기·에뮬레이터): `adb exec-out screencap -p` 를 약 0.7초마다, ffmpeg 가 있으면 가로 540 JPEG 로 줄여서. 기기 ID 는 인자 대신 `ANDROID_SERIAL` 로 넘긴다 — 인자에 ID 가 보이면 다른 세션의 `free_devices.py` 가 그 기기를 사용 중으로 판정하기 때문이다.
+- 에뮬레이터·시뮬레이터: 기기 ID(UDID·`emulator-*`)를 든 프로세스(`simctl io … recordVideo`·`adb shell screenrecord` 는 「녹화 중」, idb_companion·xcodebuild 등은 「기기 프로세스」)로 사용 중을 판정한다. 시뮬레이터 자신의 프로세스(`launchd_sim`, `CoreSimulator/Devices/` 안의 실행 파일)는 뺀다. Android 에뮬레이터를 띄운 qemu(`-port <콘솔 포트>`·`-avd <이름>`)의 세션은 「띄운 세션」으로 보이되 사용 중으로 세지 않는다.
 - 조회 전용이다. 기기를 조작하거나 락을 풀지 않는다.
 
 ## 프로젝트 진행 API
