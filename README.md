@@ -607,6 +607,7 @@ server/amedia prune              # 파일이 사라진 항목을 모두 내린�
   - iOS 시뮬레이터: `xcrun simctl io <udid> screenshot <임시 파일>` 을 약 0.7초마다 (도움말과 달리 `-` 를 주면 표준 출력이 아니라 `-` 라는 파일에 쓴다).
   - Android(실기기·에뮬레이터): `adb exec-out screencap -p` 를 약 0.7초마다, ffmpeg 가 있으면 가로 540 JPEG 로 줄여서. 기기 ID 는 인자 대신 `ANDROID_SERIAL` 로 넘긴다 — 인자에 ID 가 보이면 다른 세션의 `free_devices.py` 가 그 기기를 사용 중으로 판정하기 때문이다.
 - 에뮬레이터·시뮬레이터: 기기 ID(UDID·`emulator-*`)를 든 프로세스(`simctl io … recordVideo`·`adb shell screenrecord` 는 「녹화 중」, idb_companion·xcodebuild 등은 「기기 프로세스」)로 사용 중을 판정한다. 시뮬레이터 자신의 프로세스(`launchd_sim`, `CoreSimulator/Devices/` 안의 실행 파일)는 뺀다. Android 에뮬레이터를 띄운 qemu(`-port <콘솔 포트>`·`-avd <이름>`)의 세션은 「띄운 세션」으로 보이되 사용 중으로 세지 않는다.
+- 창 표시: 에뮬레이터·시뮬레이터마다 「창 있음」·「백그라운드」 배지(`window`)를 단다. 시뮬레이터는 Simulator.app 이 떠 있으면, 에뮬레이터는 띄운 qemu 에 `-no-window` 가 없으면 창 있음이다. iOS 시뮬레이터의 「시뮬 화면 열기」는 `POST /api/devices/show {id}` 로 그 맥에서 `open -a Simulator --args -CurrentDeviceUDID <udid>` 를 실행한다. Simulator.app 이 없는 맥(`sim_app: false`, Xcode 27.2 처럼 빠진 설치)에서는 화면 라이브를 새 창(팝업)으로 띄운다. `-no-window` 로 띄운 에뮬레이터는 실행 중에 창을 붙일 수 없다.
 - 조회 전용이다. 기기를 조작하거나 락을 풀지 않는다.
 
 ## 프로젝트 진행 API

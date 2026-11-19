@@ -359,6 +359,8 @@ fn scan(app: &App) -> Value {
     let mut devices = ios_devices();
     devices.extend(android_devices());
     devices.extend(ios_simulators());
+    // 시뮬레이터 창은 Simulator.app 이 띄운다. 앱이 없으면 simctl 로 부팅된 기기는 창 없이 CoreSimulator 안에서만 돈다
+    let simulator_app = ps.values().any(|p| p.command.contains("/Simulator.app/Contents/MacOS/Simulator"));
     let mut env_cache: HashMap<u32, (Option<String>, Option<String>)> = HashMap::new();
     let mut owner = |pid: u32| {
         env_cache
@@ -401,6 +403,7 @@ fn scan(app: &App) -> Value {
             uses.push((*pid, role));
         }
         // Android 에뮬레이터를 띄운 프로세스 (qemu: -port <콘솔 포트> 또는 -avd <이름>) — 띄운 세션이지 지금 쓰는 세션은 아니다
+        let mut emu_window: Option<bool> = None;
         if let Some(port) = ids.first().and_then(|id| id.strip_prefix("emulator-")) {
             let avd = text(&d["avd"]).to_owned();
             for (pid, p) in &ps {
@@ -411,6 +414,9 @@ fn scan(app: &App) -> Value {
                         || (!avd.is_empty() && arg_after(&p.command, "-avd") == Some(avd.as_str())))
                 {
                     uses.push((*pid, "boot"));
+                    if p.command.contains("qemu-system") {
+                        emu_window = Some(!p.command.split_whitespace().any(|a| a == "-no-window"));
+                    }
                 }
             }
         }
@@ -471,7 +477,19 @@ fn scan(app: &App) -> Value {
         } else {
             json!({"kind":"mjpeg","ok":false,"reason":"DeviceKit 러너가 떠 있지 않아 화면을 받을 수 없습니다"})
         };
+        // 화면에 창이 있는가: 시뮬레이터는 Simulator.app 이 떠 있으면, 에뮬레이터는 띄운 qemu 에 -no-window 가 없으면
+        let window = if d["kind"] != "virtual" {
+            Value::Null
+        } else if d["platform"] == "ios" {
+            json!(simulator_app)
+        } else {
+            emu_window.map_or(Value::Null, |w| json!(w))
+        };
         d["id"] = json!(id);
+        d["window"] = window;
+        if d["platform"] == "ios" && d["kind"] == "virtual" {
+            d["sim_app"] = json!(simulator_app_installed());
+        }
         d["free"] = json!(!busy);
         d["recording"] = json!(recording);
         d["users"] = json!(groups.into_iter().map(|(_, g)| g).collect::<Vec<_>>());
@@ -502,6 +520,29 @@ fn scan(app: &App) -> Value {
         queue.push(json!({"pid":pid,"platform":w["platform"],"label":w["label"],"since":since,"session":session,"terminal":terminal}));
     }
     json!({"devices":devices,"queue":queue,"at":now(),"tools":{"adb":adb().is_some(),"ffmpeg":ffmpeg().is_some()}})
+}
+
+/// 이 맥에 Simulator.app 이 있는가 (Xcode 27.2 처럼 빠져 있는 설치도 있다). `open -Ra` 는 찾기만 하고 띄우지 않는다
+fn simulator_app_installed() -> bool {
+    static HAS: OnceLock<bool> = OnceLock::new();
+    *HAS.get_or_init(|| command("/usr/bin/open", &["-Ra", "Simulator"], None, 10).is_ok())
+}
+
+/// POST /api/devices/show {id} — 부팅된 iOS 시뮬레이터를 Simulator.app 창으로 띄운다 (이미 떠 있으면 앞으로).
+/// simctl 로만 부팅된 시뮬레이터는 창이 없다. Simulator.app 은 부팅된 기기마다 창을 열고 지정한 기기를 앞에 둔다.
+pub fn show(id: &str) -> (u16, Value) {
+    if id.is_empty() || !ios_simulators().iter().any(|d| d["ids"][0] == id) {
+        return (404, json!({"error":"부팅된 iOS 시뮬레이터가 아닙니다"}));
+    }
+    match command(
+        "/usr/bin/open",
+        &["-a", "Simulator", "--args", "-CurrentDeviceUDID", id],
+        None,
+        15,
+    ) {
+        Ok(_) => (200, json!({"ok":true})),
+        Err(e) => (502, json!({"error":format!("Simulator 를 열지 못했습니다: {e}")})),
+    }
 }
 
 /// GET /api/devices — 3초 동안은 같은 결과를 돌려준다 (devicectl·lsof·ps 를 매번 부르지 않게)

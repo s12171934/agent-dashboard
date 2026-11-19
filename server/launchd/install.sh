@@ -60,5 +60,8 @@ sed -e "s|@LABEL@|$(replacement "$LABEL")|g" \
 plutil -lint "$TMP" >/dev/null
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
 mv "$TMP" "$DST"
-launchctl bootstrap "$DOMAIN" "$DST"
+# bootout returns before the old process is gone; bootstrapping then fails with "5: Input/output error". Wait, then retry.
+i=0
+while launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+launchctl bootstrap "$DOMAIN" "$DST" || { sleep 2; launchctl bootstrap "$DOMAIN" "$DST"; }
 launchctl print "$DOMAIN/$LABEL" | grep -E '^\s*(state|pid) ='

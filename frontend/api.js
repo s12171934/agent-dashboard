@@ -579,6 +579,9 @@ const api = (() => {
       }));
       return { devices: parts.flatMap(p => p.devices), queue: parts.flatMap(p => p.queue), errors: parts.map(p => p.error).filter(Boolean), old };
     },
+    // Show a booted iOS simulator's window on its server's Mac (Simulator.app; simctl alone boots it with no window).
+    // Resolves to {status, body}: 200 ok, 404 not a booted simulator, 502 Simulator failed to open.
+    showDevice: (server, id) => post(byId(server) || enabled()[0], '/api/devices/show', { id }),
     // A device's live screen (multipart/x-mixed-replace, for <img>); its server fans one feed out to every viewer.
     deviceStream: (server, id) => (byId(server)?.url || '') + '/api/devices/stream?id=' + encodeURIComponent(id),
     // workflow-canvas as each server's Mac offers it to this device (/api/canvas): [{server, name, url, up, error}];

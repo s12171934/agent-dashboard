@@ -325,13 +325,32 @@ function dvWho(u) {
   const procs = u.procs.length ? `<details class="dv-procs"><summary>프로세스 ${u.procs.length}개</summary>${u.procs.map(p => `<code>${p.pid} ${esc(p.command)}</code>`).join('')}</details>` : '';
   return `<div class="dv-user"><div class="dv-uh">${head}${u.label && s?.title ? ` <span class="badge">${esc(u.label)}</span>` : ''} ${st}</div><div class="dv-roles">${roles}</div>${orca}${procs}</div>`;
 }
+// Whether a simulator / emulator has a window on its Mac's screen (window: null for real devices, or not known).
+const dvWin = d => d.window == null ? '' : d.window
+  ? `<span class="badge" title="${d.platform === 'ios' ? 'Simulator 앱 창으로 보입니다' : '에뮬레이터 창이 화면에 떠 있습니다'}">창 있음</span>`
+  : `<span class="badge" title="${d.platform === 'ios' ? 'simctl 로만 부팅돼 Simulator 앱 없이 백그라운드(CoreSimulator)에서 돕니다' : '-no-window 로 띄워 창 없이 돕니다'}">백그라운드</span>`;
+// 「시뮬 화면 열기」: brings up the simulator in Simulator.app on its server's Mac; where that Mac has no Simulator.app
+// (sim_app false — Xcode 27.2 ships without it) it opens the live screen in a window of its own instead. iOS
+// simulators only: an emulator started with -no-window cannot grow a window later.
+const dvShow = d => d.platform === 'ios' && d.kind === 'virtual'
+  ? `<div class="dv-acts"><button type="button" class="act accent" data-dv-show="${esc(d.id)}" data-srv="${esc(d.server || '')}" data-app="${d.sim_app ? 1 : ''}" data-name="${esc(d.name)}" title="${d.sim_app ? '이 맥에서 Simulator 앱 창으로 띄웁니다' : '이 맥에 Simulator 앱이 없어 화면 라이브를 새 창으로 띄웁니다'}">시뮬 화면 열기</button></div>` : '';
+// The live screen alone in a popup window (the same multipart stream the card shows; closing the window ends it).
+function dvPopup(server, id, name) {
+  const w = window.open('', 'dv-' + id, 'popup,width=440,height=900');
+  if (!w) { toast('팝업이 막혔습니다 — 이 사이트의 팝업을 허용해 주세요'); return; }
+  const src = api.deviceStream(server, id);
+  w.document.title = name + ' 화면';
+  w.document.body.style.cssText = 'margin:0;background:#111;display:grid;place-items:center;height:100vh';
+  w.document.body.innerHTML = `<img alt="${esc(name)} 화면" src="${esc(src)}" style="max-width:100%;max-height:100vh;object-fit:contain">`;
+  w.focus();
+}
 function dvInfo(d) {
   const plat = d.platform === 'ios' ? 'iOS' : 'Android';
   const busy = !d.free;
   return `<div class="dv-h"><b>${esc(d.name)}</b>${d.model && d.model !== d.name ? `<span class="st">${esc(d.model)}</span>` : ''}
       <span class="badge">${plat}${d.os ? ' ' + esc(d.os) : ''}</span><span class="badge">${esc(DV_TRANSPORT[d.transport] || d.transport || '')}</span>${srvBadge(d)}
-      <ds-pill state="${busy ? 'run' : 'idle'}">${busy ? '사용 중' : '비어 있음'}</ds-pill>${d.recording ? '<span class="badge dv-rec">● 녹화 중</span>' : ''}</div>
-    <div class="dv-id" title="기기 ID">${d.ids.map(esc).join(' · ')}</div>
+      <ds-pill state="${busy ? 'run' : 'idle'}">${busy ? '사용 중' : '비어 있음'}</ds-pill>${d.recording ? '<span class="badge dv-rec">● 녹화 중</span>' : ''}${dvWin(d)}</div>
+    <div class="dv-id" title="기기 ID">${d.ids.map(esc).join(' · ')}</div>${dvShow(d)}
     ${d.users.length ? d.users.map(dvWho).join('') : '<div class="empty dv-none">이 기기를 쓰는 세션이 없습니다.</div>'}`;
 }
 function dvScreen(card, d) {
@@ -399,6 +418,14 @@ async function renderDevices() {
     <div class="controls"><label class="st"><input type="checkbox" id="dv-live"${dvLive ? ' checked' : ''}> 화면 라이브</label><span class="st" id="dv-sum"></span></div>
     <div id="dv-body"><div class="empty">불러오는 중…</div></div><div id="dv-queue" class="dv-queue"></div>`;
   dvMounted = true;
+  $('#dv-body').addEventListener('click', e => {
+    const b = e.target.closest('[data-dv-show]');
+    if (!b) return;
+    if (!b.dataset.app) { dvPopup(b.dataset.srv, b.dataset.dvShow, b.dataset.name); return; }
+    b.disabled = true;
+    api.showDevice(b.dataset.srv, b.dataset.dvShow).then(r => toast(r.status === 200 ? 'Simulator 앱에서 열었습니다' : r.body?.error || `열기 실패 (${r.status})`))
+      .finally(() => { b.disabled = false; });
+  });
   $('#dv-live').onchange = e => { dvLive = e.target.checked; try { localStorage.setItem('adash.devices.live', dvLive ? '1' : '0'); } catch {} dvDraw(); };
   if (dvData) dvDraw();
   await dvPoll();
