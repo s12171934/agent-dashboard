@@ -1,0 +1,80 @@
+/* Wireframe primitives: gray boxes and text bars only, so a screen is judged by its structure, not its look.
+   Every screen file under screens/ links this one stylesheet and nothing else. See README.md for the rules. */
+:root {
+  --wf-bg: #f4f4f2; --wf-panel: #ffffff; --wf-fill: #e2e2de; --wf-ink: #2b2b29; --wf-muted: #8a8a85;
+  --wf-line: #c9c9c4; --wf-accent: #3b6fd8; --wf-hot: #d9822b; --wf-bad: #c8463c; --wf-ok: #3d9a62;
+  --wf-note: #fff3b0; --wf-note-ink: #5c4a00;
+  --wf-gap: 12px; --wf-r: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wf-bg: #1b1b1a; --wf-panel: #252524; --wf-fill: #353533; --wf-ink: #e8e8e4; --wf-muted: #8f8f8a;
+    --wf-line: #43433f; --wf-note: #4a4320; --wf-note-ink: #f3e7a6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --wf-bg: #1b1b1a; --wf-panel: #252524; --wf-fill: #353533; --wf-ink: #e8e8e4; --wf-muted: #8f8f8a;
+  --wf-line: #43433f; --wf-note: #4a4320; --wf-note-ink: #f3e7a6; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--wf-bg); color: var(--wf-ink); min-height: 100vh;
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", system-ui, sans-serif;
+}
+
+/* layout */
+.wf-screen { display: flex; min-height: 100vh; }
+.wf-side { width: 220px; flex: none; background: var(--wf-panel); border-right: 1px solid var(--wf-line); padding: var(--wf-gap); display: flex; flex-direction: column; gap: 6px; }
+.wf-main { flex: 1; min-width: 0; padding: calc(var(--wf-gap) * 1.5); display: flex; flex-direction: column; gap: var(--wf-gap); }
+.wf-row { display: flex; gap: var(--wf-gap); align-items: center; flex-wrap: wrap; }
+.wf-col { display: flex; flex-direction: column; gap: var(--wf-gap); }
+.wf-grid { display: grid; gap: var(--wf-gap); grid-template-columns: repeat(auto-fill, minmax(var(--wf-min, 220px), 1fr)); }
+.wf-grow { flex: 1; min-width: 0; }
+.wf-dock { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px; background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 999px; box-shadow: 0 4px 16px rgb(0 0 0 / .12); }
+.wf-sheet { position: fixed; inset: auto 0 0 0; max-height: 80vh; overflow: auto; background: var(--wf-panel); border-top: 1px solid var(--wf-line); border-radius: 16px 16px 0 0; padding: calc(var(--wf-gap) * 1.5); }
+.wf-dialog { margin: 10vh auto; width: min(560px, calc(100% - 32px)); background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; padding: calc(var(--wf-gap) * 1.5); }
+
+/* blocks */
+.wf-box { background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: var(--wf-r); padding: var(--wf-gap); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wf-fill { background: var(--wf-fill); border-radius: var(--wf-r); min-height: 48px; display: grid; place-items: center; color: var(--wf-muted); font-size: 12px; }
+.wf-img { background: repeating-linear-gradient(45deg, var(--wf-fill) 0 8px, transparent 8px 16px); border: 1px solid var(--wf-line); border-radius: var(--wf-r); min-height: 80px; display: grid; place-items: center; color: var(--wf-muted); font-size: 12px; }
+.wf-h { font-weight: 700; font-size: 16px; margin: 0; }
+.wf-h.l { font-size: 22px; }
+.wf-t { color: var(--wf-muted); font-size: 12px; margin: 0; }
+.wf-line { height: 10px; border-radius: 5px; background: var(--wf-fill); width: var(--w, 100%); }
+.wf-line.s { width: var(--w, 40%); }
+.wf-num { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wf-list { display: flex; flex-direction: column; }
+.wf-list > * { padding: 8px 0; border-top: 1px solid var(--wf-line); display: flex; gap: 8px; align-items: center; }
+.wf-list > :first-child { border-top: 0; }
+
+/* controls */
+.wf-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--wf-line); background: var(--wf-panel); color: var(--wf-ink); font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
+.wf-btn.primary { background: var(--wf-ink); color: var(--wf-panel); border-color: var(--wf-ink); }
+.wf-btn.on { outline: 2px solid var(--wf-accent); outline-offset: -2px; }
+.wf-input { padding: 6px 10px; border: 1px solid var(--wf-line); border-radius: 6px; background: var(--wf-panel); color: var(--wf-muted); min-width: 120px; }
+.wf-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; background: var(--wf-fill); color: var(--wf-ink); }
+.wf-tag.hot { background: var(--wf-hot); color: #fff; }
+.wf-tag.bad { background: var(--wf-bad); color: #fff; }
+.wf-tag.ok { background: var(--wf-ok); color: #fff; }
+.wf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--wf-muted); flex: none; }
+.wf-dot.hot { background: var(--wf-hot); } .wf-dot.bad { background: var(--wf-bad); } .wf-dot.ok { background: var(--wf-ok); }
+
+/* annotations: why a block is there, read on the board, not part of the design */
+.wf-note { background: var(--wf-note); color: var(--wf-note-ink); border-radius: 6px; padding: 6px 10px; font-size: 12px; }
+.wf-note::before { content: "메모 · "; font-weight: 700; }
+[data-to] { cursor: pointer; }
+[data-to]:hover { outline: 2px dashed var(--wf-accent); outline-offset: 2px; }
+
+/* the three widths the board shows */
+@media (max-width: 700px) {
+  .wf-screen { flex-direction: column; }
+  .wf-side { width: auto; border-right: 0; border-bottom: 1px solid var(--wf-line); flex-direction: row; overflow-x: auto; }
+  .wf-main { padding: var(--wf-gap); padding-bottom: 80px; }
+  .wf-hide-phone { display: none !important; }
+}
+@media (min-width: 701px) { .wf-only-phone { display: none !important; } }
+@media (max-width: 1100px) { .wf-hide-tablet { display: none !important; } }
+@media (min-width: 1101px) { .wf-only-tablet { display: none !important; } }

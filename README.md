@@ -20,10 +20,11 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | --- | --- | --- |
 | `frontend/` | 기존 JavaScript UI·정적 셸·전송 계층 (WASM 전환 롤백) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `web-ui/` | 미적용 Rust/WASM UI 시도. 운영 화면·배포에서 제외 | macOS·iPhone WebKit, 브라우저 |
+| `wireframes/` | 대시보드 재설계용 와이어프레임 보드 — 모든 화면을 모든 폭으로 한 장에(격자·흐름 지도). 웹 전용, 앱·대시보드에서 링크하지 않음 — [wireframes/README.md](wireframes/README.md) | Cloudflare Pages `/wireframes/` |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (`src/main.rs` → `src/http.rs`, REST `/api/*` + SSE `/events`; `server/run`으로 실행), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `adata`, `amedia`, `launchd/` | 로컬 Mac |
-| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-impl-progress.py` — 「구현 ① 티켓 진행」의 맵·장부 파서를 가짜 입력으로 확인, `check-server.py` — Rust 컴파일·Clippy 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `check-own-handle.py` — 코디네이터의 자기 터미널(own_handle) 추론(run-create·worker-start 만으로 만든 Run·`--from` 드라이버 제외) 확인, `check-snapshot-cost.py` — 스냅숏 delta의 항목 식별 규약 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
+| `scripts/` | `deploy-frontend.sh` — `frontend/`(+ `design-system/` → `ds/`, `wireframes/` → `wireframes/`)를 Pages 에 배포, `dev-frontend.py` — 로컬 개발 서버, `check-ds.py` — 디자인 시스템 규칙 검사, `check-flow.py` — 흐름 이탈 판정 규칙을 가짜 입력으로 확인, `check-impl-progress.py` — 「구현 ① 티켓 진행」의 맵·장부 파서를 가짜 입력으로 확인, `check-server.py` — Rust 컴파일·Clippy 검사, `check-session-title.py` — 세션 제목 우선순위(`/rename` 의 custom-title > ai-title > 첫 프롬프트) 확인, `check-own-handle.py` — 코디네이터의 자기 터미널(own_handle) 추론(run-create·worker-start 만으로 만든 Run·`--from` 드라이버 제외) 확인, `check-snapshot-cost.py` — 스냅숏 delta의 항목 식별 규약 확인, `char-gen.sh`·`char-sprites.py` — 캐릭터 모드 그림 생성·자르기, `char-publish.py` — 새 캐릭터를 배포 없이 R2 에 올리기 | |
 | `apple/` | macOS·iPhone 앱(네이티브 UI·Rust 공용 상태·WebView)과 iPhone 위젯 — 아래 「macOS·iPhone 앱」 | 로컬 Mac, iPhone |
 | `client-core/` | 서버·Apple 앱이 공유하는 Rust 결정 응답 타입, 알림 상태 판정과 C ABI | 서버, macOS, iPhone |
 | `bin/` | 공개 CLI 진입점 — `atest`(→ `server/atest`). 다른 저장소(스킬 등)는 이 경로로 부른다 | 로컬 Mac |

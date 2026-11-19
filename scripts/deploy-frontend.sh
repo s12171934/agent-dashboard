@@ -22,8 +22,10 @@ cp -R "$ROOT/frontend/." "$OUT/"
 rm -rf "$OUT/wasm"
 rm -f "$OUT/rust-ui.js"
 mkdir "$OUT/ds" && cp -R "$ROOT/design-system/." "$OUT/ds/"
+# the wireframe board, at /wireframes/ (web only: nothing in the page links to it); its README stays in the repo
+mkdir "$OUT/wireframes" && cp -R "$ROOT/wireframes/." "$OUT/wireframes/" && rm -f "$OUT/wireframes/README.md"
 build="$(git -C "$ROOT" rev-parse --short HEAD)"
-git -C "$ROOT" diff --quiet HEAD -- frontend design-system || build="$build-dirty"
+git -C "$ROOT" diff --quiet HEAD -- frontend design-system wireframes || build="$build-dirty"
 ver="$build-$(date +%Y%m%d%H%M%S)"
 printf '{"build": "%s"}\n' "$ver" > "$OUT/build.json"
 
@@ -34,6 +36,7 @@ CV="{${charv%,}}" perl -pi -e 's{/\*\@chars-v\*/\{\}/\*\@\*/}{$ENV{CV}}' "$OUT/a
 grep -q '@chars-v' "$OUT/app.js" && { echo "app.js 의 CH_FILEV 를 채우지 못했습니다" >&2; exit 1; }
 # the design system's own pages (preview, stories and the story canvas) too, with their inline module imports
 V="$ver" perl -pi -e 's{\b((?:src|href)=")((?![a-z]+:|/|#)[^"?]+\.(?:js|css))"}{$1$2?v=$ENV{V}"}g' "$OUT/index.html" "$OUT"/ds/*.html
+find "$OUT/wireframes" -name '*.html' -exec env V="$ver" perl -pi -e 's{\b((?:src|href)=")((?![a-z]+:|/|#)[^"?]+\.(?:js|css))"}{$1$2?v=$ENV{V}"}g' {} +
 find "$OUT" -name '*.css' -exec env V="$ver" perl -pi -e 's{(\@import\s+")([^"?]+\.css)"}{$1$2?v=$ENV{V}"}g' {} +
 find "$OUT/ds" \( -name '*.js' -o -path "$OUT/ds/*.html" ! -path "$OUT/ds/components/*" \) -exec env V="$ver" perl -pi -e \
   's{((?:\bimport\s+|\bfrom\s+|new URL\()\x27)(\.{1,2}/[^\x27?]+\.(?:js|css|svg))\x27}{$1$2?v=$ENV{V}\x27}g' {} +

@@ -1,6 +1,7 @@
 // Service worker: makes the page installable (PWA) and opens it offline. Only this origin's page files go through
 // it, network first: a new deployment shows at once, and the cache answers only when the network does not. The
-// metric servers (other origins: /api/*, /events) and build.json, which spots new deployments, are never touched.
+// metric servers (other origins: /api/*, /events), build.json, which spots new deployments, and the wireframe board
+// (/wireframes/) are never touched.
 const CACHE = 'adash-shell-v21';
 const SHELL = ['./', 'index.html', 'app.css', 'api.js', 'decision.js', 'app.js', 'usage.js', 'icon-boot.js', 'manifest.webmanifest',
   'ds/ds.css', 'ds/ds.js', 'ds/foundations/tokens.css', 'ds/foundations/base.css', 'ds/foundations/theme.js', 'ds/foundations/fold.js',
@@ -22,7 +23,8 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.endsWith('/build.json')) return;
+  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.endsWith('/build.json')
+    || url.pathname.startsWith('/wireframes/')) return;  // the wireframe board is not part of the app: never cached or answered offline
   e.respondWith(fetch(e.request).then(res => {
     // Kept by path: a deploy stamps ?v=<build> on the files, and one copy each is all offline needs.
     if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(url.origin + url.pathname, copy)); }

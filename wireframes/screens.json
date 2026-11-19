@@ -1,0 +1,35 @@
+{
+  "widths": [
+    { "id": "phone", "name": "휴대폰", "w": 390, "h": 844, "env": "웹 휴대폰" },
+    { "id": "tablet", "name": "태블릿", "w": 820, "h": 1180, "env": "iPad · 웹 태블릿" },
+    { "id": "desktop", "name": "데스크톱", "w": 1440, "h": 900, "env": "Mac · 웹 데스크톱" }
+  ],
+  "groups": [
+    { "id": "main", "name": "기본 탭" },
+    { "id": "screen", "name": "화면" },
+    { "id": "detail", "name": "상세" },
+    { "id": "overlay", "name": "오버레이" }
+  ],
+  "screens": [
+    { "id": "home", "name": "홈", "group": "main", "to": ["decide", "agents", "worktrees", "tests", "compare", "usage", "talk", "projects", "designs"], "variants": [] },
+    { "id": "agents", "name": "에이전트", "group": "main", "to": ["session", "run", "chat", "new-agent"], "variants": [] },
+    { "id": "decide", "name": "결정 대기", "group": "main", "to": ["session"], "variants": [] },
+    { "id": "worktrees", "name": "워크트리 리뷰", "group": "main", "to": ["trees", "session"], "variants": [] },
+    { "id": "tests", "name": "테스트", "group": "main", "to": ["session"], "variants": [] },
+    { "id": "trees", "name": "워크트리", "group": "screen", "to": [], "variants": [] },
+    { "id": "compare", "name": "비교 · 비용", "group": "screen", "to": ["session"], "variants": [] },
+    { "id": "usage", "name": "플랜 사용량", "group": "screen", "to": [], "variants": [] },
+    { "id": "talk", "name": "상호작용", "group": "screen", "to": ["session"], "variants": [] },
+    { "id": "projects", "name": "프로젝트", "group": "screen", "to": ["designs"], "variants": [] },
+    { "id": "designs", "name": "설계문서", "group": "screen", "to": ["session"], "variants": [] },
+    { "id": "canvas", "name": "워크플로 캔버스", "group": "screen", "to": [], "variants": [] },
+    { "id": "devices", "name": "실기기", "group": "screen", "to": ["session"], "variants": [] },
+    { "id": "media", "name": "녹화 영상", "group": "screen", "to": [], "variants": [] },
+    { "id": "chars", "name": "캐릭터", "group": "screen", "to": [], "variants": [] },
+    { "id": "session", "name": "세션 상세", "group": "detail", "to": ["chat", "decide"], "variants": [] },
+    { "id": "run", "name": "코디네이터 상세", "group": "detail", "to": ["session"], "variants": [] },
+    { "id": "chat", "name": "에이전트와 채팅", "group": "overlay", "to": [], "variants": [] },
+    { "id": "new-agent", "name": "새 에이전트", "group": "overlay", "to": ["agents"], "variants": [] },
+    { "id": "settings", "name": "설정 · 메트릭 서버", "group": "overlay", "to": [], "variants": [] }
+  ]
+}

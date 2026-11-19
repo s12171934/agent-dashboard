@@ -3,3 +3,7 @@
   Cache-Control: no-cache
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
+
+# The wireframe board: viewable on the web by its address, kept out of search engines.
+/wireframes/*
+  X-Robots-Tag: noindex

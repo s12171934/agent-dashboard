@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>템플릿 · 와이어프레임</title>
+<!-- Copy this folder's file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css, no other files, no real data. -->
+<link rel="stylesheet" href="../../wf.css">
+</head>
+<body>
+<div class="wf-screen">
+  <nav class="wf-side wf-hide-phone">
+    <span class="wf-btn on">홈</span>
+    <span class="wf-btn" data-to="agents">에이전트</span>
+    <span class="wf-btn" data-to="decide">결정 대기</span>
+  </nav>
+  <main class="wf-main">
+    <div class="wf-row">
+      <h1 class="wf-h l wf-grow">화면 제목</h1>
+      <span class="wf-input">검색</span>
+      <button class="wf-btn primary">주요 행동</button>
+    </div>
+    <p class="wf-note">이 화면에 오는 이유: 무엇을 확인하고 무엇을 누르는가 한 줄.</p>
+    <div class="wf-grid">
+      <section class="wf-box" data-to="session">
+        <div class="wf-row"><span class="wf-dot hot"></span><h2 class="wf-h wf-grow">카드 제목</h2><span class="wf-tag hot">대기</span></div>
+        <div class="wf-line"></div><div class="wf-line s"></div>
+      </section>
+      <section class="wf-box">
+        <p class="wf-t">지표</p><span class="wf-num">12</span>
+        <div class="wf-fill">그래프</div>
+      </section>
+    </div>
+  </main>
+</div>
+<nav class="wf-dock wf-only-phone">
+  <span class="wf-btn on">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide">결정</span>
+</nav>
+</body>
+</html>
