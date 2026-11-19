@@ -328,6 +328,10 @@ fn post(app: &App, path: &str, _headers: &HeaderMap, b: &Value) -> Response {
                 Err(e) => err(500, &e),
             }
         }
+        "/api/devices/show" => {
+            let (code, v) = devices::show(text(&b["id"]));
+            reply(code, v)
+        }
         "/api/usage" => match usage::record(&app.config, b) {
             Ok(n) => json(json!({"ok":true,"n":n})),
             Err(e) => err(400, &e),

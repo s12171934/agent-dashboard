@@ -2470,6 +2470,7 @@ html.md-lock, html.md-lock body { overflow: hidden; }
 .dv-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .dv-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .dv-h > b { font-size: 15px; }
+.dv-acts { margin: 6px 0; }
 .dv-id { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .dv-user { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: calc(var(--radius) - 2px); min-width: 0; }
 .dv-uh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
