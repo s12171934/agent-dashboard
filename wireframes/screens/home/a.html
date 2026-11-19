@@ -32,8 +32,8 @@
   .home-tools-list { grid-template-columns: minmax(0, 1fr); }
 }
 @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
-  :root:not([data-posture]) .home-layout { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
-  .home-tools-list { grid-template-columns: minmax(0, calc(50% - 42px)) minmax(0, 1fr); column-gap: 28px; }
+  :root:not([data-posture]) .home-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .home-tools-list { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
 }
 @media (width > 1100px) {
   .home-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr); }
@@ -44,7 +44,7 @@
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
   <nav class="wf-side" data-shell>
     <span class="wf-btn on" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
     <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
@@ -109,11 +109,11 @@
     <p class="wf-note">접힘에서는 내 차례에서 진행 요약으로 내려간다. 펼침과 태블릿에서는 둘을 옆에 두고, 데스크톱에서는 도구 요약까지 나란히 본다.</p>
   </main>
 </div>
-<!-- Duo cover: bottom dock -->
+<!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn on" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn on" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
   <section class="wf-col" aria-labelledby="home-sheet-title">

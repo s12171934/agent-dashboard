@@ -24,17 +24,17 @@
 :root[data-posture="laptop"] .wf-half .devices-preview { min-height: 132px; }
 :root[data-posture="laptop"] .wf-half .devices-frame { width: 60px; }
 
-/* The rail takes space from the left pane. Keep the gap centered on the viewport fold. */
+/* Duo is the app (no rail): equal panes keep the gap on the fold. */
 @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
   :root:not([data-posture]) .wf-panes {
-    grid-template-columns: minmax(0, calc(50vw - 64px - var(--wf-gap) * 1.5 - 14px)) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 </style>
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
   <nav class="wf-side" data-shell>
     <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
     <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
@@ -119,11 +119,11 @@
     <p class="wf-note">기기를 고르기 전에 점유 세션과 대기 순서를 확인한다. 접힘에서는 카드 안, 펼침에서는 옆 칸, 반접힘에서는 시트에서 화면을 본다.</p>
   </main>
 </div>
-<!-- Duo cover: bottom dock -->
+<!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
   <div data-slot="screen" data-plugin="devices">

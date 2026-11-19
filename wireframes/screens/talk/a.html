@@ -22,15 +22,15 @@
 .talk-link { color: var(--wf-ink); font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; }
 .talk-group summary { cursor: pointer; }
 .talk-group .talk-messages { margin-top: 8px; }
-  /* Keep the fold gap centered in the viewport, including the 64px navigation rail. */
+  /* Duo is the app (no rail): equal panes keep the gap on the fold. */
   @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
-    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   }
 </style>
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
   <nav class="wf-side" data-shell>
     <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
     <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
@@ -137,11 +137,11 @@
     <p class="wf-note">대화는 코디네이터로 묶고 각 줄에서 발신·수신 세션을 연다. 접힘은 묶음 안에서 대화를 펼치고, 반접힘은 필터를 시트에 둔다.</p>
   </main>
 </div>
-<!-- Duo cover: bottom dock -->
+<!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
   <div class="wf-col" data-slot="screen" data-plugin="orca">
