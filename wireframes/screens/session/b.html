@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>세션 상세 B · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.session-heading, .session-meta, .session-actions { gap: 6px; }
+.session-heading { flex-wrap: nowrap; }
+.session-heading .wf-h { overflow-wrap: anywhere; }
+.session-meta { flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.session-main .wf-note { margin: 0; }
+.session-context { gap: 6px; }
+.session-context .wf-h { font-size: 14px; }
+.session-context .wf-panes { align-items: center; }
+.session-path { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0; margin: 0; gap: 9px; list-style: none; }
+.session-path li { position: relative; min-width: 0; display: flex; justify-content: center; }
+.session-path li + li::before { content: "›"; position: absolute; left: -8px; top: 50%; transform: translateY(-50%); color: var(--wf-muted); }
+.session-place { display: grid; align-content: center; justify-items: center; gap: 2px; min-width: 0; width: 100%; min-height: 47px; padding: 3px; border: 1px solid var(--wf-line); border-radius: 5px; color: var(--wf-ink); font: inherit; font-size: 11px; }
+.session-place .wf-t { font-size: 10px; white-space: nowrap; }
+.session-place .wf-tag { padding-inline: 4px; }
+.session-driver { border: 0; background: var(--wf-fill); }
+.session-run { background: var(--wf-fill); text-decoration: underline; }
+.session-task { background: var(--wf-panel); border-color: var(--wf-hot); border-radius: 3px; }
+.session-current { border-color: var(--wf-hot); }
+.session-current .wf-chip { padding-right: 3px; }
+.session-peers { display: grid; min-width: 0; gap: 4px; }
+.session-peers .wf-row { gap: 4px; }
+button.wf-chip { color: var(--wf-ink); }
+.session-layout { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.session-primary, .session-side { display: contents; }
+.session-module-title { margin: 0; font: inherit; }
+.session-module-summary { gap: 6px; }
+.session-module-summary .wf-num { font-size: 22px; }
+.session-table { overflow-x: auto; }
+.session-table .wf-dense th, .session-table .wf-dense td { padding-inline: 4px; }
+.session-table .wf-dense td.wrap { white-space: normal; overflow-wrap: anywhere; }
+.session-table .wf-dense tr:last-child td { border-bottom: 0; }
+.session-decision { border-inline-start: 3px solid var(--wf-hot); }
+.session-decision .wf-btn { align-self: start; }
+.session-mail { margin: 0; padding: 0; list-style: none; }
+.session-mail > li { align-items: flex-start; }
+.session-mail > li .wf-tag { flex: none; }
+.session-mail .wf-t { display: block; }
+.session-log-summary { gap: 6px; }
+.session-log-detail { margin: 0; padding: 8px; border-radius: 4px; background: var(--wf-bg); font-size: 12px; white-space: pre-wrap; }
+.session-tall { display: none; }
+@media (500px < width <= 1100px) {
+  :root:not(.wf-app) .session-layout .wf-module { grid-column: span 6; }
+}
+@media (width > 1100px) and (height >= 1600px) {
+  .session-layout .session-logs { grid-column: span 12; grid-row: span 5; }
+  .session-layout .session-docs { grid-column: span 8; }
+  .session-tall { display: revert; }
+}
+.wf-app .session-layout { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+.wf-app .session-layout > .wf-grid12 { display: grid; grid-auto-rows: auto; }
+.wf-app .session-layout .wf-module { --rows: 1; }
+@media (width > 500px) {
+  .wf-app:not([data-posture]) .session-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: start; }
+}
+:root[data-posture] .session-sheet-grid { grid-auto-rows: auto; }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn on" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main session-main">
+    <header class="wf-col session-heading">
+      <div class="wf-row session-heading">
+        <h1 class="wf-h l wf-grow">세션 제목</h1>
+        <button class="wf-btn wf-hide-posture" type="button" data-slot="action" data-plugin="orca">Orca에서 열기</button>
+        <button class="wf-btn wf-hide-posture" type="button" data-to="chat" data-slot="action" data-plugin="orca">채팅</button>
+        <button class="wf-btn" type="button" data-to="compose">화면 편집</button>
+        <button class="wf-btn" type="button" data-to="agents">닫기</button>
+      </div>
+      <div class="wf-row session-meta">
+        <span class="wf-tag hot">입력 대기</span><span class="wf-t">Codex · 모델 이름</span>
+        <span class="wf-t" data-slot="session.badge" data-plugin="cost">비용 $0.00</span>
+        <span class="wf-t">워크트리 이름</span><span class="wf-t">마지막 활동 1분 전</span>
+      </div>
+    </header>
+
+    <section class="wf-box session-context" data-slot="session.badge" data-plugin="orca">
+      <h2 class="wf-h">이 세션의 자리</h2>
+      <div class="wf-panes">
+        <ol class="session-path" aria-label="오케스트레이션에서 이 세션의 위치">
+          <li><div class="session-place session-driver"><span class="wf-t">드라이버</span><strong>드라이버 A</strong></div></li>
+          <li><button class="session-place session-run" type="button" data-to="run"><span class="wf-t">코디네이터</span><strong>Run 목표 A</strong></button></li>
+          <li><div class="session-place session-task"><span class="wf-t">태스크</span><strong>태스크 A</strong></div></li>
+          <li><div class="session-place session-current" aria-current="true"><span class="wf-t">이 워커</span><span class="wf-chip hot"><b>C</b>워커 1</span></div></li>
+        </ol>
+        <div class="session-peers">
+          <span class="wf-t">같은 Run의 다른 워커</span>
+          <div class="wf-row">
+            <button class="wf-chip bad" type="button" data-to="session" title="막힘" aria-label="워커 2, Claude, 막힘"><b>X</b>워커 2</button>
+            <button class="wf-chip done" type="button" data-to="session" title="완료" aria-label="워커 3, Codex, 완료"><b>C</b>워커 3</button>
+            <button class="wf-chip ok" type="button" data-to="session" title="실행" aria-label="워커 4, Claude, 실행"><b>X</b>워커 4</button>
+            <button class="wf-chip hot" type="button" data-to="session" title="대기" aria-label="워커 5, Codex, 대기"><b>C</b>워커 5</button>
+            <button class="wf-chip done wf-x" type="button" data-to="session" title="취소" aria-label="워커 6, Claude, 취소"><b>X</b>워커 6</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="wf-grid12 wf-panes session-layout">
+      <div class="wf-grid12 session-primary">
+        <section class="wf-module session-decision" data-slot="panel" data-plugin="decisions" style="--span:4;--rows:3">
+          <header class="wf-mhead"><h2 class="session-module-title wf-grow">결정 대기</h2><span class="wf-tag">decisions</span></header>
+          <div class="wf-mbody">
+            <div class="wf-row session-module-summary"><span class="wf-tag hot">답 대기</span><time class="wf-t">09:38</time></div>
+            <strong>◆ 진행 승인 질문</strong>
+            <p class="wf-t">태스크 A · 진행 승인 게이트</p>
+            <button class="wf-btn primary" type="button" data-to="decide">결정에 답하기</button>
+          </div>
+        </section>
+        <section class="wf-module" data-slot="panel" data-plugin="plans" style="--span:4;--rows:3">
+          <header class="wf-mhead"><h2 class="session-module-title wf-grow">작업 계획</h2><span class="wf-tag">plans</span></header>
+          <div class="wf-mbody">
+            <div class="wf-row session-module-summary"><strong class="wf-num">2/5</strong><span class="wf-t">완료</span></div>
+            <div class="wf-seg" role="img" aria-label="완료 2, 실행 1, 대기 2"><i class="done"></i><i class="done"></i><i class="ok"></i><i class="hot"></i><i class="hot"></i></div>
+            <div class="session-table">
+              <table class="wf-dense" aria-label="작업 계획 단계">
+                <thead><tr><th scope="col">단계</th><th scope="col">상태</th><th scope="col">소요</th></tr></thead>
+                <tbody>
+                  <tr><td>요건 확인</td><td><span class="wf-tag done">완료</span></td><td>3분</td></tr>
+                  <tr><td>초안 작성</td><td><span class="wf-tag done">완료</span></td><td>8분</td></tr>
+                  <tr><td>테스트 확인</td><td><span class="wf-tag ok">실행</span></td><td>4분</td></tr>
+                  <tr><td>진행 승인</td><td><span class="wf-tag hot">대기</span></td><td>–</td></tr>
+                  <tr><td>결과 보고</td><td><span class="wf-tag hot">대기</span></td><td>–</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <section class="wf-module" data-slot="panel" data-plugin="tests" style="--span:4;--rows:3">
+          <header class="wf-mhead"><h2 class="session-module-title wf-grow">테스트</h2><span class="wf-tag">tests</span></header>
+          <div class="wf-mbody">
+            <div class="wf-row session-module-summary"><strong class="wf-grow">실행 라벨 A</strong><span class="wf-tag ok">실행 중</span><span class="wf-t">5/8</span></div>
+            <div class="wf-seg" role="img" aria-label="통과 4, 실패 1, 실행 1, 대기 2"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="bad"></i><i class="ok"></i><i class="hot"></i><i class="hot"></i></div>
+            <p class="wf-t">실패 1 · 실행 1 · 대기 2</p>
+            <div class="session-table">
+              <table class="wf-dense" aria-label="주요 테스트 케이스">
+                <thead><tr><th scope="col">케이스</th><th scope="col">상태</th><th scope="col">소요</th></tr></thead>
+                <tbody>
+                  <tr><td>케이스 5</td><td><span class="wf-tag bad">실패</span></td><td>00:08</td></tr>
+                  <tr><td>케이스 6</td><td><span class="wf-tag ok">실행</span></td><td>00:12</td></tr>
+                  <tr><td>케이스 7</td><td><span class="wf-tag hot">대기</span></td><td>–</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="wf-grid12 session-side">
+        <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:4;--rows:3">
+          <header class="wf-mhead"><h2 class="session-module-title wf-grow">메일</h2><span class="wf-tag">orca</span></header>
+          <div class="wf-mbody">
+            <div class="wf-row session-module-summary"><span class="wf-tag hot">답 대기 1</span><span class="wf-t">코디네이터 ↔ 이 워커</span></div>
+            <ul class="wf-list session-mail">
+              <li><span class="wf-tag msg">질문</span><div class="wf-grow"><strong>검토 범위 확인</strong><span class="wf-t">이 워커 → 코디네이터</span></div><time class="wf-t">09:38</time></li>
+              <li><span class="wf-tag msg">답</span><div class="wf-grow"><strong>검토 범위 답변</strong><span class="wf-t">코디네이터 → 이 워커</span></div><time class="wf-t">09:28</time></li>
+              <li><span class="wf-tag msg">질문</span><div class="wf-grow"><strong>검토 범위 질문</strong><span class="wf-t">이 워커 → 코디네이터</span></div><time class="wf-t">09:26</time></li>
+            </ul>
+          </div>
+        </section>
+        <section class="wf-module session-logs" data-slot="panel" data-plugin="orca" style="--span:5;--rows:3">
+          <header class="wf-mhead"><h2 class="session-module-title wf-grow">로그</h2><span class="wf-tag">orca</span></header>
+          <div class="wf-mbody">
+            <div class="wf-row session-log-summary"><strong class="wf-grow">최근 로그</strong><span class="wf-t">12건 · 최신순</span></div>
+            <div class="session-table">
+              <table class="wf-dense" aria-label="최근 로그">
+                <thead><tr><th scope="col">시각</th><th scope="col">분류</th><th scope="col">내용</th></tr></thead>
+                <tbody>
+                  <tr><td>09:40:10</td><td><span class="wf-tag bad">실패</span></td><td class="wrap">테스트 케이스 실패</td></tr>
+                  <tr><td>09:38:00</td><td><span class="wf-tag msg">메시지</span></td><td class="wrap">코디네이터에게 질문 발송</td></tr>
+                  <tr><td>09:36:16</td><td><span class="wf-tag ok">실행</span></td><td class="wrap">테스트 케이스 실행</td></tr>
+                  <tr><td>09:35:30</td><td><span class="wf-tag done">완료</span></td><td class="wrap">초안 작성 단계 완료</td></tr>
+                  <tr class="session-tall"><td>09:34:25</td><td><span class="wf-tag done">완료</span></td><td class="wrap">만든 문서 항목 기록</td></tr>
+                  <tr class="session-tall"><td>09:28:00</td><td><span class="wf-tag msg">메시지</span></td><td class="wrap">코디네이터의 답 수신</td></tr>
+                  <tr class="session-tall"><td>09:26:00</td><td><span class="wf-tag msg">메시지</span></td><td class="wrap">코디네이터에게 질문 발송</td></tr>
+                  <tr class="session-tall"><td>09:25:08</td><td><span class="wf-tag hot">대기</span></td><td class="wrap">검토 범위 확인 대기</td></tr>
+                  <tr class="session-tall"><td>09:24:20</td><td><span class="wf-tag done">완료</span></td><td class="wrap">요건 확인 단계 완료</td></tr>
+                  <tr class="session-tall"><td>09:22:40</td><td><span class="wf-tag ok">실행</span></td><td class="wrap">요건 확인 단계 시작</td></tr>
+                  <tr class="session-tall"><td>09:21:55</td><td><span class="wf-tag ok">실행</span></td><td class="wrap">이 워커 세션 시작</td></tr>
+                  <tr class="session-tall"><td>09:20:00</td><td><span class="wf-tag msg">메시지</span></td><td class="wrap">코디네이터의 작업 지시 수신</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <pre class="session-log-detail session-tall">선택한 로그 · 09:40:10
+실행 라벨 A · 케이스 5
+실패 출력 자리</pre>
+          </div>
+        </section>
+        <section class="wf-module session-docs" data-slot="panel" data-plugin="vault-notes" style="--span:3;--rows:3">
+          <header class="wf-mhead"><h2 class="session-module-title wf-grow">만든 문서</h2><span class="wf-tag">vault-notes</span></header>
+          <div class="wf-mbody">
+            <ul class="wf-list session-mail">
+              <li><div class="wf-grow"><strong>문서 제목 A</strong><span class="wf-t">볼트 노트 · 프로젝트 스텝</span></div><time class="wf-t">09:34</time></li>
+              <li><div class="wf-grow"><strong>문서 제목 B</strong><span class="wf-t">볼트 노트 · 검토 기록</span></div><time class="wf-t">09:30</time></li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+    <p class="wf-note">이 워커가 속한 태스크와 형제 워커를 머리에서 확인한다. 결정 대기를 첫 패널에 두고, 세로 데스크톱에서는 로그를 넓게 펼친다.</p>
+  </main>
+</div>
+<!-- iPhone Duo (the app): bottom tab bar -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <div class="wf-grid12 session-sheet-grid">
+    <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:12;--rows:1">
+      <header class="wf-mhead"><h2 class="session-module-title wf-grow">세션 행동</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <div class="wf-row session-actions">
+          <button class="wf-btn" type="button" data-to="chat" data-slot="action" data-plugin="orca">채팅</button>
+          <button class="wf-btn" type="button" data-slot="action" data-plugin="orca">Orca에서 열기</button>
+          <button class="wf-btn" type="button" data-to="run">Run 상세</button>
+        </div>
+      </div>
+    </section>
+    <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:12;--rows:1">
+      <header class="wf-mhead"><h2 class="session-module-title wf-grow">이 워커의 태스크</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <div class="wf-row session-module-summary"><strong class="wf-grow">태스크 A</strong><span class="wf-tag ok">배정됨</span><span class="wf-tag hot">워커 입력 대기</span></div>
+        <div class="wf-row session-module-summary"><span class="wf-tag done">선행 태스크 완료</span><span aria-hidden="true">—</span><span class="wf-t">◆ 진행 승인 게이트 대기</span></div>
+      </div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

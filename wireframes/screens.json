@@ -57,6 +57,13 @@
       "w": 1440,
       "h": 900,
       "env": "Mac · 웹 데스크톱"
+    },
+    {
+      "id": "desktop-tall",
+      "name": "데스크톱 세로",
+      "w": 1440,
+      "h": 2560,
+      "env": "Mac · 세로로 돌린 모니터 (27\" QHD)"
     }
   ],
   "groups": [
@@ -99,6 +106,12 @@
           "file": "screens/home/a.html",
           "status": "draft",
           "note": "내 차례를 첫 영역에 둔다."
+        },
+        {
+          "id": "b",
+          "file": "screens/home/b.html",
+          "status": "draft",
+          "note": "모듈형 대시보드 — 내 차례와 오케스트레이션 요약을 먼저, 테스트·QA·비용·사용량 패널. 「화면 편집」으로 배치를 바꾼다."
         }
       ]
     },
@@ -118,6 +131,12 @@
           "file": "screens/agents/a.html",
           "status": "draft",
           "note": "응답 없음부터 상태별로 세션을 훑고 코디네이터 카드의 워커를 펼친다."
+        },
+        {
+          "id": "b",
+          "file": "screens/agents/b.html",
+          "status": "draft",
+          "note": "오케스트레이션 보드 — 주의 Run 이 위, Run 레인(분절 막대·워커 칩·질문/게이트·경과·비용)과 선택 Run 의 DAG, 주의·타임라인·단독 세션 패널."
         }
       ]
     },
@@ -227,6 +246,12 @@
           "file": "screens/talk/a.html",
           "status": "draft",
           "note": "발신·수신 필터와 코디네이터 묶음이 먼저 보인다."
+        },
+        {
+          "id": "b",
+          "file": "screens/talk/b.html",
+          "status": "draft",
+          "note": "시퀀스 다이어그램 — 에이전트 생명선 사이 메시지 화살표(종류별), 접힘은 대화 목록."
         }
       ]
     },
@@ -334,6 +359,12 @@
           "file": "screens/session/a.html",
           "status": "draft",
           "note": "제목·상태 바로 아래 해당 세션의 결정을 두고 계획·실행 중 테스트를 보여 준다."
+        },
+        {
+          "id": "b",
+          "file": "screens/session/b.html",
+          "status": "draft",
+          "note": "「이 세션의 자리」 띠(드라이버›Run›태스크›워커, 같은 Run 워커 칩) + 결정·계획·테스트·메일·로그·문서 패널."
         }
       ]
     },
@@ -350,6 +381,12 @@
           "file": "screens/run/a.html",
           "status": "draft",
           "note": "체크박스 흐름과 워커 표를 순서대로 보여 주고, 넓으면 두 칸에 나란히 둔다."
+        },
+        {
+          "id": "b",
+          "file": "screens/run/b.html",
+          "status": "draft",
+          "note": "태스크 DAG(deps·게이트◆·이탈 경로)·선택 태스크·워커 간트·메일함·워커 표·같은 드라이버의 Run 패널."
         }
       ]
     },
@@ -405,6 +442,22 @@
           "file": "screens/more/a.html",
           "status": "draft",
           "note": "도구 10개의 이름과 한 줄 요약을 한 목록으로 읽는다."
+        }
+      ]
+    },
+    {
+      "id": "compose",
+      "name": "화면 편집",
+      "group": "overlay",
+      "to": [
+        "plugins"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/compose/a.html",
+          "status": "draft",
+          "note": "화면 편집 — 홈 B 를 편집 모드로, 패널 손잡이·크기 조절·추가 자리, 플러그인별 패널 목록과 S·M·L 미리보기, 기기 단계 선택."
         }
       ]
     },
