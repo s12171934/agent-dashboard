@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>캐릭터 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.char-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.char-card { width: 100%; text-align: left; color: var(--wf-ink); font: inherit; }
+.char-card[aria-pressed="true"] { border-color: var(--wf-ink); }
+.char-toggle { gap: 6px; }
+.char-toggle input { accent-color: var(--wf-ink); }
+  /* Keep the fold gap centered in the viewport, including the 64px navigation rail. */
+  @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold on" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="chars">
+    <h1 class="wf-h l">캐릭터</h1>
+    <div class="wf-panes">
+      <div class="char-grid" aria-label="캐릭터 목록">
+        <button type="button" class="wf-box char-card" aria-pressed="true">
+          <span class="wf-fill" aria-hidden="true"></span>
+          <strong>캐릭터 A</strong><span class="wf-t">워커 · 배정 1</span>
+        </button>
+        <button type="button" class="wf-box char-card" aria-pressed="false">
+          <span class="wf-fill" aria-hidden="true"></span>
+          <strong>캐릭터 B</strong><span class="wf-t">코디네이터 · 배정 0</span>
+        </button>
+        <button type="button" class="wf-box char-card" aria-pressed="false">
+          <span class="wf-fill" aria-hidden="true"></span>
+          <strong>캐릭터 C</strong><span class="wf-t">워커 · 배치 끔</span>
+        </button>
+      </div>
+      <div class="wf-hide-posture">
+        <section class="wf-box">
+          <h2 class="wf-h">캐릭터 A</h2>
+          <p class="wf-t">워커 · 세션 1개 배정</p>
+          <label class="wf-row char-toggle"><input type="checkbox" checked> 사무실에 배치</label>
+        </section>
+      </div>
+    </div>
+    <p class="wf-note">격자에는 역할과 배정 상태를 붙인다. 선택한 캐릭터의 배치 토글은 접힘에서 격자 아래, 반접힘에서 시트에 둔다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <div class="wf-col" data-slot="screen" data-plugin="chars">
+    <section class="wf-box">
+      <h2 class="wf-h">캐릭터 A</h2>
+      <p class="wf-t">워커 · 세션 1개 배정</p>
+      <label class="wf-row char-toggle"><input type="checkbox" checked> 사무실에 배치</label>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

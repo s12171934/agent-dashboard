@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>테스트 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.wire-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.wire-filter { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.wire-filter .wf-input { min-width: 0; max-width: 100%; color: var(--wf-ink); font: inherit; font-size: 12px; }
+
+.test-left { gap: 16px; }
+.test-left > section { gap: 8px; }
+.test-meta { gap: 4px 8px; justify-content: space-between; }
+.test-meta strong { font-variant-numeric: tabular-nums; }
+.test-progress { width: 100%; height: 10px; border: 0; appearance: none; background: var(--wf-fill); border-radius: 5px; overflow: hidden; }
+.test-progress::-webkit-progress-bar { background: var(--wf-fill); }
+.test-progress::-webkit-progress-value { background: var(--wf-ink); }
+.test-progress::-moz-progress-bar { background: var(--wf-ink); }
+.test-current, .test-message { padding: 8px; background: var(--wf-bg); border-radius: 6px; }
+.test-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.test-history summary { cursor: pointer; }
+.test-run-heading { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; vertical-align: middle; }
+.test-history summary > .wf-t { display: block; margin-top: 3px; }
+.test-history-detail { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
+  /* Keep the fold gap centered in the viewport, including the 64px navigation rail. */
+  @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn on" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="tests">
+    <h1 class="wf-h l">테스트</h1>
+    <div class="wf-panes">
+      <div class="wf-col test-left">
+        <section class="wf-col" aria-labelledby="running-tests">
+          <h2 class="wf-h" id="running-tests">실행 중</h2>
+          <article class="wf-box">
+            <div class="wf-row test-meta"><strong>테스트 실행 라벨</strong><span class="wf-tag hot">실행 중</span></div>
+            <p class="wf-t">RSpec · 세션 제목</p>
+            <div class="wf-row test-meta"><strong>12 / 18 케이스</strong><span>약 40초 남음</span></div>
+            <progress class="test-progress" value="12" max="18" aria-label="완료한 케이스"></progress>
+            <div class="test-current">
+              <p class="wf-t">▶ 지금 실행 중인 케이스</p>
+              <strong>케이스 제목 C</strong>
+            </div>
+            <details class="wf-only-phone">
+              <summary>케이스 보기</summary>
+              <div class="test-history-detail">
+                <div class="test-chips">
+                  <span class="wf-tag ok">케이스 A · 통과</span>
+                  <span class="wf-tag bad">케이스 B · 실패</span>
+                  <span class="wf-tag hot">케이스 C · 실행 중</span>
+                  <span class="wf-tag">케이스 D · 대기</span>
+                </div>
+                <div class="test-message">
+                  <strong>케이스 제목 B</strong>
+                  <p class="wf-t">실패 메시지 · 기대값과 실제값이 다름</p>
+                </div>
+                <button class="wf-btn" type="button" data-to="session">세션 보기</button>
+              </div>
+            </details>
+          </article>
+        </section>
+        <section class="wf-col" aria-labelledby="completed-tests">
+          <h2 class="wf-h" id="completed-tests">끝난 실행</h2>
+          <div class="wf-hide-posture">
+            <div class="wire-filters">
+              <label class="wire-filter"><span class="wf-t">기간</span><select class="wf-input">
+                <option>최근 24시간</option>
+                <option>최근 7일</option>
+                <option>전체 기간</option>
+              </select></label>
+              <label class="wire-filter"><span class="wf-t">종류</span><select class="wf-input">
+                <option>모든 종류</option>
+                <option>RSpec</option>
+                <option>Vitest</option>
+                <option>Figma 대조</option>
+                <option>녹화 실측</option>
+              </select></label>
+              <label class="wire-filter"><span class="wf-t">결과</span><select class="wf-input">
+                <option>모든 결과</option>
+                <option>통과</option>
+                <option>실패</option>
+                <option>확인·빨강·실행 오류</option>
+              </select></label>
+            </div>
+          </div>
+          <details class="wf-box test-history">
+            <summary>
+              <span class="test-run-heading"><strong>실패 예시 실행</strong><span class="wf-tag bad">실패</span></span>
+              <span class="wf-t">테스트 종류 · 00:00 · 1개 실패</span>
+              <p class="wf-t">케이스 제목 A · 기대값과 실제값이 다름</p>
+            </summary>
+            <div class="test-history-detail">
+              <div class="test-chips">
+                <span class="wf-tag ok">케이스 B · 통과</span>
+                <span class="wf-tag bad">케이스 A · 실패</span>
+              </div>
+              <button class="wf-btn" type="button" data-to="session">세션 보기</button>
+            </div>
+          </details>
+          <details class="wf-box test-history">
+            <summary>
+              <span class="test-run-heading"><strong>통과 예시 실행</strong><span class="wf-tag ok">통과</span></span>
+              <span class="wf-t">테스트 종류 · 00:00 · 2개 통과</span>
+            </summary>
+            <div class="test-history-detail">
+              <div class="test-chips">
+                <span class="wf-tag ok">케이스 A · 통과</span>
+                <span class="wf-tag ok">케이스 B · 통과</span>
+              </div>
+              <button class="wf-btn" type="button" data-to="session">세션 보기</button>
+            </div>
+          </details>
+          <details class="wf-box test-history">
+            <summary>
+              <span class="test-run-heading"><strong>확인 예시 실행</strong><span class="wf-tag hot">통과 · 확인</span></span>
+              <span class="wf-t">테스트 종류 · 00:00 · 실행된 케이스 모두 통과</span>
+              <p class="wf-t">요청한 케이스를 찾지 못함</p>
+            </summary>
+            <div class="test-history-detail">
+              <div class="test-chips">
+                <span class="wf-tag ok">케이스 A · 통과</span>
+              </div>
+              <button class="wf-btn" type="button" data-to="session">세션 보기</button>
+            </div>
+          </details>
+          <details class="wf-box test-history">
+            <summary>
+              <span class="test-run-heading"><strong>의도한 실패 예시 실행</strong><span class="wf-tag">의도한 빨강</span></span>
+              <span class="wf-t">테스트 종류 · 00:00 · 예상한 실패 확인</span>
+            </summary>
+            <div class="test-history-detail">
+              <div class="test-chips">
+                <span class="wf-tag bad">케이스 A · 실패</span>
+              </div>
+              <button class="wf-btn" type="button" data-to="session">세션 보기</button>
+            </div>
+          </details>
+          <details class="wf-box test-history">
+            <summary>
+              <span class="test-run-heading"><strong>오류 예시 실행</strong><span class="wf-tag hot">실행 오류</span></span>
+              <span class="wf-t">테스트 종류 · 00:00 · 실행된 케이스 0개</span>
+              <p class="wf-t">첫 오류 줄 · 실행에 필요한 설정이 없음</p>
+            </summary>
+            <div class="test-history-detail">
+              <button class="wf-btn" type="button" data-to="session">세션 보기</button>
+            </div>
+          </details>
+        </section>
+      </div>
+      <div class="wf-hide-phone wf-hide-posture">
+        <section class="wf-box" aria-label="실행 중인 테스트의 케이스">
+          <h2 class="wf-h">선택한 실행의 케이스</h2>
+          <p class="wf-t">테스트 실행 라벨 · 통과 11 · 실패 1</p>
+          <div class="test-chips">
+            <span class="wf-tag ok">케이스 A · 통과</span>
+            <span class="wf-tag bad">케이스 B · 실패</span>
+            <span class="wf-tag hot">케이스 C · 실행 중</span>
+            <span class="wf-tag">케이스 D · 대기</span>
+          </div>
+          <div class="test-message">
+            <strong>케이스 제목 B</strong>
+            <p class="wf-t">실패 메시지 · 기대값과 실제값이 다름</p>
+          </div>
+          <div><button class="wf-btn" type="button" data-to="session">세션 보기</button></div>
+        </section>
+      </div>
+    </div>
+    <p class="wf-note">iPad와 펼침은 실행 목록을 보면서 옆에서 케이스를 확인한다. 접힘은 카드 안에서 케이스를 펼치고, 반접힘은 시트에서 필터와 현재 케이스를 확인한다. 케이스 칩은 40개 이하일 때 표시한다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn on" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn on" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <div class="wf-col" data-slot="screen" data-plugin="tests">
+    <section class="wf-box">
+      <h2 class="wf-h">기간 · 종류 · 결과</h2>
+      <div class="wire-filters">
+        <label class="wire-filter"><span class="wf-t">기간</span><select class="wf-input">
+          <option>최근 24시간</option>
+          <option>최근 7일</option>
+          <option>전체 기간</option>
+        </select></label>
+        <label class="wire-filter"><span class="wf-t">종류</span><select class="wf-input">
+          <option>모든 종류</option>
+          <option>RSpec</option>
+          <option>Vitest</option>
+          <option>Figma 대조</option>
+          <option>녹화 실측</option>
+        </select></label>
+        <label class="wire-filter"><span class="wf-t">결과</span><select class="wf-input">
+          <option>모든 결과</option>
+          <option>통과</option>
+          <option>실패</option>
+          <option>확인·빨강·실행 오류</option>
+        </select></label>
+      </div>
+    </section>
+    <section class="wf-box" aria-label="실행 중인 테스트의 케이스">
+      <h2 class="wf-h">선택한 실행의 케이스</h2>
+      <p class="wf-t">테스트 실행 라벨 · 통과 11 · 실패 1</p>
+      <div class="test-chips">
+        <span class="wf-tag ok">케이스 A · 통과</span>
+        <span class="wf-tag bad">케이스 B · 실패</span>
+        <span class="wf-tag hot">케이스 C · 실행 중</span>
+        <span class="wf-tag">케이스 D · 대기</span>
+      </div>
+      <div class="test-message">
+        <strong>케이스 제목 B</strong>
+        <p class="wf-t">실패 메시지 · 기대값과 실제값이 다름</p>
+      </div>
+      <div><button class="wf-btn" type="button" data-to="session">세션 보기</button></div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

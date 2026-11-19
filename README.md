@@ -20,7 +20,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | --- | --- | --- |
 | `frontend/` | 기존 JavaScript UI·정적 셸·전송 계층 (WASM 전환 롤백) | Cloudflare Pages — `https://dashboard.s-dante.com` (= `agent-dashboard-2at.pages.dev`) |
 | `web-ui/` | 미적용 Rust/WASM UI 시도. 운영 화면·배포에서 제외 | macOS·iPhone WebKit, 브라우저 |
-| `wireframes/` | 대시보드 재설계용 와이어프레임 보드 — 모든 화면을 모든 폭으로 한 장에(격자·흐름 지도). 웹 전용, 앱·대시보드에서 링크하지 않음 — [wireframes/README.md](wireframes/README.md) | Cloudflare Pages `/wireframes/` |
+| `wireframes/` | 대시보드 재설계용 와이어프레임 보드 — 모든 화면을 iPhone Duo 여섯 자세·태블릿·데스크톱으로 한 장에(격자·흐름 지도·슬롯 표시). 흐름 명세·얇은 코어+플러그인 컨셉은 [wireframes/FLOW.md](wireframes/FLOW.md). 웹 전용, 앱·대시보드에서 링크하지 않음 — [wireframes/README.md](wireframes/README.md) | Cloudflare Pages `/wireframes/` |
 | `functions/` | Pages Function `/chars/*` — 배포 없이 더한 캐릭터를 R2 버킷 `agent-dashboard-chars` 에서 읽어 준다(없으면 배포본) | 페이지와 함께 배포 |
 | `design-system/` | 토큰·유리 질감·공용 컴포넌트(웹 컴포넌트·클래스). 페이지에는 `ds/` 로 붙는다 — [design-system/README.md](design-system/README.md) | 페이지와 함께 배포 |
 | `server/` | 메트릭 서버 (`src/main.rs` → `src/http.rs`, REST `/api/*` + SSE `/events`; `server/run`으로 실행), `decision-hook`, `session-guard`, `aplan`, `atest`, `aqa`, `ausage`, `adata`, `amedia`, `launchd/` | 로컬 Mac |

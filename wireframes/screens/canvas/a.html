@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>워크플로 캔버스 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.canvas-executions { margin: 0; padding: 0; list-style: none; }
+.canvas-executions button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px;
+  border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.canvas-executions button[aria-current] { background: var(--wf-fill); }
+.canvas-graph {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; margin: 0; padding: 12px; list-style: none; color: var(--wf-ink);
+}
+.canvas-graph li {
+  display: flex; align-items: center; justify-content: center; gap: 6px; position: relative;
+  min-width: 136px; padding: 5px 8px; border: 1px solid var(--wf-line); border-radius: 4px; background: var(--wf-panel);
+}
+.canvas-graph li + li::before {
+  content: ""; position: absolute; left: 50%; bottom: 100%; height: 15px; border-left: 1px solid var(--wf-muted);
+}
+:root[data-posture="laptop"] .wf-half .canvas-graph { flex-direction: row; flex-wrap: wrap; }
+:root[data-posture="laptop"] .wf-half .canvas-graph li + li::before {
+  left: auto; right: 100%; bottom: 50%; width: 15px; height: 0; border-left: 0; border-top: 1px solid var(--wf-muted);
+}
+
+@media (width <= 500px) {
+  .wf-main .wf-note { margin-top: 62px; }
+}
+
+/* The rail takes space from the left pane. Keep the gap centered on the viewport fold. */
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .wf-panes {
+    grid-template-columns: minmax(0, calc(50vw - 64px - var(--wf-gap) * 1.5 - 14px)) minmax(0, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn on wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn on wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="canvas">
+    <h1 class="wf-h l">워크플로 캔버스</h1>
+    <div class="wf-panes">
+      <section class="wf-box" aria-label="실행 목록">
+        <h2 class="wf-h">실행 목록</h2>
+        <ol class="wf-list canvas-executions">
+          <li><button type="button" aria-current="true"><span class="wf-grow">실행 제목</span><span class="wf-tag hot">결정 대기</span></button></li>
+          <li><button type="button"><span class="wf-grow">다른 실행 제목</span><span class="wf-tag">실행 중</span></button></li>
+          <li><button type="button"><span class="wf-grow">지난 실행 제목</span><span class="wf-tag">완료</span></button></li>
+        </ol>
+      </section>
+      <div class="wf-hide-posture">
+        <div class="wf-col">
+          <section class="wf-box" aria-label="캔버스 미리보기">
+            <div class="wf-row">
+              <h2 class="wf-h wf-grow">캔버스 미리보기</h2>
+              <span class="wf-tag">실행 제목</span>
+            </div>
+            <ol class="wf-fill canvas-graph" aria-label="선택한 실행의 단계">
+              <li><span>시작</span></li>
+              <li><span>검토 단계</span></li>
+              <li><span>결정 분기</span><span class="wf-tag hot">대기</span></li>
+            </ol>
+          </section>
+          <section class="wf-box" data-slot="inbox" data-plugin="canvas">
+            <h2 class="wf-h">기다리는 결정</h2>
+            <p class="wf-t">분기 질문 제목 · 대기 중</p>
+            <div><button type="button" class="wf-btn primary" data-to="decide">결정 열기</button></div>
+          </section>
+        </div>
+      </div>
+    </div>
+    <p class="wf-note">고른 실행의 단계와 대기 질문을 함께 본다. 접힘에서는 목록 아래, 반접힘에서는 시트에 두고 질문에 답할 때 결정 화면으로 간다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <div data-slot="screen" data-plugin="canvas">
+    <div class="wf-col">
+      <section class="wf-box" aria-label="캔버스 미리보기">
+        <div class="wf-row">
+          <h2 class="wf-h wf-grow">캔버스 미리보기</h2>
+          <span class="wf-tag">실행 제목</span>
+        </div>
+        <ol class="wf-fill canvas-graph" aria-label="선택한 실행의 단계">
+          <li><span>시작</span></li>
+          <li><span>검토 단계</span></li>
+          <li><span>결정 분기</span><span class="wf-tag hot">대기</span></li>
+        </ol>
+      </section>
+      <section class="wf-box" data-slot="inbox" data-plugin="canvas">
+        <h2 class="wf-h">기다리는 결정</h2>
+        <p class="wf-t">분기 질문 제목 · 대기 중</p>
+        <div><button type="button" class="wf-btn primary" data-to="decide">결정 열기</button></div>
+      </section>
+    </div>
+  </div>
+</aside>
+</body>
+</html>

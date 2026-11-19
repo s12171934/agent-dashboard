@@ -32,7 +32,7 @@ body {
 .wf-col { display: flex; flex-direction: column; gap: var(--wf-gap); }
 .wf-grid { display: grid; gap: var(--wf-gap); grid-template-columns: repeat(auto-fill, minmax(var(--wf-min, 220px), 1fr)); }
 .wf-grow { flex: 1; min-width: 0; }
-.wf-dock { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px; background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 999px; box-shadow: 0 4px 16px rgb(0 0 0 / .12); }
+.wf-dock { display: none; position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); gap: 4px; padding: 6px; background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 999px; box-shadow: 0 4px 16px rgb(0 0 0 / .12); }
 .wf-sheet { position: fixed; inset: auto 0 0 0; max-height: 80vh; overflow: auto; background: var(--wf-panel); border-top: 1px solid var(--wf-line); border-radius: 16px 16px 0 0; padding: calc(var(--wf-gap) * 1.5); }
 .wf-dialog { margin: 10vh auto; width: min(560px, calc(100% - 32px)); background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; padding: calc(var(--wf-gap) * 1.5); }
 
@@ -51,7 +51,7 @@ body {
 .wf-list > :first-child { border-top: 0; }
 
 /* controls */
-.wf-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--wf-line); background: var(--wf-panel); color: var(--wf-ink); font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
+.wf-btn { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--wf-line); background: var(--wf-panel); color: var(--wf-ink); font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
 .wf-btn.primary { background: var(--wf-ink); color: var(--wf-panel); border-color: var(--wf-ink); }
 .wf-btn.on { outline: 2px solid var(--wf-accent); outline-offset: -2px; }
 .wf-input { padding: 6px 10px; border: 1px solid var(--wf-line); border-radius: 6px; background: var(--wf-panel); color: var(--wf-muted); min-width: 120px; }
@@ -68,13 +68,71 @@ body {
 [data-to] { cursor: pointer; }
 [data-to]:hover { outline: 2px dashed var(--wf-accent); outline-offset: 2px; }
 
-/* the three widths the board shows */
-@media (max-width: 700px) {
-  .wf-screen { flex-direction: column; }
-  .wf-side { width: auto; border-right: 0; border-bottom: 1px solid var(--wf-line); flex-direction: row; overflow-x: auto; }
-  .wf-main { padding: var(--wf-gap); padding-bottom: 80px; }
+/* Layout stages, as the dashboard's design system draws them (design-system/GUIDELINES.md B1–B10). The reference
+   phone is iPhone Duo: cover 466×678, inner screen 669×951 (951×669 sideways), with a fold down the middle.
+     phone    width ≤ 500                      Duo cover: one column, bottom dock
+     fold     the fold condition below          Duo unfolded (and the cover held sideways): two equal panes, gap on the fold, left rail
+     tablet   500 < width ≤ 1100, not fold      iPad: left rail, labels hidden
+     desktop  width > 1100                      Mac: full sidebar
+     posture  html[data-posture=book|laptop]    half folded (wf.js sets it from ?posture=): the first half is the page laid
+                                                out as on the cover, the second half (.wf-half) is the dock's sheet
+   Helpers: .wf-only-<stage> / .wf-hide-<stage> for phone, fold, tablet, desktop, posture. */
+.wf-only-phone, .wf-only-fold, .wf-only-tablet, .wf-only-desktop, .wf-only-posture, .wf-half { display: none !important; }
+.wf-lbl { white-space: nowrap; }
+.wf-ico { width: 18px; height: 18px; border-radius: 5px; background: var(--wf-fill); flex: none; display: inline-block; }
+.wf-side .wf-btn { position: relative; }
+.wf-panes { display: grid; gap: var(--wf-gap); grid-template-columns: minmax(0, 1fr); align-items: start; }
+
+@media (width <= 500px) {
+  .wf-only-phone { display: revert !important; }
   .wf-hide-phone { display: none !important; }
+  .wf-screen { flex-direction: column; }
+  .wf-side { display: none; }
+  .wf-dock { display: flex; }
+  .wf-main { padding: var(--wf-gap); padding-bottom: 84px; }
 }
-@media (min-width: 701px) { .wf-only-phone { display: none !important; } }
-@media (max-width: 1100px) { .wf-hide-tablet { display: none !important; } }
-@media (min-width: 1101px) { .wf-only-tablet { display: none !important; } }
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  .wf-only-fold { display: revert !important; }
+  .wf-hide-fold { display: none !important; }
+  .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
+  .wf-side { width: 64px; align-items: center; }
+  .wf-side .wf-lbl { display: none; }
+  .wf-side .wf-btn { padding: 6px; justify-content: center; }
+  .wf-side .wf-tag { position: absolute; top: -5px; right: -5px; padding: 0 5px; }
+}
+@media (width > 500px) and (width <= 1100px) and (not ((min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)))) {
+  .wf-only-tablet { display: revert !important; }
+  .wf-hide-tablet { display: none !important; }
+  .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .wf-side { width: 72px; align-items: center; }
+  .wf-side .wf-lbl { display: none; }
+  .wf-side .wf-btn { padding: 6px; justify-content: center; }
+  .wf-side .wf-tag { position: absolute; top: -5px; right: -5px; padding: 0 5px; }
+}
+@media (width > 1100px) {
+  .wf-only-desktop { display: revert !important; }
+  .wf-hide-desktop { display: none !important; }
+  .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+/* half folded: the page keeps to the first half, laid out as on the cover (one column, no rail), and .wf-half
+   (the dock's sheet: navigation and the screen's secondary controls) fills the second half */
+:root[data-posture] .wf-only-posture { display: revert !important; }
+:root[data-posture] .wf-hide-posture { display: none !important; }
+:root[data-posture] .wf-side, :root[data-posture] .wf-dock { display: none !important; }
+:root[data-posture] .wf-panes { grid-template-columns: minmax(0, 1fr); }
+:root[data-posture] .wf-half { display: flex !important; flex-direction: column; gap: var(--wf-gap); position: fixed; overflow: auto;
+  background: var(--wf-panel); padding: calc(var(--wf-gap) * 1.5); }
+:root[data-posture="book"] body { padding-right: 50%; }
+:root[data-posture="book"] .wf-half { top: 0; bottom: 0; right: 0; width: calc(50% - 14px); border-left: 1px solid var(--wf-line); }
+:root[data-posture="laptop"] .wf-screen { height: 50vh; min-height: 0; overflow: auto; }
+:root[data-posture="laptop"] .wf-half { left: 0; right: 0; bottom: 0; height: calc(50vh - 14px); border-top: 1px solid var(--wf-line); }
+/* the fold itself, so a frame shows where it falls */
+:root[data-posture="book"] body::after { content: ""; position: fixed; top: 0; bottom: 0; left: 50%; border-left: 2px dashed var(--wf-muted); opacity: .5; pointer-events: none; }
+:root[data-posture="laptop"] body::after { content: ""; position: fixed; left: 0; right: 0; top: 50%; border-top: 2px dashed var(--wf-muted); opacity: .5; pointer-events: none; }
+
+/* slots: what a plugin fills (data-slot + data-plugin, see FLOW.md 「컨셉」). The board's 「슬롯 표시」 sets
+   html.wf-show-slots to outline them with their names; the core's own parts carry no data-slot. */
+.wf-show-slots [data-slot] { outline: 2px dashed #8a5cd6 !important; outline-offset: -2px; position: relative; }
+.wf-show-slots [data-slot]::after { content: attr(data-slot) " · " attr(data-plugin); position: absolute; top: 0; right: 0; z-index: 3;
+  background: #8a5cd6; color: #fff; font: 600 10px/1.4 system-ui, sans-serif; padding: 1px 5px; border-radius: 0 0 0 4px; pointer-events: none; white-space: nowrap; }

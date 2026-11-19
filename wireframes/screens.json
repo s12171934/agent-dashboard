@@ -1,35 +1,444 @@
 {
   "widths": [
-    { "id": "phone", "name": "휴대폰", "w": 390, "h": 844, "env": "웹 휴대폰" },
-    { "id": "tablet", "name": "태블릿", "w": 820, "h": 1180, "env": "iPad · 웹 태블릿" },
-    { "id": "desktop", "name": "데스크톱", "w": 1440, "h": 900, "env": "Mac · 웹 데스크톱" }
+    {
+      "id": "duo-cover",
+      "name": "Duo 접힘",
+      "w": 466,
+      "h": 678,
+      "env": "iPhone Duo 커버 화면 · 웹 휴대폰"
+    },
+    {
+      "id": "duo-cover-wide",
+      "name": "Duo 접힘 가로",
+      "w": 678,
+      "h": 466,
+      "env": "iPhone Duo 커버 화면을 옆으로"
+    },
+    {
+      "id": "duo-open",
+      "name": "Duo 펼침",
+      "w": 669,
+      "h": 951,
+      "env": "iPhone Duo 내부 화면 세로 (펼침 두 칸)"
+    },
+    {
+      "id": "duo-open-wide",
+      "name": "Duo 펼침 가로",
+      "w": 951,
+      "h": 669,
+      "env": "iPhone Duo 내부 화면을 옆으로 (펼침 두 칸)"
+    },
+    {
+      "id": "duo-book",
+      "name": "Duo 반접힘 · 책",
+      "w": 951,
+      "h": 669,
+      "posture": "book",
+      "env": "옆으로 들고 반쯤 접음: 왼쪽 반 페이지, 오른쪽 반 시트"
+    },
+    {
+      "id": "duo-laptop",
+      "name": "Duo 반접힘 · 노트북",
+      "w": 669,
+      "h": 951,
+      "posture": "laptop",
+      "env": "세워 들고 반쯤 접음: 위쪽 반 페이지, 아래쪽 반 시트"
+    },
+    {
+      "id": "tablet",
+      "name": "태블릿",
+      "w": 820,
+      "h": 1180,
+      "env": "iPad · 웹 태블릿"
+    },
+    {
+      "id": "desktop",
+      "name": "데스크톱",
+      "w": 1440,
+      "h": 900,
+      "env": "Mac · 웹 데스크톱"
+    }
   ],
   "groups": [
-    { "id": "main", "name": "기본 탭" },
-    { "id": "screen", "name": "화면" },
-    { "id": "detail", "name": "상세" },
-    { "id": "overlay", "name": "오버레이" }
+    {
+      "id": "main",
+      "name": "기본 탭"
+    },
+    {
+      "id": "screen",
+      "name": "화면"
+    },
+    {
+      "id": "detail",
+      "name": "상세"
+    },
+    {
+      "id": "overlay",
+      "name": "오버레이"
+    }
   ],
   "screens": [
-    { "id": "home", "name": "홈", "group": "main", "to": ["decide", "agents", "worktrees", "tests", "compare", "usage", "talk", "projects", "designs"], "variants": [] },
-    { "id": "agents", "name": "에이전트", "group": "main", "to": ["session", "run", "chat", "new-agent"], "variants": [] },
-    { "id": "decide", "name": "결정 대기", "group": "main", "to": ["session"], "variants": [] },
-    { "id": "worktrees", "name": "워크트리 리뷰", "group": "main", "to": ["trees", "session"], "variants": [] },
-    { "id": "tests", "name": "테스트", "group": "main", "to": ["session"], "variants": [] },
-    { "id": "trees", "name": "워크트리", "group": "screen", "to": [], "variants": [] },
-    { "id": "compare", "name": "비교 · 비용", "group": "screen", "to": ["session"], "variants": [] },
-    { "id": "usage", "name": "플랜 사용량", "group": "screen", "to": [], "variants": [] },
-    { "id": "talk", "name": "상호작용", "group": "screen", "to": ["session"], "variants": [] },
-    { "id": "projects", "name": "프로젝트", "group": "screen", "to": ["designs"], "variants": [] },
-    { "id": "designs", "name": "설계문서", "group": "screen", "to": ["session"], "variants": [] },
-    { "id": "canvas", "name": "워크플로 캔버스", "group": "screen", "to": [], "variants": [] },
-    { "id": "devices", "name": "실기기", "group": "screen", "to": ["session"], "variants": [] },
-    { "id": "media", "name": "녹화 영상", "group": "screen", "to": [], "variants": [] },
-    { "id": "chars", "name": "캐릭터", "group": "screen", "to": [], "variants": [] },
-    { "id": "session", "name": "세션 상세", "group": "detail", "to": ["chat", "decide"], "variants": [] },
-    { "id": "run", "name": "코디네이터 상세", "group": "detail", "to": ["session"], "variants": [] },
-    { "id": "chat", "name": "에이전트와 채팅", "group": "overlay", "to": [], "variants": [] },
-    { "id": "new-agent", "name": "새 에이전트", "group": "overlay", "to": ["agents"], "variants": [] },
-    { "id": "settings", "name": "설정 · 메트릭 서버", "group": "overlay", "to": [], "variants": [] }
+    {
+      "id": "home",
+      "name": "홈",
+      "group": "main",
+      "to": [
+        "decide",
+        "agents",
+        "worktrees",
+        "tests",
+        "compare",
+        "usage",
+        "talk",
+        "projects",
+        "designs"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/home/a.html",
+          "status": "draft",
+          "note": "내 차례를 첫 영역에 둔다."
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "name": "에이전트",
+      "group": "main",
+      "to": [
+        "session",
+        "run",
+        "chat",
+        "new-agent"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/agents/a.html",
+          "status": "draft",
+          "note": "응답 없음부터 상태별로 세션을 훑고 코디네이터 카드의 워커를 펼친다."
+        }
+      ]
+    },
+    {
+      "id": "decide",
+      "name": "결정 대기",
+      "group": "main",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/decide/a.html",
+          "status": "draft",
+          "note": "가장 오래 기다린 질문과 권장안을 먼저 연다."
+        }
+      ]
+    },
+    {
+      "id": "worktrees",
+      "name": "워크트리 리뷰",
+      "group": "main",
+      "to": [
+        "trees",
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/worktrees/a.html",
+          "status": "draft",
+          "note": "에픽 머리에서 단계별 수와 자동화 상태를 먼저 보고, 티켓 행에서 8단계·다음 행동·저장소 변경을 읽는다."
+        }
+      ]
+    },
+    {
+      "id": "tests",
+      "name": "테스트",
+      "group": "main",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/tests/a.html",
+          "status": "draft",
+          "note": "실행 라벨·완료 케이스 수·진행 막대·예상 남은 시간·현재 케이스가 먼저 보인다."
+        }
+      ]
+    },
+    {
+      "id": "trees",
+      "name": "워크트리",
+      "group": "screen",
+      "to": [],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/trees/a.html",
+          "status": "draft",
+          "note": "저장소별 브랜치·미커밋·앞선 커밋·마지막 커밋·메모부터 보인다."
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "name": "비교 · 비용",
+      "group": "screen",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/compare/a.html",
+          "status": "draft",
+          "note": "기간·서버 선택과 비용·토큰 합계, 시간대 막대가 먼저 보인다."
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "name": "플랜 사용량",
+      "group": "screen",
+      "to": [],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/usage/a.html",
+          "status": "draft",
+          "note": "계정별 5시간·주간 잔여량과 초기화 시각을 함께 표시한다."
+        }
+      ]
+    },
+    {
+      "id": "talk",
+      "name": "상호작용",
+      "group": "screen",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/talk/a.html",
+          "status": "draft",
+          "note": "발신·수신 필터와 코디네이터 묶음이 먼저 보인다."
+        }
+      ]
+    },
+    {
+      "id": "projects",
+      "name": "프로젝트",
+      "group": "screen",
+      "to": [
+        "designs"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/projects/a.html",
+          "status": "draft",
+          "note": "완료 스텝 수와 진행률, 현재 스텝, 연결된 설계문서를 카드에서 읽는다."
+        }
+      ]
+    },
+    {
+      "id": "designs",
+      "name": "설계문서",
+      "group": "screen",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/designs/a.html",
+          "status": "draft",
+          "note": "읽은 세션 많은 순의 문서 목록과 절별 읽은 세션 수를 본다."
+        }
+      ]
+    },
+    {
+      "id": "canvas",
+      "name": "워크플로 캔버스",
+      "group": "screen",
+      "to": [],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/canvas/a.html",
+          "status": "draft",
+          "note": "실행 목록을 먼저 보고 선택한 실행의 캔버스 미리보기와 대기 결정을 확인한다."
+        }
+      ]
+    },
+    {
+      "id": "devices",
+      "name": "실기기",
+      "group": "screen",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/devices/a.html",
+          "status": "draft",
+          "note": "실기기와 에뮬레이터 카드에서 종류·점유 세션·대기열을 훑는다."
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "name": "녹화 영상",
+      "group": "screen",
+      "to": [],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/media/a.html",
+          "status": "draft",
+          "note": "플레이어와 케이스·라운드 타임라인이 먼저 보인다."
+        }
+      ]
+    },
+    {
+      "id": "chars",
+      "name": "캐릭터",
+      "group": "screen",
+      "to": [],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/chars/a.html",
+          "status": "draft",
+          "note": "캐릭터 격자에 역할·배정 상태를 붙였다."
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "name": "세션 상세",
+      "group": "detail",
+      "to": [
+        "chat",
+        "decide"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/session/a.html",
+          "status": "draft",
+          "note": "제목·상태 바로 아래 해당 세션의 결정을 두고 계획·실행 중 테스트를 보여 준다."
+        }
+      ]
+    },
+    {
+      "id": "run",
+      "name": "코디네이터 상세",
+      "group": "detail",
+      "to": [
+        "session"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/run/a.html",
+          "status": "draft",
+          "note": "체크박스 흐름과 워커 표를 순서대로 보여 주고, 넓으면 두 칸에 나란히 둔다."
+        }
+      ]
+    },
+    {
+      "id": "chat",
+      "name": "에이전트와 채팅",
+      "group": "overlay",
+      "to": [],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/chat/a.html",
+          "status": "draft",
+          "note": "대화 기록과 입력창을 보여 준다."
+        }
+      ]
+    },
+    {
+      "id": "new-agent",
+      "name": "새 에이전트",
+      "group": "overlay",
+      "to": [
+        "agents"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/new-agent/a.html",
+          "status": "draft",
+          "note": "저장소·워크트리를 먼저 고른다."
+        }
+      ]
+    },
+    {
+      "id": "more",
+      "name": "더 보기",
+      "group": "overlay",
+      "to": [
+        "projects",
+        "designs",
+        "trees",
+        "devices",
+        "media",
+        "compare",
+        "usage",
+        "talk",
+        "canvas",
+        "chars"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/more/a.html",
+          "status": "draft",
+          "note": "도구 10개의 이름과 한 줄 요약을 한 목록으로 읽는다."
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "name": "설정 · 메트릭 서버",
+      "group": "overlay",
+      "to": [
+        "plugins"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/settings/a.html",
+          "status": "draft",
+          "note": "메트릭 서버 연결, 화면 표시, 플러그인 설정 순이다."
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "name": "플러그인 관리",
+      "group": "overlay",
+      "to": [
+        "settings"
+      ],
+      "variants": [
+        {
+          "id": "a",
+          "file": "screens/plugins/a.html",
+          "status": "draft",
+          "note": "플러그인별 상태·버전·기여 슬롯·최근 사용량·의존 항목을 보여 준다."
+        }
+      ]
+    }
   ]
 }

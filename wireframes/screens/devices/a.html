@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>실기기 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.devices-group { gap: 8px; }
+.devices-preview { min-height: 180px; padding: 12px; }
+.devices-frame {
+  display: grid; place-items: center; width: 86px; aspect-ratio: 9 / 16;
+  border: 2px solid var(--wf-line); border-radius: 12px; background: var(--wf-panel); color: var(--wf-ink);
+}
+.devices-toggle { gap: 6px; }
+.devices-toggle input { accent-color: var(--wf-muted); }
+.devices-inline summary { cursor: pointer; font-weight: 600; }
+.devices-inline[open] summary { margin-bottom: 8px; }
+:root[data-posture="laptop"] .wf-half .devices-preview { min-height: 132px; }
+:root[data-posture="laptop"] .wf-half .devices-frame { width: 60px; }
+
+/* The rail takes space from the left pane. Keep the gap centered on the viewport fold. */
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .wf-panes {
+    grid-template-columns: minmax(0, calc(50vw - 64px - var(--wf-gap) * 1.5 - 14px)) minmax(0, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn on wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn on wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="devices">
+    <h1 class="wf-h l">실기기 · 에뮬레이터</h1>
+    <div class="wf-panes">
+      <div class="wf-col">
+        <section class="wf-col devices-group" aria-label="실기기">
+          <h2 class="wf-h">실기기</h2>
+          <article class="wf-box">
+            <div class="wf-row">
+              <h3 class="wf-h wf-grow">기기 이름</h3>
+              <span class="wf-tag hot">사용 중</span>
+            </div>
+            <p class="wf-t">iOS 실기기</p>
+            <div class="wf-list">
+              <div><span class="wf-t">점유 세션</span><button type="button" class="wf-btn" data-to="session">세션 제목</button></div>
+              <div><span class="wf-t">대기 1</span><button type="button" class="wf-btn" data-to="session">대기 세션 제목</button></div>
+            </div>
+            <div class="wf-hide-phone wf-hide-posture"><button type="button" class="wf-btn primary" aria-pressed="true">화면 보기</button></div>
+            <details class="devices-inline wf-only-phone wf-hide-posture">
+              <summary>화면 보기</summary>
+              <div class="wf-fill devices-preview">
+                <div class="devices-frame">기기 화면</div>
+              </div>
+              <label class="wf-row devices-toggle"><input type="checkbox" checked> 라이브 미리보기</label>
+            </details>
+            <div class="wf-only-posture"><span class="wf-tag">화면 보는 중</span></div>
+          </article>
+        </section>
+        <section class="wf-col devices-group" aria-label="에뮬레이터 및 시뮬레이터">
+          <h2 class="wf-h">에뮬레이터 · 시뮬레이터</h2>
+          <article class="wf-box">
+            <div class="wf-row">
+              <h3 class="wf-h wf-grow">에뮬레이터 이름</h3>
+              <span class="wf-tag">비어 있음</span>
+            </div>
+            <p class="wf-t">Android 에뮬레이터 · 창 있음 · 대기 없음</p>
+            <div class="wf-hide-phone"><button type="button" class="wf-btn">화면 보기</button></div>
+            <details class="devices-inline wf-only-phone wf-hide-posture">
+              <summary>화면 보기</summary>
+              <div class="wf-fill devices-preview">
+                <div class="devices-frame">기기 화면</div>
+              </div>
+              <label class="wf-row devices-toggle"><input type="checkbox" checked> 라이브 미리보기</label>
+            </details>
+          </article>
+        </section>
+      </div>
+      <div class="wf-hide-phone wf-hide-posture">
+        <section class="wf-box" aria-label="선택한 기기 상세">
+          <div class="wf-row">
+            <h2 class="wf-h wf-grow">기기 이름</h2>
+            <span class="wf-tag ok">연결됨</span>
+          </div>
+          <div class="wf-fill devices-preview">
+            <div class="devices-frame">기기 화면</div>
+          </div>
+          <label class="wf-row devices-toggle"><input type="checkbox" checked> 라이브 미리보기</label>
+          <div class="wf-list">
+            <div><span class="wf-t">점유 세션</span><button type="button" class="wf-btn" data-to="session">세션 제목</button></div>
+            <div><span class="wf-t">대기 1</span><button type="button" class="wf-btn" data-to="session">대기 세션 제목</button></div>
+          </div>
+        </section>
+      </div>
+    </div>
+    <p class="wf-note">기기를 고르기 전에 점유 세션과 대기 순서를 확인한다. 접힘에서는 카드 안, 펼침에서는 옆 칸, 반접힘에서는 시트에서 화면을 본다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <div data-slot="screen" data-plugin="devices">
+    <section class="wf-box" aria-label="선택한 기기 상세">
+      <div class="wf-row">
+        <h2 class="wf-h wf-grow">기기 이름</h2>
+        <span class="wf-tag ok">연결됨</span>
+      </div>
+      <div class="wf-fill devices-preview">
+        <div class="devices-frame">기기 화면</div>
+      </div>
+      <label class="wf-row devices-toggle"><input type="checkbox" checked> 라이브 미리보기</label>
+      <div class="wf-list">
+        <div><span class="wf-t">점유 세션</span><button type="button" class="wf-btn" data-to="session">세션 제목</button></div>
+        <div><span class="wf-t">대기 1</span><button type="button" class="wf-btn" data-to="session">대기 세션 제목</button></div>
+      </div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

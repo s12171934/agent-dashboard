@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>플랜 사용량 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.usage-limit { display: flex; flex-direction: column; gap: 5px; padding-block: 8px; border-top: 1px solid var(--wf-line); }
+.usage-between { justify-content: space-between; gap: 4px 8px; }
+.usage-gauge { width: 100%; height: 8px; border: 0; appearance: none; background: var(--wf-fill); border-radius: 4px; overflow: hidden; }
+.usage-gauge::-webkit-progress-bar { background: var(--wf-fill); }
+.usage-gauge::-webkit-progress-value { background: var(--wf-ink); }
+.usage-gauge::-moz-progress-bar { background: var(--wf-ink); }
+  /* Keep the fold gap centered in the viewport, including the 64px navigation rail. */
+  @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold on" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="plan-usage">
+    <h1 class="wf-h l">플랜 사용량</h1>
+    <div class="wf-panes">
+      <section class="wf-box">
+        <h2 class="wf-h">계정 A</h2>
+        <div class="usage-limit">
+          <div class="wf-row usage-between"><strong>5시간 한도</strong><span>65% 남음</span></div>
+          <progress class="usage-gauge" value="65" max="100" aria-label="5시간 한도 잔여량"></progress>
+          <p class="wf-t">초기화 · 날짜 00:00</p>
+        </div>
+        <div class="usage-limit">
+          <div class="wf-row usage-between"><strong>주간 한도</strong><span>30% 남음</span></div>
+          <progress class="usage-gauge" value="30" max="100" aria-label="주간 한도 잔여량"></progress>
+          <p class="wf-t">초기화 · 날짜 00:00</p>
+        </div>
+      </section>
+      <div class="wf-hide-posture">
+        <section class="wf-box">
+          <h2 class="wf-h">계정 B</h2>
+          <div class="usage-limit">
+            <div class="wf-row usage-between"><strong>5시간 한도</strong><span>80% 남음</span></div>
+            <progress class="usage-gauge" value="80" max="100" aria-label="5시간 한도 잔여량"></progress>
+            <p class="wf-t">초기화 · 날짜 00:00</p>
+          </div>
+          <div class="usage-limit">
+            <div class="wf-row usage-between"><strong>주간 한도</strong><span>55% 남음</span></div>
+            <progress class="usage-gauge" value="55" max="100" aria-label="주간 한도 잔여량"></progress>
+            <p class="wf-t">초기화 · 날짜 00:00</p>
+          </div>
+        </section>
+      </div>
+    </div>
+    <p class="wf-note">5시간·주간 한도의 잔여량과 초기화 시각을 계정마다 붙여 읽는다. 접힘은 계정을 위아래로, 반접힘은 두 번째 계정을 시트에 둔다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <div class="wf-col" data-slot="screen" data-plugin="plan-usage">
+    <section class="wf-box">
+      <h2 class="wf-h">계정 B</h2>
+      <div class="usage-limit">
+        <div class="wf-row usage-between"><strong>5시간 한도</strong><span>80% 남음</span></div>
+        <progress class="usage-gauge" value="80" max="100" aria-label="5시간 한도 잔여량"></progress>
+        <p class="wf-t">초기화 · 날짜 00:00</p>
+      </div>
+      <div class="usage-limit">
+        <div class="wf-row usage-between"><strong>주간 한도</strong><span>55% 남음</span></div>
+        <progress class="usage-gauge" value="55" max="100" aria-label="주간 한도 잔여량"></progress>
+        <p class="wf-t">초기화 · 날짜 00:00</p>
+      </div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

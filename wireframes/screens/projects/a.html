@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>프로젝트 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.project-row { gap: 6px; }
+.project-progress { display: grid; gap: 4px; }
+.project-progress progress { appearance: none; width: 100%; height: 8px; border: 0; background: var(--wf-fill); border-radius: 999px; overflow: hidden; }
+.project-progress progress::-webkit-progress-bar { background: var(--wf-fill); }
+.project-progress progress::-webkit-progress-value { background: var(--wf-ink); }
+.project-progress progress::-moz-progress-bar { background: var(--wf-ink); }
+.project-stage { margin: 0; padding: 0; list-style: none; }
+.project-stage > li { display: flex; align-items: start; }
+.project-stage .wf-dot { margin-top: 6px; }
+.project-card > :is(a, button) { align-self: start; }
+.project-card > .wf-row { justify-content: space-between; }
+.project-card > p { margin: 0; }
+@media (width <= 500px) {
+  #project-detail:not(:target), .project-index:has(~ #project-detail:target) { display: none; }
+}
+@media (width > 1100px) {
+  .wf-main > .wf-panes { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+}
+
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .wf-main > .wf-panes {
+    grid-template-columns: minmax(0, calc(50vw - 96px)) minmax(0, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="projects">
+    <h1 class="wf-h l">프로젝트</h1>
+    <div class="wf-panes">
+      <section class="wf-col project-index" id="project-list" aria-label="볼트 프로젝트 목록">
+        <article class="wf-box project-card">
+          <div class="wf-row project-row"><h2 class="wf-h">프로젝트 제목 A</h2><span class="wf-tag hot">진행 중</span></div>
+          <div class="project-progress">
+            <label for="project-a-progress" class="wf-t">완료 4/8 · 50%</label>
+            <progress id="project-a-progress" value="4" max="8">50%</progress>
+          </div>
+          <p><strong>현재 스텝</strong> · 스텝 제목 B</p>
+          <button class="wf-btn" data-to="designs">연결된 설계문서</button>
+          <a class="wf-btn wf-only-phone" href="#project-detail">현재 스텝 보기</a>
+        </article>
+        <article class="wf-box project-card">
+          <div class="wf-row project-row"><h2 class="wf-h">프로젝트 제목 B</h2><span class="wf-tag ok">완료</span></div>
+          <div class="project-progress">
+            <label for="project-b-progress" class="wf-t">완료 6/6 · 100%</label>
+            <progress id="project-b-progress" value="6" max="6">100%</progress>
+          </div>
+          <p>마지막 스텝 · 스텝 제목</p>
+          <button class="wf-btn" data-to="designs">연결된 설계문서</button>
+        </article>
+      </section>
+      <section class="wf-col wf-hide-posture" id="project-detail" aria-label="선택한 프로젝트 상세">
+        <div class="wf-only-phone"><a class="wf-btn" href="#project-list">← 프로젝트 목록</a></div>
+        <article class="wf-box">
+          <p class="wf-t">프로젝트 제목 A</p>
+          <h2 class="wf-h">현재 단계 · 단계 제목</h2>
+          <ol class="wf-list project-stage" aria-label="단계의 스텝">
+            <li><span class="wf-dot ok"></span><div class="wf-grow">스텝 제목 A<p class="wf-t">완료</p></div></li>
+            <li aria-current="step"><span class="wf-dot hot"></span><div class="wf-grow"><strong>스텝 제목 B</strong><p class="wf-t">진행 중 · 연결된 스텝 노트</p></div></li>
+            <li><span class="wf-dot"></span><div class="wf-grow">스텝 제목 C<p class="wf-t">대기</p></div></li>
+          </ol>
+          <div class="wf-row project-row"><button class="wf-btn" data-to="designs">현재 스텝 설계문서</button></div>
+        </article>
+      </section>
+    </div>
+    <p class="wf-note">목록에서 진행률과 현재 스텝을 함께 본다. 펼침에서는 스텝 목록이 카드 옆에, 반접힘에서는 둘째 반쪽에 놓인다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="projects" aria-label="선택한 프로젝트의 현재 스텝">
+    <p class="wf-t">프로젝트 제목 A · 단계 제목</p>
+    <h2 class="wf-h">현재 스텝 · 스텝 제목 B</h2>
+    <p class="wf-t">스텝 제목 A 완료 · 스텝 제목 C 대기</p>
+    <div class="wf-row project-row"><button class="wf-btn" data-to="designs">현재 스텝 설계문서</button></div>
+  </section>
+</aside>
+</body>
+</html>
