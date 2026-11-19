@@ -329,20 +329,34 @@ function dvWho(u) {
 const dvWin = d => d.window == null ? '' : d.window
   ? `<span class="badge" title="${d.platform === 'ios' ? 'Simulator 앱 창으로 보입니다' : '에뮬레이터 창이 화면에 떠 있습니다'}">창 있음</span>`
   : `<span class="badge" title="${d.platform === 'ios' ? 'simctl 로만 부팅돼 Simulator 앱 없이 백그라운드(CoreSimulator)에서 돕니다' : '-no-window 로 띄워 창 없이 돕니다'}">백그라운드</span>`;
-// 「시뮬 화면 열기」: brings up the simulator in Simulator.app on its server's Mac; where that Mac has no Simulator.app
-// (sim_app false — Xcode 27.2 ships without it) it opens the live screen in a window of its own instead. iOS
-// simulators only: an emulator started with -no-window cannot grow a window later.
-const dvShow = d => d.platform === 'ios' && d.kind === 'virtual'
-  ? `<div class="dv-acts"><button type="button" class="act accent" data-dv-show="${esc(d.id)}" data-srv="${esc(d.server || '')}" data-app="${d.sim_app ? 1 : ''}" data-name="${esc(d.name)}" title="${d.sim_app ? '이 맥에서 Simulator 앱 창으로 띄웁니다' : '이 맥에 Simulator 앱이 없어 화면 라이브를 새 창으로 띄웁니다'}">시뮬 화면 열기</button></div>` : '';
-// The live screen alone in a popup window (the same multipart stream the card shows; closing the window ends it).
-function dvPopup(server, id, name) {
-  const w = window.open('', 'dv-' + id, 'popup,width=440,height=900');
-  if (!w) { toast('팝업이 막혔습니다 — 이 사이트의 팝업을 허용해 주세요'); return; }
-  const src = api.deviceStream(server, id);
-  w.document.title = name + ' 화면';
-  w.document.body.style.cssText = 'margin:0;background:#111;display:grid;place-items:center;height:100vh';
-  w.document.body.innerHTML = `<img alt="${esc(name)} 화면" src="${esc(src)}" style="max-width:100%;max-height:100vh;object-fit:contain">`;
-  w.focus();
+// 「시뮬 화면 열기」·「에뮬 화면 열기」: an iOS simulator opens in Simulator.app on its server's Mac where it has one; otherwise
+// (sim_app false — Xcode 27.2 ships without it — and every Android emulator, which cannot grow a window once started
+// with -no-window) its live screen opens large over this page. In the page, not a popup: no browser permission needed.
+const dvShow = d => {
+  if (d.kind !== 'virtual') return '';
+  const ios = d.platform === 'ios', app = ios && d.sim_app;
+  return `<div class="dv-acts"><button type="button" class="act accent" data-dv-show="${esc(d.id)}" data-srv="${esc(d.server || '')}" data-app="${app ? 1 : ''}" data-name="${esc(d.name)}" title="${app ? '이 맥에서 Simulator 앱 창으로 띄웁니다' : '화면 라이브를 이 페이지 위에 크게 띄웁니다'}">${ios ? '시뮬' : '에뮬'} 화면 열기</button></div>`;
+};
+// A device's live screen large over the page (the same multipart stream the card shows; closing ends it). 닫기, Esc
+// or anywhere around the screen closes.
+function dvOverlay(server, id, name) {
+  let d = $('#dv-ov');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog class="dz-zoom dv-ov" id="dv-ov">
+      <button type="button" class="tgl dz-zx">닫기</button><div class="dz-zb"><img alt=""><div class="dv-off dv-wait">화면 받는 중…</div></div></dialog>`);
+    d = $('#dv-ov');
+    d.addEventListener('click', e => { if (!e.target.closest('.dz-zb img')) d.close(); });
+    d.addEventListener('close', () => { d.querySelector('img').removeAttribute('src'); });
+    const img = d.querySelector('img'), wait = d.querySelector('.dv-wait');
+    img.onload = () => { wait.hidden = true; };
+    img.onerror = () => { if (d.open) { wait.hidden = false; wait.textContent = '화면을 받을 수 없습니다'; } };
+  }
+  const img = d.querySelector('img');
+  d.setAttribute('aria-label', name + ' 화면');
+  d.querySelector('.dv-wait').hidden = false; d.querySelector('.dv-wait').textContent = '화면 받는 중…';
+  img.alt = name + ' 화면'; img.src = api.deviceStream(server, id);
+  d.showModal();
+  d.querySelector('.dz-zx').focus({ focusVisible: false });
 }
 function dvInfo(d) {
   const plat = d.platform === 'ios' ? 'iOS' : 'Android';
@@ -421,7 +435,7 @@ async function renderDevices() {
   $('#dv-body').addEventListener('click', e => {
     const b = e.target.closest('[data-dv-show]');
     if (!b) return;
-    if (!b.dataset.app) { dvPopup(b.dataset.srv, b.dataset.dvShow, b.dataset.name); return; }
+    if (!b.dataset.app) { dvOverlay(b.dataset.srv, b.dataset.dvShow, b.dataset.name); return; }
     b.disabled = true;
     api.showDevice(b.dataset.srv, b.dataset.dvShow).then(r => toast(r.status === 200 ? 'Simulator 앱에서 열었습니다' : r.body?.error || `열기 실패 (${r.status})`))
       .finally(() => { b.disabled = false; });

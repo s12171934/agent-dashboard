@@ -385,8 +385,10 @@ fn scan(app: &App) -> Value {
         }
         for (pid, p) in &ps {
             // 시뮬레이터 자신의 프로세스(launchd_sim, 기기 폴더 안의 실행 파일)는 UDID 를 품고 있지만 사용자가 아니다
+            // 에뮬레이터 qemu 가 스스로 띄우는 adb(`… shell am broadcast … multidisplay` 등)도 사용자가 아니다
             let sim_internal = p.command.contains("CoreSimulator/Devices/")
-                || p.command.starts_with("launchd_sim");
+                || p.command.starts_with("launchd_sim")
+                || ps.get(&p.ppid).is_some_and(|parent| parent.command.contains("qemu-system"));
             if *pid == me
                 || p.ppid == me
                 || sim_internal
