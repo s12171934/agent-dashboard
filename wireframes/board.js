@@ -116,35 +116,74 @@ function renderGrid(b) {
   b.innerHTML = out + '</div>';
 }
 
+// 흐름 지도: screens sit on a regular grid (a column per step from 홈, at most MAP_ROWS high), with empty channels
+// between every column and every row. Arrows run only in those channels as right-angled lines, so they never cross a
+// screen: out of the source's right side, along the channel right of it, across the row channel above the target,
+// down the channel left of the target, into its left side. Each channel gives every arrow its own lane.
+const MAP_ROWS = 4, GX = 96, GY = 64, HEAD = 26;
+let MAP = null;
 function renderMap(b) {
   const scs = visible(), ids = new Set(scs.map(s => s.id)), w = widthsOn()[0] || M.widths[0], z = S.zoom * 0.8;
-  // columns: steps from 홈 along the flow; screens nothing leads to go last
   const depth = new Map(), start = ids.has('home') ? 'home' : scs[0]?.id;
   if (start) { depth.set(start, 0); const q = [start]; while (q.length) { const c = q.shift(); for (const t of edgesFrom.get(c)?.to || []) if (ids.has(t) && !depth.has(t)) { depth.set(t, depth.get(c) + 1); q.push(t); } } }
-  const maxD = Math.max(0, ...depth.values()), cols = Array.from({ length: maxD + 2 }, () => []);
-  for (const sc of scs) cols[depth.has(sc.id) ? depth.get(sc.id) : maxD + 1].push(sc);
-  const node = sc => { const st = statusOf(sc); return `<div class="node ${depth.has(sc.id) ? '' : 'lone'}" data-node="${sc.id}">
+  const maxD = Math.max(0, ...depth.values()), groups = Array.from({ length: maxD + 2 }, () => []);
+  for (const sc of scs) groups[depth.has(sc.id) ? depth.get(sc.id) : maxD + 1].push(sc);
+  // order inside a step by where their sources sit, so arrows run mostly level
+  const rowOf = new Map();
+  const nodeW = Math.round(w.w * z) + 14, nodeH = Math.round(w.h * z) + 14 + 24;
+  const pos = new Map(), heads = [];
+  let col = 0;
+  groups.forEach((g, d) => {
+    if (!g.length) return;
+    const key = sc => { const src = scs.filter(x => (edgesFrom.get(x.id)?.to || new Set()).has(sc.id) && rowOf.has(x.id)).map(x => rowOf.get(x.id)); return src.length ? src.reduce((a, b) => a + b, 0) / src.length : 1e3; };
+    g.sort((a, b) => key(a) - key(b));
+    heads.push({ col, text: d <= maxD ? (d ? `${d}단계` : '시작') : '내비로만 닿음' });
+    g.forEach((sc, k) => {
+      const c = col + Math.floor(k / MAP_ROWS), r = k % MAP_ROWS;
+      pos.set(sc.id, { c, r, x: GX + c * (nodeW + GX), y: HEAD + GY + r * (nodeH + GY) });
+      rowOf.set(sc.id, r);
+    });
+    col += Math.ceil(g.length / MAP_ROWS);
+  });
+  const rows = Math.min(MAP_ROWS, Math.max(1, ...groups.map(g => g.length)));
+  MAP = { pos, nodeW, nodeH, cols: col, rows };
+  const W = GX + col * (nodeW + GX), H = HEAD + GY + rows * (nodeH + GY);
+  const node = sc => { const st = statusOf(sc), p = pos.get(sc.id); return `<div class="node ${depth.has(sc.id) ? '' : 'lone'}" data-node="${sc.id}" style="left:${p.x}px;top:${p.y}px;width:${nodeW}px;height:${nodeH}px">
       <div class="nh"><b>${esc(sc.name)}</b><span class="st ${st}">${ST[st]}</span></div>${frame(sc, mainVariant(sc), w, z)}</div>`; };
   b.innerHTML = `<div class="legend"><span><i></i>앞으로 가는 길</span><span><i class="back"></i>되돌아가는 길</span><span>점선 테두리: 화면 안 링크로는 닿지 않고 공통 내비로만 들어가는 화면 · 폭 ${esc(w.name)}</span></div>
-    <div class="map">${cols.map((c, i) => c.length ? `<div class="mcol"><h3>${i <= maxD ? (i ? `${i}단계` : '시작') : '내비로만 닿음'}</h3><div class="mstack" style="grid-template-rows:repeat(${Math.min(c.length, 5)}, auto)">${c.map(node).join('')}</div></div>` : '').join('')}<svg></svg></div>`;
-  requestAnimationFrame(drawEdges);
+    <div class="map" style="width:${W}px;height:${H}px"><svg width="${W}" height="${H}"></svg>
+    ${heads.map(h => `<h3 class="mhead" style="left:${GX + h.col * (nodeW + GX)}px">${h.text}</h3>`).join('')}${scs.map(node).join('')}</div>`;
+  drawEdges();
 }
 
 function drawEdges() {
-  const map = $('.map'); if (!map) return;
-  const svg = map.querySelector('svg'), base = map.getBoundingClientRect();
-  svg.setAttribute('width', map.scrollWidth); svg.setAttribute('height', map.scrollHeight);
-  const box = id => { const n = map.querySelector(`[data-node="${id}"]`); if (!n) return null; const r = n.getBoundingClientRect(); return { l: r.left - base.left, r: r.right - base.left, y: r.top - base.top + 14, x: r.left }; };
+  const map = $('.map'); if (!map || !MAP) return;
+  const { pos, nodeW, nodeH } = MAP, svg = map.querySelector('svg');
+  const edges = [];
+  for (const [from, e] of edgesFrom) for (const to of e.to) if (pos.has(from) && pos.has(to)) edges.push({ from, to, a: pos.get(from), b: pos.get(to) });
+  // ports: a screen's outgoing arrows leave spread down its right side, incoming ones arrive spread down its left side
+  const port = (list, n) => { const out = new Map(); list.forEach((e, i) => out.set(e, 30 + (nodeH - 40) * (i + 1) / (list.length + 1))); return out; };
+  const outs = new Map(), ins = new Map();
+  for (const e of edges) { (outs.get(e.from) || outs.set(e.from, []).get(e.from)).push(e); (ins.get(e.to) || ins.set(e.to, []).get(e.to)).push(e); }
+  const oy = new Map(), iy = new Map();
+  for (const [, l] of outs) { l.sort((p, q) => p.b.y - q.b.y || p.b.x - q.b.x); for (const [e, y] of port(l)) oy.set(e, y); }
+  for (const [, l] of ins) { l.sort((p, q) => p.a.y - q.a.y || p.a.x - q.a.x); for (const [e, y] of port(l)) iy.set(e, y); }
+  // channels: v<k> runs left of column k (right of column k-1), h<r> runs above row r
+  const lanes = new Map(), take = k => { const n = lanes.get(k) || 0; lanes.set(k, n + 1); return n; };
+  for (const e of edges) {
+    e.v1 = `v${e.a.c + 1}`; e.v2 = `v${e.b.c}`;
+    e.direct = e.v1 === e.v2;
+    e.l1 = take(e.v1); if (!e.direct) { e.l2 = take(e.v2); e.h = `h${e.b.r}`; e.lh = take(e.h); }
+  }
+  const vx = (k, l) => { const c = +k.slice(1), n = lanes.get(k); return GX + c * (nodeW + GX) - GX + 10 + (GX - 20) * (l + 1) / (n + 1); };
+  const hy = (k, l) => { const r = +k.slice(1), n = lanes.get(k); return HEAD + r * (nodeH + GY) + 8 + (GY - 16) * (l + 1) / (n + 1); };
   let paths = '';
-  for (const [from, e] of edgesFrom) {
-    const a = box(from); if (!a) continue;
-    for (const to of e.to) {
-      const c = box(to); if (!c) continue;
-      const fwd = c.l > a.r;
-      const d = fwd ? `M${a.r},${a.y} C${a.r + 50},${a.y} ${c.l - 50},${c.y} ${c.l},${c.y}`
-        : `M${a.l},${a.y} C${a.l - 70},${a.y} ${c.r + 70},${c.y} ${c.r},${c.y}`;
-      paths += `<path d="${d}" class="${fwd ? '' : 'back'}" data-from="${from}" data-to="${to}" marker-end="url(#ah${fwd ? '' : 'b'})"/>`;
-    }
+  for (const e of edges) {
+    const sx = e.a.x + nodeW, sy = e.a.y + oy.get(e), tx = e.b.x, ty = e.b.y + iy.get(e), x1 = vx(e.v1, e.l1);
+    const pts = e.direct ? [[sx, sy], [x1, sy], [x1, ty], [tx, ty]]
+      : (() => { const y = hy(e.h, e.lh), x2 = vx(e.v2, e.l2); return [[sx, sy], [x1, sy], [x1, y], [x2, y], [x2, ty], [tx, ty]]; })();
+    const back = e.b.c <= e.a.c;
+    paths += `<path d="M${pts.map(p => p.map(Math.round).join(',')).join('L')}" class="${back ? 'back' : ''}" data-from="${e.from}" data-to="${e.to}" marker-end="url(#ah${back ? 'b' : ''})"/>`;
   }
   svg.innerHTML = `<defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--edge);stroke:none;opacity:1"/></marker>
     <marker id="ahb" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--edge-back);stroke:none;opacity:1"/></marker></defs>${paths}`;
@@ -168,9 +207,9 @@ function fit(f) {
   slots(f);
   const z = parseFloat(f.style.transform.match(/scale\(([\d.]+)\)/)?.[1] || S.zoom);
   let hgt = +f.dataset.h;
+  if (S.view === 'map') return;  // map nodes keep one screenful: the grid's channels depend on their size
   if (S.full) try { hgt = Math.max(hgt, f.contentDocument.documentElement.scrollHeight); } catch {}
   f.height = hgt; f.parentElement.style.height = Math.round(hgt * z) + 'px';
-  if (S.view === 'map') drawEdges();
 }
 
 // focus: one screen big, live, its data-to links walk to the next screen
@@ -248,7 +287,7 @@ $('#f-widths').addEventListener('click', e => { const w = e.target.closest('[dat
 $('#f-close').addEventListener('click', () => $('#focus').close());
 $('#f-fit').addEventListener('click', () => { S.actual = false; save(); sizeFocus(); });
 $('#f-actual').addEventListener('click', () => { S.actual = true; save(); sizeFocus(); });
-addEventListener('resize', () => { sizeFocus(); if (S.view === 'map') drawEdges(); });
+addEventListener('resize', () => sizeFocus());
 
 // local dev (scripts/dev-frontend.py): a saved wireframe reloads just its frames; anything else reloads the board.
 // On the deployed site /__reload does not exist and this stops after one try.

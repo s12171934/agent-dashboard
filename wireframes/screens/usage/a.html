@@ -17,15 +17,15 @@
 .usage-gauge::-webkit-progress-bar { background: var(--wf-fill); }
 .usage-gauge::-webkit-progress-value { background: var(--wf-ink); }
 .usage-gauge::-moz-progress-bar { background: var(--wf-ink); }
-  /* Keep the fold gap centered in the viewport, including the 64px navigation rail. */
+  /* Duo is the app (no rail): equal panes keep the gap on the fold. */
   @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
-    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   }
 </style>
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
   <nav class="wf-side" data-shell>
     <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
     <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
@@ -79,11 +79,11 @@
     <p class="wf-note">5시간·주간 한도의 잔여량과 초기화 시각을 계정마다 붙여 읽는다. 접힘은 계정을 위아래로, 반접힘은 두 번째 계정을 시트에 둔다.</p>
   </main>
 </div>
-<!-- Duo cover: bottom dock -->
+<!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
   <div class="wf-col" data-slot="screen" data-plugin="plan-usage">

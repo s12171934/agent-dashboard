@@ -46,7 +46,7 @@
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
   <nav class="wf-side" data-shell>
     <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
     <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
@@ -118,11 +118,11 @@
     </section>
   </main>
 </div>
-<!-- Duo cover: bottom dock -->
+<!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
   <section class="wf-box">

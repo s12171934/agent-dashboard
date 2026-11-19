@@ -39,17 +39,17 @@
 .media-filters select { min-width: 0; max-width: 100%; }
 :root[data-posture="laptop"] .media-player { width: min(100%, calc((50vh - 124px) * 16 / 9)); margin-inline: auto; }
 
-/* The rail takes space from the left pane. Keep the gap centered on the viewport fold. */
+/* Duo is the app (no rail): equal panes keep the gap on the fold. */
 @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
   :root:not([data-posture]) .wf-panes {
-    grid-template-columns: minmax(0, calc(50vw - 64px - var(--wf-gap) * 1.5 - 14px)) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 </style>
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
   <nav class="wf-side" data-shell>
     <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
     <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
@@ -138,11 +138,11 @@
     <p class="wf-note wf-hide-posture">접힘에서는 영상과 타임라인부터 보이고 목록은 그 아래에서 펼친다. 펼침에서는 주름을 사이에 두고 플레이어와 타임라인을 본다.</p>
   </main>
 </div>
-<!-- Duo cover: bottom dock -->
+<!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
   <div class="wf-col" data-slot="screen" data-plugin="media">

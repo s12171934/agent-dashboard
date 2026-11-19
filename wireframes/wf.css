@@ -76,6 +76,9 @@ body {
      desktop  width > 1100                      Mac: full sidebar
      posture  html[data-posture=book|laptop]    half folded (wf.js sets it from ?posture=): the first half is the page laid
                                                 out as on the cover, the second half (.wf-half) is the dock's sheet
+   iPhone Duo is the native app (html.wf-app, set by wf.js on phone, fold and posture): a status bar on top and a
+   bottom tab bar (.wf-dock) — never the side rail. Half folded, the sheet's nav row (the first, data-shell) is
+   that tab bar, at the bottom of the sheet. The rail (.wf-side) is for tablet and desktop only.
    Helpers: .wf-only-<stage> / .wf-hide-<stage> for phone, fold, tablet, desktop, posture. */
 .wf-only-phone, .wf-only-fold, .wf-only-tablet, .wf-only-desktop, .wf-only-posture, .wf-half { display: none !important; }
 .wf-lbl { white-space: nowrap; }
@@ -136,3 +139,32 @@ body {
 .wf-show-slots [data-slot] { outline: 2px dashed #8a5cd6 !important; outline-offset: -2px; position: relative; }
 .wf-show-slots [data-slot]::after { content: attr(data-slot) " · " attr(data-plugin); position: absolute; top: 0; right: 0; z-index: 3;
   background: #8a5cd6; color: #fff; font: 600 10px/1.4 system-ui, sans-serif; padding: 1px 5px; border-radius: 0 0 0 4px; pointer-events: none; white-space: nowrap; }
+
+/* iPhone Duo as the app (html.wf-app): status bar, bottom tab bar with icon and label, home indicator; no rail */
+.wf-app .wf-side { display: none !important; }
+.wf-app body { padding-top: 32px; }
+.wf-app body::before { content: "9:41"; position: fixed; z-index: 6; top: 0; left: 0; right: 0; height: 32px; padding: 8px 22px 0;
+  font: 600 13px/1 -apple-system, system-ui, sans-serif; color: var(--wf-ink); background: var(--wf-bg);
+  background-image: linear-gradient(var(--wf-ink), var(--wf-ink)), linear-gradient(var(--wf-muted), var(--wf-muted));
+  background-repeat: no-repeat; background-size: 22px 10px, 14px 10px; background-position: right 22px top 11px, right 50px top 11px; }
+.wf-app .wf-screen { min-height: calc(100vh - 32px); }
+.wf-app .wf-main { padding: var(--wf-gap) calc(var(--wf-gap) * 1.5) 96px; }
+.wf-app .wf-dock, .wf-app .wf-half > [data-shell] {
+  display: flex; position: fixed; left: 0; right: 0; bottom: 0; transform: none; width: auto; max-width: none; z-index: 5;
+  justify-content: space-around; gap: 0; padding: 6px 8px 24px; border: 0; border-top: 1px solid var(--wf-line);
+  border-radius: 0; box-shadow: none; background: var(--wf-panel); }
+.wf-app .wf-dock::after, .wf-app .wf-half > [data-shell]::after { content: ""; position: absolute; left: 50%; bottom: 7px; width: 120px; height: 4px;
+  margin-left: -60px; border-radius: 2px; background: var(--wf-ink); opacity: .5; }
+.wf-app .wf-dock .wf-btn, .wf-app .wf-half > [data-shell] .wf-btn {
+  position: relative; flex-direction: column; gap: 3px; padding: 2px 6px; border: 0; background: none; font-size: 10px; color: var(--wf-muted); outline: 0; }
+.wf-app .wf-dock .wf-btn::before, .wf-app .wf-half > [data-shell] .wf-btn::before {
+  content: ""; width: 24px; height: 24px; border-radius: 7px; background: var(--wf-fill); }
+.wf-app .wf-dock .wf-btn.on, .wf-app .wf-half > [data-shell] .wf-btn.on { color: var(--wf-accent); font-weight: 700; }
+.wf-app .wf-dock .wf-btn.on::before, .wf-app .wf-half > [data-shell] .wf-btn.on::before { background: var(--wf-accent); }
+.wf-app .wf-dock .wf-tag, .wf-app .wf-half > [data-shell] .wf-tag { position: absolute; top: -2px; left: calc(50% + 6px); padding: 0 5px; font-size: 10px; }
+/* half folded: the tab bar sits at the bottom of the sheet half, not across the page half */
+:root.wf-app[data-posture] .wf-half { padding-bottom: 96px; }
+:root.wf-app[data-posture="book"] .wf-half { padding-top: calc(32px + var(--wf-gap)); }
+:root.wf-app[data-posture="book"] .wf-half > [data-shell] { left: calc(50% + 14px); }
+:root.wf-app[data-posture="laptop"] .wf-half > [data-shell] { top: auto; }
+:root.wf-app[data-posture="laptop"] .wf-screen { height: calc(50vh - 32px); min-height: 0; }
