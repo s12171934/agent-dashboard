@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>에이전트 B · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.run-lane { display: grid; align-items: center; gap: 6px 10px; padding: 6px; border-bottom: 1px solid var(--wf-line);
+  font-size: 11px; font-variant-numeric: tabular-nums; min-width: 0; }
+.run-name { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer; min-width: 0; list-style: none; }
+.run-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.run-name::-webkit-details-marker { display: none; }
+.run-workers, .run-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; min-width: 0; }
+.run-counts, .run-cost, .run-report { white-space: nowrap; }
+.run-counts .has-msg, .run-report.has-msg { color: var(--wf-msg); font-weight: 700; }
+.run-counts .has-gate { color: var(--wf-hot); font-weight: 700; }
+.run-cost { text-align: right; }
+.run-lane .wf-seg { min-width: 0; }
+.run-lane .wf-chip { gap: 3px; }
+@media (max-width: 1100px) { .run-lane.more-runs { display: none; } }
+
+.agent-grid .wf-mhead .wf-h { font-size: 13px; }
+.agent-grid .wf-mbody { gap: 8px; }
+.agent-grid .wf-module { grid-row: auto; }
+.run-panes { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.run-lane { grid-template-columns: minmax(78px, 1.2fr) minmax(58px, 1fr) minmax(130px, 1.55fr) auto auto auto auto; }
+.run-lane .run-report { text-align: right; }
+.run-lane.is-lead { background: var(--wf-fill); border-radius: 5px; border-bottom: 0; }
+.lead-toggle, .dag-steps { display: none; }
+.driver { display: flex; justify-content: space-between; align-items: center; gap: 6px; background: var(--wf-fill); border-radius: 5px;
+  margin: 0; padding: 4px 6px; font-size: 11px; }
+.driver.next { margin-top: 8px; }
+.run-finished { margin-top: 6px; border: 1px solid var(--wf-line); border-radius: 5px; font-size: 12px; }
+.run-finished > summary { padding: 4px 8px; cursor: pointer; }
+.run-finished .run-name { margin: 4px 8px; }
+.run-focus { border: 1px solid var(--wf-line); border-radius: 6px; display: flex; flex-direction: column; min-width: 0; padding: 7px; gap: 6px; }
+.run-focus h3 { font-size: 12px; }
+.run-focus .wf-btn, .attn .wf-btn { padding: 2px 8px; font-size: 11px; }
+.dag-scroll { overflow-x: auto; }
+.dag-canvas { min-width: 555px; height: 170px; position: relative; }
+.dag-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.dag-nodes { list-style: none; padding: 0; margin: 0; }
+.dag-node { position: absolute; top: calc(var(--y) * 1px - 16px); left: calc(var(--x) * 100% / 640); transform: translateX(-50%); width: 20%; }
+.dag-node .wf-chip { position: absolute; bottom: calc(100% + 5px); left: 50%; transform: translateX(-50%); }
+.dag-node .wf-chip::after { content: ""; position: absolute; top: 100%; left: 50%; height: 5px; border-left: 1px solid var(--wf-line); }
+.dag-task { height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 0 4px;
+  border: 1px solid var(--wf-line); border-left: 3px solid var(--wf-done); border-radius: 5px; background: var(--wf-panel); font-size: 11px; white-space: nowrap; }
+.dag-task .wf-tag { padding-inline: 4px; }
+.dag-node.bad .dag-task { border-left-color: var(--wf-bad); }
+.dag-node.hot .dag-task { border-left-color: var(--wf-hot); }
+.dag-node.ok .dag-task { border-left-color: var(--wf-ok); }
+.dag-legend { display: flex; flex-wrap: wrap; gap: 3px 9px; font-size: 10px; color: var(--wf-muted); }
+.dag-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.dag-legend span:not(.gate)::before { content: ""; width: 13px; border-top: 2px solid var(--wf-muted); }
+.dag-legend .spawn::before { border-top: 1px solid var(--wf-line) !important; }
+.dag-legend .msg::before { border-top: 2px dashed var(--wf-msg) !important; }
+.dag-legend .bad::before { border-color: var(--wf-bad) !important; }
+.dag-legend .gate { color: var(--wf-hot); }
+.attn, .side-list { gap: 0; }
+.attn > *, .side-list > * { gap: 6px; padding: 6px 0; font-size: 12px; }
+.attn-detail { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 7px; border-radius: 5px; background: var(--wf-fill); }
+.attn-detail .wf-row { gap: 5px; }
+.timeline { display: grid; gap: 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.timeline > div { display: grid; grid-template-columns: 65px minmax(0, 1fr); align-items: center; gap: 6px; }
+.time-axis { display: flex; justify-content: space-between; color: var(--wf-muted); }
+.time-track { display: block; height: 14px; position: relative; border-block: 1px solid var(--wf-line);
+  background: repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), var(--wf-line) calc(25% - 1px) 25%); }
+.time-track i { position: absolute; top: 2px; bottom: 2px; left: var(--start, 0%); width: var(--duration); border-radius: 3px; background: var(--wf-done); }
+.time-track i.ok { background: var(--wf-ok); } .time-track i.hot { background: var(--wf-hot); } .time-track i.bad { background: var(--wf-bad); }
+.time-track b { position: absolute; top: 4px; left: var(--at); width: 5px; height: 5px; border-radius: 50%; background: var(--wf-msg); }
+.posture-graph .wf-mhead .wf-h { font-size: 14px; }
+.agent-grid { grid-auto-flow: row; }
+@media (width > 1100px) {
+  .agent-grid .lanes { grid-area: 1 / 1 / span var(--rows) / span var(--span); }
+  .agent-grid .attention { grid-area: 1 / 9 / span var(--rows) / span var(--span); }
+  .agent-grid .activity { grid-area: 2 / 9 / span var(--rows) / span var(--span); }
+  .agent-grid .standalone { grid-area: 3 / 9 / span var(--rows) / span var(--span); }
+  .agent-grid { grid-auto-rows: min-content; }
+}
+@media (width > 500px) and (width <= 1100px) {
+  :root:not([data-posture]) .agent-grid .lanes { grid-column: span 12; }
+  :root:not([data-posture]) .run-panes { grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: var(--run-gap, 12px); }
+  :root:not([data-posture]) .run-focus { grid-column: 2; grid-row: 1 / span 2; }
+  :root:not([data-posture]) .lower-lanes { grid-column: 1; grid-row: 2; }
+  :root:not([data-posture]) .activity { grid-column: span 6; }
+  :root:not([data-posture]) .attention { grid-column: span 6; }
+  .wf-app .run-panes { --run-gap: 28px; }
+  .wf-app .lanes > .wf-mbody { padding-inline: 8px; }
+}
+
+@media (max-width: 1100px) {
+  :root:not([data-posture="laptop"]) .run-lane {
+    grid-template-columns: minmax(82px, 1fr) minmax(58px, 1fr) auto auto;
+    grid-template-areas: "goal progress elapsed cost" "workers counts report report";
+    gap: 4px 6px;
+  }
+  :root:not([data-posture="laptop"]) .run-lane .run-name,
+  :root:not([data-posture="laptop"]) .run-lane .lead-toggle { grid-area: goal; }
+  :root:not([data-posture="laptop"]) .run-lane .wf-seg { grid-area: progress; }
+  :root:not([data-posture="laptop"]) .run-lane .run-workers { grid-area: workers; }
+  :root:not([data-posture="laptop"]) .run-lane .run-workers .worker-label > span { display: none; }
+  :root:not([data-posture="laptop"]) .run-lane .run-counts { grid-area: counts; }
+  :root:not([data-posture="laptop"]) .run-lane time { grid-area: elapsed; }
+  :root:not([data-posture="laptop"]) .run-lane .run-cost { grid-area: cost; }
+  :root:not([data-posture="laptop"]) .run-lane .run-report { grid-area: report; }
+}
+@media (width <= 500px) {
+  .lead-toggle { display: block; }
+  .lead-link, .run-panes > .run-focus, .dag-scroll, .dag-legend { display: none; }
+  .lead-toggle[open] .lead-action { font-weight: 700; }
+  .run-panes:has(.lead-toggle[open]) > .run-focus { display: flex; }
+  .dag-steps { list-style: none; margin: 0; padding: 0 0 0 9px; display: grid; gap: 4px; }
+  .dag-steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 6px; font-size: 11px;
+    border-left: 1px solid var(--wf-line); background: var(--wf-bg); }
+  .dag-steps .step-gate { border-left-color: var(--wf-hot); }
+  .dag-steps small { color: var(--wf-muted); font-size: 10px; }
+}
+:root[data-posture] .run-panes > .run-focus { display: none; }
+:root[data-posture] .posture-graph .run-focus { padding: 0; border: 0; }
+:root.wf-app[data-posture="book"] .agent-grid { margin-right: 14px; }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn on" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main">
+    <header class="wf-row">
+      <h1 class="wf-h l wf-grow">에이전트</h1>
+      <button type="button" class="wf-btn" data-to="compose">화면 편집</button>
+      <button type="button" class="wf-btn primary" data-to="new-agent">새 에이전트</button>
+    </header>
+    <div class="wf-grid12 agent-grid">
+      <section class="wf-module lanes" data-slot="panel" data-plugin="orca" style="--span:8;--rows:3">
+        <header class="wf-mhead"><h2 class="wf-h wf-grow">Run 레인</h2><span class="wf-tag">orca</span></header>
+        <div class="wf-mbody">
+          <div class="wf-panes run-panes">
+            <div class="top-lane">
+              <h3 class="driver"><span>드라이버 1</span><span>4 Runs</span></h3>
+              <div class="run-lane is-lead">
+                <details class="lead-toggle"><summary class="run-name"><span class="wf-dot bad" aria-hidden="true"></span><strong>Run 목표 01</strong><span class="wf-t lead-action">DAG</span></summary></details><button type="button" class="run-name lead-link" data-to="run"><span class="wf-dot bad" aria-hidden="true"></span><strong>Run 목표 01</strong><span class="sr-only"> · 막힘</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 막힘 · 대기 · 대기 · 실행 · 취소"><i class="done" aria-hidden="true"></i><i class="bad" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="done wf-x" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="has-msg">질문 2</span><span class="has-gate">◆ 1<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT42M18S">42:18</time>
+                <span class="run-cost" aria-label="비용 0.72 달러">$0.72</span>
+                <span class="run-report has-msg" title="메일함 · 질문 2 · 완료 보고 1">보고 1</span>
+              </div>
+            </div>
+            <section class="run-focus" aria-labelledby="dag-title-main">
+              <header class="wf-row">
+                <h3 class="wf-h wf-grow" id="dag-title-main">Run 목표 01 · 태스크 DAG</h3>
+                <button type="button" class="wf-btn" data-to="run">Run 상세</button>
+              </header>
+              <div class="dag-scroll" tabindex="0" aria-label="선행 관계 그래프">
+                <div class="dag-canvas">
+                  <svg viewBox="0 0 640 170" preserveAspectRatio="none" aria-hidden="true">
+                    <defs>
+                      <marker id="dep-main" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+                        <path d="M1 1 7 4 1 7" fill="none" stroke="var(--wf-muted)" stroke-width="1.5"/>
+                      </marker>
+                      <marker id="msg-main" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+                        <path d="M1 1 7 4 1 7" fill="none" stroke="var(--wf-msg)" stroke-width="1.5"/>
+                      </marker>
+                      <marker id="bad-main" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+                        <path d="M1 1 7 4 1 7" fill="none" stroke="var(--wf-bad)" stroke-width="1.5"/>
+                      </marker>
+                    </defs>
+                    <g fill="none" stroke="var(--wf-muted)" stroke-width="1.5" marker-end="url(#dep-main)">
+                      <path d="M136 53 H168"/><path d="M136 53 H152 V135 H168"/>
+                      <path d="M296 53 H311"/><path d="M329 53 H344"/><path d="M472 53 H504"/>
+                      <path d="M296 135 H319 V68 H344"/>
+                    </g>
+                    <path d="M296 65 H333 V135 H344" fill="none" stroke="var(--wf-bad)" stroke-width="1.5" marker-end="url(#bad-main)"/>
+                    <path d="M265 119 V72" fill="none" stroke="var(--wf-msg)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#msg-main)"/>
+                    <path d="M320 45 328 53 320 61 312 53Z" fill="var(--wf-hot)"/>
+                  </svg>
+                  <ol class="dag-nodes" aria-label="준비에서 구현과 보완으로 분기, 구현과 보완에서 검토로 합류">
+                    <li class="dag-node done" style="--x:72;--y:53">
+                      <span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label">워커 1</span></span>
+                      <div class="dag-task"><strong>준비</strong><span class="wf-tag done">완료</span></div>
+                    </li>
+                    <li class="dag-node bad" style="--x:232;--y:53">
+                      <span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label">워커 1</span></span>
+                      <div class="dag-task"><strong>구현</strong><span class="wf-tag bad">실패</span></div>
+                    </li>
+                    <li class="dag-node hot" style="--x:408;--y:53">
+  
+                      <div class="dag-task"><strong>검토</strong><span class="wf-tag hot">대기</span></div>
+                    </li>
+                    <li class="dag-node hot" style="--x:568;--y:53">
+  
+                      <div class="dag-task"><strong>판정</strong><span class="wf-tag hot">대기</span></div>
+                    </li>
+                    <li class="dag-node ok" style="--x:232;--y:135">
+                      <span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label">워커 2</span></span>
+                      <div class="dag-task"><strong>보완</strong><span class="wf-tag ok">실행</span></div>
+                    </li>
+                    <li class="dag-node done wf-x" style="--x:408;--y:135">
+                      <span class="wf-chip done wf-x" title="Claude · 워커 3 · 취소"><b>C</b><span class="worker-label">워커 3</span></span>
+                      <div class="dag-task"><strong>이전 재시도</strong><span class="wf-tag done wf-x">취소</span></div>
+                    </li>
+                  </ol>
+                </div>
+              </div>
+              <ol class="dag-steps">
+                <li><strong>준비</strong><span class="wf-tag done">완료</span><span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label">워커 1</span></span></li>
+                <li><strong>구현</strong><span class="wf-tag bad">실패</span><span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label">워커 1</span></span><small>준비 후</small></li>
+                <li><strong>보완</strong><span class="wf-tag ok">실행</span><span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label">워커 2</span></span><small>준비 후 · 질문 2</small></li>
+                <li class="step-gate"><strong>◆ 결정 게이트</strong><span class="wf-tag hot">대기</span><small>구현 → 검토</small></li>
+                <li><strong>검토</strong><span class="wf-tag hot">대기</span><small>결정 · 보완 후</small></li>
+                <li><strong>판정</strong><span class="wf-tag hot">대기</span><small>검토 후</small></li>
+                <li class="wf-x"><strong>이전 재시도</strong><span class="wf-tag done">취소</span></li>
+              </ol>
+              <div class="dag-legend" aria-label="관계 범례">
+                <span class="dep">선행</span><span class="spawn">띄움</span><span class="msg">메시지</span><span class="bad">이탈</span><span class="gate">◆ 게이트 대기</span>
+              </div>
+            </section>
+            <div class="lower-lanes">
+              <div class="run-lane">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot bad" aria-hidden="true"></span><strong>Run 목표 02</strong><span class="sr-only"> · 응답 없음</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 완료 · 막힘 · 실행 · 대기"><i class="done" aria-hidden="true"></i><i class="done" aria-hidden="true"></i><i class="bad" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip bad" title="Claude · 워커 1 · 막힘"><b>C</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip ok" title="Codex · 워커 2 · 실행"><b>X</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT36M5S">36:05</time>
+                <span class="run-cost" aria-label="비용 0.54 달러">$0.54</span>
+                <span class="run-report has-msg" title="메일함 · 질문 0 · 완료 보고 2">보고 2</span>
+              </div>
+              <div class="run-lane">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot hot" aria-hidden="true"></span><strong>Run 목표 03</strong><span class="sr-only"> · 게이트 대기</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 완료 · 대기 · 대기"><i class="done" aria-hidden="true"></i><i class="done" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip hot" title="Claude · 워커 2 · 대기"><b>C</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="has-gate">◆ 1<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT31M20S">31:20</time>
+                <span class="run-cost" aria-label="비용 0.41 달러">$0.41</span>
+                <span class="run-report has-msg" title="메일함 · 질문 0 · 완료 보고 1">보고 1</span>
+              </div>
+              <div class="run-lane">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot hot" aria-hidden="true"></span><strong>Run 목표 04</strong><span class="sr-only"> · 질문 대기</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 실행 · 대기 · 대기 · 취소"><i class="done" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="done wf-x" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip ok" title="Claude · 워커 1 · 실행"><b>C</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip hot" title="Codex · 워커 2 · 대기"><b>X</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="has-msg">질문 1</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT24M16S">24:16</time>
+                <span class="run-cost" aria-label="비용 0.32 달러">$0.32</span>
+                <span class="run-report " title="메일함 · 질문 1 · 완료 보고 0">보고 0</span>
+              </div>
+              <h3 class="driver next"><span>드라이버 2</span><span>6 Runs</span></h3>
+              <div class="run-lane">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot ok" aria-hidden="true"></span><strong>Run 목표 05</strong><span class="sr-only"> · 실행</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 실행 · 실행 · 대기 · 대기"><i class="done" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip ok" title="Codex · 워커 1 · 실행"><b>X</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT18M42S">18:42</time>
+                <span class="run-cost" aria-label="비용 0.23 달러">$0.23</span>
+                <span class="run-report has-msg" title="메일함 · 질문 0 · 완료 보고 1">보고 1</span>
+              </div>
+              <div class="run-lane">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot ok" aria-hidden="true"></span><strong>Run 목표 06</strong><span class="sr-only"> · 실행</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 실행 · 대기"><i class="done" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 1명"><span class="wf-chip ok" title="Claude · 워커 1 · 실행"><b>C</b><span class="worker-label"><span>워커 </span>1</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT12M7S">12:07</time>
+                <span class="run-cost" aria-label="비용 0.16 달러">$0.16</span>
+                <span class="run-report " title="메일함 · 질문 0 · 완료 보고 0">보고 0</span>
+              </div>
+              <div class="run-lane more-runs">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot ok" aria-hidden="true"></span><strong>Run 목표 07</strong><span class="sr-only"> · 실행</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 완료 · 실행 · 대기"><i class="done" aria-hidden="true"></i><i class="done" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT10M56S">10:56</time>
+                <span class="run-cost" aria-label="비용 0.12 달러">$0.12</span>
+                <span class="run-report has-msg" title="메일함 · 질문 0 · 완료 보고 1">보고 1</span>
+              </div>
+              <div class="run-lane more-runs">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot ok" aria-hidden="true"></span><strong>Run 목표 08</strong><span class="sr-only"> · 실행</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 실행 · 실행 · 대기"><i class="done" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="ok" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip ok" title="Claude · 워커 1 · 실행"><b>C</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip ok" title="Codex · 워커 2 · 실행"><b>X</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT8M13S">08:13</time>
+                <span class="run-cost" aria-label="비용 0.10 달러">$0.10</span>
+                <span class="run-report " title="메일함 · 질문 0 · 완료 보고 0">보고 0</span>
+              </div>
+              <div class="run-lane more-runs">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot hot" aria-hidden="true"></span><strong>Run 목표 09</strong><span class="sr-only"> · 준비</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 대기 · 대기 · 대기"><i class="hot" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 0명"><span class="wf-t">배정 대기</span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT3M4S">03:04</time>
+                <span class="run-cost" aria-label="비용 0.00 달러">$0.00</span>
+                <span class="run-report " title="메일함 · 질문 0 · 완료 보고 0">보고 0</span>
+              </div>
+              <div class="run-lane more-runs">
+                <button type="button" class="run-name" data-to="run"><span class="wf-dot hot" aria-hidden="true"></span><strong>Run 목표 10</strong><span class="sr-only"> · 대기</span></button>
+                <div class="wf-seg" role="img" aria-label="태스크 완료 · 대기 · 취소"><i class="done" aria-hidden="true"></i><i class="hot" aria-hidden="true"></i><i class="done wf-x" aria-hidden="true"></i></div>
+                <span class="run-workers" aria-label="워커 2명"><span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label"><span>워커 </span>1</span></span><span class="wf-chip done wf-x" title="Claude · 워커 2 · 취소"><b>C</b><span class="worker-label"><span>워커 </span>2</span></span></span>
+                <span class="run-counts"><span class="">질문 0</span><span class="">◆ 0<span class="sr-only"> 게이트 대기</span></span></span>
+                <time datetime="PT1M48S">01:48</time>
+                <span class="run-cost" aria-label="비용 0.06 달러">$0.06</span>
+                <span class="run-report has-msg" title="메일함 · 질문 0 · 완료 보고 1">보고 1</span>
+              </div>
+              <details class="run-finished">
+                <summary>완료 3</summary>
+                <button type="button" class="run-name" data-to="run">Run 목표 11 · 완료</button>
+                <button type="button" class="run-name" data-to="run">Run 목표 12 · 완료</button>
+                <button type="button" class="run-name" data-to="run">Run 목표 13 · 완료</button>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="wf-module attention" data-slot="panel" data-plugin="orca" style="--span:4;--rows:1">
+        <header class="wf-mhead"><h2 class="wf-h wf-grow">주의</h2><span class="wf-tag">orca</span></header>
+        <div class="wf-mbody">
+          <div class="wf-list attn">
+            <div><span class="wf-dot bad"></span><strong class="wf-grow">구현 · Run 목표 01</strong><span class="wf-tag bad">막힘</span></div>
+            <div class="attn-detail" aria-label="선택한 태스크">
+              <div class="wf-row"><span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label">워커 1</span></span><span>선행 준비 완료 · 구현 실패</span></div>
+              <p class="wf-t">선택한 태스크 · 결과 보고 1 · 질문 2</p>
+              <div class="wf-row"><button type="button" class="wf-btn" data-to="session">워커 세션</button><button type="button" class="wf-btn" data-to="chat">채팅</button></div>
+            </div>
+            <div><span class="wf-dot bad"></span><strong class="wf-grow">워커 1 · Run 목표 02</strong><span class="wf-tag bad">응답 없음</span></div>
+            <div><span class="wf-dot hot"></span><strong class="wf-grow">◆ 검토 · Run 목표 03</strong><span class="wf-tag hot">게이트 대기</span></div>
+            <div><span class="wf-dot msg"></span><strong class="wf-grow">워커 2 · Run 목표 04</strong><span class="wf-tag hot">질문 대기</span></div>
+          </div>
+        </div>
+      </section>
+      <section class="wf-module activity" data-slot="panel" data-plugin="orca" style="--span:4;--rows:1">
+        <header class="wf-mhead"><h2 class="wf-h wf-grow">활동 타임라인</h2><span class="wf-tag">orca</span></header>
+        <div class="wf-mbody">
+          <div class="timeline" aria-label="Run 목표 01 워커 활동">
+            <div><span>Run 목표 01</span><div class="time-axis"><span>−45분</span><span>−30분</span><span>−15분</span><span>지금</span></div></div>
+            <div><span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label">워커 1</span></span><span class="time-track" role="img" aria-label="워커 1 준비 완료 후 구현 실패, 질문 한 건"><i style="--start:4%;--duration:23%"></i><i class="bad" style="--start:28%;--duration:50%"></i><b style="--at:61%"></b></span></div>
+            <div><span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label">워커 2</span></span><span class="time-track" role="img" aria-label="워커 2 보완 실행 중"><i class="ok" style="--start:57%;--duration:43%"></i></span></div>
+            <div><span class="wf-chip done wf-x" title="Claude · 워커 3 · 취소"><b>C</b><span class="worker-label">워커 3</span></span><span class="time-track" role="img" aria-label="워커 3 재시도 취소"><i class="wf-x" style="--start:38%;--duration:22%"></i></span></div>
+            <div><span class="wf-chip hot"><b>◆</b>게이트</span><span class="time-track" role="img" aria-label="결정 게이트 대기"><i class="hot" style="--start:73%;--duration:27%"></i></span></div>
+          </div>
+          <p class="wf-t"><span class="wf-dot msg" style="display:inline-block"></span> 메시지 · 회색 완료 · 취소선 취소</p>
+        </div>
+      </section>
+      <section class="wf-module standalone" data-slot="panel" data-plugin="orca" style="--span:4;--rows:1">
+        <header class="wf-mhead"><h2 class="wf-h wf-grow">단독 세션</h2><span class="wf-tag">orca</span></header>
+        <div class="wf-mbody">
+          <div class="wf-list side-list">
+            <div><span class="wf-dot hot"></span><button type="button" class="run-name wf-grow" data-to="session">세션 제목 01</button><span class="wf-tag hot">입력 대기</span></div>
+            <div><span class="wf-dot ok"></span><button type="button" class="run-name wf-grow" data-to="session">세션 제목 02</button><span class="wf-tag ok">실행</span></div>
+            <div><span class="wf-dot done"></span><button type="button" class="run-name wf-grow" data-to="session">세션 제목 03</button><span class="wf-tag done">유휴</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <p class="wf-note">막힘과 입력 대기를 먼저 훑고, 선택한 Run의 선행 관계와 워커 상태를 함께 본다. 접힘에서는 DAG가 세로 단계로 펼쳐진다.</p>
+  </main>
+</div>
+<!-- iPhone Duo (the app): bottom tab bar -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <div class="wf-grid12 posture-graph">
+    <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:12;--rows:1">
+      <header class="wf-mhead"><h2 class="wf-h wf-grow">선택한 Run</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <section class="run-focus" aria-labelledby="dag-title-half">
+          <header class="wf-row">
+            <h3 class="wf-h wf-grow" id="dag-title-half">Run 목표 01 · 태스크 DAG</h3>
+            <button type="button" class="wf-btn" data-to="run">Run 상세</button>
+          </header>
+          <div class="dag-scroll" tabindex="0" aria-label="선행 관계 그래프">
+            <div class="dag-canvas">
+              <svg viewBox="0 0 640 170" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <marker id="dep-half" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M1 1 7 4 1 7" fill="none" stroke="var(--wf-muted)" stroke-width="1.5"/>
+                  </marker>
+                  <marker id="msg-half" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M1 1 7 4 1 7" fill="none" stroke="var(--wf-msg)" stroke-width="1.5"/>
+                  </marker>
+                  <marker id="bad-half" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M1 1 7 4 1 7" fill="none" stroke="var(--wf-bad)" stroke-width="1.5"/>
+                  </marker>
+                </defs>
+                <g fill="none" stroke="var(--wf-muted)" stroke-width="1.5" marker-end="url(#dep-half)">
+                  <path d="M136 53 H168"/><path d="M136 53 H152 V135 H168"/>
+                  <path d="M296 53 H311"/><path d="M329 53 H344"/><path d="M472 53 H504"/>
+                  <path d="M296 135 H319 V68 H344"/>
+                </g>
+                <path d="M296 65 H333 V135 H344" fill="none" stroke="var(--wf-bad)" stroke-width="1.5" marker-end="url(#bad-half)"/>
+                <path d="M265 119 V72" fill="none" stroke="var(--wf-msg)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#msg-half)"/>
+                <path d="M320 45 328 53 320 61 312 53Z" fill="var(--wf-hot)"/>
+              </svg>
+              <ol class="dag-nodes" aria-label="준비에서 구현과 보완으로 분기, 구현과 보완에서 검토로 합류">
+                <li class="dag-node done" style="--x:72;--y:53">
+                  <span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label">워커 1</span></span>
+                  <div class="dag-task"><strong>준비</strong><span class="wf-tag done">완료</span></div>
+                </li>
+                <li class="dag-node bad" style="--x:232;--y:53">
+                  <span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label">워커 1</span></span>
+                  <div class="dag-task"><strong>구현</strong><span class="wf-tag bad">실패</span></div>
+                </li>
+                <li class="dag-node hot" style="--x:408;--y:53">
+  
+                  <div class="dag-task"><strong>검토</strong><span class="wf-tag hot">대기</span></div>
+                </li>
+                <li class="dag-node hot" style="--x:568;--y:53">
+  
+                  <div class="dag-task"><strong>판정</strong><span class="wf-tag hot">대기</span></div>
+                </li>
+                <li class="dag-node ok" style="--x:232;--y:135">
+                  <span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label">워커 2</span></span>
+                  <div class="dag-task"><strong>보완</strong><span class="wf-tag ok">실행</span></div>
+                </li>
+                <li class="dag-node done wf-x" style="--x:408;--y:135">
+                  <span class="wf-chip done wf-x" title="Claude · 워커 3 · 취소"><b>C</b><span class="worker-label">워커 3</span></span>
+                  <div class="dag-task"><strong>이전 재시도</strong><span class="wf-tag done wf-x">취소</span></div>
+                </li>
+              </ol>
+            </div>
+          </div>
+          <ol class="dag-steps">
+            <li><strong>준비</strong><span class="wf-tag done">완료</span><span class="wf-chip done" title="Codex · 워커 1 · 완료"><b>X</b><span class="worker-label">워커 1</span></span></li>
+            <li><strong>구현</strong><span class="wf-tag bad">실패</span><span class="wf-chip bad" title="Codex · 워커 1 · 막힘"><b>X</b><span class="worker-label">워커 1</span></span><small>준비 후</small></li>
+            <li><strong>보완</strong><span class="wf-tag ok">실행</span><span class="wf-chip ok" title="Claude · 워커 2 · 실행"><b>C</b><span class="worker-label">워커 2</span></span><small>준비 후 · 질문 2</small></li>
+            <li class="step-gate"><strong>◆ 결정 게이트</strong><span class="wf-tag hot">대기</span><small>구현 → 검토</small></li>
+            <li><strong>검토</strong><span class="wf-tag hot">대기</span><small>결정 · 보완 후</small></li>
+            <li><strong>판정</strong><span class="wf-tag hot">대기</span><small>검토 후</small></li>
+            <li class="wf-x"><strong>이전 재시도</strong><span class="wf-tag done">취소</span></li>
+          </ol>
+          <div class="dag-legend" aria-label="관계 범례">
+            <span class="dep">선행</span><span class="spawn">띄움</span><span class="msg">메시지</span><span class="bad">이탈</span><span class="gate">◆ 게이트 대기</span>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

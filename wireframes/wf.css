@@ -3,7 +3,7 @@
 :root {
   --wf-bg: #f4f4f2; --wf-panel: #ffffff; --wf-fill: #e2e2de; --wf-ink: #2b2b29; --wf-muted: #8a8a85;
   --wf-line: #c9c9c4; --wf-accent: #3b6fd8; --wf-hot: #d9822b; --wf-bad: #c8463c; --wf-ok: #3d9a62;
-  --wf-note: #fff3b0; --wf-note-ink: #5c4a00;
+  --wf-note: #fff3b0; --wf-note-ink: #5c4a00; --wf-msg: #8a5cd6; --wf-done: #a3a29b;
   --wf-gap: 12px; --wf-r: 8px;
   color-scheme: light;
 }
@@ -168,3 +168,40 @@ body {
 :root.wf-app[data-posture="book"] .wf-half > [data-shell] { left: calc(50% + 14px); }
 :root.wf-app[data-posture="laptop"] .wf-half > [data-shell] { top: auto; }
 :root.wf-app[data-posture="laptop"] .wf-screen { height: calc(50vh - 32px); min-height: 0; }
+
+/* orchestration primitives (FLOW.md 「오케스트레이션 시각화」): one color per state everywhere —
+   run (ok, green) · wait (hot, orange) · bad (red) · done (gray) · cancelled (faded) · msg (purple, messages) */
+.wf-tag.msg { background: var(--wf-msg); color: #fff; } .wf-dot.msg { background: var(--wf-msg); }
+.wf-tag.done { background: var(--wf-done); color: #fff; } .wf-dot.done { background: var(--wf-done); }
+.wf-x { opacity: .4; text-decoration: line-through; }
+/* segmented progress: one child per task in state order, e.g. <div class="wf-seg"><i class="ok" style="flex:3"></i><i class="hot"></i>…</div> */
+.wf-seg { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; min-width: 60px; }
+.wf-seg > i { flex: 1; background: var(--wf-fill); }
+.wf-seg > i.ok { background: var(--wf-ok); } .wf-seg > i.hot { background: var(--wf-hot); } .wf-seg > i.bad { background: var(--wf-bad); }
+.wf-seg > i.done { background: var(--wf-done); } .wf-seg > i.msg { background: var(--wf-msg); }
+/* agent chip: role + agent kind letter + state, small enough to put dozens in a row */
+.wf-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px 1px 2px; border: 1px solid var(--wf-line); border-radius: 999px; font-size: 11px; background: var(--wf-panel); white-space: nowrap; }
+.wf-chip > b { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; font-size: 9px; background: var(--wf-fill); }
+.wf-chip.ok { border-color: var(--wf-ok); } .wf-chip.hot { border-color: var(--wf-hot); } .wf-chip.bad { border-color: var(--wf-bad); } .wf-chip.done { opacity: .6; }
+/* dense table: many rows at a glance */
+.wf-dense { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.wf-dense th { text-align: left; color: var(--wf-muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--wf-line); white-space: nowrap; }
+.wf-dense td { padding: 3px 6px; border-bottom: 1px solid var(--wf-line); white-space: nowrap; }
+
+/* modules (FLOW.md 「모듈형 화면」): a screen is a layout of panels on a 12-column grid. A panel is a .wf-module with
+   a head (drag handle, title, the plugin that gives it, menu) and a body; --span sets its columns (stacks to 12 on the
+   Duo app widths), --rows its height in grid rows. html.wf-edit (or .wf-editing on a container) shows the edit
+   affordances: dashed outlines, resize corners, add-panel slots. */
+.wf-grid12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: minmax(64px, auto); gap: var(--wf-gap); grid-auto-flow: dense; }
+.wf-module { grid-column: span var(--span, 6); grid-row: span var(--rows, 2); display: flex; flex-direction: column; min-width: 0;
+  background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: var(--wf-r); }
+.wf-module > .wf-mhead { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--wf-line); font-size: 12px; font-weight: 700; }
+.wf-module > .wf-mhead::before { content: "⋮⋮"; color: var(--wf-muted); font-weight: 400; letter-spacing: -2px; }
+.wf-module > .wf-mhead .wf-tag { font-weight: 400; }
+.wf-module > .wf-mbody { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; flex: 1; }
+.wf-app .wf-module { grid-column: span 12; }
+.wf-app .wf-module.half { grid-column: span 6; }
+.wf-edit .wf-module, .wf-editing .wf-module { border-style: dashed; border-color: var(--wf-accent); position: relative; }
+.wf-edit .wf-module::after, .wf-editing .wf-module::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px;
+  border-right: 2px solid var(--wf-accent); border-bottom: 2px solid var(--wf-accent); }
+.wf-add { grid-column: span var(--span, 4); border: 2px dashed var(--wf-line); border-radius: var(--wf-r); display: grid; place-items: center; color: var(--wf-muted); min-height: 64px; }

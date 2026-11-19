@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>상호작용 B · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.talk-header { gap: 8px; }
+.talk-layout, .talk-side { min-width: 0; align-items: stretch; }
+.talk-layout { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.talk-primary, .talk-side { display: contents; }
+.talk-module-title { margin: 0; font: inherit; }
+.talk-controls, .talk-group-list { display: grid; gap: 6px; }
+.talk-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.talk-controls label { min-width: 0; display: grid; gap: 2px; }
+.talk-controls .wf-input { width: 100%; min-width: 0; color: var(--wf-ink); font: inherit; font-size: 12px; }
+.talk-group-list { margin: 0; padding: 0; list-style: none; }
+.talk-group-list li { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 1px solid var(--wf-line); border-radius: 5px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.talk-group-list li[aria-current] { background: var(--wf-fill); }
+.talk-group-list li > strong { flex: 1; }
+.talk-closed { margin-top: 4px; font-size: 12px; }
+.talk-closed summary { cursor: pointer; color: var(--wf-muted); }
+.talk-closed .talk-group-list { margin-top: 6px; }
+.talk-link { color: var(--wf-ink); font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; }
+.talk-detail p { margin: 0; }
+.talk-detail .wf-row { gap: 6px; }
+.talk-detail blockquote { padding: 5px 8px; border-left: 2px solid var(--wf-msg); margin: 2px 0; color: var(--wf-muted); font-size: 12px; }
+.talk-chart { --talk-tracks: 34px repeat(4, minmax(0, 1fr)); }
+.talk-lanes, .talk-ruler, .talk-event { display: grid; grid-template-columns: var(--talk-tracks); }
+.talk-lanes { gap: 0; align-items: end; }
+.talk-lanes > .wf-t { font-size: 11px; align-self: center; }
+.talk-person { display: grid; justify-items: center; gap: 4px; padding: 4px 1px 6px; font-size: 11px; text-align: center; }
+.talk-person .wf-chip { padding-inline: 2px 4px; }
+.talk-person .wf-chip > b { width: 13px; height: 13px; }
+.talk-person .wf-t { display: flex; gap: 3px; align-items: center; white-space: nowrap; font-size: 10px; }
+.talk-person .wf-dot { width: 5px; height: 5px; }
+.talk-person .talk-link { white-space: nowrap; }
+.talk-history { position: relative; margin: 0; padding: 0; list-style: none; }
+.talk-ruler { position: absolute; inset: 0; pointer-events: none; }
+.talk-ruler > i { justify-self: center; width: 1px; background: var(--wf-line); }
+.talk-event { position: relative; min-height: 40px; align-items: center; }
+.talk-event.is-selected { background: color-mix(in srgb, var(--wf-msg) 11%, transparent); border-radius: 4px; }
+.talk-event time { grid-column: 1; font-size: 11px; color: var(--wf-muted); font-variant-numeric: tabular-nums; }
+.talk-motion { grid-column: var(--lanes); position: relative; display: grid; justify-items: center; row-gap: 4px; min-width: 0; }
+.talk-kind { border-radius: 4px; background: var(--wf-panel); padding: 0 3px; font-size: 11px; font-weight: 700; }
+.talk-motion::after { content: ""; width: calc(100% - 2 * var(--inset)); border-top: 2px dashed var(--wf-msg); }
+.talk-motion::before { content: ""; position: absolute; bottom: -3px; right: calc(var(--inset) - 1px); width: 0; height: 0; border-block: 4px solid transparent; border-left: 7px solid var(--wf-msg); }
+.talk-event.reverse .talk-motion::before { right: auto; left: calc(var(--inset) - 1px); border-left: 0; border-right: 7px solid var(--wf-msg); }
+.talk-event.alert .talk-motion::after { border-top: 2px solid var(--wf-bad); }
+.talk-event.alert .talk-motion::before { border-inline-color: var(--wf-bad); }
+.talk-event.ask .talk-kind { border-bottom: 2px solid var(--wf-hot); }
+.talk-event.alert .talk-kind { border-bottom: 2px solid var(--wf-bad); }
+.talk-event.report .talk-kind { background: color-mix(in srgb, var(--wf-msg) 14%, var(--wf-panel)); }
+.talk-route, .talk-subject, .talk-compact, .talk-tall, .talk-group-list .talk-tall { display: none; }
+.talk-legend { margin-top: 2px; }
+.talk-legend .wf-row { gap: 6px; }
+.talk-key { display: inline-block; width: 14px; border-top: 2px dashed var(--wf-msg); vertical-align: middle; }
+.talk-key.alert { border-top: 2px solid var(--wf-bad); }
+.talk-note { margin: 0; }
+
+@media (500px < width <= 1100px) {
+  :root:not(.wf-app) .talk-layout .wf-module { grid-column: span var(--tablet-span); }
+}
+@media (width > 1100px) and (height >= 1600px) {
+  .talk-tall { display: grid; }
+  .talk-group-list .talk-tall { display: flex; }
+  .talk-event { min-height: 47px; }
+}
+.wf-app .talk-layout > .wf-grid12 { display: grid; grid-auto-rows: auto; }
+.wf-app .talk-layout { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+.wf-app .talk-layout .wf-module { --rows: 1; }
+@media (width > 500px) {
+  .wf-app:not([data-posture]) .talk-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: start; }
+  .wf-app:not([data-posture]) .talk-side { grid-auto-flow: row; }
+}
+@media (500px < width <= 700px) {
+  .wf-app .talk-person .wf-chip { flex-direction: column; gap: 2px; width: 100%; padding: 2px 1px; border-radius: 5px; }
+}
+@media (width <= 500px) {
+  .talk-main .talk-layout > .talk-side, .talk-main .talk-lanes, .talk-main .talk-ruler { display: none; }
+  .talk-compact { display: grid; }
+  .talk-wide-label { display: none; }
+  .talk-event { grid-template-columns: 38px minmax(0, 1fr); }
+  .talk-event + .talk-event { border-top: 1px solid var(--wf-line); }
+  .talk-motion { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-items: start; align-items: center; gap: 0 6px; }
+  .talk-motion::before, .talk-motion::after { display: none; }
+  .talk-route { display: inline; font-size: 12px; }
+  .talk-subject { display: block; grid-row: 2; }
+  .talk-legend { display: none; }
+}
+:root[data-posture] .talk-main .talk-layout > .talk-side,
+:root[data-posture] .talk-main .talk-lanes,
+:root[data-posture] .talk-main .talk-ruler,
+:root[data-posture] .talk-main .talk-wide-label,
+:root[data-posture] .talk-main .talk-legend { display: none; }
+:root[data-posture] .talk-sheet-label { display: inline; }
+:root[data-posture] .talk-event { grid-template-columns: 38px minmax(0, 1fr); }
+:root[data-posture] .talk-event + .talk-event { border-top: 1px solid var(--wf-line); }
+:root[data-posture] .talk-motion { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-items: start; align-items: center; gap: 0 6px; }
+:root[data-posture] .talk-motion::before, :root[data-posture] .talk-motion::after { display: none; }
+:root[data-posture] .talk-route { display: inline; font-size: 12px; }
+:root[data-posture] .talk-subject { display: block; grid-row: 2; }
+:root[data-posture] .talk-sheet-grid { grid-auto-rows: auto; }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold on" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main talk-main" data-slot="screen" data-plugin="orca">
+    <header class="wf-row talk-header">
+      <h1 class="wf-h l wf-grow">상호작용</h1>
+      <button class="wf-btn" type="button" data-to="compose">화면 편집</button>
+    </header>
+    <div class="wf-panes wf-grid12 talk-layout">
+      <div class="wf-grid12 talk-primary">
+        <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:8;--tablet-span:7;--rows:8">
+          <header class="wf-mhead">
+            <h2 class="talk-module-title wf-grow"><span class="talk-wide-label">시퀀스</span><span class="talk-route talk-sheet-label">대화 목록</span></h2>
+            <span class="wf-tag">orca</span>
+          </header>
+          <div class="wf-mbody">
+            <div class="talk-controls talk-compact">
+              <label><span class="wf-t">코디네이터 묶음</span><select class="wf-input"><option>코디네이터 A</option><option>코디네이터 B</option><option>코디네이터 C</option><option>코디네이터 D</option><option>코디네이터 E</option><option>코디네이터 F</option><option>코디네이터 G</option><option>코디네이터 H</option><option>코디네이터 I</option><option>코디네이터 J</option></select></label>
+          <label><span class="wf-t">메시지 종류</span><select class="wf-input"><option>전체</option><option>질문</option><option>답</option><option>완료 보고</option><option>에스컬레이션</option><option>지시</option></select></label>
+            </div>
+            <div class="wf-row talk-header">
+              <strong class="wf-grow">Run 목표 A</strong><button class="talk-link" type="button" data-to="run">Run 상세</button>
+            </div>
+            <div class="talk-chart">
+              <div class="talk-lanes" aria-label="참여자 생명선">
+                <span class="wf-t">시간 ↓</span>
+          <div class="talk-person"><span class="wf-chip ok"><b>X</b><button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="wf-t"><i class="wf-dot ok"></i>실행</span></div>
+          <div class="talk-person"><span class="wf-chip hot"><b>C</b><button class="talk-link" type="button" data-to="session">워커 1</button></span><span class="wf-t"><i class="wf-dot hot"></i>입력 대기</span></div>
+          <div class="talk-person"><span class="wf-chip bad"><b>X</b><button class="talk-link" type="button" data-to="session">워커 2</button></span><span class="wf-t"><i class="wf-dot bad"></i>막힘</span></div>
+          <div class="talk-person"><span class="wf-chip done"><b>C</b><button class="talk-link" type="button" data-to="session">워커 3</button></span><span class="wf-t"><i class="wf-dot done"></i>완료</span></div>
+              </div>
+              <ol class="talk-history" aria-label="시간순 메시지">
+                <li class="talk-ruler" aria-hidden="true"><span></span><i></i><i></i><i></i><i></i></li>
+          <li class="talk-event" style="--lanes: 2 / 4; --inset: 25%;" aria-label="09:20, 코디네이터에서 워커 1에게, 작업 지시">
+            <time>09:20</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">코디네이터</button> → <button class="talk-link" type="button" data-to="session">워커 1</button></span><span class="talk-kind">지시</span><span class="wf-t talk-subject">작업 지시</span></div>
+          </li>
+          <li class="talk-event" style="--lanes: 2 / 6; --inset: 12.5%;" aria-label="09:22, 코디네이터에서 워커 3에게, 작업 지시">
+            <time>09:22</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">코디네이터</button> → <button class="talk-link" type="button" data-to="session">워커 3</button></span><span class="talk-kind">지시</span><span class="wf-t talk-subject">작업 지시</span></div>
+          </li>
+          <li class="talk-event reverse report" style="--lanes: 2 / 6; --inset: 12.5%;" aria-label="09:24, 워커 3에서 코디네이터에게, 작업 완료 보고">
+            <time>09:24</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 3</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">완료 보고</span><span class="wf-t talk-subject">작업 완료 보고</span></div>
+          </li>
+          <li class="talk-event reverse ask" style="--lanes: 2 / 4; --inset: 25%;" aria-label="09:26, 워커 1에서 코디네이터에게, 검토 범위 질문">
+            <time>09:26</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 1</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">질문</span><span class="wf-t talk-subject">검토 범위 질문</span></div>
+          </li>
+          <li class="talk-event" style="--lanes: 2 / 4; --inset: 25%;" aria-label="09:28, 코디네이터에서 워커 1에게, 검토 범위 답변">
+            <time>09:28</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">코디네이터</button> → <button class="talk-link" type="button" data-to="session">워커 1</button></span><span class="talk-kind">답</span><span class="wf-t talk-subject">검토 범위 답변</span></div>
+          </li>
+          <li class="talk-event reverse alert" style="--lanes: 2 / 5; --inset: 16.6667%;" aria-label="09:32, 워커 2에서 코디네이터에게, 선행 태스크 막힘">
+            <time>09:32</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 2</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">에스컬레이션</span><span class="wf-t talk-subject">선행 태스크 막힘</span></div>
+          </li>
+          <li class="talk-event" style="--lanes: 2 / 5; --inset: 16.6667%;" aria-label="09:34, 코디네이터에서 워커 2에게, 재시도 요청">
+            <time>09:34</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">코디네이터</button> → <button class="talk-link" type="button" data-to="session">워커 2</button></span><span class="talk-kind">답</span><span class="wf-t talk-subject">재시도 요청</span></div>
+          </li>
+          <li class="talk-event" style="--lanes: 3 / 5; --inset: 25%;" aria-label="09:36, 워커 1에서 워커 2에게, 검토 자료 공유">
+            <time>09:36</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 1</button> → <button class="talk-link" type="button" data-to="session">워커 2</button></span><span class="talk-kind">지시</span><span class="wf-t talk-subject">검토 자료 공유</span></div>
+          </li>
+          <li class="talk-event reverse ask is-selected" style="--lanes: 2 / 4; --inset: 25%;" aria-label="09:38, 워커 1에서 코디네이터에게, 검토 범위 확인">
+            <time>09:38</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 1</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">질문</span><span class="wf-t talk-subject">검토 범위 확인</span></div>
+          </li>
+          <li class="talk-event reverse alert" style="--lanes: 2 / 5; --inset: 16.6667%;" aria-label="09:40, 워커 2에서 코디네이터에게, 재시도 막힘">
+            <time>09:40</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 2</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">에스컬레이션</span><span class="wf-t talk-subject">재시도 막힘</span></div>
+          </li>
+          <li class="talk-event talk-tall" style="--lanes: 2 / 5; --inset: 16.6667%;" aria-label="09:44, 코디네이터에서 워커 2에게, 막힘 원인 확인 요청">
+            <time>09:44</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">코디네이터</button> → <button class="talk-link" type="button" data-to="session">워커 2</button></span><span class="talk-kind">답</span><span class="wf-t talk-subject">막힘 원인 확인 요청</span></div>
+          </li>
+          <li class="talk-event reverse ask talk-tall" style="--lanes: 3 / 5; --inset: 25%;" aria-label="09:46, 워커 2에서 워커 1에게, 공유 경로 질문">
+            <time>09:46</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 2</button> → <button class="talk-link" type="button" data-to="session">워커 1</button></span><span class="talk-kind">질문</span><span class="wf-t talk-subject">공유 경로 질문</span></div>
+          </li>
+          <li class="talk-event talk-tall" style="--lanes: 3 / 5; --inset: 25%;" aria-label="09:48, 워커 1에서 워커 2에게, 공유 경로 답변">
+            <time>09:48</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 1</button> → <button class="talk-link" type="button" data-to="session">워커 2</button></span><span class="talk-kind">답</span><span class="wf-t talk-subject">공유 경로 답변</span></div>
+          </li>
+          <li class="talk-event reverse alert talk-tall" style="--lanes: 2 / 5; --inset: 16.6667%;" aria-label="09:53, 워커 2에서 코디네이터에게, 경로 접근 막힘">
+            <time>09:53</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 2</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">에스컬레이션</span><span class="wf-t talk-subject">경로 접근 막힘</span></div>
+          </li>
+          <li class="talk-event talk-tall" style="--lanes: 2 / 5; --inset: 16.6667%;" aria-label="09:55, 코디네이터에서 워커 2에게, 후속 확인 요청">
+            <time>09:55</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">코디네이터</button> → <button class="talk-link" type="button" data-to="session">워커 2</button></span><span class="talk-kind">답</span><span class="wf-t talk-subject">후속 확인 요청</span></div>
+          </li>
+          <li class="talk-event reverse ask talk-tall" style="--lanes: 2 / 4; --inset: 25%;" aria-label="10:02, 워커 1에서 코디네이터에게, 다음 단계 확인">
+            <time>10:02</time><div class="talk-motion"><span class="talk-route"><button class="talk-link" type="button" data-to="session">워커 1</button> → <button class="talk-link" type="button" data-to="session">코디네이터</button></span><span class="talk-kind">질문</span><span class="wf-t talk-subject">다음 단계 확인</span></div>
+          </li>
+              </ol>
+            </div>
+            <div class="talk-legend"><div class="wf-row"><span class="talk-key"></span><span class="wf-t">메시지</span><span class="talk-key alert"></span><span class="wf-t">에스컬레이션</span></div></div>
+          </div>
+        </section>
+      </div>
+      <div class="wf-grid12 talk-side">
+    <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:4;--tablet-span:5;--rows:5">
+      <header class="wf-mhead"><h2 class="talk-module-title wf-grow">코디네이터 묶음</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <div class="talk-controls">
+          <label><span class="wf-t">코디네이터 묶음</span><select class="wf-input"><option>코디네이터 A</option><option>코디네이터 B</option><option>코디네이터 C</option><option>코디네이터 D</option><option>코디네이터 E</option><option>코디네이터 F</option><option>코디네이터 G</option><option>코디네이터 H</option><option>코디네이터 I</option><option>코디네이터 J</option></select></label>
+          <label><span class="wf-t">메시지 종류</span><select class="wf-input"><option>전체</option><option>질문</option><option>답</option><option>완료 보고</option><option>에스컬레이션</option><option>지시</option></select></label>
+        </div>
+        <ul class="talk-group-list">
+          <li aria-current="true"><i class="wf-dot bad"></i><strong>Run 목표 A</strong><span>막힘 1 · 질문 1</span></li>
+          <li><i class="wf-dot bad"></i><strong>Run 목표 B</strong><span>응답 없음 1</span></li>
+          <li><i class="wf-dot hot"></i><strong>Run 목표 C</strong><span>질문 2</span></li>
+          <li><i class="wf-dot hot"></i><strong>Run 목표 D</strong><span>게이트 1</span></li>
+          <li><i class="wf-dot ok"></i><strong>Run 목표 E</strong><span>메시지 8</span></li>
+          <li><i class="wf-dot ok"></i><strong>Run 목표 F</strong><span>메시지 5</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 G</strong><span>메시지 4</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 H</strong><span>메시지 3</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 I</strong><span>메시지 2</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 J</strong><span>메시지 1</span></li>
+        </ul>
+        <details class="talk-closed">
+          <summary>완료 4</summary>
+          <ul class="talk-group-list">
+            <li><i class="wf-dot done"></i><strong>Run 목표 K</strong><span>완료</span></li>
+            <li><i class="wf-dot done"></i><strong>Run 목표 L</strong><span>완료</span></li>
+            <li><i class="wf-dot done"></i><strong>Run 목표 M</strong><span class="wf-x">태스크 1 취소</span></li>
+            <li><i class="wf-dot done"></i><strong>Run 목표 N</strong><span>완료</span></li>
+          </ul>
+        </details>
+      </div>
+    </section>
+    <section class="wf-module talk-detail" data-slot="panel" data-plugin="orca" style="--span:4;--tablet-span:5;--rows:3">
+      <header class="wf-mhead"><h2 class="talk-module-title wf-grow">선택한 메시지</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <div class="wf-row"><span class="wf-tag msg">질문</span><time class="wf-t">09:38</time><span class="wf-tag hot">답 대기</span></div>
+        <div class="wf-row"><button class="talk-link" type="button" data-to="session">워커 1</button><span aria-hidden="true">→</span><button class="talk-link" type="button" data-to="session">코디네이터</button></div>
+        <strong>검토 범위 확인</strong>
+        <blockquote>인용한 답변 제목</blockquote>
+        <p class="wf-t">메시지 본문 자리</p>
+        <div class="wf-row"><button class="wf-btn" type="button" data-to="run">Run 상세</button></div>
+      </div>
+    </section>
+      </div>
+    </div>
+    <p class="wf-note talk-note">같은 Run의 대화를 위에서 아래로 읽는다. 접힘은 발신·수신을 한 줄로, 반접힘은 묶음·필터와 선택한 메시지를 시트에 둔다.</p>
+  </main>
+</div>
+<!-- iPhone Duo (the app): bottom tab bar -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the sheet: this screen's secondary controls, with the tab bar (its first row) at the bottom -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <div class="wf-grid12 talk-sheet-grid">
+    <section class="wf-module" data-slot="panel" data-plugin="orca" style="--span:4;--tablet-span:5;--rows:1">
+      <header class="wf-mhead"><h2 class="talk-module-title wf-grow">코디네이터 묶음</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <div class="talk-controls">
+          <label><span class="wf-t">코디네이터 묶음</span><select class="wf-input"><option>코디네이터 A</option><option>코디네이터 B</option><option>코디네이터 C</option><option>코디네이터 D</option><option>코디네이터 E</option><option>코디네이터 F</option><option>코디네이터 G</option><option>코디네이터 H</option><option>코디네이터 I</option><option>코디네이터 J</option></select></label>
+          <label><span class="wf-t">메시지 종류</span><select class="wf-input"><option>전체</option><option>질문</option><option>답</option><option>완료 보고</option><option>에스컬레이션</option><option>지시</option></select></label>
+        </div>
+        <ul class="talk-group-list">
+          <li aria-current="true"><i class="wf-dot bad"></i><strong>Run 목표 A</strong><span>막힘 1 · 질문 1</span></li>
+          <li><i class="wf-dot bad"></i><strong>Run 목표 B</strong><span>응답 없음 1</span></li>
+          <li><i class="wf-dot hot"></i><strong>Run 목표 C</strong><span>질문 2</span></li>
+          <li><i class="wf-dot hot"></i><strong>Run 목표 D</strong><span>게이트 1</span></li>
+          <li><i class="wf-dot ok"></i><strong>Run 목표 E</strong><span>메시지 8</span></li>
+          <li><i class="wf-dot ok"></i><strong>Run 목표 F</strong><span>메시지 5</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 G</strong><span>메시지 4</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 H</strong><span>메시지 3</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 I</strong><span>메시지 2</span></li>
+          <li class="talk-tall"><i class="wf-dot ok"></i><strong>Run 목표 J</strong><span>메시지 1</span></li>
+        </ul>
+        <details class="talk-closed">
+          <summary>완료 4</summary>
+          <ul class="talk-group-list">
+            <li><i class="wf-dot done"></i><strong>Run 목표 K</strong><span>완료</span></li>
+            <li><i class="wf-dot done"></i><strong>Run 목표 L</strong><span>완료</span></li>
+            <li><i class="wf-dot done"></i><strong>Run 목표 M</strong><span class="wf-x">태스크 1 취소</span></li>
+            <li><i class="wf-dot done"></i><strong>Run 목표 N</strong><span>완료</span></li>
+          </ul>
+        </details>
+      </div>
+    </section>
+    <section class="wf-module talk-detail" data-slot="panel" data-plugin="orca" style="--span:4;--tablet-span:5;--rows:1">
+      <header class="wf-mhead"><h2 class="talk-module-title wf-grow">선택한 메시지</h2><span class="wf-tag">orca</span></header>
+      <div class="wf-mbody">
+        <div class="wf-row"><span class="wf-tag msg">질문</span><time class="wf-t">09:38</time><span class="wf-tag hot">답 대기</span></div>
+        <div class="wf-row"><button class="talk-link" type="button" data-to="session">워커 1</button><span aria-hidden="true">→</span><button class="talk-link" type="button" data-to="session">코디네이터</button></div>
+        <strong>검토 범위 확인</strong>
+        <blockquote>인용한 답변 제목</blockquote>
+        <p class="wf-t">메시지 본문 자리</p>
+        <div class="wf-row"><button class="wf-btn" type="button" data-to="run">Run 상세</button></div>
+      </div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>
