@@ -360,7 +360,24 @@ fn scan(app: &App) -> Value {
     devices.extend(android_devices());
     devices.extend(ios_simulators());
     // 시뮬레이터 창은 Simulator.app 이 띄운다. 앱이 없으면 simctl 로 부팅된 기기는 창 없이 CoreSimulator 안에서만 돈다
-    let simulator_app = ps.values().any(|p| p.command.contains("/Simulator.app/Contents/MacOS/Simulator"));
+    let simulator_app = ps.values().any(|p| {
+        p.command
+            .contains("/Simulator.app/Contents/MacOS/Simulator")
+    });
+    let devicehub = ps
+        .values()
+        .any(|p| {
+            p.command
+                .contains("/DeviceHub.app/Contents/MacOS/DeviceHub")
+        })
+        .then(devicehub_windows)
+        .unwrap_or_default();
+    // scrcpy 창이 비추는 에뮬레이터 (-s <serial>)
+    let mirrored: Vec<String> = ps
+        .values()
+        .filter(|p| is_scrcpy(&p.command))
+        .filter_map(|p| arg_after(&p.command, "-s").map(str::to_owned))
+        .collect();
     let mut env_cache: HashMap<u32, (Option<String>, Option<String>)> = HashMap::new();
     let mut owner = |pid: u32| {
         env_cache
@@ -388,7 +405,9 @@ fn scan(app: &App) -> Value {
             // 에뮬레이터 qemu 가 스스로 띄우는 adb(`… shell am broadcast … multidisplay` 등)도 사용자가 아니다
             let sim_internal = p.command.contains("CoreSimulator/Devices/")
                 || p.command.starts_with("launchd_sim")
-                || ps.get(&p.ppid).is_some_and(|parent| parent.command.contains("qemu-system"));
+                || ps
+                    .get(&p.ppid)
+                    .is_some_and(|parent| parent.command.contains("qemu-system"));
             if *pid == me
                 || p.ppid == me
                 || sim_internal
@@ -397,7 +416,12 @@ fn scan(app: &App) -> Value {
                 continue;
             }
             // 그 기기를 녹화하는 프로세스 (simctl io … recordVideo, adb shell screenrecord)
-            let role = if p.command.contains("recordVideo") || p.command.contains("screenrecord") {
+            // scrcpy 창(과 그것이 띄운 adb)은 화면을 보는 것이지 기기를 쓰는 것이 아니다
+            let role = if is_scrcpy(&p.command)
+                || ps.get(&p.ppid).is_some_and(|q| is_scrcpy(&q.command))
+            {
+                "view"
+            } else if p.command.contains("recordVideo") || p.command.contains("screenrecord") {
                 "record"
             } else {
                 "process"
@@ -457,9 +481,11 @@ fn scan(app: &App) -> Value {
                     .push(json!({"pid":pid,"command":short(&cmd, 240)}));
             }
         }
-        let busy = groups
-            .iter()
-            .any(|(_, g)| array(&g["roles"]).iter().any(|r| r != "boot"));
+        let busy = groups.iter().any(|(_, g)| {
+            array(&g["roles"])
+                .iter()
+                .any(|r| r != "boot" && r != "view")
+        });
         let runner = groups
             .iter()
             .any(|(_, g)| array(&g["roles"]).iter().any(|r| r == "runner"));
@@ -483,14 +509,14 @@ fn scan(app: &App) -> Value {
         let window = if d["kind"] != "virtual" {
             Value::Null
         } else if d["platform"] == "ios" {
-            json!(simulator_app)
+            json!(simulator_app || devicehub.iter().any(|t| *t == text(&d["name"])))
         } else {
-            emu_window.map_or(Value::Null, |w| json!(w))
+            json!(emu_window.unwrap_or(false) || mirrored.contains(&id))
         };
         d["id"] = json!(id);
         d["window"] = window;
-        if d["platform"] == "ios" && d["kind"] == "virtual" {
-            d["sim_app"] = json!(simulator_app_installed());
+        if d["kind"] == "virtual" {
+            d["app"] = json!(viewer_app(text(&d["platform"])));
         }
         d["free"] = json!(!busy);
         d["recording"] = json!(recording);
@@ -524,26 +550,201 @@ fn scan(app: &App) -> Value {
     json!({"devices":devices,"queue":queue,"at":now(),"tools":{"adb":adb().is_some(),"ffmpeg":ffmpeg().is_some()}})
 }
 
-/// 이 맥에 Simulator.app 이 있는가 (Xcode 27.2 처럼 빠져 있는 설치도 있다). `open -Ra` 는 찾기만 하고 띄우지 않는다
-fn simulator_app_installed() -> bool {
-    static HAS: OnceLock<bool> = OnceLock::new();
-    *HAS.get_or_init(|| command("/usr/bin/open", &["-Ra", "Simulator"], None, 10).is_ok())
+const DEVICEHUB: &str = "com.apple.dt.Devices";
+
+/// 시뮬레이터·에뮬레이터를 띄울 외부 앱. iOS 는 Simulator.app(Xcode 26 까지)이나 DeviceHub(Xcode 27 에서 Simulator.app 을
+/// 대신한다), Android 는 scrcpy(`-no-window` 로 띄운 에뮬레이터는 실행 중에 창을 붙일 수 없어 화면을 미러링해 조작한다).
+/// `open -Ra` 는 찾기만 하고 띄우지 않는다. 한 번만 알아본다.
+fn viewer_app(platform: &str) -> Option<&'static str> {
+    static IOS: OnceLock<Option<&'static str>> = OnceLock::new();
+    if platform == "android" {
+        return scrcpy().map(|_| "scrcpy");
+    }
+    *IOS.get_or_init(|| {
+        if command("/usr/bin/open", &["-Ra", "Simulator"], None, 10).is_ok() {
+            Some("Simulator")
+        } else if command("/usr/bin/open", &["-Rb", DEVICEHUB], None, 10).is_ok() {
+            Some("DeviceHub")
+        } else {
+            None
+        }
+    })
+}
+/// scrcpy 자신의 프로세스인가 (그것이 띄운 `adb … scrcpy-server` 는 아니다)
+fn is_scrcpy(cmd: &str) -> bool {
+    cmd.split_whitespace()
+        .next()
+        .is_some_and(|c| c.ends_with("scrcpy"))
+}
+fn scrcpy() -> Option<PathBuf> {
+    which(
+        "scrcpy",
+        &[
+            PathBuf::from("/opt/homebrew/bin/scrcpy"),
+            PathBuf::from("/usr/local/bin/scrcpy"),
+        ],
+    )
+}
+/// DeviceHub 창 제목들 (보고 있는 기기 이름 — 「iPhone 17」). DeviceHub 는 샌드박스 앱이라 그 환경설정
+/// (`lastSelectedDeviceIdentifier`)을 launchd 로 뜬 서버는 읽지 못한다(앱 데이터 보호). 그래서 Orca 의 computer use 로 창을 본다.
+fn devicehub_windows() -> Vec<String> {
+    orca(&["computer", "list-windows", "--app", DEVICEHUB])
+        .map(|v| {
+            array(&v["windows"])
+                .iter()
+                .map(|w| text(&w["title"]).to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
-/// POST /api/devices/show {id} — 부팅된 iOS 시뮬레이터를 Simulator.app 창으로 띄운다 (이미 떠 있으면 앞으로).
-/// simctl 로만 부팅된 시뮬레이터는 창이 없다. Simulator.app 은 부팅된 기기마다 창을 열고 지정한 기기를 앞에 둔다.
+/// POST /api/devices/show {id} — 시뮬레이터·에뮬레이터를 이 맥의 외부 앱 창으로 띄운다 (이미 떠 있으면 앞으로).
+/// - Simulator.app: `-CurrentDeviceUDID` 로 그 기기를 앞에 둔다
+/// - DeviceHub: 앱이 꺼져 있으면 마지막 선택 기기를 그 UDID 로 적어 두고 띄운다. 켜져 있으면 앞으로 가져오고 Orca 의
+///   computer use 로 사이드바에서 그 기기를 고른다 (실패하면 note 로 직접 고르라고 알린다)
+/// - scrcpy: 에뮬레이터 화면을 미러링하는 창. 같은 기기의 scrcpy 가 이미 있으면 새로 띄우지 않는다
 pub fn show(id: &str) -> (u16, Value) {
-    if id.is_empty() || !ios_simulators().iter().any(|d| d["ids"][0] == id) {
-        return (404, json!({"error":"부팅된 iOS 시뮬레이터가 아닙니다"}));
+    if let Some(d) = ios_simulators().into_iter().find(|d| d["ids"][0] == id) {
+        return match viewer_app("ios") {
+            Some("Simulator") => match command(
+                "/usr/bin/open",
+                &["-a", "Simulator", "--args", "-CurrentDeviceUDID", id],
+                None,
+                15,
+            ) {
+                Ok(_) => (200, json!({"ok":true,"app":"Simulator"})),
+                Err(e) => (
+                    502,
+                    json!({"error":format!("Simulator 를 열지 못했습니다: {e}")}),
+                ),
+            },
+            Some(_) => show_devicehub(&d),
+            None => (
+                409,
+                json!({"error":"이 맥에 Simulator 앱도 DeviceHub 도 없습니다 (Xcode 설치 확인)"}),
+            ),
+        };
     }
-    match command(
-        "/usr/bin/open",
-        &["-a", "Simulator", "--args", "-CurrentDeviceUDID", id],
-        None,
-        15,
-    ) {
-        Ok(_) => (200, json!({"ok":true})),
-        Err(e) => (502, json!({"error":format!("Simulator 를 열지 못했습니다: {e}")})),
+    if id.starts_with("emulator-") && android_devices().iter().any(|d| d["ids"][0] == id) {
+        let Some(bin) = scrcpy() else {
+            return (
+                409,
+                json!({"error":"scrcpy 가 없습니다 — brew install scrcpy"}),
+            );
+        };
+        let running = process_table()
+            .values()
+            .any(|p| is_scrcpy(&p.command) && arg_after(&p.command, "-s") == Some(id));
+        if running {
+            return (
+                200,
+                json!({"ok":true,"app":"scrcpy","note":"이미 scrcpy 창이 떠 있습니다"}),
+            );
+        }
+        let name = android_devices()
+            .into_iter()
+            .find(|d| d["ids"][0] == id)
+            .map(|d| text(&d["avd"]).to_owned())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| id.to_owned());
+        let mut cmd = std::process::Command::new(bin);
+        // 출력은 임시 폴더의 scrcpy-<serial>.log 로 (창이 안 뜨면 여기서 까닭을 본다)
+        let log = std::fs::File::create(temp_dir().join(format!("scrcpy-{id}.log")));
+        cmd.args([
+            "-s",
+            id,
+            "--window-title",
+            &name,
+            "--no-audio",
+            "--force-adb-forward",
+        ])
+        .stdin(std::process::Stdio::null());
+        if let Ok(f) = log {
+            if let Ok(f2) = f.try_clone() {
+                cmd.stdout(f).stderr(f2);
+            }
+        }
+        if let Some(adb) = adb() {
+            cmd.env("ADB", adb);
+        }
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+        return match cmd.spawn() {
+            // 창이 닫히면 끝나는 프로세스: 기다려 거둔다 (좀비를 남기지 않게)
+            Ok(mut child) => {
+                std::thread::spawn(move || child.wait());
+                (200, json!({"ok":true,"app":"scrcpy"}))
+            }
+            Err(e) => (
+                502,
+                json!({"error":format!("scrcpy 를 띄우지 못했습니다: {e}")}),
+            ),
+        };
+    }
+    (
+        404,
+        json!({"error":"실행 중인 시뮬레이터·에뮬레이터가 아닙니다"}),
+    )
+}
+fn show_devicehub(d: &Value) -> (u16, Value) {
+    let name = text(&d["name"]).to_owned();
+    if let Err(e) = command("/usr/bin/open", &["-b", DEVICEHUB], None, 15) {
+        return (
+            502,
+            json!({"error":format!("DeviceHub 를 열지 못했습니다: {e}")}),
+        );
+    }
+    // 막 띄웠으면 창이 생길 때까지 기다린다
+    let mut titles = devicehub_windows();
+    for _ in 0..20 {
+        if !titles.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        titles = devicehub_windows();
+    }
+    if titles.contains(&name) {
+        return (200, json!({"ok":true,"app":"DeviceHub"}));
+    }
+    // 사이드바의 「<이름> <OS> Simulator」 줄을 누른다
+    let want = format!("{name} {} Simulator", text(&d["os"]));
+    let picked = orca(&[
+        "computer",
+        "get-app-state",
+        "--app",
+        DEVICEHUB,
+        "--query",
+        &name,
+        "--no-screenshot",
+    ])
+    .ok()
+    .and_then(|v| {
+        text(&v["snapshot"]["treeText"]).lines().find_map(|l| {
+            let (idx, rest) = l.trim().split_once(' ')?;
+            let label = rest.strip_prefix("outline row ")?;
+            let label = label.strip_prefix("(selected) ").unwrap_or(label);
+            (label == want).then(|| idx.parse::<u32>().ok()).flatten()
+        })
+    })
+    .is_some_and(|idx| {
+        orca(&[
+            "computer",
+            "click",
+            "--app",
+            DEVICEHUB,
+            "--element-index",
+            &idx.to_string(),
+            "--no-screenshot",
+        ])
+        .is_ok()
+    });
+    if picked {
+        (200, json!({"ok":true,"app":"DeviceHub"}))
+    } else {
+        (
+            200,
+            json!({"ok":true,"app":"DeviceHub","note":format!("DeviceHub 사이드바에서 {name} 을(를) 고르세요")}),
+        )
     }
 }
 

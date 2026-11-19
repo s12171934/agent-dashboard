@@ -299,7 +299,7 @@ function buildFamilies() {
 // is an <img> on the server's multipart feed (one upstream per device, shared by every viewer); it is kept across the
 // 3-second refreshes (only the text beside it is redrawn), dropped when the tab is left or the page hidden, and
 // retried a few seconds after it breaks (a runner restarting, the cable pulled).
-const DV_ROLE = { runner: 'DeviceKit 러너', record: '녹화 중', hold: '점유', process: '기기 프로세스', boot: '띄운 세션' };
+const DV_ROLE = { runner: 'DeviceKit 러너', record: '녹화 중', hold: '점유', process: '기기 프로세스', boot: '띄운 세션', view: '화면 보기' };
 // Real devices first, then the booted iOS simulators and Android emulators — both on one screen, each under its own head.
 const DV_KINDS = [['real', '실기기', '연결된 실기기가 없습니다. iOS 는 <code>xcrun devicectl list devices</code>, Android 는 <code>adb devices</code> 에 보이는 실기기가 여기에 나옵니다.'],
   ['virtual', '에뮬레이터 · 시뮬레이터', '부팅된 iOS 시뮬레이터(<code>xcrun simctl list devices booted</code>)나 실행 중인 Android 에뮬레이터(<code>adb devices</code> 의 <code>emulator-*</code>)가 없습니다.']];
@@ -329,35 +329,17 @@ function dvWho(u) {
 const dvWin = d => d.window == null ? '' : d.window
   ? `<span class="badge" title="${d.platform === 'ios' ? 'Simulator 앱 창으로 보입니다' : '에뮬레이터 창이 화면에 떠 있습니다'}">창 있음</span>`
   : `<span class="badge" title="${d.platform === 'ios' ? 'simctl 로만 부팅돼 Simulator 앱 없이 백그라운드(CoreSimulator)에서 돕니다' : '-no-window 로 띄워 창 없이 돕니다'}">백그라운드</span>`;
-// 「시뮬 화면 열기」·「에뮬 화면 열기」: an iOS simulator opens in Simulator.app on its server's Mac where it has one; otherwise
-// (sim_app false — Xcode 27.2 ships without it — and every Android emulator, which cannot grow a window once started
-// with -no-window) its live screen opens large over this page. In the page, not a popup: no browser permission needed.
+// 「시뮬 화면 열기」·「에뮬 화면 열기」: opens the device in an app window on its server's Mac — an iOS simulator in
+// Simulator.app or, from Xcode 27, DeviceHub; an Android emulator in scrcpy (one started with -no-window cannot grow a
+// window later, so scrcpy mirrors and drives it). app null: that Mac has none of them (the button says what to install).
+const DV_APP_MISSING = { ios: 'Xcode 의 Simulator 앱이나 DeviceHub 가 없습니다', android: 'scrcpy 가 없습니다 — brew install scrcpy' };
 const dvShow = d => {
   if (d.kind !== 'virtual') return '';
-  const ios = d.platform === 'ios', app = ios && d.sim_app;
-  return `<div class="dv-acts"><button type="button" class="act accent" data-dv-show="${esc(d.id)}" data-srv="${esc(d.server || '')}" data-app="${app ? 1 : ''}" data-name="${esc(d.name)}" title="${app ? '이 맥에서 Simulator 앱 창으로 띄웁니다' : '화면 라이브를 이 페이지 위에 크게 띄웁니다'}">${ios ? '시뮬' : '에뮬'} 화면 열기</button></div>`;
+  const label = `${d.platform === 'ios' ? '시뮬' : '에뮬'} 화면 열기`;
+  return `<div class="dv-acts">${d.app
+    ? `<button type="button" class="act accent" data-dv-show="${esc(d.id)}" data-srv="${esc(d.server || '')}" title="이 맥에서 ${esc(d.app)} 창으로 띄웁니다">${label}</button><span class="st"> ${esc(d.app)}</span>`
+    : `<button type="button" class="act" disabled title="${esc(DV_APP_MISSING[d.platform] || '')}">${label}</button><span class="st"> ${esc(DV_APP_MISSING[d.platform] || '')}</span>`}</div>`;
 };
-// A device's live screen large over the page (the same multipart stream the card shows; closing ends it). 닫기, Esc
-// or anywhere around the screen closes.
-function dvOverlay(server, id, name) {
-  let d = $('#dv-ov');
-  if (!d) {
-    document.body.insertAdjacentHTML('beforeend', `<dialog class="dz-zoom dv-ov" id="dv-ov">
-      <button type="button" class="tgl dz-zx">닫기</button><div class="dz-zb"><img alt=""><div class="dv-off dv-wait">화면 받는 중…</div></div></dialog>`);
-    d = $('#dv-ov');
-    d.addEventListener('click', e => { if (!e.target.closest('.dz-zb img')) d.close(); });
-    d.addEventListener('close', () => { d.querySelector('img').removeAttribute('src'); });
-    const img = d.querySelector('img'), wait = d.querySelector('.dv-wait');
-    img.onload = () => { wait.hidden = true; };
-    img.onerror = () => { if (d.open) { wait.hidden = false; wait.textContent = '화면을 받을 수 없습니다'; } };
-  }
-  const img = d.querySelector('img');
-  d.setAttribute('aria-label', name + ' 화면');
-  d.querySelector('.dv-wait').hidden = false; d.querySelector('.dv-wait').textContent = '화면 받는 중…';
-  img.alt = name + ' 화면'; img.src = api.deviceStream(server, id);
-  d.showModal();
-  d.querySelector('.dz-zx').focus({ focusVisible: false });
-}
 function dvInfo(d) {
   const plat = d.platform === 'ios' ? 'iOS' : 'Android';
   const busy = !d.free;
@@ -435,9 +417,8 @@ async function renderDevices() {
   $('#dv-body').addEventListener('click', e => {
     const b = e.target.closest('[data-dv-show]');
     if (!b) return;
-    if (!b.dataset.app) { dvOverlay(b.dataset.srv, b.dataset.dvShow, b.dataset.name); return; }
     b.disabled = true;
-    api.showDevice(b.dataset.srv, b.dataset.dvShow).then(r => toast(r.status === 200 ? 'Simulator 앱에서 열었습니다' : r.body?.error || `열기 실패 (${r.status})`))
+    api.showDevice(b.dataset.srv, b.dataset.dvShow).then(r => toast(r.status === 200 ? r.body?.note || `${r.body?.app || '앱'} 에서 열었습니다` : r.body?.error || `열기 실패 (${r.status})`))
       .finally(() => { b.disabled = false; });
   });
   $('#dv-live').onchange = e => { dvLive = e.target.checked; try { localStorage.setItem('adash.devices.live', dvLive ? '1' : '0'); } catch {} dvDraw(); };
