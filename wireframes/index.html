@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>와이어프레임 보드</title>
+<link rel="stylesheet" href="board.css">
+</head>
+<body>
+<header class="bar">
+  <h1>와이어프레임 보드</h1>
+  <div class="seg" id="view" role="radiogroup" aria-label="보기">
+    <button data-v="grid" aria-pressed="true">격자</button>
+    <button data-v="map" aria-pressed="false">흐름 지도</button>
+  </div>
+  <div class="grp" id="widths" aria-label="폭"></div>
+  <label class="fld">묶음 <select id="group"><option value="">전체</option></select></label>
+  <label class="fld">상태 <select id="status">
+    <option value="">전체</option><option value="none">미작성</option><option value="draft">시안</option><option value="picked">확정</option>
+  </select></label>
+  <label class="fld" id="variants-fld">시안 <select id="variants">
+    <option value="all">나란히</option><option value="one">하나씩</option>
+  </select></label>
+  <label class="chk"><input type="checkbox" id="full"> 전체 길이</label>
+  <label class="fld">배율 <input type="range" id="zoom" min="0.1" max="0.6" step="0.02" value="0.24"><output id="zoom-out">24%</output></label>
+  <span class="meta" id="meta"></span>
+</header>
+<main id="board" tabindex="-1"></main>
+<dialog id="focus">
+  <div class="fbar">
+    <strong id="f-title"></strong>
+    <div class="seg" id="f-widths"></div>
+    <span class="grow"></span>
+    <a id="f-open" target="_blank" rel="noopener">새 탭으로 열기</a>
+    <button id="f-close" aria-label="닫기">닫기</button>
+  </div>
+  <div class="fbody"><iframe id="f-frame" title="와이어프레임 크게 보기"></iframe></div>
+</dialog>
+<script type="module" src="board.js"></script>
+</body>
+</html>

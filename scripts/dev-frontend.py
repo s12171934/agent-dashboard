@@ -7,7 +7,8 @@
 - index.html gets a small script that polls /__reload once a second. A change to a .css file swaps the stylesheets in
   place (no reload, the view and scroll stay); any other change under frontend/ reloads the page. Polling, not a held
   stream: Chrome opens at most 6 connections per host, so one stream per tab would lock out the sixth tab.
-- /ds/ serves design-system/ (the deploy copies it there).
+- /ds/ serves design-system/ and /wireframes/ serves wireframes/ (the deploy copies them there). The wireframe board
+  polls /__reload too and reloads only the frames whose files changed.
 - /sw.js is replaced by a worker that unregisters itself and drops its caches, so the PWA's offline cache never
   serves a stale file here.
 - /chars/* not on disk (chars.json and the people put up in R2) is fetched from the live site, as its Pages Function
@@ -29,6 +30,9 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 LIVE = 'https://dashboard.s-dante.com'
 # The design system lives beside the page and is served under /ds/, as deploy-frontend.sh lays it out.
 DS = os.path.normpath(os.path.join(ROOT, '..', 'design-system'))
+# The wireframe board and its screens, served under /wireframes/ as on the deployed site.
+WF = os.path.normpath(os.path.join(ROOT, '..', 'wireframes'))
+MOUNTS = (('/ds', DS), ('/wireframes', WF))
 
 RELOAD_JS = b"""<script>
 // dev-frontend.py live reload: css swaps in place, anything else reloads the page.
@@ -36,7 +40,8 @@ RELOAD_JS = b"""<script>
   let seen = null;
   const poll = async () => {
     try {
-      const { stamp, files } = await (await fetch('/__reload?since=' + (seen ?? ''), { cache: 'no-store' })).json();
+      const r = await (await fetch('/__reload?since=' + (seen ?? ''), { cache: 'no-store' })).json(), stamp = r.stamp;
+      const files = r.files.filter(f => !f.startsWith('wireframes/'));  // the board reloads its own frames
       if (seen !== null && files.length) {
         if (!files.every(f => f.endsWith('.css'))) return location.reload();
         document.querySelectorAll('link[rel=stylesheet]').forEach(l => {
@@ -64,7 +69,7 @@ self.addEventListener('activate', e => e.waitUntil((async () => {
 
 def snapshot():
     out = {}
-    for root, prefix in ((ROOT, ''), (DS, 'ds/')):
+    for root, prefix in ((ROOT, ''), (DS, 'ds/'), (WF, 'wireframes/')):
         for d, _, files in os.walk(root):
             for f in files:
                 p = os.path.join(d, f)
@@ -112,11 +117,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def translate_path(self, path):
         clean = path.split('?', 1)[0].split('#', 1)[0]
-        if clean == '/ds' or clean.startswith('/ds/'):
-            rel = os.path.normpath(clean[len('/ds'):].lstrip('/') or '.')
-            if rel.startswith('..'):
-                return os.path.join(DS, '__nope__')
-            return os.path.join(DS, rel)
+        for mount, root in MOUNTS:
+            if clean == mount or clean.startswith(mount + '/'):
+                rel = os.path.normpath(clean[len(mount):].lstrip('/') or '.')
+                if rel.startswith('..'):
+                    return os.path.join(root, '__nope__')
+                return os.path.join(root, rel)
         return super().translate_path(path)
 
     def log_message(self, fmt, *args):
