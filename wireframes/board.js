@@ -7,7 +7,7 @@ const ST = { none: '미작성', draft: '시안', picked: '확정', dropped: '보
 const KEY = 'wfboard.v1';
 
 let M = null, ver = '', edgesFrom = new Map();
-const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, zoom: 0.24, pick: {} };
+const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, actual: false, zoom: 0.24, pick: {} };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
 const h = new URLSearchParams(location.hash.slice(1));
 if (h.get('view')) S.view = h.get('view');
@@ -183,15 +183,22 @@ function openFocus(id, variant, width) {
   $('#f-widths').innerHTML = M.widths.map(w => `<button data-fw="${w.id}" aria-pressed="${w === F.w}">${esc(w.name)}</button>`).join('');
   const f = $('#f-frame');
   if (v) { f.src = url(src(v, F.w)); $('#f-open').href = url(src(v, F.w)); $('#f-open').hidden = false; } else { f.removeAttribute('src'); f.srcdoc = '<p style="font:14px system-ui;color:#888;padding:24px">아직 와이어프레임이 없습니다.</p>'; $('#f-open').hidden = true; }
-  sizeFocus();
   if (!$('#focus').open) $('#focus').showModal();
+  sizeFocus();  // after showModal: before it the dialog has no size to measure
 }
+// 맞춤 (default): the frame grows or shrinks to fill the room the dialog has, whole screen in view, so a 466px
+// phone frame is not left tiny on a wide monitor. 실제 크기: one CSS pixel per pixel, scrolling when larger.
 function sizeFocus() {
   if (!F) return;
-  const f = $('#f-frame'), room = $('#focus .fbody').clientWidth - 32 || innerWidth - 32, s = Math.min(1, room / F.w.w);
+  const f = $('#f-frame'), body = $('#focus .fbody');
+  const W = (body.clientWidth || innerWidth) - 32, H = (body.clientHeight || innerHeight - 60) - 32;
+  const s = S.actual ? 1 : Math.max(0.1, Math.min(W / F.w.w, H / F.w.h));
   f.width = F.w.w; f.height = F.w.h;
-  f.style.transform = s < 1 ? `scale(${s})` : ''; f.style.transformOrigin = '0 0';
-  f.style.marginRight = s < 1 ? `${-F.w.w * (1 - s)}px` : ''; f.style.marginBottom = s < 1 ? `${-F.w.h * (1 - s)}px` : '';
+  f.style.transformOrigin = '0 0'; f.style.transform = s === 1 ? '' : `scale(${s})`;
+  // the layout box stays at the frame's own size: margins give the scaled size back to the flow
+  f.style.marginRight = `${F.w.w * (s - 1)}px`; f.style.marginBottom = `${F.w.h * (s - 1)}px`;
+  $('#f-scale').textContent = Math.round(s * 100) + '%';
+  $('#f-fit').setAttribute('aria-pressed', !S.actual); $('#f-actual').setAttribute('aria-pressed', !!S.actual);
 }
 $('#f-frame').addEventListener('load', e => {
   slots(e.target);
@@ -239,6 +246,8 @@ $('#board').addEventListener('mouseover', e => {
 });
 $('#f-widths').addEventListener('click', e => { const w = e.target.closest('[data-fw]')?.dataset.fw; if (w) openFocus(F.sc.id, F.v?.id, w); });
 $('#f-close').addEventListener('click', () => $('#focus').close());
+$('#f-fit').addEventListener('click', () => { S.actual = false; save(); sizeFocus(); });
+$('#f-actual').addEventListener('click', () => { S.actual = true; save(); sizeFocus(); });
 addEventListener('resize', () => { sizeFocus(); if (S.view === 'map') drawEdges(); });
 
 // local dev (scripts/dev-frontend.py): a saved wireframe reloads just its frames; anything else reloads the board.
