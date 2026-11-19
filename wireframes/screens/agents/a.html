@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>에이전트 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.agent-tools { margin: 0; min-inline-size: 0; }
+.agent-tools select { display: block; width: 100%; min-width: 0; max-width: 100%; font: inherit; }
+.agent-section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.agent-card { gap: 6px; }
+.agent-card.selected { border: 2px solid var(--wf-ink); }
+.agent-link { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; }
+.agent-workers summary { cursor: pointer; }
+.agent-workers li { margin-block: 6px; }
+.agent-progress { height: 6px; overflow: hidden; border-radius: 4px; background: var(--wf-fill); }
+.agent-progress span { display: block; width: 55%; height: 100%; background: var(--wf-muted); }
+.agent-tools .wf-row, .agent-actions { gap: 6px; }
+
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  /* Keep the 28 px gutter centered on the crease after the 64 px rail. */
+  :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn on" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main">
+    <header class="wf-row">
+      <h1 class="wf-h l wf-grow">에이전트</h1>
+      <button type="button" class="wf-btn primary" data-to="new-agent" data-slot="action" data-plugin="orca">새 에이전트</button>
+    </header>
+    <div class="wf-panes">
+      <section class="wf-col" aria-label="상태별 세션">
+        <div class="wf-hide-posture">
+          <fieldset class="wf-box agent-tools">
+            <legend class="wf-t">보기 및 필터</legend>
+            <div class="wf-row">
+              <label class="wf-grow">보기
+                <select class="wf-input">
+                  <option>코디네이터 트리</option><option>워크트리별</option><option>타임라인</option>
+                </select>
+              </label>
+              <label><input type="checkbox"> Orca 에 열린 것만</label>
+            </div>
+          </fieldset>
+        </div>
+        <section class="agent-section">
+          <h2 class="wf-t">응답 없음</h2>
+          <article class="wf-box agent-card selected">
+            <button type="button" class="wf-row agent-link" data-to="session">
+              <span class="wf-dot bad"></span><span class="wf-grow">세션 제목</span>
+              <span class="wf-t">n분 전</span>
+            </button>
+            <p class="wf-t" data-slot="session.badge" data-plugin="plans">계획 n/m · 단계 제목</p>
+            <div class="wf-row agent-actions wf-hide-fold wf-hide-tablet wf-hide-desktop">
+              <button type="button" class="wf-btn" data-slot="action" data-plugin="orca">Orca 에서 열기</button>
+              <button type="button" class="wf-btn" data-to="chat" data-slot="action" data-plugin="orca">채팅</button>
+            </div>
+          </article>
+        </section>
+        <section class="agent-section">
+          <h2 class="wf-t">입력 대기</h2>
+          <article class="wf-box agent-card">
+            <button type="button" class="wf-row agent-link" data-to="session">
+              <span class="wf-dot hot"></span><span class="wf-grow">세션 제목</span><span class="wf-t">n분 전</span>
+            </button>
+          </article>
+        </section>
+        <section class="agent-section">
+          <h2 class="wf-t">실행 중</h2>
+          <article class="wf-box agent-card">
+            <button type="button" class="wf-row agent-link" data-to="session">
+              <span class="wf-dot ok"></span><span class="wf-grow">코디네이터 세션 제목</span><span class="wf-t">방금</span>
+            </button>
+            <p class="wf-t" data-slot="session.badge" data-plugin="plans">계획 n/m · 단계 제목</p>
+            <div data-slot="session.badge" data-plugin="tests">
+              <p class="wf-t">테스트 실행 중 · n/m 케이스</p>
+              <div class="agent-progress" role="img" aria-label="테스트 진행 예시"><span></span></div>
+            </div>
+            <div class="wf-row agent-actions" data-slot="session.badge" data-plugin="orca">
+              <button type="button" class="wf-btn" data-to="run">코디네이터 상세</button>
+              <details class="agent-workers">
+                <summary>워커 n명</summary>
+                <ul><li><button type="button" class="agent-link" data-to="session">워커 세션 제목</button></li></ul>
+              </details>
+            </div>
+          </article>
+        </section>
+        <section class="agent-section">
+          <h2 class="wf-t">백그라운드</h2>
+          <article class="wf-box agent-card">
+            <button type="button" class="wf-row agent-link" data-to="session">
+              <span class="wf-dot"></span><span class="wf-grow">세션 제목</span><span class="wf-t">n분 전</span>
+            </button>
+          </article>
+        </section>
+        <section class="agent-section">
+          <h2 class="wf-t">유휴</h2>
+          <article class="wf-box agent-card">
+            <button type="button" class="wf-row agent-link" data-to="session">
+              <span class="wf-dot"></span><span class="wf-grow">세션 제목</span><span class="wf-t">n시간 전</span>
+            </button>
+          </article>
+        </section>
+      </section>
+      <section class="wf-box wf-hide-phone wf-hide-posture" aria-label="선택한 세션 요약">
+        <p class="wf-t">선택한 세션</p>
+        <h2 class="wf-h">세션 제목</h2>
+        <div class="wf-row"><span class="wf-tag bad">응답 없음</span><span class="wf-t">마지막 활동 n분 전</span></div>
+        <p class="wf-t" data-slot="session.badge" data-plugin="plans">계획 n/m · 단계 제목</p>
+        <div class="wf-row agent-actions">
+          <button type="button" class="wf-btn primary" data-to="session">세션 상세</button>
+          <button type="button" class="wf-btn" data-slot="action" data-plugin="orca">Orca 에서 열기</button>
+          <button type="button" class="wf-btn" data-to="chat" data-slot="action" data-plugin="orca">채팅</button>
+        </div>
+      </section>
+    </div>
+    <p class="wf-note">응답이 없거나 입력을 기다리는 세션부터 훑는다. 펼치면 오른쪽에서 선택한 세션을 요약하고, 반접힘에서는 보기와 필터를 둘째 반쪽에 둔다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <fieldset class="wf-box agent-tools">
+    <legend class="wf-t">보기 및 필터</legend>
+    <div class="wf-row">
+      <label class="wf-grow">보기
+        <select class="wf-input">
+          <option>코디네이터 트리</option><option>워크트리별</option><option>타임라인</option>
+        </select>
+      </label>
+      <label><input type="checkbox"> Orca 에 열린 것만</label>
+    </div>
+  </fieldset>
+</aside>
+</body>
+</html>

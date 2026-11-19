@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>코디네이터 상세 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.run-steps { margin: 0; padding: 0; list-style: none; }
+.run-steps li { flex-wrap: wrap; }
+.run-workers { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.run-workers th, .run-workers td { padding: 7px 3px; border-bottom: 1px solid var(--wf-line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.run-workers tr:last-child td { border-bottom: 0; }
+.run-workers th { color: var(--wf-muted); font-size: 12px; font-weight: 600; }
+.run-workers th:first-child { width: 31%; }
+.run-worker-link { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; }
+.run-workers .wf-tag { padding-inline: 5px; }
+.run-filter { gap: 6px; }
+.run-filter select { min-width: 0; font: inherit; }
+
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  /* Keep the 28 px gutter centered on the crease after the 64 px rail. */
+  :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn on" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="orca">
+    <header class="wf-row">
+      <h1 class="wf-h l wf-grow">코디네이터 상세</h1>
+      <button type="button" class="wf-btn" data-to="session">코디네이터 세션</button>
+    </header>
+    <div class="wf-panes">
+      <section class="wf-box">
+        <h2 class="wf-h">태스크 흐름</h2>
+        <details open>
+          <summary>PSQ-0000 · 체크박스 n/m</summary>
+          <ol class="wf-list run-steps">
+            <li><span aria-label="완료">☑</span><span class="wf-grow">착수</span><span class="wf-tag">완료</span></li>
+            <li><span aria-label="진행 중">◉</span><span class="wf-grow">구현</span><span class="wf-tag ok">진행 중</span></li>
+            <li><span aria-label="대기">□</span><span class="wf-grow">리뷰</span><span class="wf-tag">구현 완료 후</span></li>
+            <li><span aria-label="대기">□</span><span class="wf-grow">판정</span><span class="wf-tag">리뷰 완료 후</span></li>
+          </ol>
+        </details>
+        <details><summary>완료 티켓 n건</summary><p class="wf-t">PSQ-0000 · 완료</p></details>
+      </section>
+      <section class="wf-box">
+        <h2 class="wf-h">워커</h2>
+        <label class="wf-row run-filter wf-hide-posture">상태
+          <select class="wf-input"><option>전체</option><option>진행 중</option><option>주의</option><option>완료</option></select>
+        </label>
+        <table class="run-workers">
+          <thead><tr><th scope="col">이름</th><th scope="col">상태</th><th scope="col">현재 일</th><th scope="col">결과</th></tr></thead>
+          <tbody>
+            <tr><td><button type="button" class="run-worker-link" data-to="session">워커 이름</button></td><td><span class="wf-tag ok">진행 중</span></td><td>구현</td><td>결과 대기</td></tr>
+            <tr><td><button type="button" class="run-worker-link" data-to="session">워커 이름</button></td><td><span class="wf-tag hot">입력 대기</span></td><td>검증</td><td>결정 대기</td></tr>
+            <tr><td><button type="button" class="run-worker-link" data-to="session">워커 이름</button></td><td><span class="wf-tag">완료</span></td><td>착수</td><td>보고 요약</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+    <p class="wf-note">체크박스 흐름으로 선행 단계를 보고 워커 행에서 개별 세션을 연다. 반접힘에서는 첫 반쪽에 흐름과 표를 두고 시트에 필터를 옮긴다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+<section class="wf-box" data-slot="screen" data-plugin="orca">
+  <h2 class="wf-h">워커 필터</h2>
+  <label class="wf-row run-filter">상태
+    <select class="wf-input"><option>전체</option><option>진행 중</option><option>주의</option><option>완료</option></select>
+  </label>
+</section>
+</aside>
+</body>
+</html>

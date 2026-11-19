@@ -22,8 +22,8 @@ cp -R "$ROOT/frontend/." "$OUT/"
 rm -rf "$OUT/wasm"
 rm -f "$OUT/rust-ui.js"
 mkdir "$OUT/ds" && cp -R "$ROOT/design-system/." "$OUT/ds/"
-# the wireframe board, at /wireframes/ (web only: nothing in the page links to it); its README stays in the repo
-mkdir "$OUT/wireframes" && cp -R "$ROOT/wireframes/." "$OUT/wireframes/" && rm -f "$OUT/wireframes/README.md"
+# the wireframe board, at /wireframes/ (web only: nothing in the page links to it); its notes (*.md) stay in the repo
+mkdir "$OUT/wireframes" && cp -R "$ROOT/wireframes/." "$OUT/wireframes/" && rm -f "$OUT"/wireframes/*.md
 build="$(git -C "$ROOT" rev-parse --short HEAD)"
 git -C "$ROOT" diff --quiet HEAD -- frontend design-system wireframes || build="$build-dirty"
 ver="$build-$(date +%Y%m%d%H%M%S)"

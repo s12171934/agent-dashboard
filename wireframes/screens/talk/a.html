@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>상호작용 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.wire-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.wire-filter { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.wire-filter .wf-input { min-width: 0; max-width: 100%; color: var(--wf-ink); font: inherit; font-size: 12px; }
+
+.talk-messages { margin: 0; padding: 0; list-style: none; }
+.talk-messages > li { padding: 8px 0; border-top: 1px solid var(--wf-line); }
+.talk-messages > li > p { margin: 0; }
+.talk-participants { gap: 4px; }
+.talk-link { color: var(--wf-ink); font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; }
+.talk-group summary { cursor: pointer; }
+.talk-group .talk-messages { margin-top: 8px; }
+  /* Keep the fold gap centered in the viewport, including the 64px navigation rail. */
+  @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+    :root:not([data-posture]) .wf-panes { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold on" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="orca">
+    <h1 class="wf-h l">상호작용</h1>
+    <div class="wf-panes">
+      <section class="wf-col" aria-label="코디네이터별 대화">
+        <div class="wf-hide-posture">
+          <div class="wire-filters">
+            <label class="wire-filter"><span class="wf-t">보낸 이</span><select class="wf-input">
+              <option>전체</option>
+              <option>코디네이터 A</option>
+              <option>워커 A</option>
+              <option>코디네이터 B</option>
+            </select></label>
+            <label class="wire-filter"><span class="wf-t">받는 이</span><select class="wf-input">
+              <option>전체</option>
+              <option>워커 A</option>
+              <option>코디네이터 A</option>
+              <option>워커 B</option>
+            </select></label>
+          </div>
+        </div>
+        <div class="wf-box wf-hide-phone wf-hide-posture"><strong>코디네이터 A</strong><p class="wf-t">워커 A · 메시지 2개</p></div>
+        <div class="wf-only-phone wf-only-posture">
+          <details class="wf-box talk-group" open>
+            <summary><strong>코디네이터 A</strong></summary>
+            <ul class="talk-messages">
+              <li>
+                <p class="wf-t">00:00</p>
+                <div class="wf-row talk-participants">
+                  <button class="talk-link" type="button" data-to="session">코디네이터 A</button>
+                  <span aria-hidden="true">→</span>
+                  <button class="talk-link" type="button" data-to="session">워커 A</button>
+                </div>
+                <p>작업 요청 메시지</p>
+              </li>
+              <li>
+                <p class="wf-t">00:00</p>
+                <div class="wf-row talk-participants">
+                  <button class="talk-link" type="button" data-to="session">워커 A</button>
+                  <span aria-hidden="true">→</span>
+                  <button class="talk-link" type="button" data-to="session">코디네이터 A</button>
+                </div>
+                <p>결과 보고 메시지</p>
+              </li>
+            </ul>
+          </details>
+        </div>
+        <details class="wf-box talk-group">
+          <summary><strong>코디네이터 B</strong></summary>
+          <ul class="talk-messages">
+            <li>
+              <p class="wf-t">00:00</p>
+              <div class="wf-row talk-participants">
+                <button class="talk-link" type="button" data-to="session">코디네이터 B</button>
+                <span aria-hidden="true">→</span>
+                <button class="talk-link" type="button" data-to="session">워커 B</button>
+              </div>
+              <p>답변 메시지</p>
+            </li>
+          </ul>
+        </details>
+      </section>
+      <section class="wf-box wf-hide-phone wf-hide-posture" aria-label="선택한 코디네이터의 대화">
+        <h2 class="wf-h">코디네이터 A</h2>
+        <ul class="talk-messages">
+          <li>
+            <p class="wf-t">00:00</p>
+            <div class="wf-row talk-participants">
+              <button class="talk-link" type="button" data-to="session">코디네이터 A</button>
+              <span aria-hidden="true">→</span>
+              <button class="talk-link" type="button" data-to="session">워커 A</button>
+            </div>
+            <p>작업 요청 메시지</p>
+          </li>
+          <li>
+            <p class="wf-t">00:00</p>
+            <div class="wf-row talk-participants">
+              <button class="talk-link" type="button" data-to="session">워커 A</button>
+              <span aria-hidden="true">→</span>
+              <button class="talk-link" type="button" data-to="session">코디네이터 A</button>
+            </div>
+            <p>결과 보고 메시지</p>
+          </li>
+        </ul>
+      </section>
+    </div>
+    <p class="wf-note">대화는 코디네이터로 묶고 각 줄에서 발신·수신 세션을 연다. 접힘은 묶음 안에서 대화를 펼치고, 반접힘은 필터를 시트에 둔다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <div class="wf-col" data-slot="screen" data-plugin="orca">
+    <section class="wf-box">
+      <h2 class="wf-h">참여자로 거르기</h2>
+      <div class="wire-filters">
+        <label class="wire-filter"><span class="wf-t">보낸 이</span><select class="wf-input">
+          <option>전체</option>
+          <option>코디네이터 A</option>
+          <option>워커 A</option>
+          <option>코디네이터 B</option>
+        </select></label>
+        <label class="wire-filter"><span class="wf-t">받는 이</span><select class="wf-input">
+          <option>전체</option>
+          <option>워커 A</option>
+          <option>코디네이터 A</option>
+          <option>워커 B</option>
+        </select></label>
+      </div>
+    </section>
+  </div>
+</aside>
+</body>
+</html>

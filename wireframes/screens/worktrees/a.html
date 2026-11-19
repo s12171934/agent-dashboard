@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>리뷰 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.review-row { gap: 6px; }
+.review-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.review-card { gap: 10px; }
+.review-stages {
+  list-style: none; padding: 0; margin: 0; display: grid; gap: 4px;
+  grid-template-columns: repeat(4, minmax(0, 1fr)); text-align: center;
+}
+.review-stages li {
+  border: 1px solid var(--wf-line); border-radius: 5px; padding: 3px 2px;
+  font-size: 11px; overflow-wrap: anywhere;
+}
+.review-stages li[aria-current] { border-color: var(--wf-ink); background: var(--wf-fill); font-weight: 700; }
+.review-stages b { display: block; font-variant-numeric: tabular-nums; }
+.review-ticket-head { display: grid; gap: 8px; align-items: start; }
+.review-repo { border-top: 1px solid var(--wf-line); padding-top: 8px; }
+.review-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-filters select { min-width: 0; max-width: 100%; font: inherit; font-size: 12px; }
+.review-editor { border-top: 1px solid var(--wf-line); padding-top: 8px; }
+.review-editor summary { display: list-item; width: fit-content; list-style-position: inside; }
+.review-editor .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); }
+.review-editor .wf-box { margin-top: 8px; }
+.review-editor .wf-fill { min-height: 152px; }
+.review-meta { margin-top: 6px; }
+.review-dialog { margin: auto; color: var(--wf-ink); max-height: calc(100dvh - 32px); overflow: auto; }
+.review-dialog::backdrop { background: rgb(0 0 0 / .28); }
+.review-dialog p { margin: 0; }
+.review-dialog .wf-row { justify-content: flex-end; }
+@media (width > 1100px) {
+  .review-stages { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .review-overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .review-body { grid-template-columns: minmax(0, 1fr); }
+  .review-ticket-head { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .review-repo { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr) auto; align-items: center; gap: 8px; }
+  .review-editor summary { font-weight: 700; }
+}
+
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .wf-main > .wf-panes {
+    grid-template-columns: minmax(0, calc(50vw - 96px)) minmax(0, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn on" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="qa-review">
+    <h1 class="wf-h l">리뷰</h1>
+    <section class="wf-panes review-overview" aria-label="QA 에픽 요약">
+      <div class="wf-box">
+        <div class="review-title"><h2 class="wf-h">PSQ-0000 · QA 에픽 제목</h2><span class="wf-tag ok">자동화 켜짐</span></div>
+        <ul class="review-stages" aria-label="QA 단계별 티켓 수">
+          <li><b>0건</b>선별</li>
+          <li><b>0건</b>워크트리</li>
+          <li><b>1건</b>분석</li>
+          <li><b>2건</b>구현</li>
+          <li><b>0건</b>검토</li>
+          <li><b>1건</b>커밋 완료</li>
+          <li><b>0건</b>반출 승인</li>
+          <li><b>1건</b>반출</li>
+        </ul>
+      </div>
+      <div class="wf-hide-phone wf-hide-posture">
+        <div class="wf-box">
+          <div class="wf-row review-row"><strong class="wf-grow">QA 드라이버 자동화</strong><span class="wf-tag">최근 실행 완료</span></div>
+          <p class="wf-t">실행 간격 5분 · 마지막 2분 전 · 다음 3분 후</p>
+          <div class="review-filters" aria-label="티켓 거르기">
+            <select class="wf-input" aria-label="리뷰 상태"><option>리뷰 상태 · 전체</option><option>리뷰 대기</option><option>리뷰 완료</option><option>리뷰 후 변경</option></select>
+            <select class="wf-input" aria-label="Jira 상태"><option>Jira 상태 · 전체</option><option>진행 중</option><option>개발 완료</option><option>QA 준비 완료</option><option>QA 완료</option></select>
+            <select class="wf-input" aria-label="QA 단계"><option>QA 단계 · 전체</option><option>커밋 완료</option><option>반출 승인</option><option>반출</option><option>막힘</option></select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="wf-panes review-body">
+      <section class="wf-col" aria-label="QA 티켓 목록">
+        <article class="wf-box review-card">
+          <div class="review-ticket-head">
+            <div>
+              <div class="review-title"><h2 class="wf-h">PSQ-0001 · 티켓 제목</h2><span class="wf-tag hot">리뷰 대기</span></div>
+              <p class="wf-t review-meta">Jira 진행 중 · 재오픈 2회차</p>
+            </div>
+            <div class="wf-col review-row">
+              <ol class="review-stages" aria-label="티켓의 8단계 QA 진행">
+                <li><b>1 <span aria-label="완료">✓</span></b>선별</li>
+                <li><b>2 <span aria-label="완료">✓</span></b>워크트리</li>
+                <li><b>3 <span aria-label="완료">✓</span></b>분석</li>
+                <li><b>4 <span aria-label="완료">✓</span></b>구현</li>
+                <li><b>5 <span aria-label="완료">✓</span></b>검토</li>
+                <li aria-current="step"><b>6 <span aria-label="현재 단계">●</span></b>커밋 완료</li>
+                <li><b>7 <span aria-label="대기">·</span></b>반출 승인</li>
+                <li><b>8 <span aria-label="대기">·</span></b>반출</li>
+              </ol>
+              <p class="wf-t"><strong>6/8단계</strong> · 다음은 사용자가 리뷰를 완료하고 반출을 승인할 차례</p>
+            </div>
+          </div>
+          <div class="wf-hide-phone wf-hide-posture">
+            <div class="review-repo">
+              <strong>저장소 A · 브랜치 이름</strong>
+              <p class="wf-t">기준 main · 앞섬 2 · 뒤처짐 1 · 변경 파일 4 · +28 / −10 · 미커밋 0</p>
+              <span class="wf-hide-fold wf-hide-tablet"><button class="wf-btn" data-to="trees">워크트리 보기</button></span>
+            </div>
+          </div>
+          <div class="wf-row review-row">
+            <div class="wf-grow wf-only-desktop">
+          <div class="wf-row review-row">
+            <button class="wf-btn" data-to="session">코디네이터 세션</button>
+            <button class="wf-btn" data-to="session">워커 세션</button>
+          </div>
+            </div>
+            <span class="wf-hide-fold wf-hide-tablet wf-hide-posture"><button class="wf-btn primary" popovertarget="review-approve">리뷰 완료 · 반출 승인</button></span>
+          </div>
+          <details class="review-editor wf-only-desktop" open>
+            <summary class="wf-btn">웹으로 보기</summary>
+            <div class="wf-box">
+              <div class="wf-row review-row">
+                <div class="wf-row review-row wf-grow" aria-label="저장소 탭">
+                  <strong class="wf-tag">저장소 A</strong><span class="wf-tag">저장소 B</span>
+                </div>
+                <span class="wf-t">읽기 전용</span>
+                <button class="wf-btn" data-slot="action" data-plugin="worktrees">데스크톱 에디터로 열기</button>
+              </div>
+              <div class="wf-panes" aria-label="웹 VS Code 미리보기">
+                <div class="wf-fill">변경 파일 목록</div>
+                <div class="wf-fill">선택한 파일의 변경 비교</div>
+              </div>
+            </div>
+          </details>
+        </article>
+
+        <article class="wf-box review-card">
+          <div class="review-ticket-head">
+            <div>
+              <div class="review-title"><h2 class="wf-h">PSQ-0002 · 티켓 제목</h2><span class="wf-tag ok">리뷰 완료</span></div>
+              <p class="wf-t review-meta">Jira 개발 완료 · 1회차</p>
+            </div>
+            <div class="wf-col review-row">
+              <ol class="review-stages" aria-label="티켓의 8단계 QA 진행">
+                <li><b>1 <span aria-label="완료">✓</span></b>선별</li>
+                <li><b>2 <span aria-label="완료">✓</span></b>워크트리</li>
+                <li><b>3 <span aria-label="완료">✓</span></b>분석</li>
+                <li><b>4 <span aria-label="완료">✓</span></b>구현</li>
+                <li><b>5 <span aria-label="완료">✓</span></b>검토</li>
+                <li><b>6 <span aria-label="완료">✓</span></b>커밋 완료</li>
+                <li><b>7 <span aria-label="완료">✓</span></b>반출 승인</li>
+                <li aria-current="step"><b>8 <span aria-label="현재 단계">●</span></b>반출</li>
+              </ol>
+              <p class="wf-t"><strong>8/8단계</strong> · 다음은 사용자가 PR 머지를 지시할 차례</p>
+            </div>
+          </div>
+          <div class="wf-hide-phone wf-hide-posture">
+            <div class="review-repo">
+              <strong>저장소 A · 브랜치 이름</strong>
+              <p class="wf-t">기준 main · 앞섬 3 · 뒤처짐 0 · 변경 파일 2 · +12 / −6 · 미커밋 0</p>
+              <span class="wf-tag">PR #0000 · 열림</span>
+            </div>
+          </div>
+          <div class="wf-row review-row wf-hide-phone wf-hide-posture"><button class="wf-btn" popovertarget="review-merge">PR 머지</button></div>
+        </article>
+      </section>
+
+      <section class="wf-hide-phone wf-hide-posture wf-hide-desktop" aria-label="선택한 티켓 상세">
+        <div class="wf-box">
+          <p class="wf-t">선택한 티켓</p>
+          <h2 class="wf-h">PSQ-0001 · 티켓 제목</h2>
+          <p class="wf-t">커밋 완료 · 현재 회차 리뷰 대기</p>
+          <button class="wf-btn primary" popovertarget="review-approve">리뷰 완료 · 반출 승인</button>
+          <div class="wf-row review-row">
+            <span class="wf-tag">Mac에서 웹 VS Code 열기</span>
+            <button class="wf-btn" data-to="trees">워크트리 보기</button>
+          </div>
+          <p class="wf-t">관련 세션</p>
+          <div class="wf-row review-row">
+            <button class="wf-btn" data-to="session">코디네이터 세션</button>
+            <button class="wf-btn" data-to="session">워커 세션</button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <p class="wf-note">Mac에서 티켓 행과 같은 폭으로 변경을 펼친다. 접힘에서는 승인할 티켓을 찾고, 반접힘의 둘째 반쪽에서 선택한 티켓과 거르기를 본다.</p>
+
+    <section class="wf-dialog review-dialog" id="review-approve" popover role="dialog" aria-labelledby="review-approve-title">
+      <div class="wf-col">
+        <h2 class="wf-h" id="review-approve-title">리뷰 완료 · 반출 승인</h2>
+        <p><strong>PSQ-0001 · 티켓 제목</strong></p>
+        <p>현재 회차의 리뷰 완료를 기록하고 코디네이터에게 반출 승인을 보낸다.</p>
+        <div class="wf-row">
+          <button class="wf-btn" popovertarget="review-approve" popovertargetaction="hide">취소</button>
+          <button class="wf-btn primary" popovertarget="review-approve" popovertargetaction="hide">승인</button>
+        </div>
+      </div>
+    </section>
+    <section class="wf-dialog review-dialog" id="review-merge" popover role="dialog" aria-labelledby="review-merge-title">
+      <div class="wf-col">
+        <h2 class="wf-h" id="review-merge-title">PR 머지</h2>
+        <p><strong>PSQ-0002 · 티켓 제목</strong> · PR #0000</p>
+        <p>코디네이터에게 의존 저장소부터 머지하도록 지시한다.</p>
+        <div class="wf-row">
+          <button class="wf-btn" popovertarget="review-merge" popovertargetaction="hide">취소</button>
+          <button class="wf-btn primary" popovertarget="review-merge" popovertargetaction="hide">머지 지시</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="qa-review" aria-label="리뷰 보조 영역">
+    <h2 class="wf-h">티켓 거르기</h2>
+          <div class="review-filters" aria-label="티켓 거르기">
+            <select class="wf-input" aria-label="리뷰 상태"><option>리뷰 상태 · 전체</option><option>리뷰 대기</option><option>리뷰 완료</option><option>리뷰 후 변경</option></select>
+            <select class="wf-input" aria-label="Jira 상태"><option>Jira 상태 · 전체</option><option>진행 중</option><option>개발 완료</option><option>QA 준비 완료</option><option>QA 완료</option></select>
+            <select class="wf-input" aria-label="QA 단계"><option>QA 단계 · 전체</option><option>커밋 완료</option><option>반출 승인</option><option>반출</option><option>막힘</option></select>
+          </div>
+  </section>
+  <section class="wf-box" data-slot="screen" data-plugin="qa-review" aria-label="선택한 티켓">
+    <div class="review-title"><h2 class="wf-h">PSQ-0001 · 티켓 제목</h2><span class="wf-tag hot">리뷰 대기</span></div>
+    <p class="wf-t">커밋 완료 · 변경 파일 4 · 앞섬 2 · 뒤처짐 1</p>
+    <div class="wf-row review-row">
+      <button class="wf-btn primary" popovertarget="review-approve">리뷰 완료 · 반출 승인</button>
+      <button class="wf-btn" data-to="trees">워크트리 보기</button>
+    </div>
+          <div class="wf-row review-row">
+            <button class="wf-btn" data-to="session">코디네이터 세션</button>
+            <button class="wf-btn" data-to="session">워커 세션</button>
+          </div>
+  </section>
+</aside>
+</body>
+</html>

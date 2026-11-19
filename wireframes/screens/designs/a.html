@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>설계문서 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.design-row { gap: 6px; }
+.design-doc-link { display: grid; gap: 3px; color: var(--wf-ink); text-decoration: none; }
+a.design-doc-link { background: var(--wf-fill); border-radius: 5px; padding: 6px 8px; }
+.design-article > section { border-top: 1px solid var(--wf-line); padding-top: 10px; }
+.design-article .wf-line { max-width: 34rem; }
+.design-ref { display: list-item; list-style-position: inside; width: fit-content; cursor: pointer; }
+.design-ref ~ .wf-row { margin-top: 8px; }
+.design-article .wf-fill { min-height: 84px; }
+@media (width <= 500px) {
+  #design-document:not(:target), .design-index:has(~ #design-document:target) { display: none; }
+}
+:root[data-posture] #design-document:not(:target),
+:root[data-posture] .design-index:has(~ #design-document:target) { display: none; }
+@media (width > 1100px) {
+  .wf-main > .wf-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); }
+}
+
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .wf-main > .wf-panes {
+    grid-template-columns: minmax(0, calc(50vw - 96px)) minmax(0, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="designs">
+    <h1 class="wf-h l">설계문서</h1>
+    <div class="wf-panes">
+      <section class="wf-col design-index" id="design-list" aria-label="많이 읽힌 문서 목록">
+        <div class="wf-box">
+          <div class="wf-row design-row"><h2 class="wf-h wf-grow">문서 목록</h2><span class="wf-t">읽은 세션 많은 순</span></div>
+          <div class="wf-list">
+            <div><a class="wf-grow design-doc-link" href="#design-document"><strong>설계문서 제목 A</strong><span class="wf-t">프로젝트 제목 · 읽은 세션 6</span></a></div>
+            <div><div class="wf-grow design-doc-link"><strong>설계문서 제목 B</strong><span class="wf-t">프로젝트 제목 · 읽은 세션 3</span></div></div>
+            <div><div class="wf-grow design-doc-link"><strong>설계문서 제목 C</strong><span class="wf-t">프로젝트 제목 · 읽은 세션 1</span></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="wf-col" id="design-document" aria-label="선택한 설계문서">
+        <div class="wf-hide-desktop wf-hide-tablet wf-hide-fold"><a class="wf-btn" href="#design-list">← 문서 목록</a></div>
+        <div class="wf-only-posture"><a class="wf-btn" href="#design-list">← 문서 목록</a></div>
+        <article class="wf-box design-article">
+          <header>
+            <p class="wf-t">프로젝트 제목 · 문서 사본</p>
+            <h2 class="wf-h l">설계문서 제목 A</h2>
+            <p class="wf-t">저장소 A · 브랜치 이름</p>
+          </header>
+
+          <section class="wf-col" id="design-sec-1">
+            <h3 class="wf-h">1. 목차 절 제목</h3>
+            <div class="wf-line"></div><div class="wf-line" style="--w: 85%"></div><div class="wf-line" style="--w: 60%"></div>
+            <details class="wf-hide-posture" open>
+              <summary class="wf-tag design-ref">읽은 세션 4 · 9회</summary>
+              <div class="wf-row design-row">
+                <button class="wf-btn" data-to="session">세션 제목 A</button>
+                <button class="wf-btn" data-to="session">세션 제목 B</button>
+              </div>
+            </details>
+            <span class="wf-tag wf-only-posture">읽은 세션 4 · 9회</span>
+          </section>
+
+          <section class="wf-col" id="design-sec-2">
+            <h3 class="wf-h">2. 목차 절 제목</h3>
+            <div class="wf-line"></div><div class="wf-line" style="--w: 75%"></div>
+            <div class="wf-fill">문서에 포함된 그림</div>
+            <details class="wf-hide-posture">
+              <summary class="wf-tag design-ref">읽은 세션 2 · 3회</summary>
+              <div class="wf-row design-row"><button class="wf-btn" data-to="session">세션 제목 C</button></div>
+            </details>
+            <span class="wf-tag wf-only-posture">읽은 세션 2 · 3회</span>
+          </section>
+        </article>
+      </section>
+    </div>
+    <p class="wf-note">본문을 읽던 자리에서 절을 참조한 세션에 닿는다. 접힘은 목록에서 문서로 들어가고, 반접힘에서는 둘째 반쪽에 읽은 세션이 놓인다.</p>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="designs" aria-label="선택한 문서의 세션 참조">
+    <p class="wf-t">설계문서 제목 A</p>
+    <h2 class="wf-h">절별로 읽은 세션</h2>
+    <div class="wf-list">
+      <div class="wf-col design-row">
+        <strong>1. 목차 절 제목 · 세션 4</strong>
+        <div class="wf-row design-row"><button class="wf-btn" data-to="session">세션 제목 A</button><button class="wf-btn" data-to="session">세션 제목 B</button></div>
+      </div>
+      <div class="wf-col design-row">
+        <strong>2. 목차 절 제목 · 세션 2</strong>
+        <div class="wf-row design-row"><button class="wf-btn" data-to="session">세션 제목 C</button></div>
+      </div>
+    </div>
+  </section>
+</aside>
+</body>
+</html>

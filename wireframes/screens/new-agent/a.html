@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>새 에이전트 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+  .overlay-main { position: relative; }
+  .overlay-backdrop {
+    position: absolute; inset: 18px; display: grid; align-content: start; gap: 12px;
+    opacity: .55; filter: blur(2px); pointer-events: none;
+  }
+  .overlay-backdrop .wf-fill { min-height: 72px; }
+  .overlay-panel { z-index: 1; overflow: hidden; }
+  @media (width <= 500px) {
+    .overlay-main { padding: 0; }
+  }
+
+  .launch-main { min-height: 100dvh; justify-content: center; }
+  .launch-dialog {
+    margin: 0 auto; width: min(540px, 100%); height: min(640px, calc(100dvh - 36px));
+    padding: 0; display: grid; grid-template-rows: auto minmax(0, 1fr);
+  }
+  .launch-header { gap: 8px; padding: 12px; border-bottom: 1px solid var(--wf-line); }
+  .launch-form { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; }
+  .launch-fields { overflow: auto; padding: 12px; container-type: inline-size; }
+  .launch-fields fieldset { margin: 0; min-inline-size: 0; }
+  .launch-fields .wf-input, .launch-options .wf-input {
+    display: block; width: 100%; min-width: 0; font: inherit;
+  }
+  .launch-options { gap: 8px; }
+  .launch-options textarea { max-height: 24dvh; resize: vertical; }
+  .launch-target .wf-row, .launch-actions { gap: 8px; }
+  .launch-actions { justify-content: flex-end; }
+  .launch-form > .launch-actions { padding: 10px 12px; border-top: 1px solid var(--wf-line); }
+  .launch-fields .wf-note { margin: 0; }
+  .launch-existing-field { display: none; }
+  .launch-target:has(#worktree-existing:checked) .launch-new-field { display: none; }
+  .launch-target:has(#worktree-existing:checked) .launch-existing-field { display: block; }
+  @container (min-width: 260px) {
+    .launch-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .launch-prompt { grid-column: 1 / -1; }
+  }
+  @media (height <= 500px) {
+    .launch-fields { gap: 8px; padding-block: 8px; }
+    .launch-options textarea { height: 44px; }
+  }
+  @media (width <= 500px) {
+    .launch-dialog { width: 100%; height: 100dvh; border: 0; border-radius: 0; }
+  }
+  @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+    :root:not([data-posture]) .launch-dialog { margin-right: 0; width: min(540px, calc(50vw - 32px)); }
+  }
+  :root[data-posture] .launch-main { justify-content: start; min-height: 0; }
+  :root[data-posture] .launch-dialog { height: min(540px, calc(100dvh - 36px)); }
+  :root[data-posture] .launch-form { grid-template-rows: minmax(0, 1fr); }
+  :root[data-posture="laptop"] .launch-dialog { height: calc(50dvh - 36px); }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn on" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main overlay-main launch-main" data-slot="screen" data-plugin="orca">
+    <div class="overlay-backdrop" aria-hidden="true">
+      <div class="wf-line s"></div>
+      <div class="wf-fill"></div>
+      <div class="wf-box"><div class="wf-line"></div><div class="wf-line s"></div></div>
+      <div class="wf-fill"></div>
+    </div>
+    <section class="wf-dialog overlay-panel launch-dialog" role="dialog" aria-labelledby="launch-title">
+      <header class="wf-row launch-header">
+        <h1 id="launch-title" class="wf-h l wf-grow">새 에이전트</h1>
+        <button type="button" class="wf-btn" data-to="agents">닫기</button>
+      </header>
+      <form class="launch-form">
+        <div class="wf-col launch-fields">
+          <label>저장소
+            <select class="wf-input"><option>저장소 이름</option></select>
+          </label>
+          <fieldset class="wf-box launch-target">
+            <legend class="wf-t">워크트리</legend>
+            <div class="wf-row">
+              <label><input type="radio" name="worktree" checked> 새로 만들기</label>
+              <label><input id="worktree-existing" type="radio" name="worktree"> 기존 선택</label>
+            </div>
+            <label class="launch-new-field">워크트리 이름
+              <input type="text" class="wf-input" placeholder="새 워크트리 이름">
+            </label>
+            <label class="launch-existing-field">기존 워크트리
+              <select class="wf-input"><option>워크트리 이름</option></select>
+            </label>
+          </fieldset>
+          <div class="wf-col launch-options wf-hide-posture">
+            <label>에이전트
+              <select class="wf-input"><option>Codex</option><option>Claude</option></select>
+            </label>
+            <label>모델
+              <select class="wf-input"><option>에이전트 기본값</option><option>모델 이름</option></select>
+            </label>
+            <label class="launch-prompt">첫 프롬프트 <span class="wf-t">선택</span>
+              <textarea class="wf-input" rows="3" placeholder="프롬프트를 입력하세요"></textarea>
+            </label>
+          </div>
+          <p class="wf-note">저장소와 워크트리를 먼저 고른다. 반접힘에서는 둘째 반쪽에서 에이전트·모델·프롬프트를 정하고 실행한다.</p>
+        </div>
+        <div class="wf-row launch-actions wf-hide-posture">
+          <button type="button" class="wf-btn" data-to="agents">취소</button>
+          <button type="button" class="wf-btn primary" data-to="agents">에이전트 띄우기</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="orca">
+    <h2 class="wf-h">실행 설정</h2>
+    <div class="wf-col launch-options">
+      <label>에이전트
+        <select class="wf-input"><option>Codex</option><option>Claude</option></select>
+      </label>
+      <label>모델
+        <select class="wf-input"><option>에이전트 기본값</option><option>모델 이름</option></select>
+      </label>
+      <label class="launch-prompt">첫 프롬프트 <span class="wf-t">선택</span>
+        <textarea class="wf-input" rows="3" placeholder="프롬프트를 입력하세요"></textarea>
+      </label>
+    </div>
+    <div class="wf-row launch-actions">
+      <button type="button" class="wf-btn" data-to="agents">취소</button>
+      <button type="button" class="wf-btn primary" data-to="agents">에이전트 띄우기</button>
+    </div>
+  </section>
+</aside>
+</body>
+</html>

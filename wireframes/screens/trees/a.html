@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>워크트리 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.trees-row { gap: 6px; }
+.trees-entry { align-items: start; }
+.trees-entry .wf-btn { flex: none; }
+.trees-entry-link { color: var(--wf-ink); }
+.trees-fields { display: grid; gap: 8px; margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.trees-fields > div { border-top: 1px solid var(--wf-line); padding-top: 6px; min-width: 0; }
+.trees-fields dd { margin: 0; }
+.trees-control summary { display: list-item; width: fit-content; list-style-position: inside; }
+.trees-control .wf-fill, .trees-control label { margin-top: 8px; }
+.trees-control textarea { display: block; margin: 4px 0 8px; width: 100%; min-height: 65px; font: inherit; color: var(--wf-ink); }
+.trees-dialog { margin: auto; color: var(--wf-ink); max-height: calc(100dvh - 32px); overflow: auto; }
+.trees-dialog::backdrop { background: rgb(0 0 0 / .28); }
+.trees-dialog .wf-row { justify-content: flex-end; }
+.trees-back { align-self: start; }
+@media (width <= 500px) {
+  #tree-detail:not(:target), .trees-index:has(~ #tree-detail:target) { display: none; }
+}
+
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .wf-main > .wf-panes {
+    grid-template-columns: minmax(0, calc(50vw - 96px)) minmax(0, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main" data-slot="screen" data-plugin="worktrees">
+    <div class="wf-row trees-row">
+      <h1 class="wf-h l wf-grow">워크트리</h1>
+      <button class="wf-btn" data-to="worktrees">QA 리뷰</button>
+    </div>
+    <div class="wf-panes">
+      <section class="wf-col trees-index" id="tree-list" aria-label="저장소별 워크트리">
+        <div class="wf-box">
+          <div class="wf-row trees-row"><h2 class="wf-h wf-grow">저장소 A</h2><span class="wf-t">워크트리 2개</span></div>
+          <div class="wf-list">
+            <article class="trees-entry">
+              <div class="wf-col wf-grow trees-row">
+                <strong class="wf-hide-phone">브랜치 이름 A</strong>
+                <a class="trees-entry-link wf-only-phone" href="#tree-detail"><strong>브랜치 이름 A →</strong></a>
+                <div class="wf-row trees-row"><span class="wf-tag hot">미커밋 2</span><span class="wf-tag">앞섬 3</span></div>
+                <p class="wf-t">마지막 커밋 · 변경 제목 · n분 전</p>
+                <p class="wf-t">메모 · 작업 메모 한 줄</p>
+              </div>
+              <span class="wf-tag wf-hide-phone">선택</span>
+            </article>
+            <article class="trees-entry">
+              <div class="wf-col wf-grow trees-row">
+                <strong>브랜치 이름 B</strong>
+                <span class="wf-t">변경 없음 · 기준과 같음</span>
+                <p class="wf-t">마지막 커밋 · 변경 제목 · n시간 전</p>
+              </div>
+              <div class="wf-only-desktop"><button class="wf-btn" popovertarget="tree-delete">삭제</button></div>
+            </article>
+          </div>
+        </div>
+        <div class="wf-box">
+          <div class="wf-row trees-row"><h2 class="wf-h wf-grow">저장소 B</h2><span class="wf-t">워크트리 1개</span></div>
+          <article class="wf-col trees-row">
+            <strong>브랜치 이름 C</strong>
+            <p class="wf-t">미커밋 0 · 앞섬 1</p>
+            <p class="wf-t">마지막 커밋 · 변경 제목 · n일 전</p>
+          </article>
+        </div>
+      </section>
+      <section class="wf-col wf-hide-posture" id="tree-detail" aria-label="선택한 워크트리">
+        <div class="wf-only-phone"><a class="wf-btn trees-back" href="#tree-list">← 워크트리 목록</a></div>
+        <div class="wf-box">
+          <p class="wf-t">저장소 A</p>
+          <h2 class="wf-h">브랜치 이름 A</h2>
+          <dl class="trees-fields">
+            <div><dt class="wf-t">미커밋 파일</dt><dd>2개</dd></div>
+            <div><dt class="wf-t">앞선 커밋</dt><dd>3개</dd></div>
+            <div><dt class="wf-t">마지막 커밋</dt><dd>변경 제목</dd></div>
+            <div><dt class="wf-t">마지막 변경</dt><dd>n분 전</dd></div>
+          </dl>
+          <p class="wf-t wf-hide-desktop">웹 보기, 에디터 열기, 삭제는 Mac 로컬에서 할 수 있다.</p>
+          <div class="wf-row trees-row wf-only-desktop">
+            <button class="wf-btn primary" data-slot="action" data-plugin="worktrees">에디터로 열기</button>
+            <button class="wf-btn" popovertarget="tree-delete-blocked">삭제</button>
+          </div>
+          <details class="trees-control wf-only-desktop">
+            <summary class="wf-btn">웹으로 보기</summary>
+            <div class="wf-fill">워크트리 웹 편집기 · 읽기 전용</div>
+          </details>
+          <details class="trees-control">
+            <summary class="wf-btn">메모 편집</summary>
+            <div>
+              <label class="wf-t" for="tree-note">워크트리 메모</label>
+              <textarea class="wf-input" id="tree-note">작업 메모 한 줄</textarea>
+              <button class="wf-btn">메모 저장</button>
+            </div>
+          </details>
+        </div>
+      </section>
+    </div>
+    <p class="wf-note">저장소별로 상태와 마지막 커밋을 먼저 훑는다. 넓은 화면에서는 목록 옆, 반접힘에서는 둘째 반쪽에서 선택한 워크트리와 관련 행동을 본다.</p>
+
+    <section class="wf-dialog trees-dialog" id="tree-delete" popover role="dialog" aria-labelledby="tree-delete-title">
+      <div class="wf-col">
+        <h2 class="wf-h" id="tree-delete-title">워크트리 삭제</h2>
+        <p class="wf-t">저장소 A · 브랜치 이름 B</p>
+        <p>이 워크트리의 폴더를 삭제할까요?</p>
+        <div class="wf-row">
+          <button class="wf-btn" popovertarget="tree-delete" popovertargetaction="hide">취소</button>
+          <button class="wf-btn primary" popovertarget="tree-delete" popovertargetaction="hide">삭제</button>
+        </div>
+      </div>
+    </section>
+    <section class="wf-dialog trees-dialog" id="tree-delete-blocked" popover role="dialog" aria-labelledby="tree-delete-blocked-title">
+      <div class="wf-col">
+        <h2 class="wf-h" id="tree-delete-blocked-title">워크트리 삭제</h2>
+        <p class="wf-t">저장소 A · 브랜치 이름 A</p>
+        <p>미커밋 파일 2개가 있다. 변경을 정리하면 삭제할 수 있다.</p>
+        <div class="wf-row">
+          <button class="wf-btn" popovertarget="tree-delete-blocked" popovertargetaction="hide">닫기</button>
+          <button class="wf-btn" disabled>삭제</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="worktrees" aria-label="선택한 워크트리">
+    <p class="wf-t">저장소 A</p>
+    <h2 class="wf-h">브랜치 이름 A</h2>
+    <p class="wf-t">미커밋 2 · 앞섬 3 · 마지막 커밋 n분 전</p>
+    <p>작업 메모 한 줄</p>
+    <div class="wf-row trees-row"><button class="wf-btn">메모 편집</button><button class="wf-btn" data-to="worktrees">QA 리뷰</button></div>
+    <p class="wf-t">웹 보기, 에디터 열기, 삭제는 Mac 로컬에서 할 수 있다.</p>
+  </section>
+</aside>
+</body>
+</html>

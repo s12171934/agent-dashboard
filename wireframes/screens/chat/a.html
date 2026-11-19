@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>에이전트와 채팅 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+  .overlay-main { position: relative; }
+  .overlay-backdrop {
+    position: absolute; inset: 18px; display: grid; align-content: start; gap: 12px;
+    opacity: .55; filter: blur(2px); pointer-events: none;
+  }
+  .overlay-backdrop .wf-fill { min-height: 72px; }
+  .overlay-panel { z-index: 1; overflow: hidden; }
+  @media (width <= 500px) {
+    .overlay-main { padding: 0; }
+  }
+
+  .chat-panel {
+    position: relative; inset: auto; align-self: flex-end;
+    width: min(420px, 100%); height: calc(100dvh - 36px); max-height: none;
+    padding: 0; border: 1px solid var(--wf-line); border-radius: 12px;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .chat-header { padding: 12px; border-bottom: 1px solid var(--wf-line); }
+  .chat-header .wf-row, .chat-footer { gap: 6px; }
+  .chat-content { display: flex; flex-direction: column; gap: 10px; overflow: auto; padding: 12px; }
+  .chat-message { align-self: flex-start; max-width: 86%; }
+  .chat-message p { margin: 0; }
+  .chat-message.mine { align-self: flex-end; background: var(--wf-bg); }
+  .chat-footer { padding: 10px 12px; border-top: 1px solid var(--wf-line); }
+  .chat-compose { display: flex; align-items: end; gap: 8px; }
+  .chat-compose label { flex: 1; min-width: 0; }
+  .chat-compose textarea { display: block; width: 100%; min-width: 0; max-height: 24dvh; resize: vertical; font: inherit; }
+  .chat-content .wf-note { margin: auto 0 0; }
+  @media (width <= 500px) {
+    .chat-panel { width: 100%; height: 100dvh; border: 0; border-radius: 0; }
+  }
+  @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+    :root:not([data-posture]) .chat-panel { width: min(420px, calc(50vw - 32px)); }
+  }
+  :root[data-posture] .chat-panel { width: 100%; grid-template-rows: auto minmax(0, 1fr); }
+  :root[data-posture="laptop"] .chat-panel { height: calc(50dvh - 36px); }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn on" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main overlay-main" data-slot="screen" data-plugin="orca">
+    <div class="overlay-backdrop" aria-hidden="true">
+      <div class="wf-line s"></div>
+      <div class="wf-fill"></div>
+      <div class="wf-box"><div class="wf-line"></div><div class="wf-line s"></div></div>
+      <div class="wf-fill"></div>
+    </div>
+    <section class="wf-sheet overlay-panel chat-panel" role="dialog" aria-labelledby="chat-title">
+      <header class="wf-col chat-header">
+        <div class="wf-row">
+          <h1 id="chat-title" class="wf-h l wf-grow">에이전트와 채팅</h1>
+          <button type="button" class="wf-btn" data-to="session">닫기</button>
+        </div>
+        <div class="wf-row">
+          <span class="wf-t wf-grow">세션 제목</span>
+          <span class="wf-tag ok">실행 중</span>
+          <button type="button" class="wf-btn" data-to="session">세션 상세</button>
+        </div>
+      </header>
+      <section class="chat-content" aria-label="메시지 목록">
+        <article class="wf-box chat-message mine">
+          <p class="wf-t">나 · n분 전</p><p>보낸 메시지</p>
+        </article>
+        <article class="wf-box chat-message">
+          <p class="wf-t">에이전트 · n분 전</p><p>에이전트 응답</p>
+        </article>
+        <article class="wf-box chat-message mine">
+          <p class="wf-t">나 · 방금</p><p>새 메시지</p><span class="wf-tag">대기 · 턴이 끝나면 전달</span>
+        </article>
+        <p class="wf-note">접힘에서는 채팅이 화면을 채운다. 펼치면 세션 위 오른쪽 패널을 열고, 반접힘에서는 둘째 반쪽에서 입력한다.</p>
+      </section>
+      <footer class="chat-footer wf-hide-posture">
+        <div class="chat-compose">
+          <label class="wf-t">메시지
+            <textarea class="wf-input" rows="2" placeholder="메시지를 입력하세요"></textarea>
+          </label>
+          <button type="button" class="wf-btn primary">보내기</button>
+        </div>
+      </footer>
+    </section>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn on" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="orca">
+    <h2 class="wf-h">세션 제목</h2>
+    <div class="chat-compose">
+      <label class="wf-t">메시지
+        <textarea class="wf-input" rows="2" placeholder="메시지를 입력하세요"></textarea>
+      </label>
+      <button type="button" class="wf-btn primary">보내기</button>
+    </div>
+  </section>
+</aside>
+</body>
+</html>

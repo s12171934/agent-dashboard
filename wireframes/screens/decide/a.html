@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>결정 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.decision-list, .decision-question { min-width: 0; }
+.decision-tabs { gap: 6px; }
+.decision-tabs .current { background: var(--wf-fill); border-color: var(--wf-muted); font-weight: 700; }
+.decision-mode { cursor: pointer; }
+.decision-mode input, .decision-option input { accent-color: var(--wf-ink); margin: 0; flex: none; }
+.decision-options { min-width: 0; margin: 0; padding: 0; border: 0; }
+.decision-options legend { margin-bottom: 6px; padding: 0; }
+.decision-option {
+  display: flex; align-items: center; gap: 8px; min-height: 42px; margin-top: 6px; padding: 6px 10px;
+  border: 1px solid var(--wf-line); border-radius: var(--wf-r); cursor: pointer;
+}
+.decision-option:has(:checked) { background: var(--wf-fill); border-color: var(--wf-muted); }
+.decision-submit .wf-btn { min-height: 42px; justify-content: center; }
+.decision-list-item { width: 100%; text-align: left; color: inherit; background: transparent; border: 0; font: inherit; cursor: pointer; }
+.decision-list-item > span:first-child { display: grid; gap: 2px; }
+.decision-list-item.current { font-weight: 700; }
+@media (width <= 500px) {
+  .decision-main { flex: none; height: 100dvh; gap: 0; padding: 0 0 66px; }
+  .decision-page { flex: 1; min-height: 0; overflow: auto; padding: var(--wf-gap); }
+  .decision-page > * { flex: none; }
+  .decision-cover-submit {
+    padding: 8px var(--wf-gap);
+    background: var(--wf-bg); border-top: 1px solid var(--wf-line);
+  }
+  .decision-cover-submit .wf-btn { width: 100%; }
+}
+@media (width > 500px) {
+  :root:not([data-posture]) .decision-list { grid-row: 1; grid-column: 1; }
+  :root:not([data-posture]) .decision-question { grid-row: 1; grid-column: 2; }
+}
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .decision-layout { grid-template-columns: minmax(0, calc(50% - 46px)) minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn on" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main decision-main" data-slot="screen" data-plugin="decisions">
+    <div class="wf-col decision-page">
+      <header class="wf-col">
+        <div class="wf-row">
+          <h1 class="wf-h l wf-grow">결정</h1>
+          <label class="wf-btn decision-mode"><input type="checkbox">메일함 모드</label>
+        </div>
+        <div class="wf-row decision-tabs" role="group" aria-label="결정 분류">
+          <button type="button" class="wf-btn current" aria-pressed="true">대기 <span class="wf-tag hot">3</span></button>
+          <button type="button" class="wf-btn" aria-pressed="false">메일함</button>
+          <button type="button" class="wf-btn" aria-pressed="false">Bash 권한</button>
+        </div>
+      </header>
+      <div class="wf-panes decision-layout">
+        <article class="wf-box decision-question" aria-labelledby="decision-question-title">
+          <div class="wf-row">
+            <span class="wf-t wf-grow">가장 오래 대기</span>
+            <span class="wf-tag hot">18분 대기</span>
+          </div>
+          <h2 class="wf-h l" id="decision-question-title">질문 제목</h2>
+          <div class="wf-row">
+            <p class="wf-t wf-grow">세션 제목</p>
+            <button type="button" class="wf-btn" data-to="session">세션 보기</button>
+          </div>
+          <p class="wf-t">질문 본문</p>
+          <div class="wf-line" aria-hidden="true"></div>
+          <div class="wf-line s" aria-hidden="true"></div>
+          <div class="wf-col wf-hide-posture">
+            <fieldset class="decision-options">
+              <legend class="wf-h">선택지</legend>
+              <label class="decision-option"><input type="radio" name="decision-main" checked><span class="wf-grow">선택지 A</span><span class="wf-tag">권장</span></label>
+              <label class="decision-option"><input type="radio" name="decision-main"><span class="wf-grow">선택지 B</span></label>
+              <label class="decision-option"><input type="radio" name="decision-main"><span class="wf-grow">선택지 C</span></label>
+            </fieldset>
+            <div class="decision-submit wf-hide-phone"><button type="button" class="wf-btn primary">답 보내기</button></div>
+          </div>
+        </article>
+        <section class="wf-box decision-list" aria-labelledby="decision-list-title">
+          <h2 class="wf-h" id="decision-list-title">대기 목록</h2>
+          <div class="wf-list">
+            <button type="button" class="decision-list-item current wf-hide-phone wf-hide-posture" aria-current="true">
+              <span class="wf-grow">질문 제목 <span class="wf-t">세션 제목</span></span><span class="wf-tag hot">18분</span>
+            </button>
+            <button type="button" class="decision-list-item">
+              <span class="wf-grow">다음 질문 제목 <span class="wf-t">세션 제목</span></span><span class="wf-tag">9분</span>
+            </button>
+            <button type="button" class="decision-list-item">
+              <span class="wf-grow">다음 질문 제목 <span class="wf-t">세션 제목</span></span><span class="wf-tag">4분</span>
+            </button>
+          </div>
+        </section>
+      </div>
+      <p class="wf-note">처음에는 가장 오래 기다린 질문을 연다. 접힘의 답 버튼은 독 바로 위에 고정하고, 반접힘은 질문과 답을 두 반쪽에 나눈다.</p>
+    </div>
+    <div class="decision-submit decision-cover-submit wf-only-phone"><button type="button" class="wf-btn primary">답 보내기</button></div>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn on" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn on" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+  <section class="wf-box" data-slot="screen" data-plugin="decisions" aria-label="질문 답변">
+    <fieldset class="decision-options">
+      <legend class="wf-h">선택지</legend>
+      <label class="decision-option"><input type="radio" name="decision-sheet" checked><span class="wf-grow">선택지 A</span><span class="wf-tag">권장</span></label>
+      <label class="decision-option"><input type="radio" name="decision-sheet"><span class="wf-grow">선택지 B</span></label>
+      <label class="decision-option"><input type="radio" name="decision-sheet"><span class="wf-grow">선택지 C</span></label>
+    </fieldset>
+    <div class="decision-submit"><button type="button" class="wf-btn primary">답 보내기</button></div>
+  </section>
+</aside>
+</body>
+</html>

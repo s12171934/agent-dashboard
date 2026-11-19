@@ -7,7 +7,7 @@ const ST = { none: '미작성', draft: '시안', picked: '확정', dropped: '보
 const KEY = 'wfboard.v1';
 
 let M = null, ver = '', edgesFrom = new Map();
-const S = { view: 'grid', widths: ['phone', 'tablet', 'desktop'], group: '', status: '', variants: 'all', full: false, zoom: 0.24, pick: {} };
+const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, zoom: 0.24, pick: {} };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
 const h = new URLSearchParams(location.hash.slice(1));
 if (h.get('view')) S.view = h.get('view');
@@ -17,6 +17,8 @@ const save = () => {
 };
 
 const url = f => f + (ver ? (f.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(ver) : '');
+// a half-folded width opens the screen with ?posture=, which wf.js turns into <html data-posture>
+const src = (v, w) => v.file + (w.posture ? '?posture=' + w.posture : '');
 const live = v => v.status !== 'dropped';
 const statusOf = sc => sc.variants.some(v => v.status === 'picked') ? 'picked' : sc.variants.some(v => v.status === 'draft') ? 'draft' : 'none';
 // the variant a single frame shows: the one picked on the board, else the 확정 one, else the first still in play
@@ -27,6 +29,10 @@ const visible = () => M.screens.filter(sc => (!S.group || sc.group === S.group) 
 async function load() {
   try { ver = (await (await fetch('../build.json', { cache: 'no-store' })).json()).build || ''; } catch { ver = ''; }
   M = await (await fetch(url('screens.json'), { cache: 'no-store' })).json();
+  // a width remembered from an older screens.json that no longer exists drops out; none left means all of them
+  const ids = M.widths.map(w => w.id);
+  S.widths = (S.widths || []).filter(id => ids.includes(id));
+  if (!S.widths.length) S.widths = ids;
   await readEdges();
   controls();
   render();
@@ -43,8 +49,10 @@ async function readEdges() {
     const to = new Set();
     for (const v of use) {
       try {
-        const t = await (await fetch(url(v.file), { cache: 'no-store' })).text();
-        for (const m of t.matchAll(/data-to="([a-z0-9-]+)"/g)) if (m[1] !== sc.id) to.add(m[1]);
+        // the shell's navigation (data-shell: sidebar, dock, the sheet's nav row) leads everywhere; only the screen's own links count
+        const doc = new DOMParser().parseFromString(await (await fetch(url(v.file), { cache: 'no-store' })).text(), 'text/html');
+        doc.querySelectorAll('[data-shell]').forEach(n => n.remove());
+        for (const n of doc.querySelectorAll('[data-to]')) if (n.dataset.to !== sc.id) to.add(n.dataset.to);
       } catch {}
     }
     edgesFrom.set(sc.id, { to, from: 'wireframe' });
@@ -55,7 +63,7 @@ function controls() {
   $('#widths').innerHTML = M.widths.map(w => `<label title="${esc(w.env)}"><input type="checkbox" value="${w.id}" ${S.widths.includes(w.id) ? 'checked' : ''}> ${esc(w.name)}</label>`).join('');
   const g = $('#group');
   if (g.options.length === 1) g.insertAdjacentHTML('beforeend', M.groups.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join(''));
-  g.value = S.group; $('#status').value = S.status; $('#variants').value = S.variants; $('#full').checked = S.full;
+  g.value = S.group; $('#status').value = S.status; $('#variants').value = S.variants; $('#full').checked = S.full; $('#slots').checked = S.slots;
   $('#zoom').value = S.zoom; $('#zoom-out').value = Math.round(S.zoom * 100) + '%';
   document.querySelectorAll('#view button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.view));
   $('#variants-fld').hidden = S.view !== 'grid';
@@ -71,7 +79,7 @@ function frame(sc, v, w, z) {
   const W = Math.round(w.w * z), H = Math.round(w.h * z);
   if (!v) return `<div class="shot" style="width:${W}px;height:${H}px"><div class="empty">미작성</div></div>`;
   return `<div class="shot" style="width:${W}px;height:${H}px" data-screen="${sc.id}" data-variant="${v.id}" data-width="${w.id}">
-    <iframe data-src="${esc(v.file)}" data-w="${w.w}" data-h="${w.h}" width="${w.w}" height="${w.h}" style="transform:scale(${z})" loading="lazy" tabindex="-1" title="${esc(sc.name)} ${esc(v.id)} ${esc(w.name)}"></iframe></div>`;
+    <iframe data-src="${esc(src(v, w))}" data-file="${esc(v.file)}" data-w="${w.w}" data-h="${w.h}" width="${w.w}" height="${w.h}" style="transform:scale(${z})" loading="lazy" tabindex="-1" title="${esc(sc.name)} ${esc(v.id)} ${esc(w.name)}"></iframe></div>`;
 }
 
 function render() {
@@ -84,7 +92,7 @@ function render() {
 function renderGrid(b) {
   const ws = widthsOn(), z = S.zoom;
   if (!ws.length) { b.innerHTML = '<p>폭을 하나 이상 고르세요.</p>'; return; }
-  const cols = `minmax(150px, 190px) ${ws.map(w => Math.round(w.w * z) + 'px').join(' ')}`;
+  const cols = `minmax(150px, 180px) ${ws.map(w => Math.round(w.w * z) + 'px').join(' ')}`;
   let out = `<div class="g" style="grid-template-columns:${cols}"><div class="g-head"></div>${ws.map(w => `<div class="g-head">${esc(w.name)}<small>${w.w}×${w.h} · ${esc(w.env)}</small></div>`).join('')}`;
   let lastGroup = null;
   for (const sc of visible()) {
@@ -117,8 +125,8 @@ function renderMap(b) {
   for (const sc of scs) cols[depth.has(sc.id) ? depth.get(sc.id) : maxD + 1].push(sc);
   const node = sc => { const st = statusOf(sc); return `<div class="node ${depth.has(sc.id) ? '' : 'lone'}" data-node="${sc.id}">
       <div class="nh"><b>${esc(sc.name)}</b><span class="st ${st}">${ST[st]}</span></div>${frame(sc, mainVariant(sc), w, z)}</div>`; };
-  b.innerHTML = `<div class="legend"><span><i></i>앞으로 가는 길</span><span><i class="back"></i>되돌아가는 길</span><span>점선 테두리: 홈에서 닿지 않는 화면 · 폭 ${esc(w.name)}</span></div>
-    <div class="map">${cols.map((c, i) => c.length ? `<div class="mcol"><h3>${i <= maxD ? (i ? `${i}단계` : '시작') : '홈에서 닿지 않음'}</h3><div class="mstack" style="grid-template-rows:repeat(${Math.min(c.length, 5)}, auto)">${c.map(node).join('')}</div></div>` : '').join('')}<svg></svg></div>`;
+  b.innerHTML = `<div class="legend"><span><i></i>앞으로 가는 길</span><span><i class="back"></i>되돌아가는 길</span><span>점선 테두리: 화면 안 링크로는 닿지 않고 공통 내비로만 들어가는 화면 · 폭 ${esc(w.name)}</span></div>
+    <div class="map">${cols.map((c, i) => c.length ? `<div class="mcol"><h3>${i <= maxD ? (i ? `${i}단계` : '시작') : '내비로만 닿음'}</h3><div class="mstack" style="grid-template-rows:repeat(${Math.min(c.length, 5)}, auto)">${c.map(node).join('')}</div></div>` : '').join('')}<svg></svg></div>`;
   requestAnimationFrame(drawEdges);
 }
 
@@ -154,7 +162,10 @@ function observe() {
   document.querySelectorAll('.shot[data-screen]').forEach(s => io.observe(s));
 }
 // 전체 길이: the frame grows to the page's own height instead of one screenful
+// 슬롯 표시: outline what plugins fill, in every frame (same origin)
+const slots = f => { try { f.contentDocument.documentElement.classList.toggle('wf-show-slots', S.slots); } catch {} };
 function fit(f) {
+  slots(f);
   const z = parseFloat(f.style.transform.match(/scale\(([\d.]+)\)/)?.[1] || S.zoom);
   let hgt = +f.dataset.h;
   if (S.full) try { hgt = Math.max(hgt, f.contentDocument.documentElement.scrollHeight); } catch {}
@@ -171,7 +182,7 @@ function openFocus(id, variant, width) {
   $('#f-title').textContent = `${sc.name}${v ? ' · ' + v.id.toUpperCase() : ' · 미작성'}`;
   $('#f-widths').innerHTML = M.widths.map(w => `<button data-fw="${w.id}" aria-pressed="${w === F.w}">${esc(w.name)}</button>`).join('');
   const f = $('#f-frame');
-  if (v) { f.src = url(v.file); $('#f-open').href = url(v.file); $('#f-open').hidden = false; } else { f.removeAttribute('src'); f.srcdoc = '<p style="font:14px system-ui;color:#888;padding:24px">아직 와이어프레임이 없습니다.</p>'; $('#f-open').hidden = true; }
+  if (v) { f.src = url(src(v, F.w)); $('#f-open').href = url(src(v, F.w)); $('#f-open').hidden = false; } else { f.removeAttribute('src'); f.srcdoc = '<p style="font:14px system-ui;color:#888;padding:24px">아직 와이어프레임이 없습니다.</p>'; $('#f-open').hidden = true; }
   sizeFocus();
   if (!$('#focus').open) $('#focus').showModal();
 }
@@ -183,6 +194,7 @@ function sizeFocus() {
   f.style.marginRight = s < 1 ? `${-F.w.w * (1 - s)}px` : ''; f.style.marginBottom = s < 1 ? `${-F.w.h * (1 - s)}px` : '';
 }
 $('#f-frame').addEventListener('load', e => {
+  slots(e.target);
   try {
     e.target.contentDocument.addEventListener('click', ev => {
       const t = ev.target.closest('[data-to]'); if (!t) return;
@@ -198,6 +210,7 @@ $('#group').addEventListener('change', e => { S.group = e.target.value; render()
 $('#status').addEventListener('change', e => { S.status = e.target.value; render(); });
 $('#variants').addEventListener('change', e => { S.variants = e.target.value; render(); });
 $('#full').addEventListener('change', e => { S.full = e.target.checked; render(); });
+$('#slots').addEventListener('change', e => { S.slots = e.target.checked; save(); document.querySelectorAll('iframe').forEach(slots); });
 let zt;
 $('#zoom').addEventListener('input', e => { S.zoom = +e.target.value; $('#zoom-out').value = Math.round(S.zoom * 100) + '%'; clearTimeout(zt); zt = setTimeout(render, 120); });
 // ⌘/Ctrl + wheel zooms the board, not the page
@@ -235,13 +248,13 @@ addEventListener('resize', () => { sizeFocus(); if (S.view === 'map') drawEdges(
   try { r = await (await fetch('/__reload?since=' + (seen ?? ''), { cache: 'no-store' })).json(); } catch { return; }
   if (seen != null && r.files.length) {
     const fs = r.files.filter(f => f.startsWith('wireframes/')).map(f => f.slice('wireframes/'.length));
-    if (fs.some(f => !f.startsWith('screens/') && f !== 'wf.css' && !f.startsWith('_'))) return location.reload();
+    if (fs.some(f => !f.startsWith('screens/') && !['wf.css', 'wf.js'].includes(f) && !f.endsWith('.md'))) return location.reload();
     if (fs.length) {
       await readEdges();
       document.querySelectorAll('iframe[src]').forEach(f => {
-        if (fs.includes('wf.css') || fs.includes(f.dataset.src)) f.contentWindow?.location.reload();
+        if (fs.includes('wf.css') || fs.includes('wf.js') || fs.includes(f.dataset.file)) f.contentWindow?.location.reload();
       });
-      if (F && (fs.includes('wf.css') || fs.includes(F.v?.file))) $('#f-frame').contentWindow?.location.reload();
+      if (F && (fs.includes('wf.css') || fs.includes('wf.js') || fs.includes(F.v?.file))) $('#f-frame').contentWindow?.location.reload();
       if (S.view === 'map') render();
     }
   }

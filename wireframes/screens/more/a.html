@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>더 보기 · 와이어프레임</title>
+<!-- Plugin-filled areas carry data-slot="<slot>" data-plugin="<plugin id>" (FLOW.md 「컨셉」); the core's own parts carry none.
+     Copy this file to screens/<screen id>/<variant>.html (a.html, b.html …). Only wf.css and wf.js, nothing else, no real data.
+     Keep the shell (sidebar · dock · half sheet) as it is: mark the current screen with class "on" and change only <main> and the sheet's lower part. -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+.screen-overlay { position: relative; isolation: isolate; }
+.overlay-underlay {
+  position: absolute; z-index: -1; inset: 0; overflow: hidden; padding: 18px;
+  opacity: .48; filter: blur(2px); pointer-events: none;
+}
+.overlay-underlay .wf-fill { min-height: 156px; }
+.overlay-panel {
+  position: relative; width: min(var(--overlay-width, 560px), 100%); margin: min(5vh, 40px) auto 0;
+  max-height: calc(95vh - 36px); overflow: auto; overscroll-behavior: contain;
+}
+.overlay-panel > * { min-width: 0; }
+.overlay-heading { gap: 8px; }
+.overlay-panel .wf-note { margin: 0; }
+@media (width <= 500px) {
+  .screen-overlay { z-index: 1; }
+  .overlay-panel {
+    position: fixed; inset: 0; z-index: 2; width: 100%; max-height: none; margin: 0;
+    border: 0; border-radius: 0; padding: 12px;
+  }
+}
+:root[data-posture] .overlay-panel { margin: 0 auto; }
+:root[data-posture=book] .overlay-panel { max-height: calc(100vh - 36px); }
+:root[data-posture=laptop] .overlay-panel { max-height: calc(50vh - 36px); }
+
+.more-tool {
+  width: 100%; min-height: 44px; border: 0; background: transparent; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.more-tool .wf-t { text-align: right; }
+.more-tools { padding: 0 10px; gap: 0; }
+.more-shortcuts { margin: 0; }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- shell: full sidebar on desktop, icon rail on tablet and unfolded Duo, hidden on the cover (dock) and half folded (sheet) -->
+  <nav class="wf-side" data-shell>
+    <span class="wf-btn" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
+    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
+    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
+    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
+    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
+    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
+    <span class="wf-btn wf-hide-tablet wf-hide-fold on" data-to="more"><span class="wf-lbl">더 보기</span></span>
+    <span class="wf-btn wf-only-tablet wf-only-fold on" data-to="more"><i class="wf-ico"></i></span>
+    <span class="wf-grow"></span>
+    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
+    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
+  </nav>
+  <main class="wf-main screen-overlay">
+    <div class="wf-col overlay-underlay" aria-hidden="true">
+      <div class="wf-line s"></div>
+      <div class="wf-panes">
+        <div class="wf-col"><div class="wf-fill"></div><div class="wf-fill"></div></div>
+        <div class="wf-col"><div class="wf-fill"></div><div class="wf-fill"></div></div>
+      </div>
+    </div>
+    <section class="wf-dialog wf-col overlay-panel" role="dialog" aria-labelledby="more-title">
+      <header class="wf-row overlay-heading">
+        <h1 class="wf-h l wf-grow" id="more-title">더 보기</h1>
+        <button type="button" class="wf-btn wf-hide-posture" data-to="settings">설정</button>
+        <button type="button" class="wf-btn" data-to="home">닫기</button>
+      </header>
+      <div class="more-shortcuts wf-only-phone wf-only-posture">
+        <button type="button" class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review">리뷰</button>
+      </div>
+      <nav class="wf-box wf-list more-tools" aria-label="도구">
+        <button type="button" class="more-tool" data-to="projects" data-slot="nav" data-plugin="projects">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">프로젝트</strong><span class="wf-t">진행 중 2개</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="designs" data-slot="nav" data-plugin="designs">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">설계문서</strong><span class="wf-t">최근 참조 3건</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="trees" data-slot="nav" data-plugin="worktrees">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">워크트리</strong><span class="wf-t">열린 워크트리 4개</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="devices" data-slot="nav" data-plugin="devices">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">실기기</strong><span class="wf-t">사용 중 1대</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="media" data-slot="nav" data-plugin="media">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">녹화 영상</strong><span class="wf-t">새 녹화 3개</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="compare" data-slot="nav" data-plugin="cost">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">비교 · 비용</strong><span class="wf-t">오늘 비용 0.00</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="usage" data-slot="nav" data-plugin="plan-usage">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">플랜 사용량</strong><span class="wf-t">최고 사용률 60%</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="talk" data-slot="nav" data-plugin="orca">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">상호작용</strong><span class="wf-t">움직인 묶음 2개</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="canvas" data-slot="nav" data-plugin="canvas">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">워크플로 캔버스</strong><span class="wf-t">대기 결정 1건</span><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="more-tool" data-to="chars" data-slot="nav" data-plugin="chars">
+          <i class="wf-ico" aria-hidden="true"></i><strong class="wf-grow">캐릭터</strong><span class="wf-t">캐릭터 4개</span><span aria-hidden="true">›</span>
+        </button>
+      </nav>
+      <p class="wf-note">도구마다 한 줄 요약을 붙여 열기 전에 상태를 확인한다. 접힘에서는 전체 화면으로 연다.</p>
+    </section>
+  </main>
+</div>
+<!-- Duo cover: bottom dock -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: the second half is the dock's sheet: navigation on top, then this screen's secondary controls -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn on" data-to="more">더 보기</span></div>
+  <section class="wf-box">
+    <h2 class="wf-h">설정</h2>
+    <div class="wf-row">
+      <button type="button" class="wf-btn" data-to="settings">설정 열기</button>
+    </div>
+  </section>
+</aside>
+</body>
+</html>
