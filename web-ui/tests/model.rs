@@ -97,3 +97,16 @@ fn mutable_qa_fields_do_not_change_set_identity() {
     s["tickets"] = json!([{"key":"QA-2"}]);
     assert_eq!(identity(&s), id);
 }
+#[test]
+fn open_in_orca_or_brzo() {
+    let orca = json!({"orca_focus":"term-1"});
+    let brzo = json!({"brzo":{"node_id":"n1","session":{"handle":"h","main":true}}});
+    let none = json!({"id":"x"});
+    for v in [&orca, &brzo, &none] {
+        assert!(open_in(false, false, v));
+    }
+    assert!(open_in(true, false, &orca) && !open_in(true, false, &brzo) && !open_in(true, false, &none));
+    assert!(open_in(false, true, &brzo) && !open_in(false, true, &orca) && !open_in(false, true, &none));
+    assert!(open_in(true, true, &orca) && open_in(true, true, &brzo) && !open_in(true, true, &none));
+    assert!(!open_in(false, true, &json!({"brzo":null})), "a server without Brzo hides everything");
+}

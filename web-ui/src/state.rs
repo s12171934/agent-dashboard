@@ -92,6 +92,7 @@ pub struct Context {
     pub output: RwSignal<String>,
     pub only_live: RwSignal<bool>,
     pub only_orca: RwSignal<bool>,
+    pub only_brzo: RwSignal<bool>,
     pub chars: RwSignal<bool>,
     pub editor: RwSignal<String>,
     pub roster: RwSignal<Value>,
@@ -126,6 +127,7 @@ impl Context {
             output: RwSignal::new(String::new()),
             only_live: RwSignal::new(bridge::saved_bool("adash.live", false)),
             only_orca: RwSignal::new(bridge::saved_bool("adash.orca", false)),
+            only_brzo: RwSignal::new(bridge::saved_bool("adash.brzo", false)),
             chars: RwSignal::new(bridge::saved_bool("adash.charmode", true)),
             editor: RwSignal::new(bridge::saved("adash.editor", "vscode")),
             roster: RwSignal::new(json!({"chars":{}})),
@@ -182,7 +184,7 @@ impl Context {
     }
     pub fn visible(self, value: &Value) -> bool {
         (!self.only_live.get() || live(value) || value["live"] == true)
-            && (!self.only_orca.get() || value["orca_focus"].is_string())
+            && open_in(self.only_orca.get(), self.only_brzo.get(), value)
     }
     pub fn family_visible(self, value: &Value, depth: usize) -> bool {
         if self.visible(value) {
