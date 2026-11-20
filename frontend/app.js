@@ -1494,7 +1494,7 @@ function card(s, cls) {
   const a = agg(s), win = s.ctx_window, pct = win ? Math.min(100, s.ctx_now / win * 100) : 0;
   const own = status(s), st = subBg(s, a, own), la = s.last_action;
   const t = s.role === 'worker' ? IX.tasks[s.task_id] : null;
-  const role = s.role === 'coordinator' ? '<span class="badge coord">코디네이터</span>' : isSubCoord(s) ? '<span class="badge subcoord">하위 코디네이터</span>' : s.role === 'worker' ? `<span class="badge worker"${s.viaScript ? ` title="${esc(s.viaScript)} 스크립트가 띄운 워커"` : ''}>워커${s.viaScript ? ' · 스크립트' : ''}</span>` : '';
+  const role = s.role === 'coordinator' ? '<span class="badge coord">코디네이터</span>' : isSubCoord(s) ? '<span class="badge subcoord">하위 코디네이터</span>' : s.role === 'worker' ? `<span class="badge worker"${s.viaScript ? ` title="${esc(s.viaScript)} 스크립트가 띄운 워커"` : ''}>워커${s.viaScript ? ' · 스크립트' : ''}</span>` : s.automation ? `<span class="badge" title="Orca 자동화 「${esc(s.automation.name || '')}」가 띄운 실행 — 턴이 끝나면 완료로 접는다">자동화</span>` : '';
   const dq = s.decision?.questions?.[0]?.question;
   return `<div class="card ${cls || ''} st-${st}${s.decision ? ' dec' : ''}" data-path="${esc(s.path)}">
     <div class="c-top"><span class="c-title" title="${esc(nameOf(s))}">${esc(nameOf(s))}</span>${s.decision ? '<span class="badge dec" title="카드를 열면 답할 수 있습니다">결정 대기</span>' : ''}${role}</div>
