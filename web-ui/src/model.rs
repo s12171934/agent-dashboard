@@ -109,6 +109,11 @@ pub fn state_label(st: &str) -> &str {
         _ => "유휴",
     }
 }
+/// 「Orca 에 열린 것만」·「Brzo 에 열린 것만」: neither on = every session; otherwise a session open in a chosen one
+/// (either, when both are on). Brzo's agents carry the server's `brzo` object; a server without Brzo sends none.
+pub fn open_in(orca: bool, brzo: bool, value: &Value) -> bool {
+    (!orca && !brzo) || (orca && value["orca_focus"].is_string()) || (brzo && value["brzo"].is_object())
+}
 pub fn live(v: &Value) -> bool {
     ["run", "bg", "wait", "stalled"].contains(&text(&v["state"]))
 }

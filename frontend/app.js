@@ -126,6 +126,12 @@ let onlyOrca = false;
 try { onlyOrca = localStorage.getItem('adash.orca') === '1'; } catch {}
 $('#only-orca').checked = onlyOrca;
 $('#only-orca').onchange = e => { onlyOrca = e.target.checked; try { localStorage.setItem('adash.orca', onlyOrca ? '1' : '0'); } catch {} gKey = ''; render(); };
+// 「Brzo 에 열린 것만」: the same for agents Brzo runs (the server marks their session rows with session.brzo; a server
+// without Brzo marks none, so nothing passes). With 「Orca 에 열린 것만」 too, a session open in either one passes.
+let onlyBrzo = false;
+try { onlyBrzo = localStorage.getItem('adash.brzo') === '1'; } catch {}
+$('#only-brzo').checked = onlyBrzo;
+$('#only-brzo').onchange = e => { onlyBrzo = e.target.checked; try { localStorage.setItem('adash.brzo', onlyBrzo ? '1' : '0'); } catch {} gKey = ''; render(); };
 // 「캐릭터 모드」: the agents tab and 홈 drawn as an office of characters (renderOffice) instead of cards and the widget
 // board. This device only.
 let charMode = false;
@@ -1531,13 +1537,17 @@ const LIVE_GRACE = 60e3;
 const liveNow = s => agg(s).live || status(s) === 'bg' || Date.now() - Math.max(...[s, ...(IX.subsOf[s.id] || [])].map(x => msOf(x.last_ts) || 0)) < LIVE_GRACE;
 // A subagent runs in its parent's terminal.
 const inOrca = s => !!(s.orca_focus || (s.parent && IX.byId[s.parent]?.orca_focus));
-const filtering = () => onlyLive || onlyOrca;
+const inBrzo = s => !!(s.brzo || (s.parent && IX.byId[s.parent]?.brzo));
+// 「Orca 에 열린 것만」·「Brzo 에 열린 것만」: off = every session; on = open in a chosen one (either, when both are on).
+const onlyOpen = () => onlyOrca || onlyBrzo;
+const inOpen = s => (onlyOrca && inOrca(s)) || (onlyBrzo && inBrzo(s));
+const filtering = () => onlyLive || onlyOpen();
 // A pin keeps a session visible in the live view, but still requires an open terminal in the Orca view.
-const liveSess = w => (!onlyOrca || inOrca(w)) && (w.pinned || !onlyLive || liveNow(w));
+const liveSess = w => (!onlyOpen() || inOpen(w)) && (w.pinned || !onlyLive || liveNow(w));
 // Pinned first: a family holding a pinned session (any depth), and a pinned session among its siblings.
 const famPinned = f => f.members.some(m => m.pinned);
 const PIN_LEAD = 100, pinnedR = r => r < -PIN_LEAD / 2;  // an order rank lowered by PIN_LEAD (ranks run from -1)
-const liveFam = f => !filtering() || f.members.some(liveSess) || (onlyLive && !onlyOrca && f.live);
+const liveFam = f => !filtering() || f.members.some(liveSess) || (onlyLive && !onlyOpen() && f.live);
 // A script driver stays only while one of its sessions passes the filters (its own terminal does not count).
 const liveDrv = d => !filtering() || d.workers.some(liveSess);
 const shut = f => isMin(f);
@@ -5383,7 +5393,7 @@ function cmpItems(group = cmp.group) {
   if (group === 'name') {
     // Every session counts its own calls (subagents included), keyed by skill or MCP server.
     const M = METRICS[cmp.metric], by = new Map();
-    for (const s of state.sessions.filter(x => (!onlyLive || x.live || Date.now() - (msOf(x.last_ts) || 0) < LIVE_GRACE) && (!onlyOrca || inOrca(x)))) {
+    for (const s of state.sessions.filter(x => (!onlyLive || x.live || Date.now() - (msOf(x.last_ts) || 0) < LIVE_GRACE) && (!onlyOpen() || inOpen(x)))) {
       for (const [k, c] of Object.entries(useOf(s, M.use) || {})) {
         let g = by.get(k);
         if (!g) by.set(k, g = { key: 'u:' + k, name: M.nm ? M.nm(k) : k, live: false, users: new Set(), models: {}, a: { skills: 0, mcp: 0, both: 0, [cmp.metric]: 0 } });
@@ -5540,7 +5550,7 @@ function needHist() {
 // folded into its parent agent the same way agg() does for live ones.
 function weekItems() {
   const items = cmpItems('agent'), byId = new Map(items.map(it => [it.kind + ':' + it.id, it]));
-  if (onlyLive || onlyOrca || !hist) return items;  // past sessions are neither running nor open in Orca
+  if (onlyLive || onlyOpen() || !hist) return items;  // past sessions are neither running nor open in Orca (or Brzo)
   const ss = hist.sessions || [], titles = Object.fromEntries(ss.filter(x => !x.parent).map(x => [x.kind + ':' + x.id, x.title]));
   for (const x of ss) {
     const id = x.kind + ':' + (x.parent || x.id);
@@ -5575,9 +5585,9 @@ function renderHourly() {
   $('#cmp-leg').innerHTML = series.map(x => `<span><i style="background:${x.c}"></i>${esc(x.name)} <b>${M.f(x.tot)}</b></span>`).join('') + (series.length ? `<span>최근 ${SPANS[cmp.span]}${todTxt} 합계 · 막대 = ${UNITS[U]} · 색 = ${(groupsAll()[groupOf()] || GROUPS.agent).replace('별', '')}</span>` : '');
   $('#cmp-note').textContent = `시간은 이 기기의 현지 시각입니다. 각 턴의 사용량을 그 턴이 끝난 시각의 ${UNITS[U]} 칸에 넣습니다. 상위 7개 그룹에만 색을 주고 나머지는 「기타」로 묶습니다. `
     + (todOn ? '시간대 밖의 시간은 그래프에서 잘라 내고, 날짜가 바뀌는 곳에 점선을 긋습니다. ' : '')
-    + (week ? `7일 범위는 지금 대시보드가 보고 있는 세션에 지난 기록(5분마다 갱신${hist ? ', 마지막 ' + hhmm(new Date(hist.updated * 1000).toISOString()) : ''})을 더해 에이전트별로만 나눕니다${onlyLive || onlyOrca ? ` — 「${onlyLive ? '실행 중만' : 'Orca 에 열린 것만'}」이 켜져 있어 지난 기록은 빠졌습니다` : ''}. ` : '')
+    + (week ? `7일 범위는 지금 대시보드가 보고 있는 세션에 지난 기록(5분마다 갱신${hist ? ', 마지막 ' + hhmm(new Date(hist.updated * 1000).toISOString()) : ''})을 더해 에이전트별로만 나눕니다${onlyLive || onlyOpen() ? ` — 「${onlyLive ? '실행 중만' : onlyOrca ? 'Orca 에 열린 것만' : 'Brzo 에 열린 것만'}」이 켜져 있어 지난 기록은 빠졌습니다` : ''}. ` : '')
     + (cmp.metric === 'cost' ? '비용은 API 단가 환산 추정치이며, 단가가 없는 모델의 턴은 빠집니다. ' : '') + (groupOf() !== 'model' ? '서브에이전트 사용량은 부모 에이전트에 합산합니다. ' : '') + '값은 실시간으로 갱신됩니다.';
-  if (week && !hist && !onlyLive && !onlyOrca) { box.innerHTML = '<div class="empty">지난 7일 기록을 불러오는 중입니다…</div>'; return; }
+  if (week && !hist && !onlyLive && !onlyOpen()) { box.innerHTML = '<div class="empty">지난 7일 기록을 불러오는 중입니다…</div>'; return; }
   if (!series.length) { box.innerHTML = `<div class="empty">최근 ${SPANS[cmp.span]}${todTxt} 동안 사용량이 없습니다.${week && hist?.scanning ? '<br><small>서버가 지난 기록을 아직 모으는 중입니다.</small>' : ''}</div>`; return; }
   const val = (x, b) => (x.h[b] ? H(x.h[b]) : 0);
   const col = vis.map(b => series.reduce((a, x) => a + val(x, b), 0));
