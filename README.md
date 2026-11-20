@@ -71,6 +71,7 @@ Claude Code·Codex 에이전트 세션, Orca Run, `aplan` 작업 계획을 한 �
 | 녹화 영상 | 데이터 폴더의 `media.json` 에 적은 `~/Movies/ego-record`·`~/Movies/aside-record`·`~/Movies/mobile-record`·`~/Movies/explainer-video` 의 `.mp4` 와 그 옆 `.timeline.txt` (아래 「녹화 영상」) |
 | 실기기·에뮬레이터 | `xcrun devicectl list devices`·`adb devices -l` 의 실기기와 에뮬레이터(`emulator-*`), `xcrun simctl list devices booted` 의 시뮬레이터, 사용자 임시 폴더의 mobile-record 락(`mobile-{runner,record,hold}-*.lock`)과 대기열(`mobile-device-queue/`), 기기 ID 를 든 프로세스와 그 환경 변수(`ps -E`) (아래 「실기기」) |
 
+- **자동화 실행:** Orca 자동화(`orca automations list`, 1분마다)가 띄운 세션 — 첫 프롬프트가 어느 자동화의 프롬프트와 같은 것(예: `qa-driver run …` 를 부르는 「QA 드라이버」) — 은 대화가 아니라 예약 실행 한 번이다. 턴이 끝나면 「입력 대기」·「유휴」가 아니라 「완료」(`자동화 실행 종료 · <자동화 이름>`)로 접고, 카드에 「자동화」 배지를 붙인다.
 - **취소 규약:** Orca 태스크에는 취소 상태가 없으므로(`task-update` 는 pending·ready·dispatched·completed·failed·blocked 만 받는다), 쓰지 않게 된 태스크는 result 를 「취소」로 시작하는 `failed` 로 닫는다. 수집기가 이를 `cancelled`(`orca_status: failed`)로 바꿔 실을 뿐 Orca 는 고치지 않으며, 화면은 흐린 「취소」로 그리고 실패 수·실패 강조·계획 전체 수에서 뺀다. 워커 계획 바(조율자 상세·사무실 이름표)에는 아예 그리지 않고 범례에 「취소 N」 글자만 남긴다 — 완료·취소뿐인 Run 은 끝난 Run 이다.
 
 ## 실행

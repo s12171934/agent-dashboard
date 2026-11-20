@@ -390,7 +390,23 @@ impl App {
                 out
             })
             .collect();
-        let mut next = json!({"runs":runs,"tasks":tasks,"workers":workers,"terminals":terminals,"repos":repos["repos"],"worktrees":worktrees["worktrees"],"error":null});
+        // Scheduled automations: a session whose first prompt is one of these is a scripted run,
+        // not a conversation (sessions.rs folds it to done when its turn ends). Listed once a minute.
+        static AUTOS: Mutex<(f64, Vec<Value>)> = Mutex::new((0., vec![]));
+        let automations = {
+            let mut c = AUTOS.lock().unwrap();
+            if now() - c.0 > 60. {
+                if let Ok(v) = orca(&["automations", "list"]) {
+                    c.1 = array(&v["automations"])
+                        .iter()
+                        .map(|a| json!({"id":a["id"],"name":a["name"],"prompt":a["prompt"]}))
+                        .collect();
+                }
+                c.0 = now();
+            }
+            c.1.clone()
+        };
+        let mut next = json!({"runs":runs,"tasks":tasks,"workers":workers,"terminals":terminals,"repos":repos["repos"],"worktrees":worktrees["worktrees"],"automations":automations,"error":null});
         let mut state = self.state.write().unwrap();
         let mut old = state.orca.clone();
         let updated = old

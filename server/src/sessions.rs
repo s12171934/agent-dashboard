@@ -817,6 +817,9 @@ impl Session {
                 if self.data["title"].is_null() && !s.starts_with('<') {
                     self.data["title"] = json!(short(s, 80));
                 }
+                if self.data["first_prompt"].is_null() && !s.starts_with('<') {
+                    self.data["first_prompt"] = json!(s.chars().take(400).collect::<String>());
+                }
                 self.add_log(ts, "user", s, r["isMeta"] != true, true, obj());
             } else {
                 for b in array(c) {
@@ -989,6 +992,9 @@ impl Session {
                         self.brief(&s);
                         if self.data["title"].is_null() {
                             self.data["title"] = json!(short(&s, 80));
+                        }
+                        if self.data["first_prompt"].is_null() {
+                            self.data["first_prompt"] = json!(s.chars().take(400).collect::<String>());
                         }
                         self.add_log(ts, role, &s, true, true, obj());
                     }
@@ -1253,6 +1259,21 @@ impl Session {
                 }
             }
         }
+        // A session an Orca automation launched (its first prompt is the automation's prompt) is one
+        // scheduled run, not a conversation: once its turn ends the run is over, so it reads as done
+        // instead of waiting for input that never comes.
+        let first = text(&d["first_prompt"]).trim();
+        if let Some(a) = array(&orca["automations"]).iter().find(|a| {
+            let p = text(&a["prompt"]).trim();
+            !first.is_empty() && !p.is_empty() && p.starts_with(first)
+        }) {
+            d["automation"] = json!({"id":a["id"],"name":a["name"]});
+            if matches!(text(&d["state"]), "wait" | "idle") {
+                d["state"] = json!("done");
+                d["live"] = json!(false);
+                d["state_reason"] = json!(format!("자동화 실행 종료 · {}", text(&a["name"])));
+            }
+        }
         for k in [
             "custom_title",
             "launch_cwd",
@@ -1260,6 +1281,7 @@ impl Session {
             "prior_handles",
             "self_handles",
             "cats",
+            "first_prompt",
         ] {
             d.as_object_mut().unwrap().remove(k);
         }
