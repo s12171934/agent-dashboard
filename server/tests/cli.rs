@@ -330,3 +330,24 @@ fn launchd_installer_validates_before_replacing_service() {
     assert!(log.lines().next().unwrap().starts_with("bootout "));
     assert!(log.contains("bootstrap "));
 }
+
+#[test]
+fn brzo_sessions_decisions_skip_the_default_dashboard() {
+    use agent_dashboard::cli::hook_url;
+    let local = Some("http://127.0.0.1:8787".to_owned());
+    assert_eq!(hook_url("decision-hook", None, false), local);
+    assert_eq!(hook_url("decision-hook", None, true), None);
+    assert_eq!(hook_url("session-guard", None, true), local);
+    let brzo = Some("http://127.0.0.1:8788".to_owned());
+    assert_eq!(hook_url("decision-hook", brzo.clone(), true), brzo);
+    // the wrapper exits quietly without reading stdin or calling out
+    let r = Command::new(env!("CARGO_BIN_EXE_agent-dashboard"))
+        .arg("decision-hook")
+        .env_remove("DASH_URL")
+        .env("BRZO_TERMINAL_ID", "pty_test")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(r.status.success());
+    assert!(r.stdout.is_empty());
+}

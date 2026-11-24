@@ -120,9 +120,22 @@ fn stdin() -> Result<String> {
         .map_err(|e| e.to_string())?;
     Ok(s)
 }
+/// Where a hook posts: `DASH_URL`, else this Mac's dashboard (8787). A Brzo agent (its terminal carries
+/// `BRZO_TERMINAL_ID`) asks through the Brzo app, and the Brzo dashboard (`--source brzo`) reads those questions from
+/// Brzo itself, so without an explicit `DASH_URL` its decision cards go nowhere: 8787 would show them and try to answer
+/// in an Orca terminal the session does not have. session-guard still posts (it only reads 8787's own inbox).
+pub fn hook_url(name: &str, dash_url: Option<String>, brzo: bool) -> Option<String> {
+    match dash_url {
+        Some(u) => Some(u),
+        None if brzo && name == "decision-hook" => None,
+        None => Some("http://127.0.0.1:8787".into()),
+    }
+}
 fn hook(name: &str) -> Result<()> {
+    let Some(url) = hook_url(name, env("DASH_URL"), env("BRZO_TERMINAL_ID").is_some()) else {
+        return Ok(());
+    };
     let e = serde_json::from_str::<Value>(&stdin()?).map_err(|e| e.to_string())?;
-    let url = env("DASH_URL").unwrap_or("http://127.0.0.1:8787".into());
     let mut b = json!({"cwd":e["cwd"],"terminal":env("ORCA_TERMINAL_HANDLE")});
     let action = if name == "session-guard" {
         let cmd = text(&e["tool_input"]["command"]);
