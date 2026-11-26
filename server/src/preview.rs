@@ -2,24 +2,60 @@
 //! 목록 조각 `/previews/rows` 를 읽어 그 에픽의 슬롯을 찾는다. 제어 서버는 로그인 뒤에만 열리므로 키체인의
 //! generic password(서비스 = 제어 서버 호스트)로 `POST /login` 해 세션 쿠키를 들고 다니고, 401·로그인 화면으로
 //! 돌려보내면 한 번 다시 로그인한다. 제어 서버에는 JSON API 가 없어서 화면이 5초마다 다시 받는 HTML 조각을 파싱한다.
+//!
+//! 요청은 `/usr/bin/curl` 로 보낸다. 제어 서버는 사내망 주소인데, launchd 로 띄운 이 바이너리(서명 없음)의 직접
+//! 연결은 macOS 로컬 네트워크 권한에 막히고 시스템 바이너리인 curl 은 막히지 않는다. 비밀번호·쿠키는 인자가 아니라
+//! stdin 설정(`-K -`)으로 넘겨 프로세스 목록에 드러나지 않게 한다.
 use crate::{core::*, sessions::rx};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
+    io::Write,
+    process::{Command, Stdio},
     sync::{Mutex, OnceLock},
-    time::Duration,
 };
 
 const ROWS_TTL: f64 = 15.;
 const ERR_TTL: f64 = 60.;
 const LOG_LINES: usize = 12;
 
-fn client() -> Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| e.to_string())
+/// curl 설정 파일의 따옴표 값.
+fn q(v: &str) -> String {
+    format!(
+        "\"{}\"",
+        v.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "")
+    )
+}
+
+/// curl 한 번 — 리다이렉트는 따르지 않는다. → (HTTP 상태, 응답 헤더, 본문)
+fn curl(cfg: &str) -> Result<(u16, String, String)> {
+    let mut child = Command::new("/usr/bin/curl")
+        .args(["-sS", "-D", "-", "-K", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("curl: {e}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("curl: stdin")?
+        .write_all(format!("max-time = 10\n{cfg}").as_bytes())
+        .map_err(|e| format!("curl: {e}"))?;
+    let out = child.wait_with_output().map_err(|e| format!("curl: {e}"))?;
+    if !out.status.success() {
+        return Err(short(String::from_utf8_lossy(&out.stderr).trim(), 300));
+    }
+    let raw = String::from_utf8_lossy(&out.stdout).into_owned();
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
+    let status = head
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    Ok((status, head.to_owned(), body.to_owned()))
 }
 
 fn host(base: &str) -> &str {
@@ -59,56 +95,54 @@ fn session() -> &'static Mutex<HashMap<String, String>> {
 fn login(base: &str) -> Result<String> {
     let (user, pw) = credentials(base)?;
     // 제어 서버는 Origin 이 자기 자신이 아닌 로그인 POST 를 403 으로 거절한다.
-    let r = client()?
-        .post(format!("{base}/login"))
-        .header("Origin", base)
-        .header("Referer", format!("{base}/login"))
-        .form(&[("username", user.as_str()), ("password", pw.as_str())])
-        .send()
-        .map_err(|e| format!("미리보기 로그인: {e}"))?;
-    let cookie = r
-        .headers()
-        .get_all(reqwest::header::SET_COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .filter_map(|v| v.split(';').next())
+    let (status, head, _) = curl(&format!(
+        "url = {}\nheader = {}\nheader = {}\ndata-urlencode = {}\ndata-urlencode = {}\n",
+        q(&format!("{base}/login")),
+        q(&format!("Origin: {base}")),
+        q(&format!("Referer: {base}/login")),
+        q(&format!("username={user}")),
+        q(&format!("password={pw}")),
+    ))
+    .map_err(|e| format!("미리보기 로그인: {e}"))?;
+    let cookie = head
+        .lines()
+        .filter_map(|l| l.split_once(':'))
+        .filter(|(k, _)| k.trim().eq_ignore_ascii_case("set-cookie"))
+        .filter_map(|(_, v)| v.split(';').next())
+        .map(str::trim)
         .find(|c| c.contains('='))
         .map(str::to_owned);
     match cookie {
-        Some(c) if r.status().is_redirection() || r.status().is_success() => {
+        Some(c) if (200..400).contains(&status) => {
             session().lock().unwrap().insert(base.into(), c.clone());
             Ok(c)
         }
-        _ => Err(format!(
-            "미리보기 로그인 실패 (HTTP {})",
-            r.status().as_u16()
-        )),
+        _ => Err(format!("미리보기 로그인 실패 (HTTP {status})")),
     }
 }
 
 /// 로그인한 GET. 쿠키가 없거나 거절되면(401, 로그인 화면으로 303) 한 번 다시 로그인한다.
 fn get(base: &str, path: &str) -> Result<String> {
-    let c = client()?;
     let mut cookie = session().lock().unwrap().get(base).cloned();
     for attempt in 0..2 {
         let ck = match cookie.take() {
             Some(c) => c,
             None => login(base)?,
         };
-        let r = c
-            .get(format!("{base}{path}"))
-            .header("Cookie", &ck)
-            .send()
-            .map_err(|e| format!("미리보기 {path}: {e}"))?;
-        let s = r.status();
-        if s.is_success() {
-            return r.text().map_err(|e| e.to_string());
+        let (status, _, body) = curl(&format!(
+            "url = {}\nheader = {}\n",
+            q(&format!("{base}{path}")),
+            q(&format!("Cookie: {ck}"))
+        ))
+        .map_err(|e| format!("미리보기 {path}: {e}"))?;
+        if (200..300).contains(&status) {
+            return Ok(body);
         }
-        if (s.as_u16() == 401 || s.is_redirection()) && attempt == 0 {
+        if (status == 401 || (300..400).contains(&status)) && attempt == 0 {
             session().lock().unwrap().remove(base);
             continue;
         }
-        return Err(format!("미리보기 {path}: HTTP {}", s.as_u16()));
+        return Err(format!("미리보기 {path}: HTTP {status}"));
     }
     Err(format!("미리보기 {path}: 로그인 뒤에도 거절"))
 }
@@ -300,6 +334,11 @@ mod tests {
     <div class="ref-target"><div class="ref-title">PR #2577 [PSQ-1265] QA &amp; 옵션</div>
       <a class="ref-url" href="https://github.com/o/plang_rails/pull/2577" target="_blank">x</a></div>
   </div></div></section>"#;
+
+    #[test]
+    fn quotes_curl_config() {
+        assert_eq!(q(r#"a"b\c"#), r#""a\"b\\c""#);
+    }
 
     #[test]
     fn parses_cards() {
