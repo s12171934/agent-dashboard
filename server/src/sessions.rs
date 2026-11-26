@@ -994,7 +994,8 @@ impl Session {
                             self.data["title"] = json!(short(&s, 80));
                         }
                         if self.data["first_prompt"].is_null() {
-                            self.data["first_prompt"] = json!(s.chars().take(400).collect::<String>());
+                            self.data["first_prompt"] =
+                                json!(s.chars().take(400).collect::<String>());
                         }
                         self.add_log(ts, role, &s, true, true, obj());
                     }
