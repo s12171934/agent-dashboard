@@ -351,12 +351,18 @@ const api = (() => {
     // base_ref, base_src PR|QA|설정|기본, pr, dirty, ahead, behind, files, ins, dels}], gone[{repo, branch, pr{number, url,
     // state}, base, merged_at, files, ins, dels}] — removed worktrees by their PR's size}]}], jira}. local: the server is this
     // device's loopback, the only place 「VS Code 로 열기」 can work. state.reviews_at changes when any server's sets do;
-    // updated: the latest time a server built its sets (ISO), null before any has.
+    // updated: the latest time a server built its sets (ISO), null before any has. sets[].loading: a bare epic from prefs
+    // shown before that server's first pass ends.
     reviews: async () => {
       const parts = await fromAll('/api/reviews'), loop = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/;
       return { sets: parts.flatMap(([s, d]) => (d.sets || []).map(x => ({ ...x, server: s.id, local: loop.test(s.url) }))),
                jira: parts.map(([, d]) => d.jira).find(Boolean) || '',
-               updated: parts.map(([, d]) => d.updated).filter(u => typeof u === 'string').sort().pop() || null };
+               updated: parts.map(([, d]) => d.updated).filter(u => typeof u === 'string').sort().pop() || null,
+               // Per server: why its sets may be missing or stale. loading: first pass still running (sets are bare
+               // epics); error: the last pass failed; warning: it ran without Orca's worktree list; configured false:
+               // no qa_sets; off: this server does not collect QA at all.
+               status: parts.map(([s, d]) => ({ server: s.id, name: s.name || s.id, loading: !!d.loading, error: d.error || null,
+                 warning: d.warning || null, configured: d.configured, off: d.off || null })) };
     },
     // Open each worktree of a ticket in a window of the desktop editor (vscode | zed) on that server's Mac, or record / clear its review in the
     // vault step note. Resolve to {status, body}: 403 open from anywhere but that Mac's loopback, 409 no worktree / note.

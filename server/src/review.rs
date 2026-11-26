@@ -1044,7 +1044,51 @@ fn repo(path: &str, name: &str, prefs: &Value, qa_branches: &Value) -> Value {
     merge(&mut r, &stats);
     r
 }
+/// The PRs of removed worktrees, looked up a few at a time: after a restart the cache is empty and one-by-one lookups
+/// held back the first QA sets for minutes.
+fn gone_prs(urls: Vec<String>) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    for chunk in urls.chunks(8) {
+        std::thread::scope(|sc| {
+            let hs = chunk
+                .iter()
+                .map(|url| {
+                    sc.spawn(move || {
+                        let pr = cached(format!("gone:{url}"), 600., || {
+                            let s = command("gh", &["pr", "view", url, "--json", "number,url,state,baseRefName,headRefName,additions,deletions,changedFiles,mergedAt"], None, 20)?;
+                            serde_json::from_str(&s).map_err(|e| e.to_string())
+                        })
+                        .unwrap_or(Value::Null);
+                        (url.clone(), pr)
+                    })
+                })
+                .collect::<Vec<_>>();
+            for h in hs {
+                if let Ok((url, pr)) = h.join() {
+                    out.insert(url, pr);
+                }
+            }
+        });
+    }
+    out
+}
+/// The last worktree list Orca gave, used while Orca does not answer so the QA sets keep their worktrees.
+fn last_worktrees() -> &'static Mutex<Option<Value>> {
+    static LAST: OnceLock<Mutex<Option<Value>>> = OnceLock::new();
+    LAST.get_or_init(Default::default)
+}
+/// Builds the QA sets every 30 s. A failure is kept in `reviews.error` so the page can tell it from "no QA sets".
 pub fn collect(app: &App) -> Result<()> {
+    let r = collect_sets(app);
+    let error = r.as_ref().err().map_or(Value::Null, |e| json!(e));
+    let mut s = app.state.write().unwrap();
+    if s.reviews["error"] != error {
+        s.reviews["error"] = error;
+        s.reviews["updated"] = json!(iso());
+    }
+    r
+}
+fn collect_sets(app: &App) -> Result<()> {
     let (prefs, old, orca_state, test_history, tests) = {
         let s = app.state.read().unwrap();
         (
@@ -1056,9 +1100,36 @@ pub fn collect(app: &App) -> Result<()> {
         )
     };
     if array(&prefs["qa_sets"]).is_empty() {
+        if old["configured"] != false {
+            app.state.write().unwrap().reviews =
+                json!({"sets":[],"updated":iso(),"configured":false,"error":null});
+        }
         return Ok(());
     }
-    let worktrees = orca(&["worktree", "list"])?;
+    if array(&old["sets"]).is_empty() {
+        // First pass after a start: show each configured epic at once and fill it in when this pass ends.
+        let sets = array(&prefs["qa_sets"]).iter().map(|qs| json!({"epic":qs["epic"],"project":qs["project"],"summary":null,"tickets":[],"stray":[],"watch":qs["watch"],"loading":true,"retired":expand(text(&qs["watch"])).join("retired").exists()})).collect::<Vec<_>>();
+        app.state.write().unwrap().reviews = json!({"sets":sets,"updated":iso(),"jira":prefs["jira_site"],"configured":true,"error":null,"loading":true});
+    }
+    let mut warning = Value::Null;
+    let worktrees = match orca(&["worktree", "list"]) {
+        Ok(v) => {
+            *last_worktrees().lock().unwrap() = Some(v.clone());
+            v
+        }
+        Err(e) => {
+            let last = last_worktrees().lock().unwrap().clone();
+            warning = json!(format!(
+                "Orca 워크트리 목록을 못 받아 {} ({e})",
+                if last.is_some() {
+                    "직전 목록으로 표시합니다"
+                } else {
+                    "드라이버 밖 워크트리는 빠져 있습니다"
+                }
+            ));
+            last.unwrap_or_else(|| json!({"worktrees":[]}))
+        }
+    };
     let automations = cached("review-automations".into(), 60., || {
         orca(&["automations", "list"])
     })
@@ -1232,13 +1303,32 @@ pub fn collect(app: &App) -> Result<()> {
                     known[text(p)] = obj();
                 }
             }
+            let fetched = gone_prs(
+                known
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                    .filter(|(url, meta)| !live.contains(url.as_str()) && !meta["pr"].is_object())
+                    .map(|(url, _)| url.clone())
+                    .collect(),
+            );
+            for (url, pr) in &fetched {
+                // A merged or closed PR no longer changes: keep it so a restart does not ask gh again.
+                if ["MERGED", "CLOSED"].contains(&text(&pr["state"])) {
+                    known[url.as_str()]["pr"] = pr.clone();
+                }
+            }
             gone[key] = known.clone();
             let mut gone_rows = vec![];
             for (url, meta) in known.as_object().unwrap() {
                 if live.contains(url.as_str()) {
                     continue;
                 }
-                let pr=cached(format!("gone:{url}"),600.,||{let s=command("gh",&["pr","view",url,"--json","number,url,state,baseRefName,headRefName,additions,deletions,changedFiles,mergedAt"],None,20)?;serde_json::from_str(&s).map_err(|e|e.to_string())}).unwrap_or(Value::Null);
+                let pr = if meta["pr"].is_object() {
+                    meta["pr"].clone()
+                } else {
+                    fetched.get(url).cloned().unwrap_or(Value::Null)
+                };
                 let parts = url.split('/').collect::<Vec<_>>();
                 gone_rows.push(json!({"repo":meta["repo"].as_str().unwrap_or_else(||parts.get(parts.len().saturating_sub(3)).unwrap_or(&"?")),"branch":meta["branch"].as_str().or(pr["headRefName"].as_str()).unwrap_or(""),"pr":{"number":pr["number"].as_u64().or_else(||parts.last().and_then(|s|s.parse().ok())),"url":url,"state":pr["state"]},"base":pr["baseRefName"],"merged_at":pr["mergedAt"],"files":pr["changedFiles"],"ins":pr["additions"],"dels":pr["deletions"]}));
             }
@@ -1308,7 +1398,6 @@ pub fn collect(app: &App) -> Result<()> {
         sets.push(set);
     }
     save_json(app.config.data.join("review-gone.json"), &gone)?;
-    app.state.write().unwrap().reviews =
-        json!({"sets":sets,"updated":iso(),"jira":prefs["jira_site"]});
+    app.state.write().unwrap().reviews = json!({"sets":sets,"updated":iso(),"jira":prefs["jira_site"],"configured":true,"error":null,"warning":warning});
     Ok(())
 }
