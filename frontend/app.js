@@ -2761,6 +2761,7 @@ function qaLegacyHtml(s) {
     `<span class="st">열린 에이전트 터미널 ${live}</span>`,
     `<span class="rv-acts">${fin.length ? `<button class="act big" data-qa-set="close_finished" data-keys="${esc(fin.map(t => t.key).join(','))}" ${d} title="${esc(fin.map(t => t.key).join(', '))}\nJira 가 개발 완료 이후이거나 반출이 끝났고, 터미널의 세션이 쉬고 있는 티켓">끝난 코디네이터 닫기 (${fin.length})</button>` : ''}
       ${old ? `<button class="act big" data-qa-set="adopt_check" ${d} title="자동화의 precheck·prompt 를 qa-driver 로 바꿉니다. 남은 티켓부터 새 흐름(티켓마다 워크트리·코디네이터)으로 처리합니다">드라이버로 이관</button>` : ''}
+      ${s.backend === 'brzo' && s.outbox ? `<button class="act big accent" data-qa-set="deliver" ${d} title="outbox 에서 드라이버 회차를 기다리는 코디네이터 메시지(반출 승인·머지 지시 등)를 Brzo 앱 웹 접속으로 지금 입력합니다. 질문을 기다리거나 사라진 코디네이터의 것은 드라이버 회차에 남깁니다">Brzo 로 바로 전달 (${s.outbox})</button>` : ''}
       ${s.finished ? `<button class="act big accent" data-qa-set="retire_check" ${d} title="자동화를 끄고, 공용 코디네이션 워크트리의 터미널을 닫고 워크트리를 지웁니다">QA 종료 처리</button>` : ''}</span>`];
   return `<div class="qa-legacy${s.finished ? ' end' : ''}">${s.finished ? '<b>모든 티켓이 QA 완료입니다.</b>' : ''}${parts.join('')}</div>`;
 }
@@ -2768,7 +2769,7 @@ function qaMore(t, set) {
   const q = t.qa; if (!q) return '';
   const d = `data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}"`, live = q.live?.length;
   const items = [
-    !live && !q.ignored && !['delivered', 'cleaned'].includes(q.stage) ? `<button class="act big" data-qa-tk="restart" ${d} title="기록된 브리프로 코디네이터를 새 터미널에 다시 띄웁니다">코디네이터 재기동</button>` : ''].join('');
+    set.backend !== 'brzo' && !live && !q.ignored && !['delivered', 'cleaned'].includes(q.stage) ? `<button class="act big" data-qa-tk="restart" ${d} title="기록된 브리프로 코디네이터를 새 터미널에 다시 띄웁니다">코디네이터 재기동</button>` : ''].join('');
   return items ? `<details class="qa-more"><summary class="act big" title="코디네이터 제어">⋯</summary><div>${items}</div></details>` : '';
 }
 function wtRepo(t, r) {
@@ -2805,13 +2806,13 @@ function wtActs(t, set) {
   const early = set.driver && t.qa && t.qa.stage_no < set.stages.indexOf('committed') + 1 && t.review !== 'done';
   const markLbl = ship ? '리뷰 완료 · 반출 승인' : t.review === 'done' ? '리뷰 취소' : t.review === 'changed' || t.review === 'reopened' ? '다시 리뷰 완료' : '리뷰 완료';
   return t.repos.length ? `<span class="rv-acts">
-        ${set.driver && t.qa?.stage === 'delivered' && !t.qa.merge_at ? `<button class="act big accent" data-qa-tk="merge" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 올린 PR 을 의존 저장소부터 머지하라고 지시합니다 (merge 파일을 남김)">PR 머지</button>` : ''}
+        ${set.driver && t.qa?.stage === 'delivered' && !t.qa.merge_at ? `<button class="act big accent" data-qa-tk="merge" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="코디네이터에게 올린 PR 을 의존 저장소부터 머지하라고 지시합니다 (merge 파일을 남김)${set.backend === 'brzo' ? '. Brzo 코디네이터에게는 앱 웹 접속으로 바로 입력합니다' : ''}">PR 머지</button>` : ''}
         ${set.driver && t.qa?.stage === 'delivered' && t.qa.merge_at ? `<button class="act big" disabled title="${esc(clockAt(t.qa.merge_at))} 에 지시. PR 이 모두 머지되면 드라이버 회차가 정리합니다">머지 지시됨</button>` : ''}
-        ${t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
+        ${set.backend !== 'brzo' && t.qa && ['delivered', 'committed', 'approved'].includes(t.qa.stage) ? `<button class="act big" data-qa-tk="cleanup_check" data-key="${esc(t.key)}" data-epic="${esc(set.epic)}" data-srv="${esc(set.server)}" title="서브모듈 deinit 뒤 워크트리를 지웁니다. 미커밋·미푸시가 있으면 멈춥니다">워크트리 정리</button>` : ''}
         ${qaMore(t, set)}
         ${!set.driver && jiraStage(t) === 'prog' ? `<button class="act big" data-wt-ship="${esc(t.key)}" data-srv="${esc(set.server)}"${shipOpen(t) ? ' disabled title="반출 워커가 이미 돌고 있습니다"' : ' title="Orca 워커가 저장소마다 PR → 머지 → Jira 개발 완료 → 스텝 노트 기록 → 워크트리 정리까지 합니다"'}>PR 후 머지</button>` : ''}
         ${set.local ? `<button class="act big" data-wt-web="${esc(t.key)}" data-srv="${esc(set.server)}" aria-expanded="${wtWeb.has(t.key)}" title="이 티켓 아래에 웹 VS Code(읽기 전용)를 펼칩니다. 데스크톱 창은 펼친 곳에서 엽니다">${wtWeb.has(t.key) ? 'VS Code 접기' : 'VS Code 로 보기'}</button>` : ''}
-        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ' title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)"' : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : '';
+        <button class="act big accent" data-wt-mark="${esc(t.key)}" data-srv="${esc(set.server)}" data-done="${t.review === 'done' && !ship ? 0 : 1}"${ship ? ' data-ship="1"' : ''}${!t.step && !(ship && set.backend === 'brzo') ? ' disabled title="볼트에 스텝 노트가 없어 기록할 곳이 없습니다"' : early ? ' disabled title="코디네이터가 검토를 끝내고 커밋(ready/)하기 전이라 아직 리뷰할 수 없습니다"' : ship ? ` title="리뷰를 기록하고 코디네이터에게 push·PR 을 승인한다고 알립니다 (approved 파일을 남김)${set.backend === 'brzo' ? '. Brzo 코디네이터에게는 앱 웹 접속으로 바로 입력합니다' : ''}"` : ''}>${markLbl}</button></span>` : t.qa ? `<span class="rv-acts">${qaMore(t, set)}</span>` : '';
 }
 function wtTicket(t, set, ro) {
   const [cls, lbl] = WT_REVIEW[t.review];
@@ -2918,6 +2919,7 @@ async function qaSetClick(b) {
     if (!await uiConfirm(`${epic} 종료 보고서를 워커(헤드리스 claude)가 새로 씁니다 (티켓 노트·PR 을 다시 읽어 몇십 분 걸릴 수 있습니다). 진행할까요?`)) return;
     busy('기동 중…'); done(await call('report')); return idle();
   }
+  if (qaSet === 'deliver') { busy('전달 중…'); done(await call('deliver')); return idle(); }
   if (qaSet === 'close_finished') {
     const ks = keys.split(',');
     if (!await uiConfirm(`끝난 티켓 ${ks.length}개의 코디네이터·워커 터미널을 닫습니다:\n\n${ks.join(', ')}\n\n진행할까요?`)) return;

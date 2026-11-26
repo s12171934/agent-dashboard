@@ -1,6 +1,7 @@
 pub mod app;
 pub mod archive;
 pub mod atest;
+pub mod brzo_web;
 pub mod chars;
 pub mod cli;
 pub mod core;
