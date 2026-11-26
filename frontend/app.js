@@ -2852,8 +2852,17 @@ function wtTicket(t, set, ro) {
     ${t.repos.map(r => wtRepo(t, r)).join('')}${(t.gone || []).map(wtGone).join('')}
   </div>`;
 }
+// Why a server's QA sets are missing or stale, so an empty page is never mistaken for "no QA".
+function wtStatusHtml() {
+  const st = wtData.status || [], many = st.length > 1, who = x => many ? esc(x.name) + ': ' : '';
+  return st.map(x => x.off ? `<div class="st">${who(x)}이 서버는 QA 묶음을 모으지 않습니다 (${esc(x.off)})</div>`
+    : x.error ? `<div class="rv-err">${who(x)}QA 묶음 수집 실패 — ${esc(x.error)}${x.loading ? '' : ' · 직전 결과를 표시합니다'}</div>`
+    : x.warning ? `<div class="rv-err">${who(x)}${esc(x.warning)}</div>`
+    : x.configured === false ? `<div class="st">${who(x)}서버 prefs.json 의 qa_sets 가 비어 있어 QA 묶음을 모으지 않습니다.</div>`
+    : x.loading ? `<div class="st">${who(x)}서버 시작 뒤 첫 수집 중입니다.</div>` : '').join('');
+}
 async function renderWorktrees() {
-  if (wtData.at !== state.reviews_at) { try { const r = await api.reviews(); wtData = { at: state.reviews_at, sets: r?.sets || [], jira: r?.jira || '', updated: r?.updated || null }; } catch { wtData.at = undefined; } }
+  if (wtData.at !== state.reviews_at) { try { const r = await api.reviews(); wtData = { at: state.reviews_at, sets: r?.sets || [], jira: r?.jira || '', updated: r?.updated || null, status: r?.status || [] }; } catch { wtData.at = undefined; } }
   const save = () => { try { localStorage.setItem('adash.wt', JSON.stringify(wtf)); } catch {} };
   if (!wtMounted) {
     $('#view').innerHTML = `<div class="controls">
@@ -2872,6 +2881,7 @@ async function renderWorktrees() {
   $('#wt-f').innerHTML = Object.entries(WT_FILTERS).map(([k, [l, fn]]) => `<button data-k="${k}" class="${k === wtf.f ? 'on' : ''}">${l} ${tks.filter(fn).length}</button>`).join('');
   const num = k => +k.split('-').pop();
   const setHtml = (s, ro) => {
+    if (s.loading) return `<div class="sec-h"><h2>${esc(s.epic)}</h2><span>티켓·워크트리를 모으는 중… (서버 시작 뒤 첫 수집은 몇 분 걸릴 수 있습니다)</span></div>`;
     const n = k => s.tickets.filter(t => t.review === k).length, nj = k => s.tickets.filter(t => jiraStage(t) === k).length;
     const ts = s.tickets.filter(wtHit).sort((a, b) => WT_ORDER.indexOf(a.review) - WT_ORDER.indexOf(b.review) || num(b.key) - num(a.key));
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
@@ -2894,7 +2904,7 @@ async function renderWorktrees() {
           <div class="qa-arch-body">${qaReportHtml(s)}
             <details class="qa-arch-list"><summary>티켓 목록 (${s.tickets.length})</summary>${setHtml(s, true)}</details></div></details>`; }).join('')}` : '');
   // Unchanged markup is left alone: a web VS Code open under a ticket survives a redraw only where moveBefore exists.
-  const html = body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중… (서버 prefs.json 의 qa_sets 가 비어 있으면 아무것도 모으지 않습니다)'}</div>`;
+  const html = wtStatusHtml() + (body || `<div class="empty">${wtData.at ? 'QA 묶음이 없습니다.' : '불러오는 중…'}</div>`);
   if (html === wtBodyHtml && $('#wt-body').childElementCount) return;
   wtBodyHtml = html;
   const held = WEB_HOLD ? [...wtWeb.values()].filter(el => $('#wt-body').contains(el)) : [];
@@ -3301,7 +3311,7 @@ let rvLoad = null, rvFailed = null;
 function needReviews() {
   if (wtData.at === state.reviews_at || rvLoad || rvFailed === state.reviews_at) return;
   const want = state.reviews_at;
-  rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '', updated: r?.updated || null }; })
+  rvLoad = api.reviews().then(r => { wtData = { at: want, sets: r?.sets || [], jira: r?.jira || '', updated: r?.updated || null, status: r?.status || [] }; })
     .catch(() => { rvFailed = want; })
     .finally(() => { rvLoad = null; if (route().v === 'home' || route().v === 'agents' && (charMode || ['map', 'tl'].includes(agView))) render(); });
 }
