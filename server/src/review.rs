@@ -1,5 +1,6 @@
 use crate::{
     app::{App, orca_all},
+    brzo_web,
     core::*,
     sessions::rx,
     terminals, vscode, worktrees,
@@ -169,16 +170,28 @@ fn report_start(app: &App, set: &Value) -> Result<()> {
 }
 fn qa_cli(app: &App, set: &Value, args: &[String]) -> Result<(i32, String)> {
     let prefs = app.state.read().unwrap().prefs.clone();
-    let cli = expand(
-        prefs["qa_driver"]
-            .as_str()
-            .unwrap_or("~/.claude/skills/qa-ticket-driver/bin/qa-driver"),
-    );
+    let (cli, pref) = if set["backend"] == "brzo" {
+        (
+            prefs["brzo_qa_driver"]
+                .as_str()
+                .unwrap_or("~/.claude/skills/brzo-qa-core/bin/brzo-qa-driver"),
+            "brzo_qa_driver",
+        )
+    } else {
+        (
+            prefs["qa_driver"]
+                .as_str()
+                .unwrap_or("~/.claude/skills/qa-ticket-driver/bin/qa-driver"),
+            "qa_driver",
+        )
+    };
+    let cli = expand(cli);
     if !cli.is_file() {
         return Ok((
             127,
             format!(
-                "qa-driver 가 없다: {} (prefs.json qa_driver)",
+                "{} 가 없다: {} (prefs.json {pref})",
+                cli.file_name().unwrap_or_default().to_string_lossy(),
                 cli.display()
             ),
         ));
@@ -200,6 +213,44 @@ fn qa_cli(app: &App, set: &Value, args: &[String]) -> Result<(i32, String)> {
         &[],
     )?;
     Ok((code, format!("{out}\n{err}").trim().into()))
+}
+/// An epic the Brzo driver (brzo-qa-core) runs: its ticket records say `backend: "brzo"`, or its epic record names a
+/// Brzo driver agent. One epic is driven by one of the two drivers.
+fn is_brzo(watch: &Path) -> bool {
+    read_json(watch.join("epic.json"))["driver"]["id"].is_string()
+        || fs::read_dir(watch.join("tickets")).is_ok_and(|d| {
+            d.flatten()
+                .any(|e| read_json(e.path())["backend"] == "brzo")
+        })
+}
+/// After an approve / merge on a Brzo epic: the CLI has typed the message into the coordinator through the Brzo app's
+/// web access when it could; what is still queued is tried once more here (the rest waits for the driver round).
+/// -> a line for the person.
+fn brzo_deliver(set: &Value, key: Option<&str>) -> String {
+    let watch = expand(text(&set["watch"]));
+    match brzo_web::flush(&watch, text(&set["epic"]), key) {
+        Ok(r) => {
+            let left = brzo_web::queued(&watch, key).len();
+            let waits = array(&r["waiting"])
+                .iter()
+                .map(|w| format!("{}: {}", text(&w["key"]), text(&w["why"])))
+                .collect::<Vec<_>>();
+            match (r["sent"].as_u64().unwrap_or(0), left) {
+                (0, 0) => String::new(),
+                (n, 0) => format!("Brzo 로 바로 전달했습니다 ({n}건)"),
+                (n, l) => format!(
+                    "{}남은 {l}건은 드라이버 회차가 전달합니다 — {}",
+                    if n > 0 {
+                        format!("Brzo 로 {n}건 전달, ")
+                    } else {
+                        String::new()
+                    },
+                    waits.join(" · ")
+                ),
+            }
+        }
+        Err(e) => format!("Brzo 웹 접속으로 전달하지 못해 드라이버 회차가 전달합니다 — {e}"),
+    }
 }
 pub fn qa_action(app: &App, what: &str, b: &Value) -> (u16, Value) {
     let error = |code, s: String| (code, json!({"error":s}));
@@ -243,6 +294,16 @@ pub fn qa_action(app: &App, what: &str, b: &Value) -> (u16, Value) {
     }
     if !set["watch"].is_string() {
         return error(409, "이 묶음에는 상태 디렉터리가 없습니다".into());
+    }
+    if action == "deliver" {
+        if set["backend"] != "brzo" {
+            return error(409, "Brzo 드라이버 묶음만 바로 전달합니다".into());
+        }
+        let msg = brzo_deliver(&set, None);
+        return (
+            200,
+            json!({"ok":true,"output":if msg.is_empty(){"전달할 메시지가 없습니다".into()}else{msg}}),
+        );
     }
     if action == "report" {
         if set["retired"] != true {
@@ -311,10 +372,18 @@ pub fn qa_action(app: &App, what: &str, b: &Value) -> (u16, Value) {
     };
     let _ = &mut args;
     match qa_cli(app, &set, &args) {
-        Ok((code, output)) => (
-            if code == 0 || code == 3 { 200 } else { 502 },
-            json!({"ok":code==0,"code":code,"output":output}),
-        ),
+        Ok((code, mut output)) => {
+            if code == 0 && set["backend"] == "brzo" && ["approve", "merge"].contains(&action) {
+                let msg = brzo_deliver(&set, Some(key));
+                if !msg.is_empty() {
+                    output = format!("{output}\n{msg}").trim().into();
+                }
+            }
+            (
+                if code == 0 || code == 3 { 200 } else { 502 },
+                json!({"ok":code==0,"code":code,"output":output}),
+            )
+        }
         Err(e) => error(if e.contains("timed out") { 504 } else { 502 }, e),
     }
 }
@@ -509,22 +578,27 @@ pub fn action(app: &App, action: &str, b: &Value, local: bool) -> (u16, Value) {
             Err(e) => return error(502, e),
         }
     }
-    let Some(step) = t["step"].as_str() else {
-        return error(409, "스텝 노트가 없습니다".into());
-    };
-    if let Err(e) = write_review(
-        Path::new(step),
-        done.then_some(&shas),
-        if done {
-            t["qa"]["round"].as_u64()
-        } else {
-            None
-        },
-    ) {
-        return error(500, format!("스텝 노트 기록 실패: {e}"));
+    let ship = done && stage == "committed" && set["driver"] == true;
+    match t["step"].as_str() {
+        Some(step) => {
+            if let Err(e) = write_review(
+                Path::new(step),
+                done.then_some(&shas),
+                if done {
+                    t["qa"]["round"].as_u64()
+                } else {
+                    None
+                },
+            ) {
+                return error(500, format!("스텝 노트 기록 실패: {e}"));
+            }
+        }
+        // A Brzo ticket keeps its record in the driver's state, not a vault step note: the approval is the record.
+        None if ship && set["backend"] == "brzo" => {}
+        None => return error(409, "스텝 노트가 없습니다".into()),
     }
     let mut approve = None;
-    if done && stage == "committed" && set["driver"] == true {
+    if ship {
         match qa_cli(
             app,
             &set,
@@ -535,7 +609,15 @@ pub fn action(app: &App, action: &str, b: &Value, local: bool) -> (u16, Value) {
                 "대시보드 리뷰 완료".into(),
             ],
         ) {
-            Ok((0, out)) => approve = Some(out),
+            Ok((0, out)) => {
+                approve = Some(if set["backend"] == "brzo" {
+                    format!("{out}\n{}", brzo_deliver(&set, Some(key)))
+                        .trim()
+                        .to_owned()
+                } else {
+                    out
+                })
+            }
             Ok((_, e)) | Err(e) => {
                 return error(502, format!("리뷰는 기록했지만 반출 승인 실패: {e}"));
             }
@@ -1006,6 +1088,7 @@ pub fn collect(app: &App) -> Result<()> {
         );
         let watch = expand(text(&qs["watch"]));
         let driver = watch.join("tickets").is_dir();
+        let brzo = driver && is_brzo(&watch);
         let qa_branches = read_json(watch.join("epic.json"))["qa"].clone();
         let mut tickets = vec![];
         for child in array(&data["tickets"]) {
@@ -1196,7 +1279,7 @@ pub fn collect(app: &App) -> Result<()> {
             }
         }
         let sheet = read_json(app.config.data.join("qa-sheets.json"))[epic].clone();
-        let mut set = json!({"epic":epic,"summary":data["summary"],"project":project,"error":error,"tickets":tickets,"stray":[],"watch":qs["watch"],"driver":driver,"coord_worktree":config["QA_COORD_WORKTREE"],"retired":watch.join("retired").exists(),"retired_at":modified(watch.join("retired")),"finished":!tickets.is_empty()&&tickets.iter().all(|t|jira_stage(t)=="qa"),"sheet":if sheet.is_object(){let mut s=sheet;s["url"]=qs["sheet"].clone();s}else if qs["sheet"].is_string(){json!({"url":qs["sheet"]})}else{Value::Null},"stages":STAGES,"automations":autos,"adopted":autos.iter().any(|a|a["driver"]==true),"report":null,"analysis":null});
+        let mut set = json!({"epic":epic,"summary":data["summary"],"project":project,"error":error,"tickets":tickets,"stray":[],"watch":qs["watch"],"driver":driver,"backend":if brzo{json!("brzo")}else if driver{json!("orca")}else{Value::Null},"outbox":if brzo{brzo_web::queued(&watch,None).len()}else{0},"coord_worktree":config["QA_COORD_WORKTREE"],"retired":watch.join("retired").exists(),"retired_at":modified(watch.join("retired")),"finished":!tickets.is_empty()&&tickets.iter().all(|t|jira_stage(t)=="qa"),"sheet":if sheet.is_object(){let mut s=sheet;s["url"]=qs["sheet"].clone();s}else if qs["sheet"].is_string(){json!({"url":qs["sheet"]})}else{Value::Null},"stages":STAGES,"automations":autos,"adopted":autos.iter().any(|a|a["driver"]==true),"report":null,"analysis":null});
         if set["retired"] == true {
             let mut report = read_json(watch.join("report.json"));
             if !report.is_object() {

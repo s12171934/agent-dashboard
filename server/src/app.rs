@@ -848,7 +848,10 @@ mod hook_tests {
         )
         .unwrap();
         let got = orca_hook_entries(dir.path());
-        let ids: Vec<_> = got.iter().map(|e| text(&e["providerSession"]["id"])).collect();
+        let ids: Vec<_> = got
+            .iter()
+            .map(|e| text(&e["providerSession"]["id"]))
+            .collect();
         assert_eq!(ids, ["s1", "s2"]);
         assert_eq!(got[0]["paneKey"], "tab:leaf");
     }

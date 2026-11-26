@@ -121,7 +121,7 @@ Python 서버에서 전환할 때는 기존 데이터 폴더와 CLI 경로를 �
 | `sessions.rs`, `plans.rs`, `relations.rs`, `reads.rs` | 증분 로그 파싱, 작업 계획, 세션 관계, 읽기 증거 |
 | `decisions.rs`, `terminals.rs` | 결정·메일함·선택기·보호 훅, 터미널 조작 |
 | `projects.rs`, `designs.rs`, `impl_progress.rs`, `flow.rs` | 프로젝트·설계문서·구현 진행·흐름 판정 |
-| `review.rs`, `worktrees.rs`, `vscode.rs` | QA 리뷰·반출·리포트, 워크트리, VS Code 웹 중계 |
+| `review.rs`, `brzo_web.rs`, `worktrees.rs`, `vscode.rs` | QA 리뷰·반출·리포트, Brzo 앱 웹 접속(승인·머지 지시 전달), 워크트리, VS Code 웹 중계 |
 | `archive.rs`, `plan_usage.rs`, `test_runs.rs`, `usage.rs`, `media.rs`, `chars.rs` | 노트·과거 기록, 사용량·테스트·영상·캐릭터 |
 | `cli.rs`, `atest.rs`, `data.rs`, `core.rs` | CLI, 테스트 래퍼, 데이터 이관, 공통 파일·프로세스 처리 |
 
@@ -738,16 +738,20 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 - 워처 줄(`watch` 가 있는 묶음): 옛 워처면(에픽을 부르는 자동화 중 프롬프트가 `qa-driver` 를 부르는 것이 없음) 「옛 워처」 표시와 「드라이버로 이관」 — `qa-driver adopt --check` 로 빠진 `config.env` 키를 물어(추정값: `QA_REPO` 는 CLI, `JIRA_SITE` 는 서버의 `jira_site`) 채운 뒤 `adopt` 로 자동화의 precheck·프롬프트를 바꾼다. 이미 처리 중인 티켓은 그대로 두고 이후 회차부터 새 흐름을 탄다. 공용 코디네이션 워크트리(`config.env` `QA_COORD_WORKTREE`)와 열린 에이전트 터미널 수, 「끝난 코디네이터 닫기 (n)」(Jira 가 개발 완료 이후이거나 반출·정리가 끝났고, 열린 터미널의 세션이 모두 쉬고 있는 티켓). 모든 하위 티켓이 QA 완료면 「QA 종료 처리」 — `retire --dry-run` 결과를 보여 확인을 받은 뒤 `retire`(자동화 끄기, 공용 코디네이션 워크트리의 터미널을 닫고 지움, `retired` 표시). 검토 전 티켓이 남으면 멈춘다(강제 종료는 화면에 없다).
 - 묶음 머리 「QA 통계」 펼침 상자(열림 상태는 `adash.qastats`): ① 요약 — QA 완료 n/전체(진행 바), 재오픈 티켓 수·비율, 평균 회차(드라이버가 잡은 티켓), 드라이버 기동 티켓 수, 막힘 수. ② 일별 추이 — 최근 14일, 날마다 기동한 회차(신규 = 1회차, 재오픈 = 2회차 이후, `claimed/<키>` 의 줄마다)와 커밋 완료(`ready/` 시각. 정리는 자동화가 하므로 완료로 세지 않는다) 수. 완료는 티켓의 마지막 회차만 남아 앞 회차의 완료는 세지 않는다. ③ 코드 변경 규모 — 티켓의 저장소별 바뀐 파일·추가/삭제 줄 합과 PR 수. 워크트리가 남은 저장소는 베이스 대비 diff, 워크트리가 지워진 저장소는 그 PR 의 수치(`gone`)로 센다. 모두 화면에서 `/api/reviews` 로 계산한다.
 - 제어는 스킬의 CLI(`prefs.json` `qa_driver`, 기본 `~/.claude/skills/qa-ticket-driver/bin/qa-driver`)를 부른다. 규칙은 스킬 한 곳에 있다.
+- **Brzo 판 에픽**(`tickets/<키>.json` 의 `backend: "brzo"` 이거나 `epic.json` 에 드라이버 에이전트가 있음, `/api/reviews` 의 `backend: "brzo"`)은 `brzo-qa-driver`(`prefs.json` `brzo_qa_driver`, 기본 `~/.claude/skills/brzo-qa-core/bin/brzo-qa-driver`)를 부른다. `brzo` 는 Brzo 에이전트 터미널 안에서만 되므로, 대시보드에서 부른 승인·머지 지시는 원래 `outbox/` 에 쌓여 다음 드라이버 회차(최대 10분)를 기다렸다. 이제는 Brzo 앱의 「웹 접속」(루프백 `127.0.0.1:4317`, `<BRZO_HOME>/web-access-token` 쿠키 — `/api/events` 웹소켓의 `hello` 로 클라이언트 id 를 받고 `POST /api/invoke` 로 앱 IPC 를 부름)으로 그 티켓의 코디네이터 에이전트 터미널에 지시문을 바로 입력한다. 잠든 코디네이터는 깨운 뒤 입력하고, 질문·권한 응답을 기다리는 코디네이터(`waiting`)에는 그 대화상자에 들어가지 않도록 입력하지 않는다. CLI 가 먼저 입력을 시도하고, 남은 것을 서버(`server/src/brzo_web.rs`)가 같은 규칙으로 한 번 더 시도한다. 그래도 남은 것(코디네이터 기록이 없음·사라짐·질문 대기·앱이나 웹 접속이 꺼짐)은 드라이버 회차가 전달하며(사라진 코디네이터는 새로 띄운다), 결과는 알림 문구에 나온다. 전달하면 `log/tell.jsonl` 에 `via: "brzo-web"` 한 줄, 드라이버 로그에 `WEB-DELIVERED`(남기면 `WEB-WAIT`) 한 줄을 남긴다.
+  - Brzo 티켓은 볼트 스텝 노트가 없어도 「리뷰 완료 · 반출 승인」이 된다(승인 파일이 기록이다).
+  - 워처 줄의 「Brzo 로 바로 전달 (n)」: `outbox/` 에서 회차를 기다리는 코디네이터 메시지를 지금 입력한다.
+  - 「워크트리 정리」·「코디네이터 재기동」은 드라이버 에이전트에서만 되므로 Brzo 묶음에는 보이지 않는다.
 
 | 엔드포인트 | 응답 |
 | --- | --- |
 | `POST /api/qa/automation` | `{"epic", "id", "action": "enable"\|"disable"\|"run"}` — 그 묶음이 나열한 자동화만. 502 Orca 실패 |
-| `POST /api/qa/ticket` | 티켓: `{"epic", "key", "action": "approve"\|"merge"\|"cleanup_check"\|"cleanup"\|"restart"\|"close"\|"ignore"\|"unignore"}`. 묶음: `{"epic", "action": "close_finished", "keys": [...]}` · `"retire_check"\|"retire"` · `"adopt_check"` · `{"action": "adopt", "set": {KEY: 값}, "automation"}`. → `{"ok", "code", "output"}`. `code` 3 = 정리·종료가 멈출 상황, 그 밖의 실패는 502 |
-| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "watch", "driver", "coord_worktree", "retired", "finished", "adopted", "stages", "automations": [{"id", "name", "enabled", "rrule", "driver", "next", "last", "runs": [{"status", "at", "error", "trigger"}]}], "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "qa": null\|{"stage", "stage_no", "blocked", "blocked_reason", "ignored", "round", "coordinator", "workers", "worktree", "at", "prs", "handoffs", "done", "driver", "handles", "links": {워커 터미널: 그 회차 코디네이터 터미널}, "live", "rounds": [회차마다 시작 시각]}, "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"QA"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}], "gone": [{"repo", "branch", "pr": {"number", "url", "state"}, "base", "merged_at", "files", "ins", "dels"}]}]}], "updated", "jira"}`. `gone` = 지워진 워크트리의 PR — 워크트리 행에서 본 PR(데이터 폴더의 `review-gone.json` 에 기억)과 드라이버 `delivered/` 의 PR 중 살아 있는 행에 없는 것, `gh pr view` 수치 |
+| `POST /api/qa/ticket` | 티켓: `{"epic", "key", "action": "approve"\|"merge"\|"cleanup_check"\|"cleanup"\|"restart"\|"close"\|"ignore"\|"unignore"}`. 묶음: `{"epic", "action": "close_finished", "keys": [...]}` · `"deliver"`(Brzo 묶음의 outbox 를 바로 전달, 409 Brzo 묶음 아님) · `"retire_check"\|"retire"` · `"adopt_check"` · `{"action": "adopt", "set": {KEY: 값}, "automation"}`. → `{"ok", "code", "output"}`. `code` 3 = 정리·종료가 멈출 상황, 그 밖의 실패는 502 |
+| `GET /api/reviews` | `{"sets": [{"epic", "summary", "project", "error", "watch", "driver", "backend": null\|"orca"\|"brzo", "outbox": Brzo 묶음의 코디네이터 대기 메시지 수, "coord_worktree", "retired", "finished", "adopted", "stages", "automations": [{"id", "name", "enabled", "rrule", "driver", "next", "last", "runs": [{"status", "at", "error", "trigger"}]}], "stray": [에픽 하위에 없는 워크트리 키], "tickets": [{"key", "qa": null\|{"stage", "stage_no", "blocked", "blocked_reason", "ignored", "round", "coordinator", "workers", "worktree", "at", "prs", "handoffs", "done", "driver", "handles", "links": {워커 터미널: 그 회차 코디네이터 터미널}, "live", "rounds": [회차마다 시작 시각]}, "summary", "status", "cat", "assignee", "ship": null|{"status", "task_id", "run_id", "at", "error"}, "review": "none"\|"pending"\|"done"\|"changed", "review_at", "review_sha", "step", "step_status", "notes", "test", "repos": [{"repo", "path", "branch", "name", "comment", "head", "base", "base_ref", "base_src": "PR"\|"QA"\|"설정"\|"기본", "pr", "dirty", "ahead", "behind", "files", "ins", "dels"}], "gone": [{"repo", "branch", "pr": {"number", "url", "state"}, "base", "merged_at", "files", "ins", "dels"}]}]}], "updated", "jira"}`. `gone` = 지워진 워크트리의 PR — 워크트리 행에서 본 PR(데이터 폴더의 `review-gone.json` 에 기억)과 드라이버 `delivered/` 의 PR 중 살아 있는 행에 없는 것, `gh pr view` 수치 |
 | `POST /api/review/open` | `{"key", "editor"?}` → 위 「에디터로 열기」. 403 루프백 밖, 409 워크트리 없음 |
 | `POST /api/review/web` | `{"key"}` → 위 「VS Code 로 보기」: serve-web 을 띄우고 `{"repos": [{"repo", "path", "url"}]}` (url 은 이 서버 기준 경로). 403 루프백 밖, 502 serve-web 실패 |
 | `GET·POST /vscode/<비밀값>/…` | 웹 VS Code 중계 (루프백만) |
-| `POST /api/review/mark` | `{"key", "done": true\|false}` → 리뷰 기록·취소. 드라이버 `committed` 티켓이면 반출 승인까지(`{"approved": true, "output"}`). 409 스텝 노트 없음·드라이버 티켓이 `committed` 전, 502 리뷰는 기록했지만 승인 실패 |
+| `POST /api/review/mark` | `{"key", "done": true\|false}` → 리뷰 기록·취소. 드라이버 `committed` 티켓이면 반출 승인까지(`{"approved": true, "output"}`). 409 스텝 노트 없음(Brzo 티켓의 반출 승인은 제외)·드라이버 티켓이 `committed` 전, 502 리뷰는 기록했지만 승인 실패 |
 | `POST /api/review/ship` | `{"key"}` → 위 「PR 후 머지」, 202 시작함(워커 기동은 뒤에서). 409 `ship_prompt`·`ship_place` 없음, 진행 중 아님, 이미 반출 중 |
 | `GET /api/state` | `reviews_at` — 묶음이 다시 모일 때마다 바뀐다 |
 
@@ -769,6 +773,7 @@ QA 에픽 하나(묶음)의 티켓마다 그 티켓의 Orca 워크트리를 모�
 | `ship_agent` · `ship_model` | 그 워커의 Orca 에이전트와 모델. 기본 `claude` · `opus` |
 | `qa_sets[].watch` | 그 묶음의 qa-ticket-driver 상태 디렉터리 (예: `~/.qa-driver/<에픽 소문자>`, 옛 워처면 `~/.qa-watch/<에픽 소문자>`). 없으면 진행 트랙·제어가 꺼진다 |
 | `qa_driver` | qa-ticket-driver CLI 경로. 기본 `~/.claude/skills/qa-ticket-driver/bin/qa-driver` |
+| `brzo_qa_driver` | Brzo 판 QA 드라이버 CLI 경로. 기본 `~/.claude/skills/brzo-qa-core/bin/brzo-qa-driver` |
 | `review_first` | 티켓 안에서 먼저 놓을 저장소 목록 (예: 앱들이 쓰는 공용 라이브러리). 기본은 없음 |
 | `pinned` | 에이전트 목록 맨 위에 고정한 세션 경로 → 고정 시각. 대시보드의 ☆ 가 쓴다 (위 「에이전트 탭 보기」) |
 | `flow_ok` | 「정상으로 표시」한 흐름 이탈 id → 표시 시각. 대시보드가 쓴다 (위 「흐름 이탈 판정」) |
