@@ -2518,7 +2518,7 @@ const obsLink = p => {
   return root ? `obsidian://open?vault=${encodeURIComponent(root.split('/').pop())}&file=${encodeURIComponent(p.slice(root.length + 1).replace(/\.md$/, ''))}`
     : 'obsidian://open?path=' + encodeURIComponent(p);
 };
-const BASE_SRC = { PR: 'PR 의 base', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
+const BASE_SRC = { PR: 'PR 의 base', QA: '에픽 QA 브랜치 (epic.json)', 설정: 'prefs.json review_bases', 기본: '설정 없음 → main' };
 function wtTest(x) {
   if (!x) return '';
   const live = x.phase !== 'done' && x.phase !== 'failed', end = live ? null : testEnd(x) === 'pass' && /[1-9]\d* failures?/.test(x.detail || '') ? 'fail' : testEnd(x);

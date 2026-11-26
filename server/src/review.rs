@@ -902,7 +902,7 @@ fn project_notes(
     }
     out
 }
-fn repo(path: &str, name: &str, prefs: &Value) -> Value {
+fn repo(path: &str, name: &str, prefs: &Value, qa_branches: &Value) -> Value {
     let p = Path::new(path);
     let branch = git(p, &["branch", "--show-current"]).unwrap_or_default();
     let head = git(p, &["rev-parse", "HEAD"]).ok();
@@ -928,8 +928,13 @@ fn repo(path: &str, name: &str, prefs: &Value) -> Value {
         Ok(d[0].clone())
     })
     .unwrap_or(Value::Null);
+    // PR 이 없으면 에픽 QA 브랜치(watch/epic.json qa.<서브모듈>.branch) — 티켓 수정 PR 의 타깃이 그것이다.
+    let qa_branch = qa_branches[name]["branch"]
+        .as_str()
+        .filter(|b| !b.is_empty() && *b != branch);
     let base = pr["baseRefName"]
         .as_str()
+        .or(qa_branch)
         .or(prefs["review_bases"][name].as_str())
         .unwrap_or("main");
     let base_ref = [format!("origin/{base}"), base.into()]
@@ -952,7 +957,7 @@ fn repo(path: &str, name: &str, prefs: &Value) -> Value {
         };
         stats = json!({"behind":nums.first(),"ahead":nums.get(1),"files":n(r"(\d+) files? changed"),"ins":n(r"(\d+) insertions?"),"dels":n(r"(\d+) deletions?")});
     }
-    let mut r = json!({"repo":name,"path":path,"branch":branch,"name":null,"comment":null,"head":head,"base":base,"base_ref":base_ref,"base_src":if !pr.is_null(){"PR"}else if prefs["review_bases"][name].is_string(){"설정"}else{"기본"},"pr":pr,"dirty":git(p,&["status","--porcelain"]).ok().map(|s|s.lines().count())});
+    let mut r = json!({"repo":name,"path":path,"branch":branch,"name":null,"comment":null,"head":head,"base":base,"base_ref":base_ref,"base_src":if !pr.is_null(){"PR"}else if qa_branch.is_some(){"QA"}else if prefs["review_bases"][name].is_string(){"설정"}else{"기본"},"pr":pr,"dirty":git(p,&["status","--porcelain"]).ok().map(|s|s.lines().count())});
     merge(&mut r, &stats);
     r
 }
@@ -1001,6 +1006,7 @@ pub fn collect(app: &App) -> Result<()> {
         );
         let watch = expand(text(&qs["watch"]));
         let driver = watch.join("tickets").is_dir();
+        let qa_branches = read_json(watch.join("epic.json"))["qa"].clone();
         let mut tickets = vec![];
         for child in array(&data["tickets"]) {
             let key = text(&child["key"]);
@@ -1079,7 +1085,7 @@ pub fn collect(app: &App) -> Result<()> {
             }
             let mut repos = paths
                 .iter()
-                .map(|(p, n)| repo(p, n, &prefs))
+                .map(|(p, n)| repo(p, n, &prefs, &qa_branches))
                 .collect::<Vec<_>>();
             repos.sort_by_key(|r| {
                 (
