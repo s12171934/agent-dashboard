@@ -191,9 +191,14 @@ pub fn collect(app: &App, fresh: bool) -> Result<Value> {
         v
     };
     let notes = read_json(app.config.data.join("worktree-notes.json"));
+    let brzo = brzo_lineage(&read_json(brzo_state()));
     for r in listing["repos"].as_array_mut().unwrap() {
         for w in r["worktrees"].as_array_mut().unwrap() {
             w["note"] = notes[text(&w["path"])].clone();
+            w["brzo"] = brzo
+                .get(&real(text(&w["path"])))
+                .cloned()
+                .unwrap_or(Value::Null);
         }
     }
     Ok(listing)
@@ -416,6 +421,77 @@ pub fn get(app: &App, fresh: bool) -> Result<Value> {
         move || collect(&a, true),
     )
 }
+/// Brzo's app state (`<BRZO_HOME>/state.json`, `BRZO_HOME` overriding the app's folder as in brzo_web).
+fn brzo_state() -> PathBuf {
+    std::env::var_os("BRZO_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| expand("~/Library/Application Support/Brzo"))
+        .join("state.json")
+}
+/// Brzo agents by the worktree they work in. Each agent node names the agent that spawned it (`parentId`: the QA
+/// driver over its coordinators, a coordinator over its workers), so a worktree carries its agent and that agent's
+/// ancestors, root first, with the folder each works in (a folder workspace is no git worktree, so it may not be listed
+/// itself), and how many agents it spawned.
+pub fn brzo_lineage(state: &Value) -> HashMap<PathBuf, Value> {
+    let nodes = array(&state["nodes"]);
+    let by_id = nodes
+        .iter()
+        .filter_map(|n| n["id"].as_str().map(|id| (id, n)))
+        .collect::<HashMap<_, _>>();
+    let brief = |n: &Value| json!({"id":n["id"],"name":n["name"],"path":n["worktreePath"],"branch":n["branch"],"state":n["state"]});
+    let mut out = HashMap::new();
+    for n in nodes {
+        let Some(path) = n["worktreePath"].as_str() else {
+            continue;
+        };
+        let mut ancestors = vec![];
+        let mut seen = HashSet::from([text(&n["id"])]);
+        let mut at = n["parentId"].as_str();
+        while let Some(p) = at.filter(|p| seen.insert(p)).and_then(|p| by_id.get(p)) {
+            ancestors.push(brief(p));
+            at = p["parentId"].as_str();
+        }
+        ancestors.reverse();
+        let children = nodes.iter().filter(|c| c["parentId"] == n["id"]).count();
+        let mut me = brief(n);
+        merge(
+            &mut me,
+            &json!({"base_ref":n["baseRef"],"base_source":n["baseSource"],"ancestors":ancestors,"children":children}),
+        );
+        out.insert(real(path), me);
+    }
+    out
+}
 fn invalidate(app: &App) {
     drop_cache(&format!("worktrees:{}", app.config.data.display()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn brzo_lineage_walks_parents_root_first() {
+        let state = json!({"nodes":[
+            {"id":"d","name":"드라이버","worktreePath":"/nowhere/d"},
+            {"id":"c","name":"코디네이터","parentId":"d","worktreePath":"/nowhere/c","branch":"dante/c","baseRef":"origin/main"},
+            {"id":"w","name":"워커","parentId":"c","worktreePath":"/nowhere/w","baseRef":"dante/c","baseSource":"parent"},
+            {"id":"x","name":"고리","parentId":"x","worktreePath":"/nowhere/x"},
+            {"id":"o","name":"고아","parentId":"gone","worktreePath":"/nowhere/o"},
+            {"id":"n","name":"자리 없음"}
+        ]});
+        let m = brzo_lineage(&state);
+        assert_eq!(m.len(), 5);
+        let w = &m[&real("/nowhere/w")];
+        let names = array(&w["ancestors"])
+            .iter()
+            .map(|a| text(&a["name"]))
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["드라이버", "코디네이터"]);
+        assert_eq!(w["ancestors"][1]["path"], "/nowhere/c");
+        assert_eq!(w["base_source"], "parent");
+        assert_eq!(m[&real("/nowhere/c")]["children"], 1);
+        assert_eq!(m[&real("/nowhere/d")]["ancestors"], json!([]));
+        assert_eq!(m[&real("/nowhere/x")]["ancestors"], json!([]));
+        assert_eq!(m[&real("/nowhere/o")]["ancestors"], json!([]));
+    }
 }

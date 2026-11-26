@@ -3086,16 +3086,38 @@ async function trLoad(fresh) {
 // the commit it sits on (muted, monospace).
 const TR_BR_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9-6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM3.5 5v6M12.5 8c0 2.5-3 2.5-6 3.5-1.5.5-3 1-3 1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
 const trSub = m => `<span class="tr-sub${m.branch ? '' : ' det'}" title="${esc(`서브모듈 ${m.path}\n${m.branch ? '브랜치 ' + m.branch : '분리 HEAD (브랜치 아님)'} · ${m.head || ''}`)}"><span class="tr-sub-n">${esc(m.path.split('/').pop())}</span><span class="tr-sub-b">${m.branch ? TR_BR_ICON + esc(cut(m.branch, 50)) : '분리 ' + esc(m.head || '?')}</span></span>`;
-function trRow(w, sv) {
+// A Brzo agent's worktree: the agent's name as a badge, and the agents above it (driver › coordinator), each a link to
+// its own row when that worktree is listed too. A child sits under its parent's row, indented (trTree).
+const trBrzo = (w, sv) => {
+  const b = w.brzo;
+  if (!b) return '';
+  const hop = a => a.path && trPaths.has(trKey(sv.server, a.path))
+    ? `<a href="#" data-tr-go="${esc(trKey(sv.server, a.path))}" title="${esc(a.path)}">${esc(a.name || a.id)}</a>`
+    : `<span title="${esc(a.path || '')}">${esc(a.name || a.id)}</span>`;
+  return `<span class="st tr-line" title="Brzo 에이전트 계보 (위 에이전트가 띄운 순서)">${b.ancestors.length ? b.ancestors.map(hop).join(' › ') + ' › ' : ''}<b>${esc(b.name || b.id)}</b>${b.base_source === 'parent' && b.base_ref ? ` · 부모 브랜치 ${esc(cut(b.base_ref, 50))} 에서 분기` : ''}${b.children ? ` · 자식 ${b.children}` : ''}</span>`;
+};
+let trPaths = new Set();  // server|path of the rows on show, for trBrzo's links
+// Rows in lineage order: each Brzo worktree right after its nearest listed ancestor, one level deeper.
+function trTree(ws, sv) {
+  const key = w => trKey(sv.server, w.path), byKey = new Map(ws.map(w => [key(w), w]));
+  const up = w => [...(w.brzo?.ancestors || [])].reverse().map(a => a.path && byKey.get(trKey(sv.server, a.path))).find(Boolean);
+  const kids = new Map(), roots = [];
+  for (const w of ws) { const p = up(w); if (p) (kids.get(p) || kids.set(p, []).get(p)).push(w); else roots.push(w); }
+  const out = [], walk = (w, d) => { out.push([w, d]); for (const c of kids.get(w) || []) walk(c, d + 1); };
+  roots.forEach(w => walk(w, 0));
+  return out;
+}
+function trRow(w, sv, depth = 0) {
   const k = trKey(sv.server, w.path), live = state.sessions.filter(s => OPEN(status(s)) && s.place?.path === w.path).length;
   const flags = [w.main && '<span class="badge">메인</span>', w.orca && '<span class="badge">Orca</span>',
+    w.brzo && `<span class="badge brzo" title="Brzo 에이전트 ${esc(w.brzo.name || w.brzo.id)}의 워크트리${w.brzo.state ? ' · ' + esc(w.brzo.state) : ''}">Brzo</span>`,
     w.detached && '<span class="rv-flag warn" title="브랜치가 아닌 커밋에 있음">분리 HEAD</span>',
     w.locked && '<span class="rv-flag warn">잠김</span>', w.prunable && '<span class="rv-flag bad" title="git worktree prune 대상">정리 대상</span>',
     w.missing && '<span class="rv-flag bad">디스크에 없음</span>',
     w.dirty ? `<span class="rv-flag warn" title="커밋하지 않은 변경 (git status)">미커밋 ${w.dirty}</span>` : '',
     live ? `<span class="badge srv" title="이 워크트리에서 도는 에이전트 세션">에이전트 ${live}</span>` : ''].filter(Boolean).join('');
   const off = !sv.local ? ' disabled title="이 맥에서 연 화면(127.0.0.1)에서만 열 수 있습니다"' : w.missing || w.bare ? ' disabled title="디스크에 없습니다"' : '';
-  return `<div class="rv-tk tr-row${w.missing || w.prunable ? ' none' : ''}" data-tr="${esc(k)}">
+  return `<div class="rv-tk tr-row${w.missing || w.prunable ? ' none' : ''}${depth ? ' tr-child' : ''}" data-tr="${esc(k)}"${depth ? ` style="--tr-depth:${Math.min(depth, 6)}"` : ''}>
     <div class="rv-head"><b title="${esc(w.comment || '')}">${esc(w.name)}</b>
       <span class="st">${w.branch ? esc(cut(w.branch, 60)) : esc(w.head || '')}</span>${flags}
       <span class="rv-acts">
@@ -3103,7 +3125,7 @@ function trRow(w, sv) {
         <button class="act big" data-tr-web="${esc(w.path)}" data-srv="${esc(sv.server)}" aria-expanded="${trWeb.has(k)}"${off || ' title="이 행 아래에 웹 VS Code(읽기 전용)를 펼칩니다"'}>${trWeb.has(k) ? '웹 접기' : '웹으로 보기'}</button>
         ${w.main || w.bare ? '' : `<button class="act big danger" data-tr-rm="${esc(w.path)}" data-srv="${esc(sv.server)}"${!sv.local ? ' disabled title="이 맥에서 연 화면(127.0.0.1)에서만 지울 수 있습니다"' : ` title="${w.missing || w.prunable ? 'git 의 워크트리 기록을 정리합니다 (git worktree prune)' : w.orca ? 'Orca 로 워크트리를 지웁니다. 머지된 것이 확인되는 브랜치는 Orca 가 함께 지웁니다' : '워크트리 폴더를 지웁니다 (git worktree remove). 브랜치는 남습니다'}"`}>삭제</button>`}
         <button class="act big accent" data-tr-open="${esc(w.path)}" data-srv="${esc(sv.server)}"${off || ' title="데스크톱 ${editorName()} 창으로 엽니다. 이미 열린 창이면 앞으로 가져옵니다 (에디터는 설정의 「에디터」)"'}>${editorName()} 로 열기</button></span></div>
-    <div class="rv-meta"><span class="st tr-path">${esc(w.path)}</span>
+    <div class="rv-meta">${trBrzo(w, sv)}<span class="st tr-path">${esc(w.path)}</span>
       ${w.committed ? `<span class="st" title="${esc(w.subject || '')}">${ago(new Date(w.committed * 1000).toISOString())} · ${esc(cut(w.subject || '', 60))}</span>` : ''}
       ${w.comment ? `<span class="st" title="Orca 코멘트">Orca: ${esc(cut(w.comment, 80))}</span>` : ''}</div>
     ${w.submodules?.length ? `<div class="tr-subs"><span class="st">서브모듈 ${w.submodules.length}</span>${w.submodules.map(trSub).join('')}</div>` : ''}
@@ -3117,7 +3139,7 @@ async function renderTrees() {
   if (!trMounted) {
     $('#view').innerHTML = `<div class="sec-h"><h2>워크트리</h2><span>Orca 에 등록된 저장소마다 git 이 아는 모든 워크트리입니다 (Orca 가 만들지 않은 것도). VS Code 는 이 맥에서 연 화면에서만 열립니다.</span></div>
       <div class="controls">
-        <input type="search" id="tr-q" class="field" placeholder="이름·브랜치(서브모듈 포함)·경로 검색" value="${esc(trf.q)}">
+        <input type="search" id="tr-q" class="field" placeholder="이름·브랜치(서브모듈 포함)·경로·Brzo 에이전트 검색" value="${esc(trf.q)}">
         <label class="st"><input type="checkbox" id="tr-dirty"${trf.dirty ? ' checked' : ''}> 미커밋 있는 것만</label>
         <button class="act big" id="tr-reload">새로 고침</button><span class="st" id="tr-sum"></span>
       </div><div id="tr-body"><div class="empty">불러오는 중…</div></div>`;
@@ -3134,12 +3156,13 @@ async function renderTrees() {
   }
   if (!trData) return;
   const q = trf.q.trim().toLowerCase(), multi = trData.servers.length > 1;
-  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment, w.note?.text, ...(w.submodules || []).flatMap(m => [m.path, m.branch])].some(x => (x || '').toLowerCase().includes(q)));
+  const hit = w => (!trf.dirty || w.dirty) && (!q || [w.name, w.branch, w.path, w.comment, w.note?.text, w.brzo?.name, ...(w.brzo?.ancestors || []).map(a => a.name), ...(w.submodules || []).flatMap(m => [m.path, m.branch])].some(x => (x || '').toLowerCase().includes(q)));
   let shown = 0, all = 0;
+  trPaths = new Set(trData.servers.flatMap(sv => sv.repos.flatMap(rp => rp.worktrees.filter(hit).map(w => trKey(sv.server, w.path)))));
   const body = trData.servers.map(sv => {
     const repos = sv.repos.map(rp => { const ws = rp.worktrees.filter(hit); all += rp.worktrees.length; shown += ws.length;
       return ws.length || rp.error ? `<div class="sec-h"><h2>${esc(rp.name)}</h2><span title="${esc(rp.path)}">${ws.length}${ws.length !== rp.worktrees.length ? ' / ' + rp.worktrees.length : ''}개 · ${esc(rp.path)}</span></div>
-        ${rp.error ? `<div class="rv-err">${esc(rp.error)}</div>` : ''}<div class="rv-list" data-held-list="${esc(sv.server + '|' + rp.path)}">${ws.map(w => trRow(w, sv)).join('')}</div>` : ''; }).join('');
+        ${rp.error ? `<div class="rv-err">${esc(rp.error)}</div>` : ''}<div class="rv-list" data-held-list="${esc(sv.server + '|' + rp.path)}">${trTree(ws, sv).map(([w, d]) => trRow(w, sv, d)).join('')}</div>` : ''; }).join('');
     return (multi ? `<div class="sec-h"><h2>${esc(sv.name)}</h2><span class="badge srv">서버</span></div>` : '')
       + (sv.error ? `<div class="rv-err">${esc(sv.name)}: ${esc(sv.error)}</div>` : '') + repos;
   }).join('') || '';
@@ -3209,6 +3232,15 @@ async function trRemove(b) {
   trBodyHtml = ''; renderTrees();
 }
 async function trClick(e) {
+  const go = e.target.closest('a[data-tr-go]');
+  if (go) {
+    e.preventDefault();
+    const row = $('#tr-body').querySelector(`[data-tr="${CSS.escape(go.dataset.trGo)}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('wt-flash');
+    return setTimeout(() => row.classList.remove('wt-flash'), 1800);
+  }
   const n = e.target.closest('button[data-tr-note], button[data-tr-note-save], button[data-tr-note-cancel]');
   if (n && !n.disabled) {
     if (n.dataset.trNote) return trNoteEdit(trKey(n.dataset.srv, n.dataset.trNote));
