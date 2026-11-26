@@ -2,6 +2,7 @@ use crate::{
     app::{App, orca_all},
     brzo_web,
     core::*,
+    preview,
     sessions::rx,
     terminals, vscode, worktrees,
 };
@@ -1280,6 +1281,14 @@ pub fn collect(app: &App) -> Result<()> {
         }
         let sheet = read_json(app.config.data.join("qa-sheets.json"))[epic].clone();
         let mut set = json!({"epic":epic,"summary":data["summary"],"project":project,"error":error,"tickets":tickets,"stray":[],"watch":qs["watch"],"driver":driver,"backend":if brzo{json!("brzo")}else if driver{json!("orca")}else{Value::Null},"outbox":if brzo{brzo_web::queued(&watch,None).len()}else{0},"coord_worktree":config["QA_COORD_WORKTREE"],"retired":watch.join("retired").exists(),"retired_at":modified(watch.join("retired")),"finished":!tickets.is_empty()&&tickets.iter().all(|t|jira_stage(t)=="qa"),"sheet":if sheet.is_object(){let mut s=sheet;s["url"]=qs["sheet"].clone();s}else if qs["sheet"].is_string(){json!({"url":qs["sheet"]})}else{Value::Null},"stages":STAGES,"automations":autos,"adopted":autos.iter().any(|a|a["driver"]==true),"report":null,"analysis":null});
+        set["preview"] = if set["retired"] == true {
+            Value::Null
+        } else {
+            preview::for_set(
+                text(&config["QA_PREVIEW_URL"]),
+                &read_json(watch.join("epic.json")),
+            )
+        };
         if set["retired"] == true {
             let mut report = read_json(watch.join("report.json"));
             if !report.is_object() {

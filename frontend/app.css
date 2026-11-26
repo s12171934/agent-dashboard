@@ -1317,6 +1317,10 @@ a.wt-proxy:hover .wt-px-go { text-decoration: underline; }
 .qa-sheet { display: grid; gap: 8px; padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .qsh-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
 .qsh-h b { color: var(--text); font-size: 13px; }
+.qpv-st { font-size: 12px; font-weight: 600; }
+.qpv-urls { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
+.qpv-log summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.qpv-log pre { margin: 6px 0 0; max-height: 220px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .qsh-bar { display: flex; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
 .qsh-bar i { display: block; height: 100%; }
 .qa-stats { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
