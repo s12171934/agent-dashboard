@@ -406,7 +406,7 @@ impl App {
             }
             c.1.clone()
         };
-        let mut next = json!({"runs":runs,"tasks":tasks,"workers":workers,"terminals":terminals,"repos":repos["repos"],"worktrees":worktrees["worktrees"],"automations":automations,"error":null});
+        let mut next = json!({"runs":runs,"tasks":tasks,"workers":workers,"terminals":terminals,"repos":repos["repos"],"worktrees":worktrees["worktrees"],"automations":automations,"script_terminals":script_terminals(&home().join(".checkbox-driver")),"error":null});
         let mut state = self.state.write().unwrap();
         let mut old = state.orca.clone();
         let updated = old
@@ -571,9 +571,11 @@ impl App {
             sm["orca_close_tree"] = json!([]);
             sm["decision"] = Value::Null;
         }
+        let scripts = array(&orca["script_terminals"]);
         for (h, t) in connected.iter().filter(|(h, _)| !claimed.contains(*h)) {
             let a = &t["agentIdentity"];
-            if !a.is_null() {
+            // Orca tags a terminal that drives orchestration as an agent; a scheduler script never takes a prompt.
+            if !a.is_null() && !scripts.iter().any(|s| s == h.as_str()) {
                 let path = format!("orca-terminal:{h}");
                 let place =
                     snapshot_place(text(&t["worktreePath"]), &self.config, &orca, &mut places);
@@ -785,6 +787,27 @@ fn lite_orca(o: &Value) -> Value {
     }
     o
 }
+/// Terminals that run checkbox-driver scripts rather than an agent: each project's scheduler
+/// (`state/scheduler.json`) and its track runners (`state/run-<track>.json`).
+pub(crate) fn script_terminals(root: &Path) -> Vec<String> {
+    let mut out = vec![];
+    for project in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        let state = project.path().join("state");
+        out.extend(
+            read_json(state.join("scheduler.json"))["scheduler_terminal"]
+                .as_str()
+                .map(str::to_owned),
+        );
+        for f in std::fs::read_dir(&state).into_iter().flatten().flatten() {
+            let name = f.file_name().to_string_lossy().into_owned();
+            if name.starts_with("run-") && name.ends_with(".json") {
+                out.extend(read_json(f.path())["terminal"].as_str().map(str::to_owned));
+            }
+        }
+    }
+    out.retain(|h| !h.is_empty());
+    out
+}
 /// Orca's latest hook status per pane. Orca 1.x keeps it in `last-status.db`
 /// (rows keyed `entry\0<paneKey>`); older builds wrote `last-status.json`.
 /// Losing this source unlinks sessions from their terminals, which then show up
@@ -825,6 +848,24 @@ pub(crate) fn orca_hook_entries(dir: &Path) -> Vec<Value> {
 #[cfg(test)]
 mod hook_tests {
     use super::*;
+    #[test]
+    fn script_terminals_lists_schedulers_and_track_runners() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("prd83/state");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(
+            state.join("scheduler.json"),
+            r#"{"scheduler_terminal":"term_s"}"#,
+        )
+        .unwrap();
+        std::fs::write(state.join("run-R1.json"), r#"{"terminal":"term_r1"}"#).unwrap();
+        std::fs::write(state.join("R1.json"), r#"{"terminal":"term_not_a_runner"}"#).unwrap();
+        std::fs::create_dir_all(dir.path().join("empty/state")).unwrap();
+        let mut got = script_terminals(dir.path());
+        got.sort();
+        assert_eq!(got, ["term_r1", "term_s"]);
+        assert!(script_terminals(&dir.path().join("missing")).is_empty());
+    }
     #[test]
     fn reads_hook_entries_from_sqlite_and_legacy_json() {
         let dir = tempfile::tempdir().unwrap();
