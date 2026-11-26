@@ -2597,6 +2597,23 @@ function qaAutoHtml(s) {
   const sum = qs.length ? `<div class="rv-jsum">진행 ${WT_QA.length}단계 ${counts.map(([k, n]) => `<span class="rv-js">${QA_ST[k]} ${n}</span>`).join('')}${qs.some(q => q.blocked) ? `<span class="rv-js j-todo">막힘 ${qs.filter(q => q.blocked).length}</span>` : ''}</div>` : '';
   return (qs.length ? qaLegend() : '') + (autos.length ? `<div class="qa-autos">${box}</div>` : s.watch ? '<div class="st" style="margin-bottom:6px">이 묶음의 에픽을 부르는 Orca 자동화가 없습니다.</div>' : '') + sum;
 }
+// The set's QA preview (server `preview.rs`): the slot on the preview control server (`config.env` QA_PREVIEW_URL) built
+// from the epic PRs — its deploy state as the control page shows it, the app addresses, and the build log's tail while
+// it is deploying or failed. `error`: the control server could not be read, so only `epic.json`'s slot and addresses.
+function qaPreviewHtml(s) {
+  const p = s.preview;
+  if (!p) return '';
+  const tone = { on: 'done', busy: 'warn', off: 'muted' }[p.state] || 'bad';
+  const state = p.state ? `<span class="qpv-st" style="color:var(--${tone})">● ${esc(p.label || p.state)}${p.detail ? ` <span class="st">${esc(p.detail)}</span>` : ''}</span>` : '';
+  const refs = (p.refs || []).map(r => `${r.app || r.repo}: ${r.title || ''}`).join('\n');
+  const ctl = p.base ? `<a href="${esc(p.base)}" target="_blank" rel="noopener">제어 페이지</a>` : '';
+  const urls = (p.urls || []).map(u => `<a href="${esc(u.url)}" target="_blank" rel="noopener">${esc(u.label || u.url)}</a>`).join('');
+  const log = p.log?.length ? `<details class="qpv-log"><summary>빌드 로그 끝 ${p.log.length}줄</summary><pre>${esc(p.log.join('\n'))}</pre></details>` : '';
+  return `<div class="qa-sheet qa-preview"><div class="qsh-h"><b title="${esc(refs)}">미리보기${p.slot != null ? ` #${esc(p.slot)}` : ''}</b>${state}${ctl}
+      ${p.stale ? '<span class="rv-flag warn" title="이 슬롯의 PR 이 에픽 PR 과 다릅니다 — 다른 미리보기로 바뀌었을 수 있습니다">에픽 PR 아님</span>' : ''}
+      ${p.error ? `<span class="rv-flag bad" title="${esc(p.error)}">상태 못 읽음</span>` : ''}</div>
+    ${urls ? `<div class="qpv-urls">${urls}</div>` : ''}${log}</div>`;
+}
 // The set's TC sheet (prefs `qa_sets[].sheet`): its Summary tab as `aqa sheet` last recorded it — the QA driver's run
 // reads the sheet through the Drive connector, so the numbers are only as fresh as the driver's last run.
 function qaSheetHtml(s) {
@@ -2860,7 +2877,7 @@ async function renderWorktrees() {
     return `<div class="sec-h"><h2>${esc(s.epic)} ${esc(s.summary || '')}</h2><span>티켓 ${s.tickets.length} · 재오픈 ${n('reopened')} · 리뷰 대기 ${n('pending')} · 리뷰 완료 ${n('done')} · 워크트리 없음 ${n('none')}</span></div>
       <div class="rv-jsum">Jira ${Object.entries(WT_JIRA).filter(([k]) => nj(k)).map(([k, l]) => `<span class="rv-js j-${k}">${l} ${nj(k)}</span>`).join('')}</div>
       ${s.error ? `<div class="rv-err">${esc(s.error)}</div>` : ''}
-      ${qaSheetHtml(s)}${qaStatsHtml(s)}${ro ? '' : qaAutoHtml(s) + qaLegacyHtml(s)}
+      ${qaPreviewHtml(s)}${qaSheetHtml(s)}${qaStatsHtml(s)}${ro ? '' : qaAutoHtml(s) + qaLegacyHtml(s)}
       ${s.stray.length ? `<div class="st" style="margin-bottom:8px">에픽 하위에 없는 워크트리 키: ${s.stray.map(esc).join(', ')}</div>` : ''}
       <div class="rv-list" data-held-list="${esc(s.epic + '|' + s.server + (ro ? '|ro' : ''))}">${ts.map(t => wtTicket(t, s, ro)).join('') || '<div class="empty">조건에 맞는 티켓이 없습니다.</div>'}</div>`;
   };

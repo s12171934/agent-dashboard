@@ -17,6 +17,7 @@ pub mod interactions;
 pub mod media;
 pub mod plan_usage;
 pub mod plans;
+pub mod preview;
 pub mod projects;
 pub mod reads;
 pub mod relations;
