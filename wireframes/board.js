@@ -8,7 +8,7 @@ const KEY = 'wfboard.v1';
 
 let M = null, ver = '', edgesFrom = new Map();
 const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, actual: false, zoom: 0.24, pick: {},
-  hideAreas: [], hideSlots: [], sideClosed: false };
+  hideAreas: [], hideSlots: [], hideScreens: [], sideClosed: false };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
 // a narrow window starts with the settings folded away: the sidebar would cover the board
 if (matchMedia('(max-width: 700px)').matches) S.sideClosed = true;
@@ -42,7 +42,7 @@ const statusOf = sc => sc.variants.some(v => v.status === 'picked') ? 'picked' :
 // the variant a single frame shows: the one picked on the board, else the 확정 one, else the first still in play
 const mainVariant = sc => sc.variants.find(v => v.id === S.pick[sc.id]) || sc.variants.find(v => v.status === 'picked') || sc.variants.find(live) || null;
 const widthsOn = () => M.widths.filter(w => S.widths.includes(w.id));
-const visible = () => M.screens.filter(sc => (!S.group || sc.group === S.group) && (!S.status || statusOf(sc) === S.status));
+const visible = () => M.screens.filter(sc => !S.hideScreens.includes(sc.id) && (!S.group || sc.group === S.group) && (!S.status || statusOf(sc) === S.status));
 
 async function load() {
   try { ver = (await (await fetch('../build.json', { cache: 'no-store' })).json()).build || ''; } catch { ver = ''; }
@@ -83,6 +83,9 @@ async function readEdges() {
 function controls() {
   $('#widths').innerHTML = M.widths.map(w => `<label title="${esc(w.env)}"><input type="checkbox" value="${w.id}" ${S.widths.includes(w.id) ? 'checked' : ''}> ${esc(w.name)}<small>${w.w}×${w.h}</small></label>`).join('');
   $('#areas').innerHTML = AREAS.map(a => `<label><input type="checkbox" value="${a.id}" ${S.hideAreas.includes(a.id) ? '' : 'checked'}> ${esc(a.name)}</label>`).join('');
+  // 화면 내용: one box per screen, under its group's name
+  $('#screens').innerHTML = M.groups.map(g => `<span class="lg">${esc(g.name)}</span>` + M.screens.filter(sc => sc.group === g.id)
+    .map(sc => `<label><input type="checkbox" value="${sc.id}" ${S.hideScreens.includes(sc.id) ? '' : 'checked'}> ${esc(sc.name)}<small>${esc(sc.id)}</small></label>`).join('')).join('');
   slotList();
   document.body.classList.toggle('side-closed', !!S.sideClosed);
   const g = $('#group');
@@ -128,7 +131,7 @@ function renderGrid(b) {
     if (sc.group !== lastGroup) { lastGroup = sc.group; out += `<div class="g-group">${esc(M.groups.find(x => x.id === sc.group)?.name || sc.group)}</div>`; }
     const st = statusOf(sc), e = edgesFrom.get(sc.id);
     const rows = S.variants === 'all' && sc.variants.length > 1 ? sc.variants : [mainVariant(sc)];
-    const to = [...(e?.to || [])].map(id => M.screens.find(x => x.id === id)).filter(Boolean);
+    const to = [...(e?.to || [])].filter(id => !S.hideScreens.includes(id)).map(id => M.screens.find(x => x.id === id)).filter(Boolean);
     rows.forEach((v, i) => {
       out += `<div class="g-label" id="row-${sc.id}${i ? '-' + i : ''}">`;
       if (!i) {
@@ -232,7 +235,9 @@ function observe() {
 // 전체 길이: the frame grows to the page's own height instead of one screenful
 // 슬롯 경계 표시: outline what plugins fill, in every frame (same origin); 화면 영역 · 플러그인 슬롯: hide what is unchecked
 const hideCss = () => AREAS.filter(a => S.hideAreas.includes(a.id)).map(a => a.css)
-  .concat(S.hideSlots.map(k => `[data-slot="${CSS.escape(k)}"] { display: none !important; }`)).join('\n');
+  .concat(S.hideSlots.map(k => `[data-slot="${CSS.escape(k)}"] { display: none !important; }`))
+  // a screen switched off: what leads to it (menus, buttons, links) goes; content cards that open it stay
+  .concat(S.hideScreens.map(k => `[data-to="${CSS.escape(k)}"]:not(.wf-box, .wf-module, .wf-chip) { display: none !important; }`)).join('\n');
 const slots = f => {
   try {
     const d = f.contentDocument; if (!d?.documentElement) return;
@@ -299,6 +304,7 @@ $('#variants').addEventListener('change', e => { S.variants = e.target.value; re
 $('#full').addEventListener('change', e => { S.full = e.target.checked; render(); });
 $('#slots').addEventListener('change', e => { S.slots = e.target.checked; restyle(); });
 $('#areas').addEventListener('change', () => { S.hideAreas = [...document.querySelectorAll('#areas input:not(:checked)')].map(i => i.value); restyle(); });
+$('#screens').addEventListener('change', () => { S.hideScreens = [...document.querySelectorAll('#screens input:not(:checked)')].map(i => i.value); render(); restyle(); });
 $('#slotlist').addEventListener('change', () => { S.hideSlots = [...document.querySelectorAll('#slotlist input:not(:checked)')].map(i => i.value); restyle(); });
 // 전체 · 없음 above a list checks or clears all of it
 $('#side').addEventListener('click', e => {
