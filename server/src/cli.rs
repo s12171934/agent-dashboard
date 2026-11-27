@@ -182,7 +182,8 @@ fn hook(name: &str) -> Result<()> {
 // - label/value pairs across a row (`버전,1.2,단말,iOS` · `총 TC,120,Pass,100`), the first of each label kept;
 // - a per-device table: a header row whose later cell is 「합계」 (`구분,Desktop,Mobile iOS Safari,합계`), then rows
 //   led by a label (`총 수행 건수,0,743,1486`) whose 합계 column is the value. The devices are the header's columns
-//   between the first and 합계. A blank row ends the table.
+//   between the first and 합계. A blank row ends the table. Each device column's counts are kept too, as `devices`
+//   (`[{name, total, pass, fail, blocked, dropped, ntest}]`, a blank cell counted as 0).
 // A cell that is itself a label is never taken as a value (a later table's header such as `우선순위,총 수행 건수,Pass,Fail`).
 pub fn parse_sheet(s: &str) -> Result<Value> {
     let labels = [
@@ -209,6 +210,8 @@ pub fn parse_sheet(s: &str) -> Result<Value> {
     };
     let mut got = obj();
     let mut sum_col: Option<usize> = None;
+    let mut dev_cols: Vec<usize> = vec![];
+    let mut devices: Vec<Value> = vec![];
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
@@ -227,19 +230,35 @@ pub fn parse_sheet(s: &str) -> Result<Value> {
             .map(|i| i + 1)
         {
             sum_col = Some(i);
-            let devices = cells[1..i]
-                .iter()
-                .filter(|c| !c.is_empty())
-                .copied()
-                .collect::<Vec<_>>();
-            if got["device"].is_null() && !devices.is_empty() {
-                got["device"] = json!(devices.join(" · "));
+            let names = (1..i).filter(|&j| !cells[j].is_empty()).collect::<Vec<_>>();
+            if got["device"].is_null() && !names.is_empty() {
+                got["device"] = json!(
+                    names
+                        .iter()
+                        .map(|&j| cells[j])
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                );
+            }
+            if devices.is_empty() {
+                dev_cols = names;
+                devices = dev_cols
+                    .iter()
+                    .map(|&j| json!({"name": cells[j]}))
+                    .collect();
+            } else {
+                dev_cols.clear();
             }
             continue;
         }
         if let (Some(col), Some(f)) = (sum_col, field(cells[0])) {
             if got[f].is_null() {
                 got[f] = json!(cells.get(col).copied().unwrap_or(""));
+            }
+            for (d, &j) in devices.iter_mut().zip(&dev_cols) {
+                if d[f].is_null() {
+                    d[f] = json!(cells.get(j).copied().unwrap_or(""));
+                }
             }
             continue;
         }
@@ -257,6 +276,24 @@ pub fn parse_sheet(s: &str) -> Result<Value> {
             .parse::<u64>()
             .map_err(|_| format!("Summary 탭 양식이 아닙니다 (숫자를 못 찾음: {k})"))?;
         got[k] = json!(n);
+    }
+    // A device's counts are only shown when every one of them reads as a number (a blank cell is 0).
+    let devices = devices
+        .into_iter()
+        .filter_map(|mut d| {
+            for k in ["total", "pass", "fail", "blocked", "dropped", "ntest"] {
+                let s = text(&d[k]).replace(',', "");
+                d[k] = json!(if s.is_empty() {
+                    0
+                } else {
+                    s.parse::<u64>().ok()?
+                });
+            }
+            Some(d)
+        })
+        .collect::<Vec<_>>();
+    if !devices.is_empty() {
+        got["devices"] = json!(devices);
     }
     Ok(got)
 }
