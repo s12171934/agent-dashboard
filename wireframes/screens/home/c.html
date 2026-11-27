@@ -10,39 +10,45 @@
 <link rel="stylesheet" href="../../wf.css">
 <script src="../../wf.js"></script>
 <style>
-/* Home C: the home is the menu, drawn as B's panels (wf-module on wf-grid12): every menu gets a panel with its
-   head (⋮⋮ · name · the plugin that gives it), a big number, a bar or a state line, and 「열기 ›」. data-menu="<screen>"
-   names the screen a panel stands for (the board's 화면 내용 hides the whole panel when that screen is off). */
+/* Home C: the home is the menu. Every menu is the same tile, a button 3 wide by 4 tall: a 1:1 square on top that
+   sums up the screen's data (a big number, a bar, a badge in the corner when something waits), the name below.
+   data-menu="<screen>" names the screen a tile stands for (the board's 화면 내용 hides the tile when it is off). */
 .home-sec { display: flex; flex-direction: column; gap: 8px; }
 .home-sec > .wf-row { gap: 8px; }
-.home-grid { grid-auto-rows: minmax(48px, auto); }
-.home-grid .wf-mhead { min-width: 0; }
-.home-grid .wf-mhead h2 { font-size: 13px; }
-.module-link { border: 0; background: none; color: inherit; font: inherit; padding: 0; text-align: left; cursor: pointer; margin-top: auto; align-self: flex-start; }
-.metric-data { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 8px; font-variant-numeric: tabular-nums; }
-.metric-data strong { font-size: 22px; line-height: 1.2; }
-.metric-labels { display: flex; flex-wrap: wrap; gap: 3px 8px; }
-.metric-labels > span { white-space: nowrap; }
-.metric-labels .wf-dot { display: inline-block; margin-right: 3px; width: 6px; height: 6px; }
-.plan-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) 32px; gap: 5px; align-items: center; font-size: 11px; font-variant-numeric: tabular-nums; }
-.inbox-row { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
-.turn .wf-mbody { flex-direction: row; flex-wrap: wrap; gap: 8px; }
-.turn .inbox-row { width: auto; flex: 1 1 160px; padding: 6px 10px; border: 1px solid var(--wf-line); border-radius: var(--wf-r); }
-.wf-add { cursor: pointer; flex-direction: column; gap: 2px; }
-/* tablet: three tool panels a row, two main ones */
-@media (width > 500px) and (width <= 1100px) {
-  :root:not(.wf-app) .home-grid .tool, :root:not(.wf-app) .home-grid .wf-add { --span: 4 !important; }
-  :root:not(.wf-app) .home-grid .main { --span: 6 !important; }
-}
-/* the Duo app: panels two a row (.half), rows grow with their content */
-.wf-app .home-grid { grid-auto-rows: auto; grid-auto-flow: row; }
-.wf-app .home-grid .wf-module, .wf-app .home-grid .wf-add { grid-row: auto; }
-.wf-app .home-grid .wf-add { grid-column: span 6; }
-.wf-app .home-grid .metric-data strong { font-size: 18px; }
+.tiles { display: grid; gap: var(--wf-gap); grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+.tile { aspect-ratio: 3 / 4; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
+  background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.tile:hover { border-color: var(--wf-accent); }
+/* the 1:1 summary */
+.tile-sum { aspect-ratio: 1 / 1; width: 100%; flex: none; position: relative; display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  padding: 12px; background: var(--wf-bg); border-bottom: 1px solid var(--wf-line); font-variant-numeric: tabular-nums; }
+.tile-sum .big { font-size: 30px; font-weight: 700; line-height: 1; }
+.tile-sum .unit { color: var(--wf-muted); font-size: 12px; }
+.tile-sum .wf-seg { min-width: 0; }
+.tile-sum .wf-t { font-size: 11px; }
+.tile-sum > .corner { position: absolute; top: 8px; right: 8px; }
+.tile-sum .mini { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tile-sum .mini > span { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 8px; background: var(--wf-panel); font-size: 11px; color: var(--wf-muted); }
+.tile-sum .mini b { font-size: 18px; color: var(--wf-ink); }
+.tile-sum .mini b.hot { color: var(--wf-hot); } .tile-sum .mini b.bad { color: var(--wf-bad); } .tile-sum .mini b.msg { color: var(--wf-msg); }
+.tile-sum .plan { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 4px; align-items: center; font-size: 10px; }
+.tile-sum .glyph { font-size: 40px; font-weight: 300; text-align: center; color: var(--wf-muted); }
+/* the name */
+.tile-name { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 12px; min-height: 0; }
+.tile-name strong { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-name .wf-t { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.turn { border-color: var(--wf-hot); }
+.tile.add { border-style: dashed; background: transparent; }
+.tile.add .tile-sum { background: transparent; border-bottom-style: dashed; }
+@media (width > 1100px) { .tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+/* the Duo app: three tiles a row on the cover, four unfolded; the name line a little smaller */
+.wf-app .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wf-app .tile-sum { padding: 8px; gap: 4px; }
+.wf-app .tile-sum .big { font-size: 22px; }
+.wf-app .tile-sum .mini { gap: 4px; } .wf-app .tile-sum .mini > span { padding: 3px 4px; } .wf-app .tile-sum .mini b { font-size: 14px; }
+.wf-app .tile-name { padding: 4px 8px; } .wf-app .tile-name strong { font-size: 13px; }
 @media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
-  :root.wf-app:not([data-posture]) .home-grid .wf-module.half { grid-column: span 4; }
-  :root.wf-app:not([data-posture]) .home-grid .wf-module.main { grid-column: span 6; }
-  :root.wf-app:not([data-posture]) .home-grid .wf-add { grid-column: span 4; }
+  :root.wf-app:not([data-posture]) .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 </style>
 </head>
@@ -57,189 +63,106 @@
       <button type="button" class="wf-btn primary wf-hide-posture" data-to="new-agent">+ 새 에이전트</button>
     </header>
 
-    <!-- 내 차례 stays first (FLOW.md 원칙 1): one panel of what waits on me, each to its screen -->
-    <div class="wf-grid12 home-grid wf-hide-posture">
-      <section class="wf-module turn" style="--span:12;--rows:1" data-slot="panel" data-plugin="decisions">
-        <header class="wf-mhead"><h2 class="wf-h wf-grow">내 차례</h2><span class="wf-tag">decisions · qa-review</span></header>
-        <div class="wf-mbody">
-          <button type="button" class="inbox-row" data-to="decide" data-slot="inbox" data-plugin="decisions"><strong class="wf-grow">결정 대기</strong><span class="wf-tag hot">3건</span><span aria-hidden="true">›</span></button>
-          <button type="button" class="inbox-row" data-to="decide" data-slot="inbox" data-plugin="decisions"><strong class="wf-grow">보고 확인</strong><span class="wf-tag msg">2건</span><span aria-hidden="true">›</span></button>
-          <button type="button" class="inbox-row" data-to="worktrees" data-slot="inbox" data-plugin="qa-review"><strong class="wf-grow">반출 승인</strong><span class="wf-tag hot">1건</span><span aria-hidden="true">›</span></button>
-          <button type="button" class="inbox-row" data-to="worktrees" data-slot="inbox" data-plugin="qa-review"><strong class="wf-grow">막힘</strong><span class="wf-tag bad">1건</span><span aria-hidden="true">›</span></button>
-        </div>
-      </section>
-    </div>
-
+    <!-- every menu is one tile of the same size; 내 차례 is the first tile -->
     <section class="home-sec" aria-labelledby="home-main-title">
       <div class="wf-row"><h2 class="wf-h wf-grow" id="home-main-title">자주 가는 곳</h2></div>
-      <div class="wf-grid12 home-grid">
-        <section class="wf-module main half" data-menu="agents" style="--span:3;--rows:3">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">에이전트</h2><span class="wf-tag">코어</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>6</strong><span>실행 중</span><span class="wf-tag bad">응답 없음 1</span></div>
-            <div class="wf-seg" role="img" aria-hidden="true"><i class="ok" style="flex:6"></i><i class="hot" style="flex:2"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:3"></i></div>
-            <div class="wf-t metric-labels"><span><i class="wf-dot ok"></i>실행 6</span><span><i class="wf-dot hot"></i>입력 대기 2</span><span><i class="wf-dot bad"></i>응답 없음 1</span><span>유휴 3</span></div>
-            <button type="button" class="module-link" data-to="agents">에이전트 보기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module main half" data-menu="decide" data-slot="panel" data-plugin="decisions" style="--span:3;--rows:3">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">결정</h2><span class="wf-tag">decisions</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>3</strong><span>대기</span><span class="wf-tag msg">보고 2</span></div>
-            <span class="wf-t">가장 오래 기다림 · 0분 전</span>
-            <div class="wf-list"><span class="wf-t">질문 머리 한 줄</span><span class="wf-t">질문 머리 한 줄</span></div>
-            <button type="button" class="module-link" data-to="decide">결정하기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module main half" data-menu="worktrees" data-slot="panel" data-plugin="qa-review" style="--span:3;--rows:3">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">리뷰</h2><span class="wf-tag">qa-review</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>8</strong><span>티켓</span><span class="wf-tag hot">승인 1</span></div>
-            <div class="wf-seg" role="img" aria-hidden="true"><i class="ok" style="flex:4"></i><i class="hot" style="flex:1"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:2"></i></div>
-            <div class="wf-t metric-labels"><span><i class="wf-dot ok"></i>실행 4</span><span><i class="wf-dot hot"></i>승인 1</span><span><i class="wf-dot bad"></i>막힘 1</span><span>대기 2</span></div>
-            <button type="button" class="module-link" data-to="worktrees">리뷰 열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module main half" data-menu="tests" data-slot="panel" data-plugin="tests" style="--span:3;--rows:3">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">테스트</h2><span class="wf-tag">tests</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>2</strong><span>실행 중</span><span class="wf-tag bad">실패 1</span></div>
-            <span class="wf-t">실행 01 · 12 / 20 케이스</span>
-            <div class="wf-seg" role="img" aria-hidden="true"><i class="ok" style="flex:12"></i><i style="flex:8"></i></div>
-            <button type="button" class="module-link" data-to="tests">테스트 보기 ›</button>
-          </div>
-        </section>
+      <div class="tiles">
+        <button type="button" class="tile turn" data-to="decide" data-slot="inbox" data-plugin="decisions">
+          <span class="tile-sum"><span class="mini"><span><b class="hot">3</b>결정</span><span><b class="msg">2</b>보고</span><span><b class="hot">1</b>승인</span><span><b class="bad">1</b>막힘</span></span></span>
+          <span class="tile-name"><strong>내 차례</strong><span class="wf-t">7건 기다림</span></span>
+        </button>
+        <button type="button" class="tile" data-to="agents" data-menu="agents">
+          <span class="tile-sum"><span><span class="big">6</span> <span class="unit">실행 중</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:6"></i><i class="hot" style="flex:2"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:3"></i></div><span class="wf-tag bad corner">1</span></span>
+          <span class="tile-name"><strong>에이전트</strong><span class="wf-t">응답 없음 1 · 입력 대기 2</span></span>
+        </button>
+        <button type="button" class="tile" data-to="decide" data-menu="decide" data-slot="nav" data-plugin="decisions">
+          <span class="tile-sum"><span><span class="big">3</span> <span class="unit">대기</span></span><span class="wf-t">보고 2</span><span class="wf-tag hot corner">3</span></span>
+          <span class="tile-name"><strong>결정</strong><span class="wf-t">가장 오래 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="worktrees" data-menu="worktrees" data-slot="nav" data-plugin="qa-review">
+          <span class="tile-sum"><span><span class="big">8</span> <span class="unit">티켓</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:4"></i><i class="hot" style="flex:1"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:2"></i></div><span class="wf-tag hot corner">1</span></span>
+          <span class="tile-name"><strong>리뷰</strong><span class="wf-t">승인 1 · 막힘 1</span></span>
+        </button>
+        <button type="button" class="tile" data-to="tests" data-menu="tests" data-slot="nav" data-plugin="tests">
+          <span class="tile-sum"><span><span class="big">2</span> <span class="unit">실행 중</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:12"></i><i style="flex:8"></i></div><span class="wf-tag bad corner">1</span></span>
+          <span class="tile-name"><strong>테스트</strong><span class="wf-t">실패 1 · 12 / 20</span></span>
+        </button>
       </div>
     </section>
 
     <section class="home-sec" aria-labelledby="home-tools-title">
-      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-tools-title">도구</h2><span class="wf-t wf-hide-phone">플러그인을 더하면 여기에 패널이 생긴다</span></div>
-      <div class="wf-grid12 home-grid">
-        <section class="wf-module tool half" data-menu="projects" data-slot="panel" data-plugin="projects" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">프로젝트</h2><span class="wf-tag">projects</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>2</strong><span>진행 중</span></div>
-            <span class="wf-t">다음 단계 · 단계 이름</span>
-            <button type="button" class="module-link" data-to="projects">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="designs" data-slot="panel" data-plugin="designs" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">설계문서</h2><span class="wf-tag">designs</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>3</strong><span>최근 참조</span></div>
-            <span class="wf-t">문서 제목 · 0분 전</span>
-            <button type="button" class="module-link" data-to="designs">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="trees" data-slot="panel" data-plugin="worktrees" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">워크트리</h2><span class="wf-tag">worktrees</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>5</strong><span>열림</span></div>
-            <span class="wf-t">변경 있음 2 · PR 1</span>
-            <button type="button" class="module-link" data-to="trees">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="devices" data-slot="panel" data-plugin="devices" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">실기기</h2><span class="wf-tag">devices</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>1</strong><span>연결</span></div>
-            <span class="wf-t">사용 중 0 · 녹화 0</span>
-            <button type="button" class="module-link" data-to="devices">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="media" data-slot="panel" data-plugin="media" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">녹화 영상</h2><span class="wf-tag">media</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>2</strong><span>새 영상</span></div>
-            <span class="wf-t">최근 · 0분 전</span>
-            <button type="button" class="module-link" data-to="media">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="compare" data-slot="panel" data-plugin="cost" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">비교 · 비용</h2><span class="wf-tag">cost</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>$4.32</strong><span>오늘</span></div>
-            <div class="wf-seg" role="img" aria-hidden="true"><i class="done" style="flex:17"></i><i style="flex:26"></i></div>
-            <span class="wf-t">X $1.70 · C $2.62</span>
-            <button type="button" class="module-link" data-to="compare">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="usage" data-slot="panel" data-plugin="plan-usage" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">플랜 사용량</h2><span class="wf-tag">plan-usage</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>82%</strong><span>최고</span></div>
-            <div class="plan-line"><span>X</span><div class="wf-seg" role="img" aria-hidden="true"><i class="done" style="flex:42"></i><i style="flex:58"></i></div><span>42%</span></div>
-            <div class="plan-line"><span>C</span><div class="wf-seg" role="img" aria-hidden="true"><i class="hot" style="flex:82"></i><i style="flex:18"></i></div><span>82%</span></div>
-            <button type="button" class="module-link" data-to="usage">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="talk" data-slot="panel" data-plugin="talk" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">상호작용</h2><span class="wf-tag">talk</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>0</strong><span>새 메시지</span></div>
-            <span class="wf-t">질문 0 · 답 0 · 보고 0</span>
-            <button type="button" class="module-link" data-to="talk">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="canvas" data-slot="panel" data-plugin="canvas" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">워크플로 캔버스</h2><span class="wf-tag">canvas</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>1</strong><span>워크플로</span></div>
-            <span class="wf-t">마지막 실행 · 0분 전</span>
-            <button type="button" class="module-link" data-to="canvas">열기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="chars" data-slot="panel" data-plugin="chars" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">캐릭터</h2><span class="wf-tag">chars</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>6</strong><span>캐릭터</span></div>
-            <span class="wf-t">마을 지도</span>
-            <button type="button" class="module-link" data-to="chars">열기 ›</button>
-          </div>
-        </section>
-        <button type="button" class="wf-add" data-to="plugins" style="--span:3"><strong>+ 메뉴 추가</strong><span class="wf-t">플러그인 관리</span></button>
+      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-tools-title">도구</h2><span class="wf-t wf-hide-phone">플러그인을 더하면 여기에 타일이 생긴다</span></div>
+      <div class="tiles">
+        <button type="button" class="tile" data-to="projects" data-menu="projects" data-slot="nav" data-plugin="projects">
+          <span class="tile-sum"><span><span class="big">2</span> <span class="unit">진행 중</span></span></span>
+          <span class="tile-name"><strong>프로젝트</strong><span class="wf-t">다음 단계 · 단계 이름</span></span>
+        </button>
+        <button type="button" class="tile" data-to="designs" data-menu="designs" data-slot="nav" data-plugin="designs">
+          <span class="tile-sum"><span><span class="big">3</span> <span class="unit">최근 참조</span></span></span>
+          <span class="tile-name"><strong>설계문서</strong><span class="wf-t">문서 제목 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="trees" data-menu="trees" data-slot="nav" data-plugin="worktrees">
+          <span class="tile-sum"><span><span class="big">5</span> <span class="unit">열림</span></span></span>
+          <span class="tile-name"><strong>워크트리</strong><span class="wf-t">변경 있음 2 · PR 1</span></span>
+        </button>
+        <button type="button" class="tile" data-to="devices" data-menu="devices" data-slot="nav" data-plugin="devices">
+          <span class="tile-sum"><span><span class="big">1</span> <span class="unit">연결</span></span></span>
+          <span class="tile-name"><strong>실기기</strong><span class="wf-t">사용 중 0</span></span>
+        </button>
+        <button type="button" class="tile" data-to="media" data-menu="media" data-slot="nav" data-plugin="media">
+          <span class="tile-sum"><span><span class="big">2</span> <span class="unit">새 영상</span></span></span>
+          <span class="tile-name"><strong>녹화 영상</strong><span class="wf-t">최근 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="compare" data-menu="compare" data-slot="nav" data-plugin="cost">
+          <span class="tile-sum"><span><span class="big">$4.32</span> <span class="unit">오늘</span></span><div class="wf-seg" aria-hidden="true"><i class="done" style="flex:17"></i><i style="flex:26"></i></div></span>
+          <span class="tile-name"><strong>비교 · 비용</strong><span class="wf-t">X $1.70 · C $2.62</span></span>
+        </button>
+        <button type="button" class="tile" data-to="usage" data-menu="usage" data-slot="nav" data-plugin="plan-usage">
+          <span class="tile-sum"><span><span class="big">82%</span> <span class="unit">최고</span></span><span class="plan"><span>X</span><div class="wf-seg" aria-hidden="true"><i class="done" style="flex:42"></i><i style="flex:58"></i></div></span><span class="plan"><span>C</span><div class="wf-seg" aria-hidden="true"><i class="hot" style="flex:82"></i><i style="flex:18"></i></div></span><span class="wf-tag hot corner">!</span></span>
+          <span class="tile-name"><strong>플랜 사용량</strong><span class="wf-t">한도 임박</span></span>
+        </button>
+        <button type="button" class="tile" data-to="talk" data-menu="talk" data-slot="nav" data-plugin="talk">
+          <span class="tile-sum"><span><span class="big">0</span> <span class="unit">새 메시지</span></span></span>
+          <span class="tile-name"><strong>상호작용</strong><span class="wf-t">질문 0 · 답 0</span></span>
+        </button>
+        <button type="button" class="tile" data-to="canvas" data-menu="canvas" data-slot="nav" data-plugin="canvas">
+          <span class="tile-sum"><span><span class="big">1</span> <span class="unit">워크플로</span></span></span>
+          <span class="tile-name"><strong>워크플로 캔버스</strong><span class="wf-t">마지막 실행 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="chars" data-menu="chars" data-slot="nav" data-plugin="chars">
+          <span class="tile-sum"><span><span class="big">6</span> <span class="unit">캐릭터</span></span></span>
+          <span class="tile-name"><strong>캐릭터</strong><span class="wf-t">마을 지도</span></span>
+        </button>
+        <button type="button" class="tile add" data-to="plugins">
+          <span class="tile-sum"><span class="glyph">+</span></span>
+          <span class="tile-name"><strong>메뉴 추가</strong><span class="wf-t">플러그인 관리</span></span>
+        </button>
       </div>
     </section>
 
     <section class="home-sec wf-hide-posture" aria-labelledby="home-admin-title">
       <div class="wf-row"><h2 class="wf-h wf-grow" id="home-admin-title">관리</h2></div>
-      <div class="wf-grid12 home-grid">
-        <section class="wf-module tool half" data-menu="new-agent" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">새 에이전트</h2><span class="wf-tag">코어</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>—</strong><span></span></div>
-            <span class="wf-t">프롬프트 · 저장소 · 모델</span>
-            <button type="button" class="module-link" data-to="new-agent">만들기 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="compose" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">화면 편집</h2><span class="wf-tag">코어</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>17</strong><span>패널</span></div>
-            <span class="wf-t">순서 · 크기 · 숨기기</span>
-            <button type="button" class="module-link" data-to="compose">편집 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="plugins" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">플러그인 관리</h2><span class="wf-tag">코어</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong>9</strong><span>설치</span></div>
-            <span class="wf-t">업데이트 0</span>
-            <button type="button" class="module-link" data-to="plugins">관리 ›</button>
-          </div>
-        </section>
-        <section class="wf-module tool half" data-menu="settings" style="--span:3;--rows:2">
-          <header class="wf-mhead"><h2 class="wf-h wf-grow">설정 · 메트릭 서버</h2><span class="wf-tag">코어</span></header>
-          <div class="wf-mbody">
-            <div class="metric-data"><strong><span class="wf-dot ok"></span></strong><span>연결됨</span></div>
-            <span class="wf-t">메트릭 서버 · 0초 전</span>
-            <button type="button" class="module-link" data-to="settings">설정 ›</button>
-          </div>
-        </section>
+      <div class="tiles">
+        <button type="button" class="tile" data-to="new-agent" data-menu="new-agent">
+          <span class="tile-sum"><span class="glyph">+</span></span>
+          <span class="tile-name"><strong>새 에이전트</strong><span class="wf-t">프롬프트 · 저장소 · 모델</span></span>
+        </button>
+        <button type="button" class="tile" data-to="compose" data-menu="compose">
+          <span class="tile-sum"><span><span class="big">17</span> <span class="unit">타일</span></span></span>
+          <span class="tile-name"><strong>화면 편집</strong><span class="wf-t">순서 · 숨기기</span></span>
+        </button>
+        <button type="button" class="tile" data-to="plugins" data-menu="plugins">
+          <span class="tile-sum"><span><span class="big">9</span> <span class="unit">설치</span></span></span>
+          <span class="tile-name"><strong>플러그인 관리</strong><span class="wf-t">업데이트 0</span></span>
+        </button>
+        <button type="button" class="tile" data-to="settings" data-menu="settings">
+          <span class="tile-sum"><span><span class="wf-dot ok" style="display:inline-block;width:14px;height:14px"></span> <span class="unit">연결됨</span></span><span class="wf-t">0초 전</span></span>
+          <span class="tile-name"><strong>설정</strong><span class="wf-t">메트릭 서버 연결됨</span></span>
+        </button>
       </div>
     </section>
 
-    <p class="wf-note">홈에는 사이드바가 없다 — 홈 자체가 메뉴다. 코어 화면과 설치한 플러그인의 메뉴가 모두 패널로 나오고, 플러그인을 더하면 「도구」에 패널이 생긴다. 메뉴마다 B 와 같은 패널(머리 ⋮⋮ · 이름 · 제공 플러그인, 큰 숫자 · 막대 · 상태 줄, 「열기 ›」)로 그 화면의 지금 상태를 보인다. 「화면 편집」으로 패널 순서·크기를 바꾼다. 다른 화면은 사이드바를 그대로 두고 「홈」으로 돌아온다. iPhone Duo 앱은 하단 탭 바를 유지한다.</p>
+    <p class="wf-note">홈에는 사이드바가 없다 — 홈 자체가 메뉴다. 모든 메뉴가 같은 크기의 버튼 타일(가로 3 : 세로 4)이다. 위 1:1 칸에 그 화면의 데이터 요약(큰 숫자 · 막대, 기다리는 것이 있으면 모서리 배지), 아래에 이름과 한 줄 상태. 내 차례도 첫 타일이다. 플러그인을 더하면 「도구」에 타일이 생기고, 「화면 편집」으로 순서를 바꾸거나 숨긴다. 다른 화면은 사이드바를 그대로 두고 「홈」으로 돌아온다. iPhone Duo 앱은 하단 탭 바를 유지한다.</p>
   </main>
 </div>
 <!-- iPhone Duo (the app): bottom tab bar -->
