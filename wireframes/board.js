@@ -8,7 +8,8 @@ const KEY = 'wfboard.v1';
 
 let M = null, ver = '', edgesFrom = new Map();
 const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, actual: false, zoom: 0.24, pick: {},
-  hideAreas: [], hideSlots: [], hideScreens: [], sideClosed: false };
+  hideAreas: [], hideSlots: [], hideScreens: [], sideClosed: false,
+  acc: { widths: false, filter: true, screens: false, frame: true, areas: false, slotlist: false } };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
 // a narrow window starts with the settings folded away: the sidebar would cover the board
 if (matchMedia('(max-width: 700px)').matches) S.sideClosed = true;
@@ -30,6 +31,7 @@ let SLOTS = new Map();
 const h = new URLSearchParams(location.hash.slice(1));
 if (h.get('view')) S.view = h.get('view');
 const save = () => {
+  badges();
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
   history.replaceState(null, '', '#view=' + S.view);
 };
@@ -84,8 +86,11 @@ function controls() {
   $('#widths').innerHTML = M.widths.map(w => `<label title="${esc(w.env)}"><input type="checkbox" value="${w.id}" ${S.widths.includes(w.id) ? 'checked' : ''}> ${esc(w.name)}<small>${w.w}×${w.h}</small></label>`).join('');
   $('#areas').innerHTML = AREAS.map(a => `<label><input type="checkbox" value="${a.id}" ${S.hideAreas.includes(a.id) ? '' : 'checked'}> ${esc(a.name)}</label>`).join('');
   // 화면 내용: one box per screen, under its group's name
-  $('#screens').innerHTML = M.groups.map(g => `<span class="lg">${esc(g.name)}</span>` + M.screens.filter(sc => sc.group === g.id)
-    .map(sc => `<label><input type="checkbox" value="${sc.id}" ${S.hideScreens.includes(sc.id) ? '' : 'checked'}> ${esc(sc.name)}<small>${esc(sc.id)}</small></label>`).join('')).join('');
+  // (a group's own box checks or clears the screens under it)
+  $('#screens').innerHTML = M.groups.map(g => `<label class="lg"><input type="checkbox" data-group="${g.id}"> ${esc(g.name)}</label><div class="sub">` + M.screens.filter(sc => sc.group === g.id)
+    .map(sc => `<label><input type="checkbox" value="${sc.id}" ${S.hideScreens.includes(sc.id) ? '' : 'checked'}> ${esc(sc.name)}<small>${esc(sc.id)}</small></label>`).join('') + '</div>').join('');
+  groupBoxes();
+  document.querySelectorAll('#side details[data-acc]').forEach(d => { d.open = !!S.acc[d.dataset.acc]; });
   slotList();
   document.body.classList.toggle('side-closed', !!S.sideClosed);
   const g = $('#group');
@@ -99,6 +104,29 @@ function controls() {
 function slotList() {
   $('#slotlist').innerHTML = SLOTS.size ? [...SLOTS].map(([k, n]) => `<label><input type="checkbox" value="${esc(k)}" ${S.hideSlots.includes(k) ? '' : 'checked'}> <code>${esc(k)}</code><small>${n}</small></label>`).join('')
     : '<span class="meta">화면에 슬롯이 없습니다.</span>';
+}
+
+// a group box is checked when all its screens are, half (indeterminate) when some are
+function groupBoxes() {
+  document.querySelectorAll('#screens input[data-group]').forEach(g => {
+    const subs = [...g.closest('.lg').nextElementSibling.querySelectorAll('input')], on = subs.filter(i => i.checked).length;
+    g.checked = on === subs.length; g.indeterminate = on > 0 && on < subs.length;
+  });
+}
+
+// each accordion's summary says what is on while it is closed; a badge turns blue when something is held back
+function badges() {
+  if (!M) return;
+  const set = (id, text, on) => { const b = $('#b-' + id); if (b) { b.textContent = text; b.classList.toggle('on', !!on); } };
+  const count = (total, off) => [`${total - off}/${total}`, off > 0];
+  set('widths', ...count(M.widths.length, M.widths.length - S.widths.length));
+  set('screens', ...count(M.screens.length, S.hideScreens.length));
+  set('areas', ...count(AREAS.length, S.hideAreas.length));
+  set('slotlist', ...count(SLOTS.size, S.hideSlots.filter(k => SLOTS.has(k)).length));
+  const f = [S.group && M.groups.find(g => g.id === S.group)?.name, S.status && ST[S.status]].filter(Boolean);
+  set('filter', f.length ? f.join(' · ') : '전체', f.length);
+  const fr = [S.full && '전체 길이', S.slots && '슬롯 경계'].filter(Boolean);
+  set('frame', fr.length ? fr.join(' · ') : '기본', fr.length);
 }
 
 function meta() {
@@ -304,13 +332,29 @@ $('#variants').addEventListener('change', e => { S.variants = e.target.value; re
 $('#full').addEventListener('change', e => { S.full = e.target.checked; render(); });
 $('#slots').addEventListener('change', e => { S.slots = e.target.checked; restyle(); });
 $('#areas').addEventListener('change', () => { S.hideAreas = [...document.querySelectorAll('#areas input:not(:checked)')].map(i => i.value); restyle(); });
-$('#screens').addEventListener('change', () => { S.hideScreens = [...document.querySelectorAll('#screens input:not(:checked)')].map(i => i.value); render(); restyle(); });
+$('#screens').addEventListener('change', e => {
+  const g = e.target.dataset?.group;
+  if (g) e.target.closest('.lg').nextElementSibling.querySelectorAll('input').forEach(i => { i.checked = e.target.checked; });
+  groupBoxes(); S.hideScreens = [...document.querySelectorAll('#screens input[value]:not(:checked)')].map(i => i.value); render(); restyle(); });
 $('#slotlist').addEventListener('change', () => { S.hideSlots = [...document.querySelectorAll('#slotlist input:not(:checked)')].map(i => i.value); restyle(); });
 // 전체 · 없음 above a list checks or clears all of it
 $('#side').addEventListener('click', e => {
-  const b = e.target.closest('[data-all]'); if (!b) return;
-  document.querySelectorAll(`#${b.dataset.all} input`).forEach(i => { i.checked = b.dataset.on === '1'; });
-  $('#' + b.dataset.all).dispatchEvent(new Event('change'));
+  const b = e.target.closest('[data-all]');
+  if (b) {
+    e.preventDefault();  // it sits in the accordion's summary: the click must not also fold it
+    document.querySelectorAll(`#${b.dataset.all} input`).forEach(i => { i.checked = b.dataset.on === '1'; });
+    $('#' + b.dataset.all).dispatchEvent(new Event('change'));
+    return;
+  }
+  const a = e.target.closest('.tools [data-acc]');
+  if (a) document.querySelectorAll('#side details[data-acc]').forEach(d => { d.open = a.dataset.acc === '1'; });
+});
+// an accordion remembers whether it is open
+document.querySelectorAll('#side details[data-acc]').forEach(d => d.addEventListener('toggle', () => { S.acc[d.dataset.acc] = d.open; save(); }));
+// 초기화: every width and screen back, nothing hidden, no filter (the view, zoom and open accordions stay)
+$('#reset').addEventListener('click', () => {
+  Object.assign(S, { widths: M.widths.map(w => w.id), group: '', status: '', full: false, slots: false, hideAreas: [], hideSlots: [], hideScreens: [] });
+  controls(); render(); restyle();
 });
 const side = closed => { S.sideClosed = closed; save(); document.body.classList.toggle('side-closed', closed); };
 $('#side-close').addEventListener('click', () => side(true));

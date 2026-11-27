@@ -20,23 +20,42 @@ body.side-closed { grid-template-columns: minmax(0, 1fr); }
 button, select, input { font: inherit; color: inherit; }
 
 /* settings sidebar: every board setting lives here (보기 · 폭 · 필터 · 프레임 · 화면 영역 · 플러그인 슬롯) */
-.side { height: 100vh; overflow: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 12px 14px 24px; display: flex; flex-direction: column; gap: 14px; }
+.side { height: 100vh; overflow: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 12px 12px 24px; display: flex; flex-direction: column; gap: 8px; }
 body.side-closed .side { display: none; }
 .side-top { display: flex; align-items: center; gap: 8px; }
 .side h1 { font-size: 15px; margin: 0; flex: 1; }
-.side .meta { margin: -8px 0 0; color: var(--muted); font-size: 12px; }
-.sec { display: flex; flex-direction: column; gap: 6px; }
-.sec h2 { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
-.sec h2 .all { margin-left: auto; display: inline-flex; gap: 2px; font-weight: 400; letter-spacing: 0; }
-.sec h2 .all button { border: 0; background: transparent; color: var(--accent); padding: 0 4px; cursor: pointer; font-size: 11px; }
+.side .meta { margin: -4px 0 2px; color: var(--muted); font-size: 12px; }
+.pin { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.tools { display: flex; align-items: center; gap: 2px; margin: -2px -4px 0; }
+.tools button, .all button { border: 0; background: transparent; color: var(--accent); padding: 2px 4px; cursor: pointer; font-size: 11px; border-radius: 4px; }
+.tools button:hover, .all button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tools #reset { color: var(--muted); }
+.grow { flex: 1; }
+.part { margin: 6px 0 -2px; font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+
+/* one accordion per setting: the summary row shows its name, a badge of what is on, and 전체 · 없음 when open */
+.acc { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.acc > summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 7px 8px; cursor: pointer; user-select: none; border-radius: 8px; }
+.acc > summary::-webkit-details-marker { display: none; }
+.acc > summary::before { content: ""; width: 6px; height: 6px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform .15s; margin: 0 3px 0 1px; flex: none; }
+.acc[open] > summary::before { transform: rotate(45deg); }
+.acc > summary:hover { background: color-mix(in srgb, var(--line) 35%, transparent); }
+.acc .nm { font-weight: 600; }
+.badge { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.badge.on { color: var(--panel); background: var(--accent); padding: 0 6px; border-radius: 999px; }
+.acc .all { margin-left: auto; display: none; gap: 0; }
+.acc[open] .all { display: inline-flex; }
+.acc > :not(summary) { margin: 0 10px; }
+.acc > :last-child { margin-bottom: 10px; }
+.hint { margin: 0 0 6px; color: var(--muted); font-size: 11px; }
 .list { display: flex; flex-direction: column; gap: 3px; }
-.list label, .chk { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.list label, .chk { display: flex; gap: 6px; align-items: center; cursor: pointer; min-width: 0; }
 .list label small { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.hint { margin: -2px 0 2px; color: var(--muted); font-size: 11px; }
-.list .lg { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.list .lg { margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
 .list .lg:first-child { margin-top: 0; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.list .sub { padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
 .side .seg { display: flex; } .side .seg button { flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { white-space: nowrap; border: 0; background: transparent; padding: 5px 10px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 .fld { display: flex; gap: 6px; align-items: center; color: var(--muted); }
