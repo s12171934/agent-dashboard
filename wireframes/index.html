@@ -8,25 +8,55 @@
 <link rel="stylesheet" href="board.css">
 </head>
 <body>
-<header class="bar">
-  <h1>와이어프레임 보드</h1>
-  <div class="seg" id="view" role="radiogroup" aria-label="보기">
-    <button data-v="grid" aria-pressed="true">격자</button>
-    <button data-v="map" aria-pressed="false">흐름 지도</button>
+<aside class="side" id="side" aria-label="보드 설정">
+  <div class="side-top">
+    <h1>와이어프레임 보드</h1>
+    <button class="icon" id="side-close" aria-label="설정 접기" title="설정 접기">‹</button>
   </div>
-  <div class="grp" id="widths" aria-label="폭"></div>
-  <label class="fld">묶음 <select id="group"><option value="">전체</option></select></label>
-  <label class="fld">상태 <select id="status">
-    <option value="">전체</option><option value="none">미작성</option><option value="draft">시안</option><option value="picked">확정</option>
-  </select></label>
-  <label class="fld" id="variants-fld">시안 <select id="variants">
-    <option value="all">나란히</option><option value="one">하나씩</option>
-  </select></label>
-  <label class="chk"><input type="checkbox" id="full"> 전체 길이</label>
-  <label class="chk"><input type="checkbox" id="slots"> 슬롯 표시</label>
-  <label class="fld">배율 <input type="range" id="zoom" min="0.1" max="0.6" step="0.02" value="0.24"><output id="zoom-out">24%</output></label>
-  <span class="meta" id="meta"></span>
-</header>
+  <p class="meta" id="meta"></p>
+
+  <section class="sec">
+    <h2>보기</h2>
+    <div class="seg" id="view" role="radiogroup" aria-label="보기">
+      <button data-v="grid" aria-pressed="true">격자</button>
+      <button data-v="map" aria-pressed="false">흐름 지도</button>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>폭 <span class="all"><button data-all="widths" data-on="1">전체</button><button data-all="widths" data-on="0">없음</button></span></h2>
+    <div class="list" id="widths" aria-label="폭"></div>
+  </section>
+
+  <section class="sec">
+    <h2>필터</h2>
+    <label class="fld">묶음 <select id="group"><option value="">전체</option></select></label>
+    <label class="fld">상태 <select id="status">
+      <option value="">전체</option><option value="none">미작성</option><option value="draft">시안</option><option value="picked">확정</option>
+    </select></label>
+    <label class="fld" id="variants-fld">시안 <select id="variants">
+      <option value="all">나란히</option><option value="one">하나씩</option>
+    </select></label>
+  </section>
+
+  <section class="sec">
+    <h2>프레임</h2>
+    <label class="chk"><input type="checkbox" id="full"> 전체 길이</label>
+    <label class="chk"><input type="checkbox" id="slots"> 슬롯 경계 표시</label>
+    <label class="fld zoom">배율 <input type="range" id="zoom" min="0.1" max="0.6" step="0.02" value="0.24"><output id="zoom-out">24%</output></label>
+  </section>
+
+  <section class="sec">
+    <h2>화면 영역 <span class="all"><button data-all="areas" data-on="1">전체</button><button data-all="areas" data-on="0">없음</button></span></h2>
+    <div class="list" id="areas" aria-label="화면 영역"></div>
+  </section>
+
+  <section class="sec">
+    <h2>플러그인 슬롯 <span class="all"><button data-all="slotlist" data-on="1">전체</button><button data-all="slotlist" data-on="0">없음</button></span></h2>
+    <div class="list" id="slotlist" aria-label="플러그인 슬롯"></div>
+  </section>
+</aside>
+<button class="icon side-open" id="side-open" aria-label="설정 펼치기" title="설정 펼치기">›</button>
 <main id="board" tabindex="-1"></main>
 <dialog id="focus">
   <div class="fbar">

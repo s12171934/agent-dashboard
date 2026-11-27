@@ -7,8 +7,26 @@ const ST = { none: '미작성', draft: '시안', picked: '확정', dropped: '보
 const KEY = 'wfboard.v1';
 
 let M = null, ver = '', edgesFrom = new Map();
-const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, actual: false, zoom: 0.24, pick: {} };
+const S = { view: 'grid', widths: null, group: '', status: '', variants: 'all', full: false, slots: false, actual: false, zoom: 0.24, pick: {},
+  hideAreas: [], hideSlots: [], sideClosed: false };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
+// a narrow window starts with the settings folded away: the sidebar would cover the board
+if (matchMedia('(max-width: 700px)').matches) S.sideClosed = true;
+
+// 화면 영역: parts every screen shares, each one hidden in every frame when unchecked. The rules go into the frame
+// (same origin) as a <style>, so a screen file needs nothing for it.
+const AREAS = [
+  { id: 'side', name: '사이드바 · 레일', css: '.wf-side { display: none !important; }' },
+  { id: 'dock', name: '하단 탭 바', css: '.wf-dock, .wf-half > [data-shell] { display: none !important; }' },
+  { id: 'status', name: '상태 바 (앱)', css: '.wf-app body::before { display: none !important; } .wf-app body { padding-top: 0 !important; } .wf-app .wf-screen { min-height: 100vh !important; }' },
+  { id: 'head', name: '머리 줄 (제목 · 주요 행동)', css: '.wf-main > .wf-row:first-child { display: none !important; }' },
+  { id: 'body', name: '본문', css: '.wf-main > :not(.wf-row:first-child) { display: none !important; }' },
+  { id: 'half', name: '반접힘 보조 시트', css: '.wf-half > :not([data-shell]) { visibility: hidden !important; }' },
+  { id: 'note', name: '설계 메모', css: '.wf-note { display: none !important; }' },
+  { id: 'fold', name: '주름 선', css: 'body::after { display: none !important; }' },
+];
+// 플러그인 슬롯: every data-slot the screens use (read with their links in readEdges), each hidden when unchecked
+let SLOTS = new Map();
 const h = new URLSearchParams(location.hash.slice(1));
 if (h.get('view')) S.view = h.get('view');
 const save = () => {
@@ -42,6 +60,7 @@ async function load() {
 // wireframe yet keeps the current dashboard's flow from screens.json.
 async function readEdges() {
   edgesFrom = new Map();
+  const slots = new Map();
   await Promise.all(M.screens.map(async sc => {
     const vs = sc.variants.filter(v => v.status === 'picked');
     const use = vs.length ? vs : sc.variants.filter(live);
@@ -51,22 +70,32 @@ async function readEdges() {
       try {
         // the shell's navigation (data-shell: sidebar, dock, the sheet's nav row) leads everywhere; only the screen's own links count
         const doc = new DOMParser().parseFromString(await (await fetch(url(v.file), { cache: 'no-store' })).text(), 'text/html');
+        for (const n of doc.querySelectorAll('[data-slot]')) slots.set(n.dataset.slot, (slots.get(n.dataset.slot) || 0) + 1);
         doc.querySelectorAll('[data-shell]').forEach(n => n.remove());
         for (const n of doc.querySelectorAll('[data-to]')) if (n.dataset.to !== sc.id) to.add(n.dataset.to);
       } catch {}
     }
     edgesFrom.set(sc.id, { to, from: 'wireframe' });
   }));
+  SLOTS = new Map([...slots].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
 }
 
 function controls() {
-  $('#widths').innerHTML = M.widths.map(w => `<label title="${esc(w.env)}"><input type="checkbox" value="${w.id}" ${S.widths.includes(w.id) ? 'checked' : ''}> ${esc(w.name)}</label>`).join('');
+  $('#widths').innerHTML = M.widths.map(w => `<label title="${esc(w.env)}"><input type="checkbox" value="${w.id}" ${S.widths.includes(w.id) ? 'checked' : ''}> ${esc(w.name)}<small>${w.w}×${w.h}</small></label>`).join('');
+  $('#areas').innerHTML = AREAS.map(a => `<label><input type="checkbox" value="${a.id}" ${S.hideAreas.includes(a.id) ? '' : 'checked'}> ${esc(a.name)}</label>`).join('');
+  slotList();
+  document.body.classList.toggle('side-closed', !!S.sideClosed);
   const g = $('#group');
   if (g.options.length === 1) g.insertAdjacentHTML('beforeend', M.groups.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join(''));
   g.value = S.group; $('#status').value = S.status; $('#variants').value = S.variants; $('#full').checked = S.full; $('#slots').checked = S.slots;
   $('#zoom').value = S.zoom; $('#zoom-out').value = Math.round(S.zoom * 100) + '%';
   document.querySelectorAll('#view button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.view));
   $('#variants-fld').hidden = S.view !== 'grid';
+}
+
+function slotList() {
+  $('#slotlist').innerHTML = SLOTS.size ? [...SLOTS].map(([k, n]) => `<label><input type="checkbox" value="${esc(k)}" ${S.hideSlots.includes(k) ? '' : 'checked'}> <code>${esc(k)}</code><small>${n}</small></label>`).join('')
+    : '<span class="meta">화면에 슬롯이 없습니다.</span>';
 }
 
 function meta() {
@@ -201,8 +230,20 @@ function observe() {
   document.querySelectorAll('.shot[data-screen]').forEach(s => io.observe(s));
 }
 // 전체 길이: the frame grows to the page's own height instead of one screenful
-// 슬롯 표시: outline what plugins fill, in every frame (same origin)
-const slots = f => { try { f.contentDocument.documentElement.classList.toggle('wf-show-slots', S.slots); } catch {} };
+// 슬롯 경계 표시: outline what plugins fill, in every frame (same origin); 화면 영역 · 플러그인 슬롯: hide what is unchecked
+const hideCss = () => AREAS.filter(a => S.hideAreas.includes(a.id)).map(a => a.css)
+  .concat(S.hideSlots.map(k => `[data-slot="${CSS.escape(k)}"] { display: none !important; }`)).join('\n');
+const slots = f => {
+  try {
+    const d = f.contentDocument; if (!d?.documentElement) return;
+    d.documentElement.classList.toggle('wf-show-slots', S.slots);
+    let st = d.getElementById('wfboard-hide');
+    if (!st) { st = d.createElement('style'); st.id = 'wfboard-hide'; (d.head || d.documentElement).append(st); }
+    st.textContent = hideCss();
+  } catch {}
+};
+// after a hide change: restyle every loaded frame, and refit them since 전체 길이 follows the page's height
+const restyle = () => { save(); document.querySelectorAll('iframe').forEach(f => { slots(f); if (f.closest('.shot') && f.src) fit(f); }); };
 function fit(f) {
   slots(f);
   const z = parseFloat(f.style.transform.match(/scale\(([\d.]+)\)/)?.[1] || S.zoom);
@@ -256,7 +297,18 @@ $('#group').addEventListener('change', e => { S.group = e.target.value; render()
 $('#status').addEventListener('change', e => { S.status = e.target.value; render(); });
 $('#variants').addEventListener('change', e => { S.variants = e.target.value; render(); });
 $('#full').addEventListener('change', e => { S.full = e.target.checked; render(); });
-$('#slots').addEventListener('change', e => { S.slots = e.target.checked; save(); document.querySelectorAll('iframe').forEach(slots); });
+$('#slots').addEventListener('change', e => { S.slots = e.target.checked; restyle(); });
+$('#areas').addEventListener('change', () => { S.hideAreas = [...document.querySelectorAll('#areas input:not(:checked)')].map(i => i.value); restyle(); });
+$('#slotlist').addEventListener('change', () => { S.hideSlots = [...document.querySelectorAll('#slotlist input:not(:checked)')].map(i => i.value); restyle(); });
+// 전체 · 없음 above a list checks or clears all of it
+$('#side').addEventListener('click', e => {
+  const b = e.target.closest('[data-all]'); if (!b) return;
+  document.querySelectorAll(`#${b.dataset.all} input`).forEach(i => { i.checked = b.dataset.on === '1'; });
+  $('#' + b.dataset.all).dispatchEvent(new Event('change'));
+});
+const side = closed => { S.sideClosed = closed; save(); document.body.classList.toggle('side-closed', closed); };
+$('#side-close').addEventListener('click', () => side(true));
+$('#side-open').addEventListener('click', () => side(false));
 let zt;
 $('#zoom').addEventListener('input', e => { S.zoom = +e.target.value; $('#zoom-out').value = Math.round(S.zoom * 100) + '%'; clearTimeout(zt); zt = setTimeout(render, 120); });
 // ⌘/Ctrl + wheel zooms the board, not the page
@@ -298,7 +350,7 @@ addEventListener('resize', () => sizeFocus());
     const fs = r.files.filter(f => f.startsWith('wireframes/')).map(f => f.slice('wireframes/'.length));
     if (fs.some(f => !f.startsWith('screens/') && !['wf.css', 'wf.js'].includes(f) && !f.endsWith('.md'))) return location.reload();
     if (fs.length) {
-      await readEdges();
+      await readEdges(); slotList();
       document.querySelectorAll('iframe[src]').forEach(f => {
         if (fs.includes('wf.css') || fs.includes('wf.js') || fs.includes(f.dataset.file)) f.contentWindow?.location.reload();
       });
