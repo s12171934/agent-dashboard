@@ -1,7 +1,7 @@
 use crate::{app::App, core::*, sessions::rx};
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -359,16 +359,30 @@ pub fn collect(app: &App) -> Result<()> {
 pub fn list(app: &App) -> Value {
     let s = app.state.read().unwrap();
     let mut docs = vec![];
+    // One pass over the refs, grouped by document: filtering all refs once per document (tens of thousands each)
+    // held the state's read lock long enough to stall every request queued behind a waiting writer.
+    let mut by_doc: HashMap<&str, (HashSet<&str>, usize, usize)> = HashMap::new();
+    for r in s.design_refs["refs"]
+        .as_object()
+        .into_iter()
+        .flat_map(|m| m.values())
+    {
+        let e = by_doc.entry(text(&r["doc"])).or_default();
+        e.0.insert(text(&r["session"]));
+        if r["kind"] == "read" {
+            e.1 += 1;
+        } else if r["kind"] == "search" {
+            e.2 += 1;
+        }
+    }
     if let Some(ds) = s.design["docs"].as_object() {
         for (key, d) in ds {
-            let refs = s.design_refs["refs"]
-                .as_object()
-                .into_iter()
-                .flat_map(|m| m.values())
-                .filter(|r| r["doc"] == *key)
-                .collect::<Vec<_>>();
+            let (sessions, reads, searches) = by_doc
+                .get(key.as_str())
+                .map(|(ss, r, q)| (ss.len(), *r, *q))
+                .unwrap_or_default();
             let c = &d["copies"][0];
-            let mut row = json!({"key":key,"kind":d["kind"],"src":c["src"],"copies":array(&d["copies"]).len(),"mtime":c["mtime"],"size":c["size"],"sessions":refs.iter().map(|r|text(&r["session"])).collect::<HashSet<_>>().len(),"reads":refs.iter().filter(|r|r["kind"]=="read").count(),"searches":refs.iter().filter(|r|r["kind"]=="search").count()});
+            let mut row = json!({"key":key,"kind":d["kind"],"src":c["src"],"copies":array(&d["copies"]).len(),"mtime":c["mtime"],"size":c["size"],"sessions":sessions,"reads":reads,"searches":searches});
             for k in ["title", "order", "ch", "chapter"] {
                 if !d[k].is_null() {
                     row[k] = d[k].clone();

@@ -143,7 +143,14 @@ async fn handle(State(app): State<App>, request: Request) -> Response {
         }
         r
     } else if method == "GET" && path == "/events" {
-        let version = app.state.read().unwrap().version;
+        // Off the async workers: a state lock held long would otherwise pin them, one per reconnecting stream, and
+        // stall everything async on them (the VS Code relay among them).
+        let a = app.clone();
+        let Ok(version) =
+            tokio::task::spawn_blocking(move || a.state.read().unwrap().version).await
+        else {
+            return cors(err(500, "internal server error"), origin.as_ref());
+        };
         let initial = tokio_stream::iter(vec![Ok::<_, Infallible>(
             Event::default().data(version.to_string()),
         )]);
