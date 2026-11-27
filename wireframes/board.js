@@ -265,7 +265,9 @@ function observe() {
 const hideCss = () => AREAS.filter(a => S.hideAreas.includes(a.id)).map(a => a.css)
   .concat(S.hideSlots.map(k => `[data-slot="${CSS.escape(k)}"] { display: none !important; }`))
   // a screen switched off: what leads to it (menus, buttons, links) goes; content cards that open it stay
-  .concat(S.hideScreens.map(k => `[data-to="${CSS.escape(k)}"]:not(.wf-box, .wf-module, .wf-chip) { display: none !important; }`)).join('\n');
+  .concat(S.hideScreens.map(k => `[data-to="${CSS.escape(k)}"]:not(.wf-box, .wf-module, .wf-chip) { display: none !important; }`))
+  // a panel that stands for the screen as a whole (data-menu, e.g. home C's menu panels) goes with it
+  .concat(S.hideScreens.map(k => `[data-menu="${CSS.escape(k)}"] { display: none !important; }`)).join('\n');
 const slots = f => {
   try {
     const d = f.contentDocument; if (!d?.documentElement) return;
