@@ -2624,12 +2624,24 @@ function qaSheetHtml(s) {
   const n = g.total || 1, done = g.total - g.ntest, pct = v => Math.round(v / n * 1000) / 10;
   const old = Date.now() - new Date(g.at) > 3 * 3600e3;
   const parts = [['pass', 'Pass', 'var(--done)'], ['fail', 'Fail', 'var(--bad)'], ['blocked', 'Blocked', 'var(--warn)'], ['dropped', 'Dropped', 'var(--muted)']];
-  const bar = parts.map(([k, l, c]) => g[k] ? `<i style="width:${g[k] / n * 100}%;background:${c}" title="${l} ${g[k]}"></i>` : '').join('');
+  const barOf = (x, m) => parts.map(([k, l, c]) => x[k] ? `<i style="width:${x[k] / m * 100}%;background:${c}" title="${l} ${x[k]}"></i>` : '').join('');
+  const bar = barOf(g, n);
+  // One gauge per device column of the sheet's per-device table (`devices`), named 데스크톱 · iOS · AOS when the column says so.
+  const kind = name => /\b(aos|android)\b|안드로이드/i.test(name) ? 'AOS' : /\b(ios|iphone|ipad)\b|아이폰/i.test(name) ? 'iOS' : /desktop|\bpc\b|데스크톱|데스크탑/i.test(name) ? '데스크톱' : '';
+  const devs = (g.devices || []).map(d => {
+    const k = kind(d.name), m = d.total || 0, run = m - (d.ntest || 0), r = v => m ? `${Math.round(v / m * 1000) / 10}%` : '-';
+    const counts = parts.filter(([key]) => d[key]).map(([key, l, c]) => `<span><i class="sw" style="background:${c}"></i> ${l} ${d[key]}</span>`).join('');
+    return `<div class="qsd${m ? '' : ' off'}"><b title="${esc(d.name)}">${esc(k || d.name)}${k ? `<small>${esc(d.name)}</small>` : ''}</b>
+      <div class="qsh-bar" title="수행 ${run}/${m}">${barOf(d, m || 1)}</div>
+      <span class="qsd-n">${m ? `수행 <b>${r(run)}</b> ${run}/${m} · Pass ${r(d.pass)}` : '대상 없음'}</span>
+      <span class="qsd-c">${counts}${m && d.ntest ? `<span>남음 ${d.ntest}</span>` : ''}</span></div>`;
+  }).join('');
   const tile = (v, l, tip) => `<div class="qs-tile"${tip ? ` title="${esc(tip)}"` : ''}><b>${v}</b><span>${l}</span></div>`;
   const meta = [g.version, g.device, g.tester, g.period].filter(Boolean).map(esc).join(' · ');
   return `<div class="qa-sheet"><div class="qsh-h"><b>TC 진행</b>${link}<span class="st">${meta}</span>
       <span class="${old ? 'rv-flag warn' : 'st'}" title="${esc(clockAt(g.at))}">갱신 ${esc(ago(g.at))}</span></div>
     <div class="qsh-bar" title="수행 ${done}/${g.total}">${bar}</div>
+    ${devs ? `<div class="qsh-devs">${devs}</div>` : ''}
     <div class="qs-tiles">${[
       tile(`${pct(done)}%`, `수행률 ${done}/${g.total}`, '(총 TC − N-Test) / 총 TC'),
       tile(`${pct(g.pass)}%`, 'Pass율', 'Pass / 총 TC'),

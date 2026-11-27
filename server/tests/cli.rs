@@ -205,6 +205,34 @@ fn sheet_parser_reads_per_device_table_by_its_total_column() {
         p["device"],
         "Desktop · Mobile iOS Safari · Mobile AOS Chrome"
     );
+    // each device column's counts, for the per-device gauges
+    let d = p["devices"].as_array().unwrap();
+    assert_eq!(d.len(), 3);
+    assert_eq!(d[1]["name"], "Mobile iOS Safari");
+    assert_eq!(
+        (
+            d[0]["total"].clone(),
+            d[1]["total"].clone(),
+            d[2]["ntest"].clone()
+        ),
+        (json!(0), json!(743), json!(743))
+    );
+    // the pair layout has no device table
+    let p = agent_dashboard::cli::parse_sheet(
+        "총 TC,10,Pass,5\nFail,1,Blocked,0\nDropped,0,N-Test,4\n",
+    )
+    .unwrap();
+    assert!(p["devices"].is_null());
+}
+#[test]
+fn sheet_parser_reads_device_counts_with_blank_cells_and_commas() {
+    let s = "구분,Desktop,iOS,AOS,합계\n총 수행 건수,\"1,200\",30,,\"1,230\"\nPass,1000,20,,1020\nFail,0,0,,0\nBlocked,0,0,,0\nDropped,0,0,,0\nN-Test,200,10,,210\n";
+    let p = agent_dashboard::cli::parse_sheet(s).unwrap();
+    assert_eq!(p["total"], 1230);
+    assert_eq!(p["devices"][0]["total"], 1200);
+    assert_eq!(p["devices"][0]["pass"], 1000);
+    assert_eq!(p["devices"][2]["name"], "AOS");
+    assert_eq!(p["devices"][2]["total"], 0);
 }
 #[test]
 fn data_export_import_retains_state_and_backs_up() {
