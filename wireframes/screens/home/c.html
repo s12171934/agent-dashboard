@@ -10,11 +10,11 @@
 <link rel="stylesheet" href="../../wf.css">
 <script src="../../wf.js"></script>
 <style>
-/* Home C: the home is the menu. Every menu is the same tile, a button 3 wide by 4 tall: a 1:1 square on top that
+/* Home C: the home is the menu. Every menu is the same tile, a button 1 wide by √2 tall (the iPhone Duo cover, 466×678, is near 1:√2): a 1:1 square on top that
    sums up the screen's data (a big number, a bar, a badge in the corner when something waits), the name below.
    data-menu="<screen>" names the screen a tile stands for (the board's 화면 내용 hides the tile when it is off). */
 .tiles { display: grid; gap: var(--wf-gap); grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
-.tile { aspect-ratio: 3 / 4; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
+.tile { aspect-ratio: 1 / 1.41421; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
   background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .tile:hover { border-color: var(--wf-accent); }
 /* the 1:1 summary */
@@ -62,7 +62,7 @@
 
 /* 타일 예시 (견본, 실제 홈에는 없다): the states a tile can be in */
 .tile.ex { cursor: default; position: relative; }
-.tile.ex .ex-state { position: absolute; z-index: 1; bottom: calc(25% + 4px); left: 50%; transform: translateX(-50%); white-space: nowrap;
+.tile.ex .ex-state { position: absolute; z-index: 1; bottom: calc(29.3% + 4px); left: 50%; transform: translateX(-50%); white-space: nowrap;
   font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--wf-note); color: var(--wf-note-ink); }
 .tile.empty .ico-big { background: transparent; border: 2px dashed var(--wf-line); color: var(--wf-muted); }
 .tile.wait { border-color: var(--wf-hot); }
@@ -207,7 +207,7 @@
           <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">방금 설치</span></span>
         </div>
     </div>
-    <p class="wf-note">카드만 둔다 — 제목 줄 · 묶음 제목 · 시트 내용 없이 모든 메뉴가 같은 크기의 버튼 타일(가로 3 : 세로 4)로 한 격자에 놓인다. 위 1:1 칸은 데이터 요약(큰 숫자 · 막대 · 모서리 배지)이거나, 요약할 데이터가 적으면 화면 아이콘을 크게 — 비지 않는다. 아래는 이름과 한 줄 상태. 첫 타일이 내 차례, 설정 · 새 에이전트도 타일이다. 노란 라벨이 붙은 끝의 타일들은 상태 견본이다. 사이드바는 없고, iPhone Duo 앱은 하단 탭 바만 남는다.</p>
+    <p class="wf-note">카드만 둔다 — 제목 줄 · 묶음 제목 · 시트 내용 없이 모든 메뉴가 같은 크기의 버튼 타일(가로 1 : 세로 √2 — iPhone Duo 커버 466×678 의 비율)로 한 격자에 놓인다. 위 1:1 칸은 데이터 요약(큰 숫자 · 막대 · 모서리 배지)이거나, 요약할 데이터가 적으면 화면 아이콘을 크게 — 비지 않는다. 아래는 이름과 한 줄 상태. 첫 타일이 내 차례, 설정 · 새 에이전트도 타일이다. 노란 라벨이 붙은 끝의 타일들은 상태 견본이다. 사이드바는 없고, iPhone Duo 앱은 하단 탭 바만 남는다.</p>
   </main>
 </div>
 <!-- iPhone Duo (the app): bottom tab bar -->
