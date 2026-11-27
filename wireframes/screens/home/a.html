@@ -36,36 +36,30 @@
   .home-tools-list { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
 }
 @media (width > 1100px) {
-  .home-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr); }
-  .home-tools-layout { grid-column: auto; }
+  .home-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
 }
 :root[data-posture] .home-tools-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+/* 메뉴 카드 (홈에는 사이드바가 없다): every menu the dashboard has, one small card each — core screens and every
+   installed plugin's nav slot; a plugin added is a card added */
+.home-menu { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.home-card { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 8px 10px;
+  background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: var(--wf-r); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.home-card strong { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.home-card.add { border-style: dashed; color: var(--wf-muted); }
+.wf-app .home-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
+  :root:not([data-posture]) .home-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 </style>
 </head>
 <body>
 <div class="wf-screen">
-  <!-- shell: full sidebar on desktop, icon rail on tablet; on iPhone Duo (the app) a bottom tab bar instead: the dock, or the sheet's first row half folded -->
-  <nav class="wf-side" data-shell>
-    <span class="wf-btn on" data-to="home"><i class="wf-ico"></i><span class="wf-lbl">홈</span></span>
-    <span class="wf-btn" data-to="agents"><i class="wf-ico"></i><span class="wf-lbl">에이전트</span></span>
-    <span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><span class="wf-lbl">결정</span><span class="wf-tag hot">3</span></span>
-    <span class="wf-btn" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><span class="wf-lbl">리뷰</span></span>
-    <span class="wf-btn" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><span class="wf-lbl">테스트</span></span>
-    <p class="wf-t wf-hide-tablet wf-hide-fold">도구</p>
-    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="projects"><span class="wf-lbl">프로젝트</span></span>
-    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="designs"><span class="wf-lbl">설계문서</span></span>
-    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="trees"><span class="wf-lbl">워크트리</span></span>
-    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="devices"><span class="wf-lbl">실기기</span></span>
-    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="media"><span class="wf-lbl">녹화 영상</span></span>
-    <span class="wf-btn wf-hide-tablet wf-hide-fold" data-to="more"><span class="wf-lbl">더 보기</span></span>
-    <span class="wf-btn wf-only-tablet wf-only-fold" data-to="more"><i class="wf-ico"></i></span>
-    <span class="wf-grow"></span>
-    <span class="wf-btn" data-to="new-agent"><i class="wf-ico"></i><span class="wf-lbl">새 에이전트</span></span>
-    <span class="wf-btn" data-to="settings"><span class="wf-dot ok"></span><span class="wf-lbl">설정</span></span>
-  </nav>
+  <!-- Home: no sidebar. The menu cards in the page are the navigation; the iPhone Duo app keeps its bottom tab bar. -->
   <main class="wf-main">
     <header class="wf-row">
       <h1 class="wf-h l wf-grow">홈</h1>
+      <button type="button" class="wf-btn wf-hide-posture" data-to="settings"><span class="wf-dot ok"></span>설정</button>
       <button type="button" class="wf-btn primary wf-hide-posture" data-to="new-agent">+ 새 에이전트</button>
     </header>
     <div class="wf-panes home-layout">
@@ -96,17 +90,30 @@
           </div>
         </div>
       </section>
-      <section class="wf-col home-tools-layout wf-hide-posture" aria-labelledby="home-tools-title">
-        <h2 class="wf-h" id="home-tools-title">도구 요약</h2>
-        <div class="home-tools-list">
-          <button type="button" class="home-utility" data-to="compare" data-slot="home.tile" data-plugin="cost"><strong>비교 · 비용</strong><span class="wf-t">오늘 0.00</span></button>
-          <button type="button" class="home-utility" data-to="usage" data-slot="home.tile" data-plugin="plan-usage"><strong>플랜 사용량</strong><span class="wf-t">최고 60%</span></button>
-          <button type="button" class="home-utility" data-to="projects" data-slot="home.tile" data-plugin="projects"><strong>프로젝트</strong><span class="wf-t">진행 중 2개</span></button>
-          <button type="button" class="home-utility" data-to="designs" data-slot="home.tile" data-plugin="designs"><strong>설계문서</strong><span class="wf-t">최근 참조 3건</span></button>
-        </div>
-      </section>
     </div>
-    <p class="wf-note">접힘에서는 내 차례에서 진행 요약으로 내려간다. 펼침과 태블릿에서는 둘을 옆에 두고, 데스크톱에서는 도구 요약까지 나란히 본다.</p>
+    <section class="wf-col" aria-labelledby="home-menu-title">
+      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-menu-title">메뉴</h2><span class="wf-t wf-hide-phone">플러그인을 더하면 카드가 생긴다</span></div>
+      <div class="home-menu">
+        <button type="button" class="home-card" data-to="agents"><i class="wf-ico"></i><strong>에이전트</strong><span class="wf-tag ok">6</span></button>
+        <button type="button" class="home-card" data-to="decide" data-slot="nav" data-plugin="decisions"><i class="wf-ico"></i><strong>결정</strong><span class="wf-tag hot">3</span></button>
+        <button type="button" class="home-card" data-to="worktrees" data-slot="nav" data-plugin="qa-review"><i class="wf-ico"></i><strong>리뷰</strong><span class="wf-tag hot">1</span></button>
+        <button type="button" class="home-card" data-to="tests" data-slot="nav" data-plugin="tests"><i class="wf-ico"></i><strong>테스트</strong><span class="wf-tag">2</span></button>
+        <button type="button" class="home-card" data-to="projects" data-slot="nav" data-plugin="projects"><i class="wf-ico"></i><strong>프로젝트</strong></button>
+        <button type="button" class="home-card" data-to="designs" data-slot="nav" data-plugin="designs"><i class="wf-ico"></i><strong>설계문서</strong></button>
+        <button type="button" class="home-card" data-to="trees" data-slot="nav" data-plugin="worktrees"><i class="wf-ico"></i><strong>워크트리</strong></button>
+        <button type="button" class="home-card" data-to="devices" data-slot="nav" data-plugin="devices"><i class="wf-ico"></i><strong>실기기</strong></button>
+        <button type="button" class="home-card" data-to="media" data-slot="nav" data-plugin="media"><i class="wf-ico"></i><strong>녹화 영상</strong></button>
+        <button type="button" class="home-card" data-to="compare" data-slot="nav" data-plugin="cost"><i class="wf-ico"></i><strong>비교 · 비용</strong></button>
+        <button type="button" class="home-card" data-to="usage" data-slot="nav" data-plugin="plan-usage"><i class="wf-ico"></i><strong>플랜 사용량</strong></button>
+        <button type="button" class="home-card" data-to="talk" data-slot="nav" data-plugin="talk"><i class="wf-ico"></i><strong>상호작용</strong></button>
+        <button type="button" class="home-card" data-to="canvas" data-slot="nav" data-plugin="canvas"><i class="wf-ico"></i><strong>워크플로 캔버스</strong></button>
+        <button type="button" class="home-card" data-to="chars" data-slot="nav" data-plugin="chars"><i class="wf-ico"></i><strong>캐릭터</strong></button>
+        <button type="button" class="home-card" data-to="new-agent"><i class="wf-ico"></i><strong>새 에이전트</strong></button>
+        <button type="button" class="home-card" data-to="settings"><i class="wf-ico"></i><strong>설정</strong><span class="wf-dot ok"></span></button>
+        <button type="button" class="home-card add" data-to="plugins"><i class="wf-ico"></i><strong>메뉴 추가</strong></button>
+      </div>
+    </section>
+    <p class="wf-note">홈에는 사이드바가 없다 — 아래 「메뉴」 카드가 모든 화면으로 가는 길이다. 비용·사용량·프로젝트·설계문서 요약은 메뉴 카드로 합쳤다. 접힘에서는 내 차례에서 진행 요약으로 내려간다. 펼침 이상은 둘을 옆에 두고, 메뉴는 그 아래 한 덩어리다.</p>
   </main>
 </div>
 <!-- iPhone Duo (the app): bottom tab bar -->
