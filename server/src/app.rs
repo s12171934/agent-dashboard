@@ -788,23 +788,38 @@ fn lite_orca(o: &Value) -> Value {
     o
 }
 /// Terminals that run checkbox-driver scripts rather than an agent: each project's scheduler
-/// (`state/scheduler.json`) and its track runners (`state/run-<track>.json`).
+/// (`state/scheduler.json`) and its track drivers. A driver restart opens a new terminal that only the
+/// ticket (`state/<track>.json` `driver_terminal_handle`) and the scheduler's `driver_history` record;
+/// `state/run-<track>.json` keeps the first launch's.
 pub(crate) fn script_terminals(root: &Path) -> Vec<String> {
     let mut out = vec![];
     for project in std::fs::read_dir(root).into_iter().flatten().flatten() {
         let state = project.path().join("state");
+        let sched = read_json(state.join("scheduler.json"));
+        out.extend(sched["scheduler_terminal"].as_str().map(str::to_owned));
         out.extend(
-            read_json(state.join("scheduler.json"))["scheduler_terminal"]
-                .as_str()
-                .map(str::to_owned),
+            array(&sched["driver_history"])
+                .iter()
+                .filter_map(|h| h.as_str().map(str::to_owned)),
         );
         for f in std::fs::read_dir(&state).into_iter().flatten().flatten() {
             let name = f.file_name().to_string_lossy().into_owned();
-            if name.starts_with("run-") && name.ends_with(".json") {
-                out.extend(read_json(f.path())["terminal"].as_str().map(str::to_owned));
-            }
+            let Some(stem) = name.strip_suffix(".json") else {
+                continue;
+            };
+            let field = if stem.starts_with("run-") {
+                "terminal"
+            } else if ["scheduler", "plan", "events"].contains(&stem) || stem.starts_with("usage-")
+            {
+                continue;
+            } else {
+                "driver_terminal_handle"
+            };
+            out.extend(read_json(f.path())[field].as_str().map(str::to_owned));
         }
     }
+    out.sort();
+    out.dedup();
     out.retain(|h| !h.is_empty());
     out
 }
@@ -855,15 +870,19 @@ mod hook_tests {
         std::fs::create_dir_all(&state).unwrap();
         std::fs::write(
             state.join("scheduler.json"),
-            r#"{"scheduler_terminal":"term_s"}"#,
+            r#"{"scheduler_terminal":"term_s","driver_history":["term_old","term_r1"]}"#,
         )
         .unwrap();
         std::fs::write(state.join("run-R1.json"), r#"{"terminal":"term_r1"}"#).unwrap();
-        std::fs::write(state.join("R1.json"), r#"{"terminal":"term_not_a_runner"}"#).unwrap();
+        // Restarted: the ticket holds the new driver terminal; run-R1.json still names the first one.
+        std::fs::write(
+            state.join("R1.json"),
+            r#"{"terminal":"term_not_a_runner","driver_terminal_handle":"term_r1b"}"#,
+        )
+        .unwrap();
         std::fs::create_dir_all(dir.path().join("empty/state")).unwrap();
-        let mut got = script_terminals(dir.path());
-        got.sort();
-        assert_eq!(got, ["term_r1", "term_s"]);
+        let got = script_terminals(dir.path());
+        assert_eq!(got, ["term_old", "term_r1", "term_r1b", "term_s"]);
         assert!(script_terminals(&dir.path().join("missing")).is_empty());
     }
     #[test]
