@@ -20,7 +20,7 @@
 .tiles { --tile-min: 120px; --tile-max: 240px; display: grid; gap: var(--wf-gap);
   grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(var(--tile-min), 11vw, calc(var(--tile-max) / 1.6))), 1fr)); }
 .tile { max-width: var(--tile-max); width: 100%; justify-self: center; container-type: inline-size; aspect-ratio: 1 / 1.41421; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
-  background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 18px; corner-shape: squircle; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .tile:hover { border-color: var(--wf-accent); }
 /* the 1:1 summary */
 .tile-sum { aspect-ratio: 1 / 1; width: 100%; flex: none; position: relative; display: flex; flex-direction: column; justify-content: center; gap: 6px;
@@ -52,7 +52,7 @@
    sum up — the icon itself, large in the middle, with its one line under it */
 .tile-sum > .ico { position: absolute; top: 8px; left: 10px; font-size: 15px; color: var(--wf-muted); line-height: 1; }
 .tile-sum > .ico + * , .tile-sum > .corner + * { margin-top: 10px; }
-.tile-sum .ico-big { align-self: center; display: grid; place-items: center; width: 52%; aspect-ratio: 1; border-radius: 22%;
+.tile-sum .ico-big { align-self: center; display: grid; place-items: center; width: 52%; aspect-ratio: 1; border-radius: 22.5%; corner-shape: squircle;
   background: var(--wf-fill); color: var(--wf-ink); font-size: clamp(22px, 22cqi, 48px); line-height: 1; }
 .tile-sum .sum-line { align-self: center; font-size: 12px; color: var(--wf-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .tile-sum .sum-line b { color: var(--wf-ink); font-size: 15px; }

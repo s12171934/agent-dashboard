@@ -138,7 +138,8 @@ function meta() {
 function frame(sc, v, w, z) {
   const W = Math.round(w.w * z), H = Math.round(w.h * z);
   if (!v) return `<div class="shot" style="width:${W}px;height:${H}px"><div class="empty">미작성</div></div>`;
-  return `<div class="shot" style="width:${W}px;height:${H}px" data-screen="${sc.id}" data-variant="${v.id}" data-width="${w.id}">
+  // the frame's corners are the device's display corners (screens.json r, in points), scaled with the frame
+  return `<div class="shot" style="width:${W}px;height:${H}px;border-radius:${Math.max(6, (w.r || 0) * z)}px" data-screen="${sc.id}" data-variant="${v.id}" data-width="${w.id}">
     <iframe data-src="${esc(src(v, w))}" data-file="${esc(v.file)}" data-w="${w.w}" data-h="${w.h}" width="${w.w}" height="${w.h}" style="transform:scale(${z})" loading="lazy" tabindex="-1" title="${esc(sc.name)} ${esc(v.id)} ${esc(w.name)}"></iframe></div>`;
 }
 
@@ -308,7 +309,7 @@ function sizeFocus() {
   const f = $('#f-frame'), body = $('#focus .fbody');
   const W = (body.clientWidth || innerWidth) - 32, H = (body.clientHeight || innerHeight - 60) - 32;
   const s = S.actual ? 1 : Math.max(0.1, Math.min(W / F.w.w, H / F.w.h));
-  f.width = F.w.w; f.height = F.w.h;
+  f.width = F.w.w; f.height = F.w.h; f.style.borderRadius = `${F.w.r || 8}px`;  // the device's display corners
   f.style.transformOrigin = '0 0'; f.style.transform = s === 1 ? '' : `scale(${s})`;
   // the layout box stays at the frame's own size: margins give the scaled size back to the flow
   f.style.marginRight = `${F.w.w * (s - 1)}px`; f.style.marginBottom = `${F.w.h * (s - 1)}px`;

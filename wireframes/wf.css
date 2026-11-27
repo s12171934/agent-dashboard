@@ -4,7 +4,7 @@
   --wf-bg: #f4f4f2; --wf-panel: #ffffff; --wf-fill: #e2e2de; --wf-ink: #2b2b29; --wf-muted: #8a8a85;
   --wf-line: #c9c9c4; --wf-accent: #3b6fd8; --wf-hot: #d9822b; --wf-bad: #c8463c; --wf-ok: #3d9a62;
   --wf-note: #fff3b0; --wf-note-ink: #5c4a00; --wf-msg: #8a5cd6; --wf-done: #a3a29b;
-  --wf-gap: 12px; --wf-r: 8px;
+  --wf-gap: 12px; --wf-r: 8px; --wf-dev-r: 0px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -144,6 +144,17 @@ body {
 /* iPhone as the app (html.wf-app): status bar; the menu is the system's sidebar (below), not the web rail; the tab
    bar look (icon over label, home indicator) is left for the half-folded sheet's nav row */
 .wf-app .wf-side { display: none !important; }
+/* Apple's curves: --wf-dev-r is the device's display corner (the board rounds its frames the same: screens.json r) —
+   iPhone 55pt, Duo's inner screen 40pt, iPad 18pt, Mac square. Corners are continuous (corner-shape: squircle, the
+   curve iOS draws), and what floats near the screen's edge is concentric with it: its radius is the screen's less
+   the inset (the sidebar: --wf-dev-r - 8px). In the app the cards and boxes round a little more (--wf-r 14px). */
+@media (width <= 500px) { :root { --wf-dev-r: 55px; } }
+@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) { :root { --wf-dev-r: 40px; } }
+@media (width > 500px) and (width <= 1100px) and (not ((min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)))) { :root { --wf-dev-r: 18px; } }
+:root[data-posture] { --wf-dev-r: 40px; }
+:root.wf-app { --wf-r: 14px; }
+.wf-app :is(.wf-box, .wf-module, .wf-input, .wf-btn, .wf-sheet, .wf-dialog) { corner-shape: squircle; }
+
 /* iPhone (Duo cover, folded or unfolded, and an ordinary iPhone), not half folded: the system's sidebar
    (UITabBarController .tabSidebar — iPadOS's floating Liquid Glass panel) is the menu, not a tab bar: a sidebar
    toggle and the app's title on top, every screen a row (SF Symbol + name, the selected one tinted), sections that
@@ -156,12 +167,12 @@ body {
 :root.wf-app:not([data-posture]) .wf-dock { display: none !important; }
 :root.wf-app:not([data-posture]) .wf-main { padding-bottom: calc(var(--wf-gap) * 2); }
 :root.wf-app:not([data-posture]) .wf-side { display: flex !important; flex-direction: column; width: 224px; padding: 88px 10px 12px; align-items: stretch; gap: 2px;
-  border: 1px solid var(--wf-line); border-radius: 26px; background: var(--wf-panel); box-shadow: 0 8px 28px rgb(0 0 0 / .12); overflow: auto; }
+  border: 1px solid var(--wf-line); border-radius: calc(var(--wf-dev-r) - 8px); corner-shape: squircle; background: var(--wf-panel); box-shadow: 0 8px 28px rgb(0 0 0 / .12); overflow: auto; }
 :root.wf-app:not([data-posture]) .wf-side::before { content: "◧\fe0e"; position: absolute; top: 10px; left: 10px; width: 34px; height: 34px;
   display: grid; place-items: center; border-radius: 50%; background: var(--wf-fill); font-size: 16px; color: var(--wf-accent); }
 :root.wf-app:not([data-posture]) .wf-side::after { content: "대시보드"; position: absolute; top: 52px; left: 20px; font: 700 22px/1.2 -apple-system, system-ui, sans-serif; }
 :root.wf-app:not([data-posture]) .wf-side .wf-btn { display: flex !important; justify-content: flex-start; align-items: center; gap: 10px;
-  min-height: 36px; padding: 6px 10px; border: 0; border-radius: 12px; background: none; font-size: 14px; outline-offset: -2px; }
+  min-height: 36px; padding: 6px 10px; border: 0; border-radius: 18px; corner-shape: squircle; background: none; font-size: 14px; outline-offset: -2px; }
 :root.wf-app:not([data-posture]) .wf-side .wf-btn .wf-lbl { display: revert; }
 :root.wf-app:not([data-posture]) .wf-side .wf-btn .wf-ico { width: 20px; height: 20px; background: var(--wf-accent); opacity: .5; }
 :root.wf-app:not([data-posture]) .wf-side .wf-btn:not(:has(.wf-ico, .wf-dot))::before { content: ""; width: 20px; height: 20px; flex: none; border-radius: 5px; background: var(--wf-accent); opacity: .5; }
