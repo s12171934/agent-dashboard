@@ -159,7 +159,7 @@ pub fn collect(app: &App) -> Value {
     } else {
         Value::Null
     };
-    let trees=crate::worktrees::get(app,false).ok().map(|v|{let mut repos=vec![];let mut dirty=vec![];for r in array(&v["repos"]){let ws=array(&r["worktrees"]).iter().filter(|w|w["bare"]!=true).collect::<Vec<_>>();repos.push(json!({"name":r["name"],"worktrees":ws.len(),"dirty":ws.iter().filter(|w|number(&w["dirty"])>0.).count()}));for w in ws.into_iter().filter(|w|number(&w["dirty"])>0.){dirty.push(json!({"repo":r["name"],"name":w["name"],"branch":w["branch"],"dirty":w["dirty"],"committed":w["committed"]}));}}dirty.sort_by(|a,b|number(&b["committed"]).total_cmp(&number(&a["committed"])));dirty.truncate(6);json!({"repos":repos,"dirty":dirty})});
+    let trees=crate::worktrees::peek(app).map(|v|{let mut repos=vec![];let mut dirty=vec![];for r in array(&v["repos"]){let ws=array(&r["worktrees"]).iter().filter(|w|w["bare"]!=true).collect::<Vec<_>>();repos.push(json!({"name":r["name"],"worktrees":ws.len(),"dirty":ws.iter().filter(|w|number(&w["dirty"])>0.).count()}));for w in ws.into_iter().filter(|w|number(&w["dirty"])>0.){dirty.push(json!({"repo":r["name"],"name":w["name"],"branch":w["branch"],"dirty":w["dirty"],"committed":w["committed"]}));}}dirty.sort_by(|a,b|number(&b["committed"]).total_cmp(&number(&a["committed"])));dirty.truncate(6);json!({"repos":repos,"dirty":dirty})});
     let mut mine=decisions.iter().map(|d|json!({"kind":"dec","title":d["title"],"detail":d["header"].as_str().unwrap_or(text(&d["question"])),"path":d["path"]})).chain(asks.iter().map(|a|{let mut a=a.clone();a["kind"]=json!("ask");a})).collect::<Vec<_>>();
     let blocked = qa
         .iter()

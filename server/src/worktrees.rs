@@ -151,38 +151,27 @@ pub fn collect(app: &App, fresh: bool) -> Result<Value> {
             };
             rows.retain(|w| seen.insert(real(text(&w["path"]))));
             for (i, w) in rows.iter_mut().enumerate() {
-                let p = Path::new(text(&w["path"])).to_path_buf();
-                let o = by_path.get(&real(&p));
                 w["main"] = json!(i == 0);
-                w["orca"] = json!(o.is_some());
-                w["name"] = json!(
-                    o.and_then(|o| o["displayName"].as_str())
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| p
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .into_owned())
-                );
-                w["comment"] = json!(o.and_then(|o| o["comment"].as_str()).unwrap_or(""));
-                let missing = !p.is_dir() && w["bare"] != true;
-                w["missing"] = json!(missing);
-                if missing || w["bare"] == true {
-                    merge(
-                        w,
-                        &json!({"dirty":null,"committed":null,"subject":null,"submodules":[]}),
-                    );
-                    continue;
-                }
-                let status = git(&p, &["status", "--porcelain", "--untracked-files=normal"]);
-                let last = git(&p, &["log", "-1", "--format=%ct%x09%s"]).unwrap_or_default();
-                let (ts, subject) = last.split_once('\t').unwrap_or(("", ""));
-                merge(
-                    w,
-                    &json!({"dirty":status.ok().map(|s|s.lines().filter(|s|!s.is_empty()).count()),"committed":ts.parse::<u64>().ok(),"subject":short(subject,120),"submodules":submodules(&p)}),
-                );
             }
         }
+        // git status/log/submodules for every worktree, several at a time: one by one, ~80 worktrees with
+        // submodules took minutes.
+        let mut all = repos
+            .iter_mut()
+            .filter_map(|r| r["worktrees"].as_array_mut())
+            .flat_map(|rows| rows.iter_mut())
+            .collect::<Vec<_>>();
+        let per = all.len().div_ceil(8).max(1);
+        std::thread::scope(|scope| {
+            for chunk in all.chunks_mut(per) {
+                let by_path = &by_path;
+                scope.spawn(move || {
+                    for w in chunk.iter_mut() {
+                        fill(w, by_path);
+                    }
+                });
+            }
+        });
         let v = json!({"repos":repos,"at":now()});
         cache
             .lock()
@@ -202,6 +191,38 @@ pub fn collect(app: &App, fresh: bool) -> Result<Value> {
         }
     }
     Ok(listing)
+}
+/// One worktree's Orca name and comment, and its git state (status, last commit, submodules).
+fn fill(w: &mut Value, by_path: &HashMap<PathBuf, &Value>) {
+    let p = Path::new(text(&w["path"])).to_path_buf();
+    let o = by_path.get(&real(&p));
+    w["orca"] = json!(o.is_some());
+    w["name"] = json!(
+        o.and_then(|o| o["displayName"].as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned())
+    );
+    w["comment"] = json!(o.and_then(|o| o["comment"].as_str()).unwrap_or(""));
+    let missing = !p.is_dir() && w["bare"] != true;
+    w["missing"] = json!(missing);
+    if missing || w["bare"] == true {
+        merge(
+            w,
+            &json!({"dirty":null,"committed":null,"subject":null,"submodules":[]}),
+        );
+        return;
+    }
+    let status = git(&p, &["status", "--porcelain", "--untracked-files=normal"]);
+    let last = git(&p, &["log", "-1", "--format=%ct%x09%s"]).unwrap_or_default();
+    let (ts, subject) = last.split_once('\t').unwrap_or(("", ""));
+    merge(
+        w,
+        &json!({"dirty":status.ok().map(|s|s.lines().filter(|s|!s.is_empty()).count()),"committed":ts.parse::<u64>().ok(),"subject":short(subject,120),"submodules":submodules(&p)}),
+    );
 }
 fn submodules(p: &Path) -> Vec<Value> {
     if !p.join(".gitmodules").is_file() {
@@ -461,6 +482,16 @@ pub fn brzo_lineage(state: &Value) -> HashMap<PathBuf, Value> {
         out.insert(real(path), me);
     }
     out
+}
+/// The list without waiting: None until a first read has finished (started in the background), for the overview
+/// (glance), which must not stall behind a fill that runs git in every worktree.
+pub fn peek(app: &App) -> Option<Value> {
+    let a = app.clone();
+    cached_json_peek(
+        format!("worktrees:{}", app.config.data.display()),
+        20.,
+        move || collect(&a, true),
+    )
 }
 fn invalidate(app: &App) {
     drop_cache(&format!("worktrees:{}", app.config.data.display()));

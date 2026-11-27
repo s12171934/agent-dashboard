@@ -71,6 +71,42 @@ fn json_caches() -> &'static Mutex<HashMap<String, CacheEntry>> {
 pub fn drop_cache(key: &str) {
     json_caches().lock().unwrap().remove(key);
 }
+/// cached_json for callers that must not wait: the cached value (expired too, refreshed in the background), or None
+/// while nothing is cached yet. A first fill is started in the background, and one already running (here or in a
+/// waiting cached_json, which holds the entry for the whole fill) is not waited for.
+pub fn cached_json_peek(
+    key: String,
+    ttl: f64,
+    f: impl FnOnce() -> Result<Value> + Send + 'static,
+) -> Option<Value> {
+    let entry = json_caches()
+        .lock()
+        .unwrap()
+        .entry(key)
+        .or_default()
+        .clone();
+    let mut e = entry.try_lock().ok()?;
+    if e.refreshing || e.value.is_some() && now() - e.at <= ttl {
+        return e.value.clone();
+    }
+    e.refreshing = true;
+    e.generation += 1;
+    let (generation, value) = (e.generation, e.value.clone());
+    drop(e);
+    let entry = entry.clone();
+    std::thread::spawn(move || {
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        let mut e = entry.lock().unwrap();
+        if e.generation == generation {
+            if let Ok(Ok(v)) = r {
+                e.value = Some(v);
+            }
+            e.at = now();
+            e.refreshing = false;
+        }
+    });
+    value
+}
 /// Serve the last successful result while exactly one worker refreshes an expired expensive query.
 pub fn cached_json(
     key: String,
