@@ -1,6 +1,13 @@
 {
   "widths": [
     {
+      "id": "iphone",
+      "name": "iPhone",
+      "w": 402,
+      "h": 874,
+      "env": "일반 iPhone 세로 (iPhone 17 · 402×874)"
+    },
+    {
       "id": "duo-cover",
       "name": "Duo 접힘",
       "w": 466,
@@ -50,6 +57,13 @@
       "w": 820,
       "h": 1180,
       "env": "iPad · 웹 태블릿"
+    },
+    {
+      "id": "tablet-wide",
+      "name": "태블릿 가로",
+      "w": 1180,
+      "h": 820,
+      "env": "iPad 를 옆으로 · 웹 태블릿 가로"
     },
     {
       "id": "desktop",

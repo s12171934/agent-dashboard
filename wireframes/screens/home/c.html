@@ -6,21 +6,26 @@
 <meta name="robots" content="noindex">
 <title>홈 C · 와이어프레임</title>
 <!-- Home C: no sidebar. The home itself is the menu: a card for every menu the dashboard has (core screens and every
-     installed plugin's nav slot), so adding a plugin adds a card. The iPhone Duo app keeps its bottom tab bar. -->
+     installed plugin's nav slot), so adding a plugin adds a card. The iPhone Duo app: the tab bar on the cover; unfolded, no sidebar on the home (its cards are the menu). -->
 <link rel="stylesheet" href="../../wf.css">
 <script src="../../wf.js"></script>
 <style>
 /* Home C: the home is the menu. Every menu is the same tile, a button 1 wide by √2 tall (the iPhone Duo cover, 466×678, is near 1:√2): a 1:1 square on top that
    sums up the screen's data (a big number, a bar, a badge in the corner when something waits), the name below.
    data-menu="<screen>" names the screen a tile stands for (the board's 화면 내용 hides the tile when it is off). */
-.tiles { display: grid; gap: var(--wf-gap); grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
-.tile { aspect-ratio: 1 / 1.41421; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
+/* size: a tile is never narrower than --tile-min nor wider than --tile-max. The column's least width grows with the
+   screen (11vw, kept between --tile-min and --tile-max / 1.6), and auto-fill + 1fr spreads the row over the whole
+   width: a bigger screen gets more and bigger tiles, the row always full, no gap left at its end. Inside, sizes go by
+   the tile's own width (cqi), so a big tile reads as big, not as a small one with room around it. */
+.tiles { --tile-min: 120px; --tile-max: 240px; display: grid; gap: var(--wf-gap);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(var(--tile-min), 11vw, calc(var(--tile-max) / 1.6))), 1fr)); }
+.tile { max-width: var(--tile-max); width: 100%; justify-self: center; container-type: inline-size; aspect-ratio: 1 / 1.41421; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
   background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .tile:hover { border-color: var(--wf-accent); }
 /* the 1:1 summary */
 .tile-sum { aspect-ratio: 1 / 1; width: 100%; flex: none; position: relative; display: flex; flex-direction: column; justify-content: center; gap: 6px;
   padding: 12px; background: var(--wf-bg); border-bottom: 1px solid var(--wf-line); font-variant-numeric: tabular-nums; }
-.tile-sum .big { font-size: 30px; font-weight: 700; line-height: 1; }
+.tile-sum .big { font-size: clamp(20px, 19cqi, 40px); font-weight: 700; line-height: 1; }
 .tile-sum .unit { color: var(--wf-muted); font-size: 12px; }
 .tile-sum .wf-seg { min-width: 0; }
 .tile-sum .wf-t { font-size: 11px; }
@@ -32,32 +37,26 @@
 .tile-sum .plan { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 4px; align-items: center; font-size: 10px; }
 /* the name */
 .tile-name { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 12px; min-height: 0; }
-.tile-name strong { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-name strong { font-size: clamp(13px, 9cqi, 17px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-name .wf-t { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile.turn { border-color: var(--wf-hot); }
 .tile.add { border-style: dashed; background: transparent; }
 .tile.add .tile-sum { background: transparent; border-bottom-style: dashed; }
-@media (width > 1100px) { .tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
-/* the Duo app: three tiles a row on the cover, four unfolded; the name line a little smaller */
-.wf-app .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+/* the Duo app: the same rule (three a row on the cover, more unfolded), a tighter gap and padding */
+.wf-app .tiles { gap: 8px; }
 .wf-app .tile-sum { padding: 8px; gap: 4px; }
-.wf-app .tile-sum .big { font-size: 22px; }
 .wf-app .tile-sum .mini { gap: 4px; } .wf-app .tile-sum .mini > span { padding: 3px 4px; } .wf-app .tile-sum .mini b { font-size: 14px; }
-.wf-app .tile-name { padding: 4px 8px; } .wf-app .tile-name strong { font-size: 13px; }
-@media (width > 500px) and (min-aspect-ratio: 5/8) and (max-aspect-ratio: 8/5) and ((width <= 700px) or (height <= 700px)) {
-  :root.wf-app:not([data-posture]) .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
+.wf-app .tile-name { padding: 4px 8px; }
 
 /* every square shows something: a small icon in its corner beside the data, or — when the screen has little to
    sum up — the icon itself, large in the middle, with its one line under it */
 .tile-sum > .ico { position: absolute; top: 8px; left: 10px; font-size: 15px; color: var(--wf-muted); line-height: 1; }
 .tile-sum > .ico + * , .tile-sum > .corner + * { margin-top: 10px; }
 .tile-sum .ico-big { align-self: center; display: grid; place-items: center; width: 52%; aspect-ratio: 1; border-radius: 22%;
-  background: var(--wf-fill); color: var(--wf-ink); font-size: 34px; line-height: 1; }
+  background: var(--wf-fill); color: var(--wf-ink); font-size: clamp(22px, 22cqi, 48px); line-height: 1; }
 .tile-sum .sum-line { align-self: center; font-size: 12px; color: var(--wf-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .tile-sum .sum-line b { color: var(--wf-ink); font-size: 15px; }
 .tile.add .ico-big { background: transparent; border: 2px dashed var(--wf-line); color: var(--wf-muted); }
-.wf-app .tile-sum .ico-big { font-size: 24px; }
 .wf-app .tile-sum > .ico { top: 6px; left: 8px; font-size: 13px; }
 
 /* 타일 예시 (견본, 실제 홈에는 없다): the states a tile can be in */
@@ -207,7 +206,7 @@
           <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">방금 설치</span></span>
         </div>
     </div>
-    <p class="wf-note">카드만 둔다 — 제목 줄 · 묶음 제목 · 시트 내용 없이 모든 메뉴가 같은 크기의 버튼 타일(가로 1 : 세로 √2 — iPhone Duo 커버 466×678 의 비율)로 한 격자에 놓인다. 위 1:1 칸은 데이터 요약(큰 숫자 · 막대 · 모서리 배지)이거나, 요약할 데이터가 적으면 화면 아이콘을 크게 — 비지 않는다. 아래는 이름과 한 줄 상태. 첫 타일이 내 차례, 설정 · 새 에이전트도 타일이다. 노란 라벨이 붙은 끝의 타일들은 상태 견본이다. 사이드바는 없고, iPhone Duo 앱은 하단 탭 바만 남는다.</p>
+    <p class="wf-note">카드만 둔다 — 제목 줄 · 묶음 제목 · 시트 내용 없이 모든 메뉴가 같은 크기의 버튼 타일(가로 1 : 세로 √2 — iPhone Duo 커버 466×678 의 비율)로 한 격자에 놓인다. 위 1:1 칸은 데이터 요약(큰 숫자 · 막대 · 모서리 배지)이거나, 요약할 데이터가 적으면 화면 아이콘을 크게 — 비지 않는다. 아래는 이름과 한 줄 상태. 첫 타일이 내 차례, 설정 · 새 에이전트도 타일이다. 노란 라벨이 붙은 끝의 타일들은 상태 견본이다. 카드는 최소 120px · 최대 240px 사이에서 크기가 변한다 — 화면이 커지면 카드도 커지고 열이 늘어 한 줄을 끝까지 채운다. 사이드바는 없다 — iPhone Duo 앱은 커버에서 하단 탭 바, 펼치면 탭 바도 사이드바도 없이 카드만(다른 화면은 iOS 사이드바).</p>
   </main>
 </div>
 <!-- iPhone Duo (the app): bottom tab bar -->
