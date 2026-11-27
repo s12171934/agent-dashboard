@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>홈 C · 와이어프레임</title>
+<!-- Home C: no sidebar. The home itself is the menu: a card for every menu the dashboard has (core screens and every
+     installed plugin's nav slot), so adding a plugin adds a card. The iPhone Duo app: the tab bar on the cover; unfolded, no sidebar on the home (its cards are the menu). -->
+<link rel="stylesheet" href="../../wf.css">
+<script src="../../wf.js"></script>
+<style>
+/* Home C: the home is the menu. Every menu is the same tile, a button 1 wide by √2 tall (the iPhone Duo cover, 466×678, is near 1:√2): a 1:1 square on top that
+   sums up the screen's data (a big number, a bar, a badge in the corner when something waits), the name below.
+   data-menu="<screen>" names the screen a tile stands for (the board's 화면 내용 hides the tile when it is off). */
+/* size: a tile is never narrower than --tile-min nor wider than --tile-max. The column's least width grows with the
+   screen (11vw, kept between --tile-min and --tile-max / 1.6), and auto-fill + 1fr spreads the row over the whole
+   width: a bigger screen gets more and bigger tiles, the row always full, no gap left at its end. Inside, sizes go by
+   the tile's own width (cqi), so a big tile reads as big, not as a small one with room around it. */
+.tiles { --tile-min: 120px; --tile-max: 240px; display: grid; gap: var(--wf-gap);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(var(--tile-min), 11vw, calc(var(--tile-max) / 1.6))), 1fr)); }
+.tile { max-width: var(--tile-max); width: 100%; justify-self: center; container-type: inline-size; aspect-ratio: 1 / 1.41421; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
+  background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 18px; corner-shape: squircle; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.tile:hover { border-color: var(--wf-accent); }
+/* the 1:1 summary */
+.tile-sum { aspect-ratio: 1 / 1; width: 100%; flex: none; position: relative; display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  padding: 12px; background: var(--wf-bg); border-bottom: 1px solid var(--wf-line); font-variant-numeric: tabular-nums; }
+.tile-sum .big { font-size: clamp(20px, 19cqi, 40px); font-weight: 700; line-height: 1; }
+.tile-sum .unit { color: var(--wf-muted); font-size: 12px; }
+.tile-sum .wf-seg { min-width: 0; }
+.tile-sum .wf-t { font-size: 11px; }
+.tile-sum > .corner { position: absolute; top: 8px; right: 8px; }
+.tile-sum .mini { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tile-sum .mini > span { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 8px; background: var(--wf-panel); font-size: 11px; color: var(--wf-muted); }
+.tile-sum .mini b { font-size: 18px; color: var(--wf-ink); }
+.tile-sum .mini b.hot { color: var(--wf-hot); } .tile-sum .mini b.bad { color: var(--wf-bad); } .tile-sum .mini b.msg { color: var(--wf-msg); }
+.tile-sum .plan { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 4px; align-items: center; font-size: 10px; }
+/* the name */
+.tile-name { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 12px; min-height: 0; }
+.tile-name strong { font-size: clamp(13px, 9cqi, 17px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-name .wf-t { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.turn { border-color: var(--wf-hot); }
+.tile.add { border-style: dashed; background: transparent; }
+.tile.add .tile-sum { background: transparent; border-bottom-style: dashed; }
+/* the Duo app: the same rule (three a row on the cover, more unfolded), a tighter gap and padding */
+.wf-app .tiles { gap: 8px; }
+.wf-app .tile-sum { padding: 8px; gap: 4px; }
+.wf-app .tile-sum .mini { gap: 4px; } .wf-app .tile-sum .mini > span { padding: 3px 4px; } .wf-app .tile-sum .mini b { font-size: 14px; }
+.wf-app .tile-name { padding: 4px 8px; }
+
+/* every square shows something: a small icon in its corner beside the data, or — when the screen has little to
+   sum up — the icon itself, large in the middle, with its one line under it */
+.tile-sum > .ico { position: absolute; top: 8px; left: 10px; font-size: 15px; color: var(--wf-muted); line-height: 1; }
+.tile-sum > .ico + * , .tile-sum > .corner + * { margin-top: 10px; }
+.tile-sum .ico-big { align-self: center; display: grid; place-items: center; width: 52%; aspect-ratio: 1; border-radius: 22.5%; corner-shape: squircle;
+  background: var(--wf-fill); color: var(--wf-ink); font-size: clamp(22px, 22cqi, 48px); line-height: 1; }
+.tile-sum .sum-line { align-self: center; font-size: 12px; color: var(--wf-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tile-sum .sum-line b { color: var(--wf-ink); font-size: 15px; }
+.tile.add .ico-big { background: transparent; border: 2px dashed var(--wf-line); color: var(--wf-muted); }
+.wf-app .tile-sum > .ico { top: 6px; left: 8px; font-size: 13px; }
+
+/* 타일 예시 (견본, 실제 홈에는 없다): the states a tile can be in */
+.tile.ex { cursor: default; position: relative; }
+.tile.ex .ex-state { position: absolute; z-index: 1; bottom: calc(29.3% + 4px); left: 50%; transform: translateX(-50%); white-space: nowrap;
+  font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--wf-note); color: var(--wf-note-ink); }
+.tile.empty .ico-big { background: transparent; border: 2px dashed var(--wf-line); color: var(--wf-muted); }
+.tile.wait { border-color: var(--wf-hot); }
+.tile.bad { border-color: var(--wf-bad); }
+.tile.bad .ico-big { color: var(--wf-bad); }
+.tile.loading .tile-sum { justify-content: center; }
+.tile.stale .tile-sum { opacity: .55; }
+.tile.stale .tile-sum::after { content: "끊김"; position: absolute; top: 8px; right: 8px; font-size: 10px; color: var(--wf-muted); }
+.tile.off { opacity: .5; border-style: dashed; }
+</style>
+</head>
+<body>
+<div class="wf-screen">
+  <!-- no sidebar here: the cards below are the navigation. Every other screen keeps the shell and leads back with 「홈」 -->
+  <main class="wf-main">
+    <!-- cards only: no title row, no group headings — every menu is one tile of the same size, 내 차례 first,
+         then the tile state examples (yellow labels) at the end -->
+    <div class="tiles">
+        <button type="button" class="tile turn" data-to="decide" data-slot="inbox" data-plugin="decisions">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">☰︎</span><span class="mini"><span><b class="hot">3</b>결정</span><span><b class="msg">2</b>보고</span><span><b class="hot">1</b>승인</span><span><b class="bad">1</b>막힘</span></span></span>
+          <span class="tile-name"><strong>내 차례</strong><span class="wf-t">7건 기다림</span></span>
+        </button>
+        <button type="button" class="tile" data-to="agents" data-menu="agents">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">◉︎</span><span class="wf-tag bad corner">1</span><span><span class="big">6</span> <span class="unit">실행 중</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:6"></i><i class="hot" style="flex:2"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:3"></i></div></span>
+          <span class="tile-name"><strong>에이전트</strong><span class="wf-t">응답 없음 1 · 입력 대기 2</span></span>
+        </button>
+        <button type="button" class="tile" data-to="decide" data-menu="decide" data-slot="nav" data-plugin="decisions">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">?︎</span><span class="wf-tag hot corner">3</span><span><span class="big">3</span> <span class="unit">대기</span></span><span class="wf-t">보고 2</span></span>
+          <span class="tile-name"><strong>결정</strong><span class="wf-t">가장 오래 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="worktrees" data-menu="worktrees" data-slot="nav" data-plugin="qa-review">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">✓︎</span><span class="wf-tag hot corner">1</span><span><span class="big">8</span> <span class="unit">티켓</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:4"></i><i class="hot" style="flex:1"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:2"></i></div></span>
+          <span class="tile-name"><strong>리뷰</strong><span class="wf-t">승인 1 · 막힘 1</span></span>
+        </button>
+        <button type="button" class="tile" data-to="tests" data-menu="tests" data-slot="nav" data-plugin="tests">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">▷︎</span><span class="wf-tag bad corner">1</span><span><span class="big">2</span> <span class="unit">실행 중</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:12"></i><i style="flex:8"></i></div></span>
+          <span class="tile-name"><strong>테스트</strong><span class="wf-t">실패 1 · 12 / 20</span></span>
+        </button>
+        <button type="button" class="tile" data-to="projects" data-menu="projects" data-slot="nav" data-plugin="projects">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">▦︎</span><span class="sum-line"><b>2</b> 진행 중</span></span>
+          <span class="tile-name"><strong>프로젝트</strong><span class="wf-t">다음 단계 · 단계 이름</span></span>
+        </button>
+        <button type="button" class="tile" data-to="designs" data-menu="designs" data-slot="nav" data-plugin="designs">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">▤︎</span><span class="sum-line"><b>3</b> 최근 참조</span></span>
+          <span class="tile-name"><strong>설계문서</strong><span class="wf-t">문서 제목 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="trees" data-menu="trees" data-slot="nav" data-plugin="worktrees">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">⑂︎</span><span class="sum-line"><b>5</b> 열림</span></span>
+          <span class="tile-name"><strong>워크트리</strong><span class="wf-t">변경 있음 2 · PR 1</span></span>
+        </button>
+        <button type="button" class="tile" data-to="devices" data-menu="devices" data-slot="nav" data-plugin="devices">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">▯︎</span><span class="sum-line"><b>1</b> 연결</span></span>
+          <span class="tile-name"><strong>실기기</strong><span class="wf-t">사용 중 0</span></span>
+        </button>
+        <button type="button" class="tile" data-to="media" data-menu="media" data-slot="nav" data-plugin="media">
+          <span class="tile-sum"><span class="wf-tag msg corner">새</span><span class="ico-big" aria-hidden="true">▶︎</span><span class="sum-line"><b>2</b> 새 영상</span></span>
+          <span class="tile-name"><strong>녹화 영상</strong><span class="wf-t">최근 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="compare" data-menu="compare" data-slot="nav" data-plugin="cost">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">⚖︎</span><span><span class="big">$4.32</span> <span class="unit">오늘</span></span><div class="wf-seg" aria-hidden="true"><i class="done" style="flex:17"></i><i style="flex:26"></i></div></span>
+          <span class="tile-name"><strong>비교 · 비용</strong><span class="wf-t">X $1.70 · C $2.62</span></span>
+        </button>
+        <button type="button" class="tile" data-to="usage" data-menu="usage" data-slot="nav" data-plugin="plan-usage">
+          <span class="tile-sum"><span class="ico" aria-hidden="true">◔︎</span><span class="wf-tag hot corner">!</span><span><span class="big">82%</span> <span class="unit">최고</span></span><span class="plan"><span>X</span><div class="wf-seg" aria-hidden="true"><i class="done" style="flex:42"></i><i style="flex:58"></i></div></span><span class="plan"><span>C</span><div class="wf-seg" aria-hidden="true"><i class="hot" style="flex:82"></i><i style="flex:18"></i></div></span></span>
+          <span class="tile-name"><strong>플랜 사용량</strong><span class="wf-t">한도 임박</span></span>
+        </button>
+        <button type="button" class="tile" data-to="talk" data-menu="talk" data-slot="nav" data-plugin="talk">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">⇄︎</span><span class="sum-line">새 메시지 없음</span></span>
+          <span class="tile-name"><strong>상호작용</strong><span class="wf-t">질문 0 · 답 0</span></span>
+        </button>
+        <button type="button" class="tile" data-to="canvas" data-menu="canvas" data-slot="nav" data-plugin="canvas">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">◇︎</span><span class="sum-line"><b>1</b> 워크플로</span></span>
+          <span class="tile-name"><strong>워크플로 캔버스</strong><span class="wf-t">마지막 실행 · 0분 전</span></span>
+        </button>
+        <button type="button" class="tile" data-to="chars" data-menu="chars" data-slot="nav" data-plugin="chars">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">☺︎</span><span class="sum-line"><b>6</b> 캐릭터</span></span>
+          <span class="tile-name"><strong>캐릭터</strong><span class="wf-t">마을 지도</span></span>
+        </button>
+        <button type="button" class="tile add" data-to="plugins">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">+︎</span></span>
+          <span class="tile-name"><strong>메뉴 추가</strong><span class="wf-t">플러그인 관리</span></span>
+        </button>
+        <button type="button" class="tile" data-to="new-agent" data-menu="new-agent">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">+︎</span><span class="sum-line">새로 만들기</span></span>
+          <span class="tile-name"><strong>새 에이전트</strong><span class="wf-t">프롬프트 · 저장소 · 모델</span></span>
+        </button>
+        <button type="button" class="tile" data-to="compose" data-menu="compose">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">✎︎</span><span class="sum-line"><b>17</b> 타일</span></span>
+          <span class="tile-name"><strong>화면 편집</strong><span class="wf-t">순서 · 숨기기</span></span>
+        </button>
+        <button type="button" class="tile" data-to="plugins" data-menu="plugins">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">⧉︎</span><span class="sum-line"><b>9</b> 설치</span></span>
+          <span class="tile-name"><strong>플러그인 관리</strong><span class="wf-t">업데이트 0</span></span>
+        </button>
+        <button type="button" class="tile" data-to="settings" data-menu="settings">
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">⚙︎</span><span class="sum-line"><span class="wf-dot ok" style="display:inline-block"></span> 연결됨</span></span>
+          <span class="tile-name"><strong>설정</strong><span class="wf-t">메트릭 서버 · 0초 전</span></span>
+        </button>
+        <div class="tile ex" role="img" aria-label="타일 예시 · 데이터 풍부">
+          <span class="ex-state">데이터 풍부</span>
+          <span class="tile-sum"><span class="ico" aria-hidden="true">◉︎</span><span><span class="big">12</span> <span class="unit">단위</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:5"></i><i class="hot" style="flex:2"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:4"></i></div><span class="wf-t">보조 수치 · 0</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">한 줄 상태</span></span>
+        </div>
+        <div class="tile ex" role="img" aria-label="타일 예시 · 데이터 적음">
+          <span class="ex-state">데이터 적음</span>
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">▤︎</span><span class="sum-line"><b>3</b> 단위</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">한 줄 상태</span></span>
+        </div>
+        <div class="tile ex empty" role="img" aria-label="타일 예시 · 데이터 없음">
+          <span class="ex-state">데이터 없음</span>
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">▤︎</span><span class="sum-line">항목 없음</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">아직 없음</span></span>
+        </div>
+        <div class="tile ex wait" role="img" aria-label="타일 예시 · 기다림 (배지)">
+          <span class="ex-state">기다림 (배지)</span>
+          <span class="tile-sum"><span class="wf-tag hot corner">3</span><span class="ico" aria-hidden="true">?︎</span><span><span class="big">3</span> <span class="unit">대기</span></span><span class="wf-t">보조 수치 · 0</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">가장 오래 · 0분 전</span></span>
+        </div>
+        <div class="tile ex bad" role="img" aria-label="타일 예시 · 오류">
+          <span class="ex-state">오류</span>
+          <span class="tile-sum"><span class="wf-tag bad corner">!</span><span class="ico-big" aria-hidden="true">▤︎</span><span class="sum-line">오류</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">불러오지 못함 · 다시 시도</span></span>
+        </div>
+        <div class="tile ex loading" role="img" aria-label="타일 예시 · 불러오는 중">
+          <span class="ex-state">불러오는 중</span>
+          <span class="tile-sum"><span class="ico" aria-hidden="true">▤︎</span><span class="wf-line s" style="--w:50%;height:22px"></span><span class="wf-line"></span><span class="wf-line s" style="--w:70%"></span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">0초 전 요청</span></span>
+        </div>
+        <div class="tile ex stale" role="img" aria-label="타일 예시 · 연결 끊김">
+          <span class="ex-state">연결 끊김</span>
+          <span class="tile-sum"><span class="ico" aria-hidden="true">▤︎</span><span><span class="big">5</span> <span class="unit">단위</span></span><span class="wf-t">마지막으로 받은 값</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">메트릭 서버 · 0분 전 값</span></span>
+        </div>
+        <div class="tile ex off" role="img" aria-label="타일 예시 · 꺼진 플러그인">
+          <span class="ex-state">꺼진 플러그인</span>
+          <span class="tile-sum"><span class="ico-big" aria-hidden="true">⧉︎</span><span class="sum-line">꺼짐</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">플러그인 관리에서 켜기</span></span>
+        </div>
+        <div class="tile ex" role="img" aria-label="타일 예시 · 새 플러그인">
+          <span class="ex-state">새 플러그인</span>
+          <span class="tile-sum"><span class="wf-tag msg corner">새</span><span class="ico-big" aria-hidden="true">⧉︎</span><span class="sum-line">처음 열기</span></span>
+          <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">방금 설치</span></span>
+        </div>
+    </div>
+    <p class="wf-note">카드만 둔다 — 제목 줄 · 묶음 제목 · 시트 내용 없이 모든 메뉴가 같은 크기의 버튼 타일(가로 1 : 세로 √2 — iPhone Duo 커버 466×678 의 비율)로 한 격자에 놓인다. 위 1:1 칸은 데이터 요약(큰 숫자 · 막대 · 모서리 배지)이거나, 요약할 데이터가 적으면 화면 아이콘을 크게 — 비지 않는다. 아래는 이름과 한 줄 상태. 첫 타일이 내 차례, 설정 · 새 에이전트도 타일이다. 노란 라벨이 붙은 끝의 타일들은 상태 견본이다. 카드는 최소 120px · 최대 240px 사이에서 크기가 변한다 — 화면이 커지면 카드도 커지고 열이 늘어 한 줄을 끝까지 채운다. 사이드바는 없다 — iPhone Duo 앱은 커버에서 하단 탭 바, 펼치면 탭 바도 사이드바도 없이 카드만(다른 화면은 iOS 사이드바).</p>
+  </main>
+</div>
+<!-- iPhone Duo (the app): bottom tab bar -->
+<nav class="wf-dock" data-shell>
+  <span class="wf-btn on" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
+</nav>
+<!-- half folded: cards only, so the sheet holds just the tab bar -->
+<aside class="wf-half">
+  <div class="wf-row" data-shell><span class="wf-btn on" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
+</aside>
+</body>
+</html>

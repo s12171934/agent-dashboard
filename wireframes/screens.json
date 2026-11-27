@@ -1,32 +1,44 @@
 {
   "widths": [
     {
+      "id": "iphone",
+      "name": "iPhone",
+      "w": 402,
+      "h": 874,
+      "env": "일반 iPhone 세로 (iPhone 17 · 402×874)",
+      "r": 55
+    },
+    {
       "id": "duo-cover",
       "name": "Duo 접힘",
       "w": 466,
       "h": 678,
-      "env": "iPhone Duo 커버 화면 · 웹 휴대폰"
+      "env": "iPhone Duo 커버 화면 · 웹 휴대폰",
+      "r": 55
     },
     {
       "id": "duo-cover-wide",
       "name": "Duo 접힘 가로",
       "w": 678,
       "h": 466,
-      "env": "iPhone Duo 커버 화면을 옆으로"
+      "env": "iPhone Duo 커버 화면을 옆으로",
+      "r": 55
     },
     {
       "id": "duo-open",
       "name": "Duo 펼침",
       "w": 669,
       "h": 951,
-      "env": "iPhone Duo 내부 화면 세로 (펼침 두 칸)"
+      "env": "iPhone Duo 내부 화면 세로 (펼침 두 칸)",
+      "r": 40
     },
     {
       "id": "duo-open-wide",
       "name": "Duo 펼침 가로",
       "w": 951,
       "h": 669,
-      "env": "iPhone Duo 내부 화면을 옆으로 (펼침 두 칸)"
+      "env": "iPhone Duo 내부 화면을 옆으로 (펼침 두 칸)",
+      "r": 40
     },
     {
       "id": "duo-book",
@@ -34,7 +46,8 @@
       "w": 951,
       "h": 669,
       "posture": "book",
-      "env": "옆으로 들고 반쯤 접음: 왼쪽 반 페이지, 오른쪽 반 시트"
+      "env": "옆으로 들고 반쯤 접음: 왼쪽 반 페이지, 오른쪽 반 시트",
+      "r": 40
     },
     {
       "id": "duo-laptop",
@@ -42,28 +55,40 @@
       "w": 669,
       "h": 951,
       "posture": "laptop",
-      "env": "세워 들고 반쯤 접음: 위쪽 반 페이지, 아래쪽 반 시트"
+      "env": "세워 들고 반쯤 접음: 위쪽 반 페이지, 아래쪽 반 시트",
+      "r": 40
     },
     {
       "id": "tablet",
       "name": "태블릿",
       "w": 820,
       "h": 1180,
-      "env": "iPad · 웹 태블릿"
+      "env": "iPad · 웹 태블릿",
+      "r": 18
+    },
+    {
+      "id": "tablet-wide",
+      "name": "태블릿 가로",
+      "w": 1180,
+      "h": 820,
+      "env": "iPad 를 옆으로 · 웹 태블릿 가로",
+      "r": 18
     },
     {
       "id": "desktop",
       "name": "데스크톱",
       "w": 1440,
       "h": 900,
-      "env": "Mac · 웹 데스크톱"
+      "env": "Mac · 웹 데스크톱",
+      "r": 0
     },
     {
       "id": "desktop-tall",
       "name": "데스크톱 세로",
       "w": 1440,
       "h": 2560,
-      "env": "Mac · 세로로 돌린 모니터 (27\" QHD)"
+      "env": "Mac · 세로로 돌린 모니터 (27\" QHD)",
+      "r": 0
     }
   ],
   "groups": [
@@ -105,13 +130,19 @@
           "id": "a",
           "file": "screens/home/a.html",
           "status": "draft",
-          "note": "내 차례를 첫 영역에 둔다."
+          "note": "내 차례 · 진행 요약을 먼저, 아래에 모든 메뉴 카드. 사이드바 없음."
         },
         {
           "id": "b",
           "file": "screens/home/b.html",
           "status": "draft",
-          "note": "모듈형 대시보드 — 내 차례와 오케스트레이션 요약을 먼저, 테스트·QA·비용·사용량 패널. 「화면 편집」으로 배치를 바꾼다."
+          "note": "모듈형 대시보드 — 내 차례와 오케스트레이션 요약, 테스트·QA·비용·사용량 패널, 맨 아래 고정 「메뉴」 패널. 사이드바 없음. 「화면 편집」으로 배치를 바꾼다."
+        },
+        {
+          "id": "c",
+          "file": "screens/home/c.html",
+          "status": "draft",
+          "note": "홈 = 메뉴, 카드만 — 제목 줄·묶음 없이 모든 메뉴(내 차례 포함)를 같은 크기의 1:√2 버튼 타일(Duo 비율) 한 격자로: 위 1:1 데이터 요약 또는 아이콘, 아래 이름. 끝에 타일 상태 견본. 사이드바 없음."
         }
       ]
     },
