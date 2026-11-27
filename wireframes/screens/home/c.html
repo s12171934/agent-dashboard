@@ -13,8 +13,6 @@
 /* Home C: the home is the menu. Every menu is the same tile, a button 3 wide by 4 tall: a 1:1 square on top that
    sums up the screen's data (a big number, a bar, a badge in the corner when something waits), the name below.
    data-menu="<screen>" names the screen a tile stands for (the board's 화면 내용 hides the tile when it is off). */
-.home-sec { display: flex; flex-direction: column; gap: 8px; }
-.home-sec > .wf-row { gap: 8px; }
 .tiles { display: grid; gap: var(--wf-gap); grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
 .tile { aspect-ratio: 3 / 4; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden;
   background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
@@ -80,17 +78,9 @@
 <div class="wf-screen">
   <!-- no sidebar here: the cards below are the navigation. Every other screen keeps the shell and leads back with 「홈」 -->
   <main class="wf-main">
-    <header class="wf-row">
-      <h1 class="wf-h l wf-grow">홈</h1>
-      <span class="wf-input wf-hide-phone">메뉴 · 세션 찾기</span>
-      <button type="button" class="wf-btn wf-hide-posture" data-to="settings"><span class="wf-dot ok"></span>설정</button>
-      <button type="button" class="wf-btn primary wf-hide-posture" data-to="new-agent">+ 새 에이전트</button>
-    </header>
-
-    <!-- every menu is one tile of the same size; 내 차례 is the first tile -->
-    <section class="home-sec" aria-labelledby="home-main-title">
-      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-main-title">자주 가는 곳</h2></div>
-      <div class="tiles">
+    <!-- cards only: no title row, no group headings — every menu is one tile of the same size, 내 차례 first,
+         then the tile state examples (yellow labels) at the end -->
+    <div class="tiles">
         <button type="button" class="tile turn" data-to="decide" data-slot="inbox" data-plugin="decisions">
           <span class="tile-sum"><span class="ico" aria-hidden="true">☰︎</span><span class="mini"><span><b class="hot">3</b>결정</span><span><b class="msg">2</b>보고</span><span><b class="hot">1</b>승인</span><span><b class="bad">1</b>막힘</span></span></span>
           <span class="tile-name"><strong>내 차례</strong><span class="wf-t">7건 기다림</span></span>
@@ -111,12 +101,6 @@
           <span class="tile-sum"><span class="ico" aria-hidden="true">▷︎</span><span class="wf-tag bad corner">1</span><span><span class="big">2</span> <span class="unit">실행 중</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:12"></i><i style="flex:8"></i></div></span>
           <span class="tile-name"><strong>테스트</strong><span class="wf-t">실패 1 · 12 / 20</span></span>
         </button>
-      </div>
-    </section>
-
-    <section class="home-sec" aria-labelledby="home-tools-title">
-      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-tools-title">도구</h2><span class="wf-t wf-hide-phone">플러그인을 더하면 여기에 타일이 생긴다</span></div>
-      <div class="tiles">
         <button type="button" class="tile" data-to="projects" data-menu="projects" data-slot="nav" data-plugin="projects">
           <span class="tile-sum"><span class="ico-big" aria-hidden="true">▦︎</span><span class="sum-line"><b>2</b> 진행 중</span></span>
           <span class="tile-name"><strong>프로젝트</strong><span class="wf-t">다음 단계 · 단계 이름</span></span>
@@ -161,12 +145,6 @@
           <span class="tile-sum"><span class="ico-big" aria-hidden="true">+︎</span></span>
           <span class="tile-name"><strong>메뉴 추가</strong><span class="wf-t">플러그인 관리</span></span>
         </button>
-      </div>
-    </section>
-
-    <section class="home-sec wf-hide-posture" aria-labelledby="home-admin-title">
-      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-admin-title">관리</h2></div>
-      <div class="tiles">
         <button type="button" class="tile" data-to="new-agent" data-menu="new-agent">
           <span class="tile-sum"><span class="ico-big" aria-hidden="true">+︎</span><span class="sum-line">새로 만들기</span></span>
           <span class="tile-name"><strong>새 에이전트</strong><span class="wf-t">프롬프트 · 저장소 · 모델</span></span>
@@ -183,12 +161,6 @@
           <span class="tile-sum"><span class="ico-big" aria-hidden="true">⚙︎</span><span class="sum-line"><span class="wf-dot ok" style="display:inline-block"></span> 연결됨</span></span>
           <span class="tile-name"><strong>설정</strong><span class="wf-t">메트릭 서버 · 0초 전</span></span>
         </button>
-      </div>
-    </section>
-
-    <section class="home-sec" aria-labelledby="home-ex-title">
-      <div class="wf-row"><h2 class="wf-h wf-grow" id="home-ex-title">타일 예시</h2><span class="wf-t">실제 홈에는 없다 — 타일이 놓일 수 있는 상태의 견본</span></div>
-      <div class="tiles">
         <div class="tile ex" role="img" aria-label="타일 예시 · 데이터 풍부">
           <span class="ex-state">데이터 풍부</span>
           <span class="tile-sum"><span class="ico" aria-hidden="true">◉︎</span><span><span class="big">12</span> <span class="unit">단위</span></span><div class="wf-seg" aria-hidden="true"><i class="ok" style="flex:5"></i><i class="hot" style="flex:2"></i><i class="bad" style="flex:1"></i><i class="done" style="flex:4"></i></div><span class="wf-t">보조 수치 · 0</span></span>
@@ -234,32 +206,17 @@
           <span class="tile-sum"><span class="wf-tag msg corner">새</span><span class="ico-big" aria-hidden="true">⧉︎</span><span class="sum-line">처음 열기</span></span>
           <span class="tile-name"><strong>화면 이름</strong><span class="wf-t">방금 설치</span></span>
         </div>
-      </div>
-    </section>
-
-    <p class="wf-note">홈에는 사이드바가 없다 — 홈 자체가 메뉴다. 모든 메뉴가 같은 크기의 버튼 타일(가로 3 : 세로 4)이다. 위 1:1 칸에 그 화면의 데이터 요약(큰 숫자 · 막대, 기다리는 것이 있으면 모서리 배지)과 그 화면의 아이콘 — 요약할 데이터가 적은 화면은 아이콘을 크게 가운데 두고 한 줄을 그 아래에 둔다. 1:1 칸은 비지 않는다. 맨 아래 「타일 예시」는 견본이다(데이터 풍부 · 적음 · 없음 · 기다림 · 오류 · 불러오는 중 · 연결 끊김 · 꺼진 플러그인 · 새 플러그인), 아래에 이름과 한 줄 상태. 내 차례도 첫 타일이다. 플러그인을 더하면 「도구」에 타일이 생기고, 「화면 편집」으로 순서를 바꾸거나 숨긴다. 다른 화면은 사이드바를 그대로 두고 「홈」으로 돌아온다. iPhone Duo 앱은 하단 탭 바를 유지한다.</p>
+    </div>
+    <p class="wf-note">카드만 둔다 — 제목 줄 · 묶음 제목 · 시트 내용 없이 모든 메뉴가 같은 크기의 버튼 타일(가로 3 : 세로 4)로 한 격자에 놓인다. 위 1:1 칸은 데이터 요약(큰 숫자 · 막대 · 모서리 배지)이거나, 요약할 데이터가 적으면 화면 아이콘을 크게 — 비지 않는다. 아래는 이름과 한 줄 상태. 첫 타일이 내 차례, 설정 · 새 에이전트도 타일이다. 노란 라벨이 붙은 끝의 타일들은 상태 견본이다. 사이드바는 없고, iPhone Duo 앱은 하단 탭 바만 남는다.</p>
   </main>
 </div>
 <!-- iPhone Duo (the app): bottom tab bar -->
 <nav class="wf-dock" data-shell>
   <span class="wf-btn on" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span>
 </nav>
-<!-- half folded: the sheet holds 내 차례 and the main actions, the tab bar at its bottom -->
+<!-- half folded: cards only, so the sheet holds just the tab bar -->
 <aside class="wf-half">
   <div class="wf-row" data-shell><span class="wf-btn on" data-to="home">홈</span><span class="wf-btn" data-to="agents">에이전트</span><span class="wf-btn" data-to="decide" data-slot="nav" data-plugin="decisions">결정<span class="wf-tag hot">3</span></span><span class="wf-btn" data-to="tests">테스트</span><span class="wf-btn" data-to="more">더 보기</span></div>
-  <section class="wf-col" aria-labelledby="home-sheet-title">
-    <div class="wf-row">
-      <h2 class="wf-h wf-grow" id="home-sheet-title">내 차례</h2>
-      <button type="button" class="wf-btn primary" data-to="new-agent">+ 새 에이전트</button>
-    </div>
-    <div class="wf-list">
-      <span class="wf-btn" data-to="decide" data-slot="inbox" data-plugin="decisions"><span class="wf-grow">결정 대기</span><span class="wf-tag hot">3</span></span>
-      <span class="wf-btn" data-to="decide" data-slot="inbox" data-plugin="decisions"><span class="wf-grow">보고 확인</span><span class="wf-tag">2</span></span>
-      <span class="wf-btn" data-to="worktrees" data-slot="inbox" data-plugin="qa-review"><span class="wf-grow">반출 승인</span><span class="wf-tag hot">1</span></span>
-      <span class="wf-btn" data-to="worktrees" data-slot="inbox" data-plugin="qa-review"><span class="wf-grow">막힘</span><span class="wf-tag bad">1</span></span>
-    </div>
-    <div class="wf-row"><span class="wf-btn" data-to="settings">설정</span><span class="wf-btn" data-to="compose">화면 편집</span><span class="wf-btn" data-to="plugins">메뉴 추가</span></div>
-  </section>
 </aside>
 </body>
 </html>
